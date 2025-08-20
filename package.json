@@ -1,0 +1,35 @@
+{
+  "name": "templ-protocol",
+  "version": "1.0.0",
+  "description": "TEMPL - Telegram Entry Management Protocol",
+  "main": "src/tokenGatedService.js",
+  "scripts": {
+    "start": "node src/tokenGatedService.js",
+    "compile": "npx hardhat compile",
+    "deploy": "npx hardhat run scripts/deploy.js --network base",
+    "deploy:local": "npx hardhat run scripts/deploy.js --network hardhat",
+    "init-db": "psql -U postgres -d telegram_access -f src/database/schema.sql",
+    "test": "npx hardhat test",
+    "verify": "node scripts/verify-system.js",
+    "setup": "./setup.sh",
+    "first-run": "./first-run.sh"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "ethers": "^6.9.0",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.1.5",
+    "helmet": "^7.1.0",
+    "input": "^1.0.1",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.11.3",
+    "telegram": "^2.19.8"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-ethers": "^3.0.0",
+    "@nomicfoundation/hardhat-toolbox": "^3.0.0",
+    "@nomicfoundation/hardhat-verify": "^1.1.1",
+    "hardhat": "^2.19.0"
+  }
+}

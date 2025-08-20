@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Purchase Telegram Group Access</title>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.15.0/dist/ethers.umd.min.js"></script>
+    <script src="ethers-v6-adapter.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 32px;
+            text-align: center;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 16px;
+            text-align: center;
+        }
+
+        .price-display {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .price-amount {
+            font-size: 48px;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .price-breakdown {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 2px solid #dee2e6;
+        }
+
+        .price-item {
+            text-align: center;
+        }
+
+        .price-label {
+            font-size: 12px;
+            color: #6c757d;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 5px;
+        }
+
+        .price-value {
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        .treasury {
+            color: #28a745;
+        }
+
+        .burn {
+            color: #dc3545;
+        }
+
+        .steps {
+            margin-bottom: 30px;
+        }
+
+        .step {
+            display: flex;
+            align-items: center;
+            padding: 20px;
+            margin-bottom: 15px;
+            background: #f8f9fa;
+            border-radius: 12px;
+            border: 2px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .step.active {
+            background: #e8f4f8;
+            border-color: #17a2b8;
+        }
+
+        .step.completed {
+            background: #d4edda;
+            border-color: #28a745;
+        }
+
+        .step.error {
+            background: #f8d7da;
+            border-color: #dc3545;
+        }
+
+        .step-number {
+            width: 40px;
+            height: 40px;
+            background: #667eea;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 20px;
+            font-weight: bold;
+            font-size: 18px;
+        }
+
+        .step.completed .step-number {
+            background: #28a745;
+        }
+
+        .step.active .step-number {
+            background: #17a2b8;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(23, 162, 184, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(23, 162, 184, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(23, 162, 184, 0); }
+        }
+
+        .step-content {
+            flex: 1;
+        }
+
+        .step-title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .step-description {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .step-action {
+            margin-left: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        input:disabled {
+            background: #f5f5f5;
+            cursor: not-allowed;
+        }
+
+        button {
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            min-width: 140px;
+        }
+
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        button.secondary {
+            background: #6c757d;
+        }
+
+        button.success {
+            background: #28a745;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 30px;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .status-box {
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .status-box.show {
+            display: block;
+        }
+
+        .status-box.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status-box.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status-box.warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+
+        .status-box.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .wallet-info {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .wallet-info.show {
+            display: block;
+        }
+
+        .wallet-address {
+            font-family: monospace;
+            font-size: 14px;
+            color: #495057;
+            word-break: break-all;
+        }
+
+        .balance-info {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #dee2e6;
+        }
+
+        .balance-item {
+            text-align: center;
+        }
+
+        .balance-label {
+            font-size: 12px;
+            color: #6c757d;
+        }
+
+        .balance-value {
+            font-weight: bold;
+            color: #495057;
+        }
+
+        .username-section {
+            display: none;
+            margin-top: 30px;
+            padding: 30px;
+            background: #f8f9fa;
+            border-radius: 15px;
+        }
+
+        .username-section.show {
+            display: block;
+        }
+
+        .success-message {
+            text-align: center;
+            padding: 30px;
+            display: none;
+        }
+
+        .success-message.show {
+            display: block;
+        }
+
+        .success-icon {
+            font-size: 72px;
+            margin-bottom: 20px;
+        }
+
+        .contract-info {
+            background: #e9ecef;
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 20px;
+            font-size: 12px;
+            color: #6c757d;
+            text-align: center;
+        }
+
+        .contract-address {
+            font-family: monospace;
+            color: #495057;
+            word-break: break-all;
+        }
+
+        .help-text {
+            font-size: 14px;
+            color: #6c757d;
+            margin-top: 10px;
+        }
+
+        .network-badge {
+            display: inline-block;
+            padding: 5px 10px;
+            background: #007bff;
+            color: white;
+            border-radius: 20px;
+            font-size: 12px;
+            margin-bottom: 20px;
+        }
+
+        .network-badge.mainnet {
+            background: #28a745;
+        }
+
+        .network-badge.testnet {
+            background: #ffc107;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="networkBadge" class="network-badge" style="display: none;"></div>
+        
+        <h1>🎟️ Purchase Group Access</h1>
+        <p class="subtitle">Get exclusive access to our premium Telegram group</p>
+
+        <div class="price-display">
+            <div class="price-amount" id="priceAmount">420 TOKENS</div>
+            <div class="price-breakdown">
+                <div class="price-item">
+                    <div class="price-label">Treasury</div>
+                    <div class="price-value treasury" id="treasuryAmount">210</div>
+                </div>
+                <div class="price-item">
+                    <div class="price-label">Burned</div>
+                    <div class="price-value burn" id="burnAmount">210</div>
+                </div>
+            </div>
+        </div>
+
+        <div id="statusBox" class="status-box"></div>
+
+        <div id="walletInfo" class="wallet-info">
+            <div>Connected: <span class="wallet-address" id="walletAddress"></span></div>
+            <div class="balance-info">
+                <div class="balance-item">
+                    <div class="balance-label">Token Balance</div>
+                    <div class="balance-value" id="tokenBalance">-</div>
+                </div>
+                <div class="balance-item">
+                    <div class="balance-label">Allowance</div>
+                    <div class="balance-value" id="tokenAllowance">-</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="steps" id="stepsSection">
+            <div class="step" id="step1">
+                <div class="step-number">1</div>
+                <div class="step-content">
+                    <div class="step-title">Connect Wallet</div>
+                    <div class="step-description">Connect your Web3 wallet to get started</div>
+                </div>
+                <div class="step-action">
+                    <button id="connectBtn" onclick="connectWallet()">Connect</button>
+                </div>
+            </div>
+
+            <div class="step" id="step2">
+                <div class="step-number">2</div>
+                <div class="step-content">
+                    <div class="step-title">Approve Tokens</div>
+                    <div class="step-description">Allow the contract to use your tokens</div>
+                </div>
+                <div class="step-action">
+                    <button id="approveBtn" onclick="approveTokens()" disabled>Approve</button>
+                </div>
+            </div>
+
+            <div class="step" id="step3">
+                <div class="step-number">3</div>
+                <div class="step-content">
+                    <div class="step-title">Purchase Access</div>
+                    <div class="step-description">Pay the entry fee to get access</div>
+                </div>
+                <div class="step-action">
+                    <button id="purchaseBtn" onclick="purchaseAccess()" disabled>Purchase</button>
+                </div>
+            </div>
+
+            <div class="step" id="step4">
+                <div class="step-number">4</div>
+                <div class="step-content">
+                    <div class="step-title">Enter Username</div>
+                    <div class="step-description">Provide your Telegram username to receive invitation</div>
+                </div>
+                <div class="step-action">
+                    <button id="claimBtn" disabled>Enter</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="usernameSection" class="username-section">
+            <h3>Final Step: Enter Your Telegram Username</h3>
+            <p class="help-text">Enter your Telegram username (without @) to receive the group invitation</p>
+            <form id="claimForm" style="margin-top: 20px;">
+                <div class="form-group">
+                    <label for="telegramUsername">Telegram Username</label>
+                    <input 
+                        type="text" 
+                        id="telegramUsername" 
+                        placeholder="username (without @)"
+                        pattern="[a-zA-Z0-9_]{5,32}"
+                        required
+                    >
+                </div>
+                <button type="submit" style="width: 100%;">Submit & Join Group</button>
+            </form>
+        </div>
+
+        <div id="successMessage" class="success-message">
+            <div class="success-icon">🎉</div>
+            <h2>Success!</h2>
+            <p>You will receive a Telegram group invitation shortly.</p>
+            <p class="help-text" style="margin-top: 20px;">
+                If you don't receive an invitation, make sure your Telegram privacy settings allow group invitations.
+            </p>
+        </div>
+
+        <div class="contract-info">
+            <div>Contract: <span class="contract-address" id="contractAddress"></span></div>
+            <div>Token: <span class="contract-address" id="tokenAddress"></span></div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.15.0/dist/ethers.umd.min.js"></script>
+    <script src="ethers-v6-adapter.js"></script>
+    <script>
+        // Configuration - Update these for your deployment
+        const CONFIG = {
+            CONTRACT_ADDRESS: new URLSearchParams(window.location.search).get('contract') || '',
+            TOKEN_ADDRESS: '', // Will be fetched from contract
+            ENTRY_FEE: '420', // Will be fetched from contract
+            API_URL: window.location.origin.replace(':3000', ':3002'),
+            CHAIN_ID: 1 // Update for your network
+        };
+
+        // Contract ABIs
+        const CONTRACT_ABI = [
+            "function purchaseAccess() external",
+            "function hasAccess(address user) view returns (bool)",
+            "function getConfig() view returns (address token, uint256 fee, bool isPaused, uint256 purchases, uint256 treasury)",
+            "function getTreasuryInfo() view returns (uint256 balance, uint256 totalReceived, uint256 totalBurned, address priest)",
+            "function getPurchaseDetails(address user) view returns (bool purchased, uint256 timestamp, uint256 blockNum)"
+        ];
+
+        const ERC20_ABI = [
+            "function balanceOf(address owner) view returns (uint256)",
+            "function allowance(address owner, address spender) view returns (uint256)",
+            "function approve(address spender, uint256 amount) returns (bool)",
+            "function decimals() view returns (uint8)",
+            "function symbol() view returns (string)"
+        ];
+
+        let provider, signer, contract, tokenContract;
+        let walletAddress, tokenDecimals, tokenSymbol;
+        let hasUserPurchased = false;
+        let sessionToken = null;
+
+        // Initialize
+        async function init() {
+            if (!CONFIG.CONTRACT_ADDRESS) {
+                showStatus('error', 'No contract address provided. Add ?contract=0x... to URL');
+                return;
+            }
+
+            document.getElementById('contractAddress').textContent = 
+                CONFIG.CONTRACT_ADDRESS.slice(0, 6) + '...' + CONFIG.CONTRACT_ADDRESS.slice(-4);
+
+            // Check if wallet is already connected
+            if (window.ethereum && window.ethereum.selectedAddress) {
+                await connectWallet();
+            }
+        }
+
+        async function connectWallet() {
+            const connectBtn = document.getElementById('connectBtn');
+            connectBtn.disabled = true;
+            connectBtn.innerHTML = '<span class="loading"></span>';
+
+            try {
+                if (!window.ethereum) {
+                    throw new Error('Please install MetaMask or another Web3 wallet');
+                }
+
+                // Request account access
+                await window.ethereum.request({ method: 'eth_requestAccounts' });
+                
+                provider = new ethers.providers.Web3Provider(window.ethereum);
+                signer = provider.getSigner();
+                walletAddress = await signer.getAddress();
+
+                // Check network
+                const network = await provider.getNetwork();
+                const networkBadge = document.getElementById('networkBadge');
+                networkBadge.textContent = network.name || `Chain ${network.chainId}`;
+                networkBadge.className = network.chainId === 1 ? 'network-badge mainnet' : 'network-badge testnet';
+                networkBadge.style.display = 'inline-block';
+
+                // Initialize contracts
+                contract = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+                
+                // Get contract configuration
+                const config = await contract.getConfig();
+                CONFIG.TOKEN_ADDRESS = config[0];
+                CONFIG.ENTRY_FEE = config[1].toString();
+                
+                tokenContract = new ethers.Contract(CONFIG.TOKEN_ADDRESS, ERC20_ABI, signer);
+                tokenDecimals = await tokenContract.decimals();
+                tokenSymbol = await tokenContract.symbol();
+
+                // Update UI with token info
+                const entryFeeFormatted = ethers.utils.formatUnits(CONFIG.ENTRY_FEE, 0);
+                document.getElementById('priceAmount').textContent = `${entryFeeFormatted} ${tokenSymbol}`;
+                document.getElementById('treasuryAmount').textContent = Math.floor(entryFeeFormatted / 2);
+                document.getElementById('burnAmount').textContent = Math.floor(entryFeeFormatted / 2);
+                document.getElementById('tokenAddress').textContent = 
+                    CONFIG.TOKEN_ADDRESS.slice(0, 6) + '...' + CONFIG.TOKEN_ADDRESS.slice(-4);
+
+                // Show wallet info
+                document.getElementById('walletAddress').textContent = 
+                    walletAddress.slice(0, 6) + '...' + walletAddress.slice(-4);
+                document.getElementById('walletInfo').classList.add('show');
+
+                // Update balances
+                await updateBalances();
+
+                // Check if already purchased
+                hasUserPurchased = await contract.hasAccess(walletAddress);
+                
+                if (hasUserPurchased) {
+                    // User already purchased, skip to username entry
+                    markStepCompleted(1);
+                    markStepCompleted(2);
+                    markStepCompleted(3);
+                    activateStep(4);
+                    document.getElementById('claimBtn').disabled = false;
+                    document.getElementById('claimBtn').onclick = showUsernameSection;
+                    showStatus('info', 'You have already purchased access! Enter your username to join.');
+                } else {
+                    // Continue normal flow
+                    markStepCompleted(1);
+                    activateStep(2);
+                    document.getElementById('approveBtn').disabled = false;
+                }
+
+                connectBtn.textContent = 'Connected';
+                connectBtn.classList.add('success');
+
+            } catch (error) {
+                console.error('Connection error:', error);
+                showStatus('error', 'Failed to connect: ' + error.message);
+                connectBtn.disabled = false;
+                connectBtn.textContent = 'Connect';
+            }
+        }
+
+        async function updateBalances() {
+            try {
+                const balance = await tokenContract.balanceOf(walletAddress);
+                const allowance = await tokenContract.allowance(walletAddress, CONFIG.CONTRACT_ADDRESS);
+                
+                document.getElementById('tokenBalance').textContent = 
+                    ethers.utils.formatUnits(balance, tokenDecimals) + ' ' + tokenSymbol;
+                document.getElementById('tokenAllowance').textContent = 
+                    ethers.utils.formatUnits(allowance, tokenDecimals) + ' ' + tokenSymbol;
+
+                // Check if approval is needed
+                const entryFeeWithDecimals = ethers.BigNumber.from(CONFIG.ENTRY_FEE).mul(
+                    ethers.BigNumber.from(10).pow(tokenDecimals)
+                );
+                
+                if (allowance.gte(entryFeeWithDecimals)) {
+                    // Already approved
+                    if (!hasUserPurchased) {
+                        markStepCompleted(2);
+                        activateStep(3);
+                        document.getElementById('approveBtn').textContent = 'Approved';
+                        document.getElementById('approveBtn').disabled = true;
+                        document.getElementById('purchaseBtn').disabled = false;
+                    }
+                }
+
+                // Check if user has enough balance
+                if (balance.lt(entryFeeWithDecimals)) {
+                    showStatus('warning', 'Insufficient token balance to purchase access');
+                }
+
+            } catch (error) {
+                console.error('Error updating balances:', error);
+            }
+        }
+
+        async function approveTokens() {
+            const approveBtn = document.getElementById('approveBtn');
+            approveBtn.disabled = true;
+            approveBtn.innerHTML = '<span class="loading"></span>';
+
+            try {
+                const entryFeeWithDecimals = ethers.BigNumber.from(CONFIG.ENTRY_FEE).mul(
+                    ethers.BigNumber.from(10).pow(tokenDecimals)
+                );
+
+                showStatus('info', 'Please approve the transaction in your wallet...');
+                
+                const tx = await tokenContract.approve(CONFIG.CONTRACT_ADDRESS, entryFeeWithDecimals);
+                
+                showStatus('info', 'Waiting for confirmation...');
+                await tx.wait();
+
+                showStatus('success', 'Tokens approved successfully!');
+                markStepCompleted(2);
+                activateStep(3);
+                
+                approveBtn.textContent = 'Approved';
+                approveBtn.classList.add('success');
+                document.getElementById('purchaseBtn').disabled = false;
+
+                await updateBalances();
+
+            } catch (error) {
+                console.error('Approval error:', error);
+                showStatus('error', 'Approval failed: ' + error.message);
+                approveBtn.disabled = false;
+                approveBtn.textContent = 'Approve';
+            }
+        }
+
+        async function purchaseAccess() {
+            const purchaseBtn = document.getElementById('purchaseBtn');
+            purchaseBtn.disabled = true;
+            purchaseBtn.innerHTML = '<span class="loading"></span>';
+
+            try {
+                showStatus('info', 'Please confirm the purchase in your wallet...');
+                
+                const tx = await contract.purchaseAccess();
+                
+                showStatus('info', 'Processing purchase... This may take a moment.');
+                await tx.wait();
+
+                showStatus('success', 'Purchase successful! 50% sent to treasury, 50% burned.');
+                markStepCompleted(3);
+                activateStep(4);
+                
+                purchaseBtn.textContent = 'Purchased';
+                purchaseBtn.classList.add('success');
+                document.getElementById('claimBtn').disabled = false;
+                document.getElementById('claimBtn').onclick = showUsernameSection;
+
+                await updateBalances();
+
+                // Auto-show username section after purchase
+                setTimeout(showUsernameSection, 1500);
+
+            } catch (error) {
+                console.error('Purchase error:', error);
+                if (error.message.includes('Already purchased')) {
+                    showStatus('info', 'You have already purchased access!');
+                    markStepCompleted(3);
+                    activateStep(4);
+                    document.getElementById('claimBtn').disabled = false;
+                    document.getElementById('claimBtn').onclick = showUsernameSection;
+                } else {
+                    showStatus('error', 'Purchase failed: ' + error.message);
+                }
+                purchaseBtn.disabled = false;
+                purchaseBtn.textContent = 'Purchase';
+            }
+        }
+
+        function showUsernameSection() {
+            document.getElementById('usernameSection').classList.add('show');
+            document.getElementById('telegramUsername').focus();
+            document.getElementById('claimBtn').textContent = 'Entering...';
+            document.getElementById('claimBtn').disabled = true;
+        }
+
+        // Generate secure nonce
+        function generateNonce() {
+            const array = new Uint8Array(32);
+            crypto.getRandomValues(array);
+            return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
+        }
+
+        async function submitClaim(event) {
+            event.preventDefault();
+            
+            const username = document.getElementById('telegramUsername').value.trim().replace('@', '');
+            
+            if (!/^[a-zA-Z0-9_]{5,32}$/.test(username)) {
+                showStatus('error', 'Invalid username format. Use only letters, numbers, and underscores (5-32 characters)');
+                return;
+            }
+
+            const submitBtn = event.target.querySelector('button[type="submit"]');
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="loading"></span> Submitting...';
+
+            try {
+                // First verify purchase and get session token
+                if (!sessionToken) {
+                    showStatus('info', 'Verifying purchase on blockchain...');
+                    
+                    // Generate nonce and message for signature
+                    const nonce = generateNonce();
+                    const timestamp = Date.now();
+                    const message = `Verify access for ${CONFIG.CONTRACT_ADDRESS} with nonce ${nonce} at ${timestamp}`;
+                    
+                    // Sign message
+                    showStatus('info', 'Please sign the verification message in your wallet...');
+                    const signature = await signer.signMessage(message);
+
+                    // Verify with backend
+                    const verifyResponse = await fetch(`${CONFIG.API_URL}/api/verify-purchase`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            walletAddress,
+                            contractAddress: CONFIG.CONTRACT_ADDRESS,
+                            signature,
+                            message,
+                            timestamp
+                        })
+                    });
+
+                    const verifyData = await verifyResponse.json();
+                    
+                    if (!verifyResponse.ok) {
+                        throw new Error(verifyData.error || 'Verification failed');
+                    }
+
+                    if (verifyData.hasClaimed) {
+                        showStatus('warning', `Already claimed for username: ${verifyData.telegramUsername}`);
+                        if (verifyData.userJoined) {
+                            showStatus('success', 'You have already joined the group!');
+                        }
+                        return;
+                    }
+
+                    sessionToken = verifyData.sessionToken;
+                }
+
+                // Submit username claim
+                showStatus('info', 'Submitting your username...');
+                
+                const claimResponse = await fetch(`${CONFIG.API_URL}/api/claim-access`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        sessionToken,
+                        telegramUsername: username
+                    })
+                });
+
+                const claimData = await claimResponse.json();
+
+                if (!claimResponse.ok) {
+                    throw new Error(claimData.error || 'Claim submission failed');
+                }
+
+                // Success!
+                markStepCompleted(4);
+                document.getElementById('usernameSection').style.display = 'none';
+                document.getElementById('successMessage').classList.add('show');
+                showStatus('success', `Success! You will receive an invitation to @${username} shortly.`);
+
+            } catch (error) {
+                console.error('Claim error:', error);
+                showStatus('error', error.message);
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Submit & Join Group';
+            }
+        }
+
+        function markStepCompleted(stepNum) {
+            document.getElementById(`step${stepNum}`).classList.add('completed');
+            document.getElementById(`step${stepNum}`).classList.remove('active');
+        }
+
+        function activateStep(stepNum) {
+            document.getElementById(`step${stepNum}`).classList.add('active');
+        }
+
+        function showStatus(type, message) {
+            const statusBox = document.getElementById('statusBox');
+            statusBox.className = `status-box ${type} show`;
+            statusBox.textContent = message;
+        }
+
+        // Event listeners
+        document.getElementById('claimForm').addEventListener('submit', submitClaim);
+
+        // Handle account changes
+        if (window.ethereum) {
+            window.ethereum.on('accountsChanged', (accounts) => {
+                if (accounts.length === 0) {
+                    location.reload();
+                } else if (accounts[0] !== walletAddress) {
+                    location.reload();
+                }
+            });
+
+            window.ethereum.on('chainChanged', () => {
+                location.reload();
+            });
+        }
+
+        // Initialize on load
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>

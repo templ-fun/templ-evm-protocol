@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TEMPL - Token Gated Telegram Access</title>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.15.0/dist/ethers.umd.min.js"></script>
+    <script src="ethers-v6-adapter.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+            max-width: 500px;
+            width: 100%;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            display: none;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .status.show {
+            display: block;
+        }
+
+        .loader {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .stats {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .stats h3 {
+            color: #555;
+            font-size: 16px;
+            margin-bottom: 10px;
+        }
+
+        .stats-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            color: #666;
+            font-size: 14px;
+        }
+
+        .stats-value {
+            font-weight: 600;
+            color: #667eea;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Telegram Group Creator</h1>
+        <p class="subtitle">Create a new Telegram group and become an admin instantly</p>
+        
+        <form id="createGroupForm">
+            <div class="form-group">
+                <label for="username">Your Telegram Username</label>
+                <input 
+                    type="text" 
+                    id="username" 
+                    name="username" 
+                    placeholder="@username or username"
+                    required
+                >
+            </div>
+            
+            <div class="form-group">
+                <label for="groupTitle">Group Title (Optional)</label>
+                <input 
+                    type="text" 
+                    id="groupTitle" 
+                    name="groupTitle" 
+                    placeholder="My Awesome Group"
+                >
+            </div>
+            
+            <button type="submit" id="submitBtn">Create Group</button>
+        </form>
+        
+        <div id="status" class="status"></div>
+        
+        <div class="stats">
+            <h3>Rate Limits</h3>
+            <div class="stats-item">
+                <span>Per Hour:</span>
+                <span class="stats-value" id="hourLimit">-</span>
+            </div>
+            <div class="stats-item">
+                <span>Per Day:</span>
+                <span class="stats-value" id="dayLimit">-</span>
+            </div>
+            <div class="stats-item">
+                <span>Queue Status:</span>
+                <span class="stats-value" id="queueStatus">-</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('createGroupForm');
+        const statusDiv = document.getElementById('status');
+        const submitBtn = document.getElementById('submitBtn');
+
+        async function loadRateLimits() {
+            try {
+                const response = await fetch('/api/rate-limits');
+                const data = await response.json();
+                document.getElementById('hourLimit').textContent = data.perHour + ' groups';
+                document.getElementById('dayLimit').textContent = data.perDay + ' groups';
+            } catch (error) {
+                console.error('Failed to load rate limits:', error);
+            }
+        }
+
+        async function loadQueueStats() {
+            try {
+                const response = await fetch('/api/queue-stats');
+                const data = await response.json();
+                const total = data.waiting + data.active + data.completed + data.failed;
+                document.getElementById('queueStatus').textContent = 
+                    `${data.waiting} waiting, ${data.active} active`;
+            } catch (error) {
+                console.error('Failed to load queue stats:', error);
+            }
+        }
+
+        async function checkJobStatus(jobId) {
+            const maxAttempts = 30;
+            let attempts = 0;
+
+            const checkInterval = setInterval(async () => {
+                attempts++;
+                
+                try {
+                    const response = await fetch(`/api/job-status/${jobId}`);
+                    const data = await response.json();
+
+                    if (data.state === 'completed') {
+                        clearInterval(checkInterval);
+                        showStatus('success', `Group created successfully! Invite link: ${data.result.inviteLink}`);
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = 'Create Group';
+                    } else if (data.state === 'failed') {
+                        clearInterval(checkInterval);
+                        showStatus('error', `Failed to create group: ${data.failedReason || 'Unknown error'}`);
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = 'Create Group';
+                    } else if (attempts >= maxAttempts) {
+                        clearInterval(checkInterval);
+                        showStatus('error', 'Operation timed out. Please try again.');
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = 'Create Group';
+                    }
+                } catch (error) {
+                    clearInterval(checkInterval);
+                    showStatus('error', 'Failed to check job status');
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Create Group';
+                }
+            }, 2000);
+        }
+
+        function showStatus(type, message) {
+            statusDiv.className = `status ${type} show`;
+            statusDiv.innerHTML = message;
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const username = document.getElementById('username').value.trim();
+            const groupTitle = document.getElementById('groupTitle').value.trim();
+            
+            if (!username) {
+                showStatus('error', 'Please enter your Telegram username');
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="loader"></span>Creating group...';
+            showStatus('info', '<span class="loader"></span>Processing your request...');
+
+            try {
+                const response = await fetch('/api/create-group', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ username, groupTitle })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showStatus('info', `<span class="loader"></span>Job queued. Checking status...`);
+                    await checkJobStatus(data.jobId);
+                } else {
+                    showStatus('error', data.error || 'Failed to create group');
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Create Group';
+                }
+            } catch (error) {
+                showStatus('error', 'Network error. Please try again.');
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Create Group';
+            }
+        });
+
+        loadRateLimits();
+        loadQueueStats();
+        setInterval(loadQueueStats, 5000);
+    </script>
+</body>
+</html>

@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claim Telegram Group Access - Secure</title>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.15.0/dist/ethers.umd.min.js"></script>
+    <script src="ethers-v6-adapter.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+            /* max-width: 720px; */
+            width: 100%;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .security-badge {
+            display: inline-flex;
+            align-items: center;
+            background: #28a745;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            margin-bottom: 20px;
+        }
+
+        .security-badge svg {
+            width: 16px;
+            height: 16px;
+            margin-right: 5px;
+        }
+
+        .status-box {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+
+        .status-box.success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status-box.error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status-box.warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+        }
+
+        .status-box.info {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        input:disabled {
+            background: #f5f5f5;
+            cursor: not-allowed;
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .step {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .step-number {
+            width: 30px;
+            height: 30px;
+            background: #667eea;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 15px;
+            font-weight: bold;
+        }
+
+        .step.completed .step-number {
+            background: #28a745;
+        }
+
+        .step.active .step-number {
+            background: #ffc107;
+        }
+
+        .instructions {
+            background: #e8f4f8;
+            border-left: 4px solid #17a2b8;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+
+        .instructions h3 {
+            color: #17a2b8;
+            margin-bottom: 10px;
+        }
+
+        .instructions ol {
+            margin-left: 20px;
+            color: #555;
+        }
+
+        .instructions li {
+            margin-bottom: 8px;
+        }
+
+        .error-details {
+            margin-top: 10px;
+            padding: 10px;
+            background: white;
+            border-radius: 5px;
+            font-size: 14px;
+            color: #721c24;
+        }
+
+        .treasury-info {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        .treasury-info .label {
+            color: #6c757d;
+            margin-bottom: 5px;
+        }
+
+        .treasury-info .value {
+            font-weight: bold;
+            color: #495057;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="security-badge">
+            <svg fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+            </svg>
+            Secure Version
+        </div>
+
+        <h1>Claim Group Access</h1>
+        <p class="subtitle">Complete the verification to join the exclusive Telegram group</p>
+
+        <div id="treasuryInfo" class="treasury-info" style="display: none;">
+            <div class="label">Contract Treasury Status:</div>
+            <div class="value">50% of fees go to treasury, 50% burned</div>
+        </div>
+
+        <div id="statusBox" class="status-box" style="display: none;"></div>
+
+        <div id="steps">
+            <div class="step" id="step1">
+                <div class="step-number">1</div>
+                <div>Connect Wallet & Verify Purchase</div>
+            </div>
+            <div class="step" id="step2">
+                <div class="step-number">2</div>
+                <div>Sign Secure Message</div>
+            </div>
+            <div class="step" id="step3">
+                <div class="step-number">3</div>
+                <div>Enter Telegram Username</div>
+            </div>
+        </div>
+
+        <form id="claimForm">
+            <div class="form-group">
+                <label for="walletAddress">Wallet Address</label>
+                <input type="text" id="walletAddress" readonly placeholder="Loading...">
+            </div>
+
+            <div class="form-group" id="usernameGroup" style="display: none;">
+                <label for="telegramUsername">Telegram Username</label>
+                <input type="text" id="telegramUsername" placeholder="@username (without @)">
+            </div>
+
+            <button type="button" id="connectBtn">Connect Wallet</button>
+            <button type="submit" id="submitBtn" style="display: none;" disabled>
+                Submit Claim
+            </button>
+        </form>
+
+        <div id="instructions" class="instructions" style="display: none;">
+            <h3>⚠️ Privacy Settings Update Required</h3>
+            <ol>
+                <li>Open Telegram and go to Settings</li>
+                <li>Select "Privacy and Security"</li>
+                <li>Click on "Groups & Channels"</li>
+                <li>Set to "Everybody" or add our bot as an exception</li>
+                <li>Click the "Retry Invitation" button below</li>
+            </ol>
+            <button type="button" id="retryBtn" style="margin-top: 15px;">
+                Retry Invitation
+            </button>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.15.0/dist/ethers.umd.min.js"></script>
+    <script src="ethers-v6-adapter.js"></script>
+    <script>
+        const API_URL = window.location.origin.replace(':3000', ':3002');
+        let provider, signer, walletAddress, contractAddress, sessionToken;
+
+        // Get parameters from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        contractAddress = urlParams.get('contract');
+
+        if (!contractAddress) {
+            showStatus('error', 'Missing contract address in URL');
+        }
+
+        // Generate cryptographically secure nonce
+        function generateNonce() {
+            const array = new Uint8Array(32);
+            crypto.getRandomValues(array);
+            return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
+        }
+
+        async function connectWallet() {
+            const connectBtn = document.getElementById('connectBtn');
+            connectBtn.disabled = true;
+            connectBtn.innerHTML = '<span class="loading"></span> Connecting...';
+
+            try {
+                if (typeof window.ethereum === 'undefined') {
+                    throw new Error('Please install MetaMask or another Web3 wallet');
+                }
+
+                await window.ethereum.request({ method: 'eth_requestAccounts' });
+                provider = new ethers.providers.Web3Provider(window.ethereum);
+                signer = provider.getSigner();
+                walletAddress = await signer.getAddress();
+
+                document.getElementById('walletAddress').value = walletAddress;
+                document.getElementById('step1').classList.add('completed');
+                
+                await verifyPurchase();
+            } catch (error) {
+                showStatus('error', 'Failed to connect wallet: ' + error.message);
+                connectBtn.disabled = false;
+                connectBtn.innerHTML = 'Connect Wallet';
+            }
+        }
+
+        async function verifyPurchase() {
+            try {
+                document.getElementById('step2').classList.add('active');
+                showStatus('info', 'Verifying purchase on blockchain...');
+
+                // Generate nonce for this session
+                const nonce = generateNonce();
+                const timestamp = Date.now();
+                
+                // Create message with nonce to prevent replay attacks
+                const message = `Verify access for ${contractAddress} with nonce ${nonce} at ${timestamp}`;
+                
+                // Sign message
+                showStatus('info', 'Please sign the verification message in your wallet...');
+                const signature = await signer.signMessage(message);
+
+                // Verify purchase with backend
+                const response = await fetch(`${API_URL}/api/verify-purchase`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        walletAddress,
+                        contractAddress,
+                        signature,
+                        message,
+                        timestamp
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Verification failed');
+                }
+
+                if (data.hasClaimed) {
+                    showStatus('warning', `Access already claimed! Username: ${data.telegramUsername}`);
+                    if (data.userJoined) {
+                        showStatus('success', 'You have already joined the group!');
+                    } else {
+                        document.getElementById('instructions').style.display = 'block';
+                    }
+                } else if (data.hasPurchased) {
+                    sessionToken = data.sessionToken;
+                    document.getElementById('step2').classList.remove('active');
+                    document.getElementById('step2').classList.add('completed');
+                    document.getElementById('step3').classList.add('active');
+                    
+                    showStatus('success', 'Purchase verified! Enter your Telegram username to continue.');
+                    document.getElementById('connectBtn').style.display = 'none';
+                    document.getElementById('usernameGroup').style.display = 'block';
+                    document.getElementById('submitBtn').style.display = 'block';
+                    document.getElementById('submitBtn').disabled = false;
+                    document.getElementById('treasuryInfo').style.display = 'block';
+                } else {
+                    throw new Error('No purchase found for this wallet address');
+                }
+            } catch (error) {
+                showStatus('error', error.message);
+                document.getElementById('connectBtn').disabled = false;
+                document.getElementById('connectBtn').innerHTML = 'Connect Wallet';
+            }
+        }
+
+        async function submitClaim(e) {
+            e.preventDefault();
+            
+            const username = document.getElementById('telegramUsername').value.trim().replace('@', '');
+            
+            if (!username) {
+                showStatus('error', 'Please enter your Telegram username');
+                return;
+            }
+
+            if (!/^[a-zA-Z0-9_]{5,32}$/.test(username)) {
+                showStatus('error', 'Invalid username format. Use only letters, numbers, and underscores (5-32 characters)');
+                return;
+            }
+
+            const submitBtn = document.getElementById('submitBtn');
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="loading"></span> Submitting...';
+
+            try {
+                showStatus('info', 'Submitting claim...');
+
+                const response = await fetch(`${API_URL}/api/claim-access`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        sessionToken,
+                        telegramUsername: username
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Claim submission failed');
+                }
+
+                document.getElementById('step3').classList.remove('active');
+                document.getElementById('step3').classList.add('completed');
+                
+                if (data.needsRetry) {
+                    showStatus('warning', 'Please update your Telegram privacy settings');
+                    document.getElementById('instructions').style.display = 'block';
+                } else {
+                    showStatus('success', `Success! You will receive an invitation to @${username} shortly.`);
+                    submitBtn.innerHTML = 'Claim Submitted!';
+                    
+                    // Show treasury info
+                    setTimeout(() => {
+                        showStatus('info', 'Note: 50% of your payment went to the treasury, 50% was burned permanently.');
+                    }, 3000);
+                }
+            } catch (error) {
+                showStatus('error', error.message);
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = 'Submit Claim';
+            }
+        }
+
+        async function retryInvitation() {
+            const retryBtn = document.getElementById('retryBtn');
+            retryBtn.disabled = true;
+            retryBtn.innerHTML = '<span class="loading"></span> Retrying...';
+
+            try {
+                const response = await fetch(`${API_URL}/api/retry-invitation`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        sessionToken,
+                        walletAddress,
+                        contractAddress
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Retry failed');
+                }
+
+                if (data.success) {
+                    showStatus('success', 'Invitation sent successfully! Check your Telegram.');
+                    document.getElementById('instructions').style.display = 'none';
+                } else {
+                    showStatus('error', 'Invitation failed. Please check your privacy settings again.');
+                }
+            } catch (error) {
+                showStatus('error', error.message);
+            } finally {
+                retryBtn.disabled = false;
+                retryBtn.innerHTML = 'Retry Invitation';
+            }
+        }
+
+        function showStatus(type, message) {
+            const statusBox = document.getElementById('statusBox');
+            statusBox.className = `status-box ${type}`;
+            statusBox.textContent = message;
+            statusBox.style.display = 'block';
+        }
+
+        // Event listeners
+        document.getElementById('connectBtn').addEventListener('click', connectWallet);
+        document.getElementById('claimForm').addEventListener('submit', submitClaim);
+        document.getElementById('retryBtn')?.addEventListener('click', retryInvitation);
+
+        // Auto-connect if wallet was previously connected
+        if (window.ethereum && window.ethereum.selectedAddress) {
+            connectWallet();
+        }
+
+        // Handle account changes
+        if (window.ethereum) {
+            window.ethereum.on('accountsChanged', (accounts) => {
+                if (accounts.length === 0) {
+                    location.reload();
+                } else if (accounts[0] !== walletAddress) {
+                    location.reload();
+                }
+            });
+        }
+    </script>
+</body>
+</html>

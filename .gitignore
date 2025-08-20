@@ -1,0 +1,27 @@
+node_modules/
+.env
+.env.local
+.env.*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Sessions
+sessions/
+*.session
+
+# Docker volumes
+redis_data/
+
+# Build
+dist/
+build/
