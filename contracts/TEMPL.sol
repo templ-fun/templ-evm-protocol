@@ -15,7 +15,8 @@ interface IERC20 {
  */
 contract TEMPL {
     // State variables
-    address public immutable priest; // Protocol address for 10% fee only (no treasury control)
+    address public immutable priest; // Temple creator with special voting weight
+    address public immutable protocolFeeRecipient; // Receives 10% protocol fee
     address public accessToken;
     uint256 public entryFee;
     uint256 public treasuryBalance;
@@ -130,11 +131,6 @@ contract TEMPL {
     event ContractPaused(bool isPaused);
     
     // Modifiers
-    modifier onlyPriest() {
-        require(msg.sender == priest, "Only priest can call this");
-        _;
-    }
-    
     modifier onlyMember() {
         require(hasPurchased[msg.sender], "Only members can call this");
         _;
@@ -152,7 +148,8 @@ contract TEMPL {
     
     /**
      * @dev Constructor
-     * @param _priest Address that receives protocol fees (NOT treasury control)
+     * @param _priest Address of the temple creator (has special voting weight)
+     * @param _protocolFeeRecipient Address that receives 10% protocol fee
      * @param _token Address of the ERC20 token
      * @param _entryFee Total entry fee in wei (absolute value)
      * @param _priestVoteWeight Weight of priest's vote when below threshold (default 10)
@@ -160,12 +157,14 @@ contract TEMPL {
      */
     constructor(
         address _priest,
+        address _protocolFeeRecipient,
         address _token,
         uint256 _entryFee,
         uint256 _priestVoteWeight,
         uint256 _priestWeightThreshold
     ) {
         require(_priest != address(0), "Invalid priest address");
+        require(_protocolFeeRecipient != address(0), "Invalid protocol fee recipient address");
         require(_token != address(0), "Invalid token address");
         require(_entryFee > 0, "Entry fee must be greater than 0");
         require(_entryFee >= 10, "Entry fee too small for distribution");
@@ -173,6 +172,7 @@ contract TEMPL {
         require(_priestWeightThreshold > 0, "Priest weight threshold must be greater than 0");
         
         priest = _priest;
+        protocolFeeRecipient = _protocolFeeRecipient;
         accessToken = _token;
         entryFee = _entryFee;
         priestVoteWeight = _priestVoteWeight;
@@ -224,10 +224,10 @@ contract TEMPL {
         );
         require(poolSuccess, "Pool transfer failed");
         
-        // 4. Protocol fee 10% (to priest)
+        // 4. Protocol fee 10% (to protocolFeeRecipient)
         bool protocolSuccess = IERC20(accessToken).transferFrom(
             msg.sender,
-            priest,
+            protocolFeeRecipient,
             tenPercent
         );
         require(protocolSuccess, "Protocol transfer failed");
@@ -455,6 +455,22 @@ contract TEMPL {
     }
     
     /**
+     * @dev DAO-controlled function to execute arbitrary calls
+     * Allows DAO to interact with other contracts (transfer tokens, approve, stake, etc.)
+     * @param target The contract to call
+     * @param value ETH to send (usually 0 for token operations)
+     * @param data The calldata to execute
+     */
+    function executeDAO(address target, uint256 value, bytes memory data) external onlyDAO returns (bytes memory) {
+        require(target != address(0), "Invalid target");
+        
+        (bool success, bytes memory result) = target.call{value: value}(data);
+        require(success, "External call failed");
+        
+        return result;
+    }
+    
+    /**
      * @dev DAO-controlled function to update contract configuration
      */
     function updateConfigDAO(address _token, uint256 _entryFee) external onlyDAO {
@@ -640,7 +656,7 @@ contract TEMPL {
             totalToTreasury,
             totalBurned,
             totalToProtocol,
-            priest
+            protocolFeeRecipient
         );
     }
     
@@ -679,19 +695,4 @@ contract TEMPL {
         return 1;
     }
     
-    /**
-     * @dev Emergency recovery for wrong tokens sent by mistake
-     * Note: Cannot withdraw the access token (treasury/pool funds)
-     * Only priest can call this for accidentally sent tokens
-     */
-    function recoverWrongToken(address token, address to) external onlyPriest {
-        require(token != accessToken, "Cannot withdraw treasury/pool tokens");
-        require(to != address(0), "Invalid recipient");
-        
-        uint256 balance = IERC20(token).balanceOf(address(this));
-        require(balance > 0, "No tokens to recover");
-        
-        bool success = IERC20(token).transfer(to, balance);
-        require(success, "Token recovery failed");
-    }
 }

@@ -20,6 +20,7 @@ describe("TEMPL Contract with DAO Governance", function () {
         const TEMPL = await ethers.getContractFactory("TEMPL");
         templ = await TEMPL.deploy(
             priest.address,
+            priest.address, // Using same address for protocolFeeRecipient in tests
             await token.getAddress(),
             ENTRY_FEE,
             10, // priestVoteWeight
@@ -372,6 +373,50 @@ describe("TEMPL Contract with DAO Governance", function () {
             expect(await templ.entryFee()).to.equal(newFee);
         });
 
+        it("Should execute arbitrary contract calls via executeDAO", async function () {
+            // Deploy another token that will be sent to the contract
+            const otherToken = await ethers.deployContract("TestToken", ["Other", "OTHER", 18]);
+            await otherToken.mint(await templ.getAddress(), ethers.parseUnits("500", 18));
+
+            // Create proposal to transfer the other token
+            const erc20Interface = new ethers.Interface([
+                "function transfer(address,uint256)"
+            ]);
+            const transferCalldata = erc20Interface.encodeFunctionData("transfer", [
+                treasury.address,
+                ethers.parseUnits("500", 18)
+            ]);
+
+            const iface = new ethers.Interface([
+                "function executeDAO(address,uint256,bytes)"
+            ]);
+            const callData = iface.encodeFunctionData("executeDAO", [
+                await otherToken.getAddress(),
+                0, // No ETH
+                transferCalldata
+            ]);
+
+            await templ.connect(user1).createProposal(
+                "Transfer Other Token",
+                "Move OTHER tokens to treasury",
+                callData,
+                7 * 24 * 60 * 60
+            );
+
+            // Vote and execute
+            await templ.connect(user1).vote(0, true);
+            await templ.connect(user2).vote(0, true);
+
+            await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
+            await ethers.provider.send("evm_mine");
+
+            const balanceBefore = await otherToken.balanceOf(treasury.address);
+            await templ.executeProposal(0);
+            const balanceAfter = await otherToken.balanceOf(treasury.address);
+
+            expect(balanceAfter - balanceBefore).to.equal(ethers.parseUnits("500", 18));
+        });
+
         it("Should execute pause/unpause proposal", async function () {
             const iface = new ethers.Interface([
                 "function setPausedDAO(bool)"
@@ -684,6 +729,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             // Deploy with minimum fee
             const minTempl = await ethers.deployContract("TEMPL", [
                 priest.address,
+                priest.address, // protocolFeeRecipient
                 await token.getAddress(),
                 10, // Minimum allowed
                 10, // priestVoteWeight
@@ -700,6 +746,7 @@ describe("TEMPL Contract with DAO Governance", function () {
         it("Should reject entry fee below minimum", async function () {
             await expect(ethers.deployContract("TEMPL", [
                 priest.address,
+                priest.address, // protocolFeeRecipient
                 await token.getAddress(),
                 9, // Below minimum
                 10, // priestVoteWeight
@@ -707,28 +754,6 @@ describe("TEMPL Contract with DAO Governance", function () {
             ])).to.be.revertedWith("Entry fee too small for distribution");
         });
 
-        it("Should allow priest to recover wrong tokens", async function () {
-            // Deploy a different token
-            const wrongToken = await ethers.deployContract("TestToken", ["Wrong", "WRONG", 18]);
-            await wrongToken.mint(await templ.getAddress(), ethers.parseUnits("100", 18));
-
-            const balanceBefore = await wrongToken.balanceOf(treasury.address);
-            
-            await templ.connect(priest).recoverWrongToken(
-                await wrongToken.getAddress(),
-                treasury.address
-            );
-
-            expect(await wrongToken.balanceOf(treasury.address))
-                .to.equal(balanceBefore + ethers.parseUnits("100", 18));
-        });
-
-        it("Should prevent priest from recovering treasury/pool tokens", async function () {
-            await expect(templ.connect(priest).recoverWrongToken(
-                await token.getAddress(),
-                priest.address
-            )).to.be.revertedWith("Cannot withdraw treasury/pool tokens");
-        });
 
         it("Should handle proposal with invalid calldata gracefully", async function () {
             await token.connect(user1).approve(await templ.getAddress(), ENTRY_FEE);

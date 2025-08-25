@@ -8,7 +8,7 @@
 - **30% Burned**: Permanently removed from circulation
 - **30% to DAO Treasury**: Controlled by member voting, not priest
 - **30% to Member Pool**: Distributed pro-rata to existing members (30% to 1st member, 15% each to 2 members, 10% each to 3+ members)
-- **10% Protocol Fee**: Goes directly to priest address
+- **10% Protocol Fee**: Goes directly to protocol fee recipient address
 - **DAO Governance**: Members vote on treasury withdrawals and config changes
 - **Priest Voting Power**: Priest's vote has configurable weight (default 10x) until member threshold is reached (default 10 members)
 - **Single Active Proposal**: Each member can only have one active proposal at a time
@@ -155,6 +155,95 @@ await contract.withdrawAllTreasuryDAO(recipient, reason)
   - Once threshold is reached, priest's vote counts as 1 like everyone else
 - **Execution**: Anyone can execute passed proposals after voting ends
 
+### Example Proposal Calldata
+
+#### Withdraw Treasury Tokens (Access Token)
+```javascript
+// Withdraw specific amount of access tokens from treasury
+const iface = new ethers.Interface([
+    "function withdrawTreasuryDAO(address,uint256,string)"
+]);
+const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
+    "0xRecipientAddress",
+    ethers.parseUnits("100", 18), // Amount
+    "Payment for development work"
+]);
+```
+
+#### Transfer Any ERC20 Token from Contract
+```javascript
+// For transferring other tokens that the contract holds
+// (e.g., tokens received from trades, airdrops, etc.)
+const erc20Interface = new ethers.Interface([
+    "function transfer(address,uint256)"
+]);
+
+// Create calldata for the ERC20 transfer
+const transferCalldata = erc20Interface.encodeFunctionData("transfer", [
+    "0xRecipientAddress",
+    ethers.parseUnits("500", 18)
+]);
+
+// Wrap it in a proposal that executes on the token contract
+const proposalInterface = new ethers.Interface([
+    "function executeDAO(address,uint256,bytes)"
+]);
+const callData = proposalInterface.encodeFunctionData("executeDAO", [
+    "0xTokenContractAddress", // The ERC20 token to transfer
+    0, // ETH value (0 for token transfers)
+    transferCalldata
+]);
+```
+
+#### Approve Token Spending (for DEX trades, staking, etc.)
+```javascript
+// Approve a DEX or staking contract to spend treasury tokens
+const erc20Interface = new ethers.Interface([
+    "function approve(address,uint256)"
+]);
+
+// Create the approve calldata
+const approveCalldata = erc20Interface.encodeFunctionData("approve", [
+    "0xDEXorStakingContract",
+    ethers.parseUnits("1000", 18)
+]);
+
+// Wrap it in executeDAO for the proposal
+const proposalInterface = new ethers.Interface([
+    "function executeDAO(address,uint256,bytes)"
+]);
+const callData = proposalInterface.encodeFunctionData("executeDAO", [
+    "0xTokenContractAddress", // The token to approve
+    0, // No ETH needed
+    approveCalldata
+]);
+```
+
+#### Update Contract Configuration
+```javascript
+// Change token or entry fee
+const iface = new ethers.Interface([
+    "function updateConfigDAO(address,uint256)"
+]);
+const callData = iface.encodeFunctionData("updateConfigDAO", [
+    "0xNewTokenAddress", // or address(0) to keep current
+    ethers.parseUnits("500", 18) // New entry fee, or 0 to keep current
+]);
+```
+
+#### Pause/Unpause Contract
+```javascript
+// Pause or unpause new member joins
+const iface = new ethers.Interface([
+    "function setPausedDAO(bool)"
+]);
+const callData = iface.encodeFunctionData("setPausedDAO", [
+    true // true to pause, false to unpause
+]);
+```
+
+**Important**: All tokens held by the contract (treasury, member pool, and any other tokens) can ONLY be moved through successful DAO proposals. There is no backdoor or admin function to withdraw tokens.
+
 ## 🔧 API Endpoints
 
 | Endpoint | Method | Description |
@@ -228,6 +317,7 @@ function getVoteWeight(address voter) view returns (uint256)
 // DAO-Controlled Treasury Functions (Called via Proposals)
 function withdrawTreasuryDAO(address recipient, uint256 amount, string reason) external
 function withdrawAllTreasuryDAO(address recipient, string reason) external
+function executeDAO(address target, uint256 value, bytes data) external returns (bytes)
 function updateConfigDAO(address token, uint256 fee) external
 function setPausedDAO(bool paused) external
 
@@ -238,12 +328,10 @@ function updateConfig(address token, uint256 fee) external // DEPRECATED
 function setPaused(bool) external // DEPRECATED
 
 // Info Functions
-function getTreasuryInfo() view returns (treasury, memberPool, totalReceived, totalBurned, totalProtocol, priest)
+function getTreasuryInfo() view returns (treasury, memberPool, totalReceived, totalBurned, totalProtocol, protocolFeeRecipient)
 function getConfig() view returns (token, fee, isPaused, purchases, treasury, pool)
 function getMemberCount() view returns (uint256)
 
-// Emergency Recovery (Priest Only - for wrong tokens)
-function recoverWrongToken(address token, address to) external
 ```
 
 ## ⛓️ BASE Deployment
@@ -270,7 +358,8 @@ Create `.env` file (use `./setup.sh` for guided setup):
 ```env
 # SECURITY (Required)
 JWT_SECRET=your-strong-random-secret-min-32-chars
-PRIEST_ADDRESS=0x...  # Treasury controller
+PRIEST_ADDRESS=0x...  # Temple creator with voting weight
+PROTOCOL_FEE_RECIPIENT=0x...  # Receives 10% protocol fee (can be same as priest)
 FRONTEND_URL=https://yoursite.com
 
 # BLOCKCHAIN (Required)

@@ -20,6 +20,7 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
         const TEMPL = await ethers.getContractFactory("TEMPL");
         templ = await TEMPL.deploy(
             priest.address,
+            priest.address, // protocolFeeRecipient (same as priest for testing)
             await token.getAddress(),
             ENTRY_FEE,
             10, // priestVoteWeight
@@ -276,6 +277,7 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
             const TEMPL = await ethers.getContractFactory("TEMPL");
             const oddTempl = await TEMPL.deploy(
                 priest.address,
+                priest.address, // protocolFeeRecipient
                 await token.getAddress(),
                 ODD_FEE,
                 10, // priestVoteWeight
