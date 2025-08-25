@@ -58,6 +58,7 @@ async function main() {
   const TEMPL = await hre.ethers.getContractFactory("TEMPL");
   const contract = await TEMPL.deploy(
     PRIEST_ADDRESS,
+    process.env.PROTOCOL_FEE_RECIPIENT || PRIEST_ADDRESS,  // Default to priest if not specified
     TOKEN_ADDRESS,
     ENTRY_FEE,
     process.env.PRIEST_VOTE_WEIGHT || 10,  // Default to 10 if not specified

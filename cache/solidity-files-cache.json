@@ -37,8 +37,8 @@
       ]
     },
     "/Users/worms/Downloads/tgbot-group/contracts/TEMPL.sol": {
-      "lastModificationDate": 1756158578850,
-      "contentHash": "353a5fccb9563ff2e3618c7a4fe4a7b4",
+      "lastModificationDate": 1756159679923,
+      "contentHash": "a012ff3ebc84d08b13893262c2549efb",
       "sourceName": "contracts/TEMPL.sol",
       "solcConfig": {
         "version": "0.8.19",

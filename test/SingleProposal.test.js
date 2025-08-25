@@ -20,6 +20,7 @@ describe("Single Active Proposal Restriction", function () {
         const TEMPL = await ethers.getContractFactory("TEMPL");
         templ = await TEMPL.deploy(
             priest.address,
+            priest.address, // protocolFeeRecipient (same as priest for testing)
             await token.getAddress(),
             ENTRY_FEE,
             10, // priestVoteWeight

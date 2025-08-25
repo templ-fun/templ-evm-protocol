@@ -22,6 +22,7 @@ describe("Priest Vote Weight Feature", function () {
         const TEMPL = await ethers.getContractFactory("TEMPL");
         templ = await TEMPL.deploy(
             priest.address,
+            priest.address, // protocolFeeRecipient (same as priest for testing)
             await token.getAddress(),
             ENTRY_FEE,
             PRIEST_VOTE_WEIGHT,
@@ -274,6 +275,7 @@ describe("Priest Vote Weight Feature", function () {
             const TEMPL = await ethers.getContractFactory("TEMPL");
             const customTempl = await TEMPL.deploy(
                 priest.address,
+                priest.address, // protocolFeeRecipient
                 await token.getAddress(),
                 ENTRY_FEE,
                 customWeight,
