@@ -9,68 +9,73 @@ interface IERC20 {
 }
 
 /**
- * @title TEMPL - Telegram Entry Management Protocol with DAO Governance
- * @dev Splits: 30% burn, 30% DAO treasury, 30% member pool, 10% protocol
- * @dev Treasury is controlled by member voting, not by priest
+ * @title TEMPL - Token Entry Management Protocol with DAO Governance
+ * @notice Decentralized membership system with autonomous treasury management
+ * @dev Fee distribution: 30% burn, 30% DAO treasury, 30% member pool, 10% protocol
  */
 contract TEMPL {
-    // State variables
-    address public immutable priest; // Temple creator with special voting weight
-    address public immutable protocolFeeRecipient; // Receives 10% protocol fee
+    // Reentrancy guard state
+    uint256 private constant _NOT_ENTERED = 1;
+    uint256 private constant _ENTERED = 2;
+    uint256 private _status;
+    
+    modifier nonReentrant() {
+        require(_status != _ENTERED, "ReentrancyGuard: reentrant call");
+        _status = _ENTERED;
+        _;
+        _status = _NOT_ENTERED;
+    }
+    
+    address public immutable priest;
+    address public immutable protocolFeeRecipient;
     address public accessToken;
     uint256 public entryFee;
     uint256 public treasuryBalance;
     uint256 public memberPoolBalance;
     bool public paused;
     
-    // Priest voting weight configuration
-    uint256 public immutable priestVoteWeight; // Weight of priest's vote when below threshold
-    uint256 public immutable priestWeightThreshold; // Member count threshold for priest weight reduction
+    uint256 public immutable priestVoteWeight;
+    uint256 public immutable priestWeightThreshold;
     
-    // Track purchases
     mapping(address => bool) public hasPurchased;
     mapping(address => uint256) public purchaseTimestamp;
     mapping(address => uint256) public purchaseBlock;
     
-    // Member pool tracking
     address[] public members;
     mapping(address => uint256) public memberIndex;
     mapping(address => uint256) public memberPoolClaims;
     uint256[] public poolDeposits;
     
-    // DAO Governance
     struct Proposal {
         uint256 id;
         address proposer;
         string title;
         string description;
-        bytes callData; // The code to execute if approved
+        bytes callData;
         uint256 yesVotes;
         uint256 noVotes;
         uint256 endTime;
-        uint256 createdAt; // Timestamp when proposal was created
-        uint256 eligibleVoters; // Number of members who can vote (joined before proposal)
+        uint256 createdAt;
+        uint256 eligibleVoters;
         bool executed;
         mapping(address => bool) hasVoted;
-        mapping(address => bool) voteChoice; // true = yes, false = no
+        mapping(address => bool) voteChoice;
     }
     
     uint256 public proposalCount;
     mapping(uint256 => Proposal) public proposals;
-    mapping(address => uint256) public activeProposalId; // Track active proposal per user (0 = no active proposal)
-    mapping(address => bool) public hasActiveProposal; // Quick check if user has active proposal
+    mapping(address => uint256) public activeProposalId;
+    mapping(address => bool) public hasActiveProposal;
     uint256 public constant DEFAULT_VOTING_PERIOD = 7 days;
     uint256 public constant MIN_VOTING_PERIOD = 7 days;
     uint256 public constant MAX_VOTING_PERIOD = 30 days;
     
-    // Totals
     uint256 public totalPurchases;
     uint256 public totalBurned;
     uint256 public totalToTreasury;
     uint256 public totalToMemberPool;
     uint256 public totalToProtocol;
     
-    // Events
     event AccessPurchased(
         address indexed purchaser,
         uint256 totalAmount,
@@ -130,7 +135,6 @@ contract TEMPL {
     
     event ContractPaused(bool isPaused);
     
-    // Modifiers
     modifier onlyMember() {
         require(hasPurchased[msg.sender], "Only members can call this");
         _;
@@ -147,13 +151,13 @@ contract TEMPL {
     }
     
     /**
-     * @dev Constructor
-     * @param _priest Address of the temple creator (has special voting weight)
-     * @param _protocolFeeRecipient Address that receives 10% protocol fee
-     * @param _token Address of the ERC20 token
-     * @param _entryFee Total entry fee in wei (absolute value)
-     * @param _priestVoteWeight Weight of priest's vote when below threshold (default 10)
-     * @param _priestWeightThreshold Member count threshold for priest weight reduction (default 10)
+     * @dev Constructor sets immutable parameters
+     * @param _priest Temple creator with enhanced voting weight until threshold
+     * @param _protocolFeeRecipient Receives 10% protocol fee
+     * @param _token ERC20 token for membership payments
+     * @param _entryFee Membership cost (minimum 10 for proper distribution)
+     * @param _priestVoteWeight Vote multiplier for priest
+     * @param _priestWeightThreshold Member count when priest advantage expires
      */
     constructor(
         address _priest,
@@ -178,20 +182,19 @@ contract TEMPL {
         priestVoteWeight = _priestVoteWeight;
         priestWeightThreshold = _priestWeightThreshold;
         paused = false;
+        _status = _NOT_ENTERED; // Initialize reentrancy guard
     }
     
     /**
-     * @dev Purchase group access
-     * Splits: 30% burn, 30% DAO treasury, 30% member pool, 10% protocol
+     * @notice Purchase membership with automatic fee distribution
+     * @dev Executes 4 transfers: burn (30%), treasury (30%), member pool (30%), protocol (10%)
      */
-    function purchaseAccess() external whenNotPaused {
+    function purchaseAccess() external whenNotPaused nonReentrant {
         require(!hasPurchased[msg.sender], "Already purchased access");
         
-        // Calculate splits (30%, 30%, 30%, 10%)
         uint256 thirtyPercent = (entryFee * 30) / 100;
         uint256 tenPercent = (entryFee * 10) / 100;
         
-        // Ensure we have the full amount
         uint256 totalRequired = thirtyPercent * 3 + tenPercent;
         require(totalRequired <= entryFee, "Calculation error");
         
@@ -200,7 +203,6 @@ contract TEMPL {
             "Insufficient token balance"
         );
         
-        // 1. Burn 30%
         bool burnSuccess = IERC20(accessToken).transferFrom(
             msg.sender,
             address(0x000000000000000000000000000000000000dEaD),
@@ -208,7 +210,6 @@ contract TEMPL {
         );
         require(burnSuccess, "Burn transfer failed");
         
-        // 2. Treasury 30% (DAO-controlled)
         bool treasurySuccess = IERC20(accessToken).transferFrom(
             msg.sender,
             address(this),
@@ -216,7 +217,6 @@ contract TEMPL {
         );
         require(treasurySuccess, "Treasury transfer failed");
         
-        // 3. Member Pool 30% (stays in contract)
         bool poolSuccess = IERC20(accessToken).transferFrom(
             msg.sender,
             address(this),
@@ -224,7 +224,6 @@ contract TEMPL {
         );
         require(poolSuccess, "Pool transfer failed");
         
-        // 4. Protocol fee 10% (to protocolFeeRecipient)
         bool protocolSuccess = IERC20(accessToken).transferFrom(
             msg.sender,
             protocolFeeRecipient,
@@ -232,7 +231,6 @@ contract TEMPL {
         );
         require(protocolSuccess, "Protocol transfer failed");
         
-        // Update balances
         treasuryBalance += thirtyPercent;
         memberPoolBalance += thirtyPercent;
         totalBurned += thirtyPercent;
@@ -240,14 +238,11 @@ contract TEMPL {
         totalToMemberPool += thirtyPercent;
         totalToProtocol += tenPercent;
         
-        // Record pool deposit for existing members
         if (members.length > 0) {
             poolDeposits.push(thirtyPercent);
         } else {
-            poolDeposits.push(0); // First member doesn't get rewards from own purchase
+            poolDeposits.push(0);
         }
-        
-        // Mark purchase and add to members list
         hasPurchased[msg.sender] = true;
         purchaseTimestamp[msg.sender] = block.timestamp;
         purchaseBlock[msg.sender] = block.number;
@@ -269,11 +264,13 @@ contract TEMPL {
     }
     
     /**
-     * @dev Create a proposal for DAO voting
-     * @param _title Title of the proposal
-     * @param _description Description of what the proposal does
-     * @param _callData Encoded function call to execute if approved
-     * @param _votingPeriod How long voting lasts (in seconds)
+     * @notice Create a governance proposal for DAO voting
+     * @dev One active proposal per member allowed
+     * @param _title Proposal title
+     * @param _description Proposal description
+     * @param _callData Function call to execute
+     * @param _votingPeriod Voting duration in seconds
+     * @return proposalId Proposal identifier
      */
     function createProposal(
         string memory _title,
@@ -285,21 +282,17 @@ contract TEMPL {
         require(bytes(_description).length > 0, "Description required");
         require(_callData.length > 0, "Call data required");
         
-        // Check if user has an active proposal
         if (hasActiveProposal[msg.sender]) {
             uint256 existingId = activeProposalId[msg.sender];
             Proposal storage existingProposal = proposals[existingId];
-            // Check if the existing proposal is still active (not executed and not expired)
             if (!existingProposal.executed && block.timestamp < existingProposal.endTime) {
                 revert("You already have an active proposal");
             } else {
-                // Clear the stale active proposal flag
                 hasActiveProposal[msg.sender] = false;
                 activeProposalId[msg.sender] = 0;
             }
         }
         
-        // Validate voting period
         uint256 period = _votingPeriod;
         if (period == 0) {
             period = DEFAULT_VOTING_PERIOD;
@@ -317,12 +310,11 @@ contract TEMPL {
         proposal.callData = _callData;
         proposal.endTime = block.timestamp + period;
         proposal.createdAt = block.timestamp;
-        proposal.eligibleVoters = members.length; // Current member count = eligible voters
+        proposal.eligibleVoters = members.length;
         proposal.executed = false;
         proposal.yesVotes = 0;
         proposal.noVotes = 0;
         
-        // Mark this proposal as the user's active proposal
         hasActiveProposal[msg.sender] = true;
         activeProposalId[msg.sender] = proposalId;
         
@@ -332,9 +324,10 @@ contract TEMPL {
     }
     
     /**
-     * @dev Vote on a proposal
-     * @param _proposalId The proposal to vote on
-     * @param _support True for yes, false for no
+     * @notice Cast vote on an active proposal
+     * @dev Voting power: 1 for members, priestVoteWeight for priest below threshold
+     * @param _proposalId Proposal to vote on
+     * @param _support Vote choice (true = yes, false = no)
      */
     function vote(uint256 _proposalId, bool _support) external onlyMember {
         require(_proposalId < proposalCount, "Invalid proposal");
@@ -343,14 +336,12 @@ contract TEMPL {
         require(block.timestamp < proposal.endTime, "Voting ended");
         require(!proposal.hasVoted[msg.sender], "Already voted");
         
-        // Check if voter joined before proposal was created
         require(purchaseTimestamp[msg.sender] < proposal.createdAt, 
             "You cannot vote on proposals created before you joined");
         
         proposal.hasVoted[msg.sender] = true;
         proposal.voteChoice[msg.sender] = _support;
         
-        // Calculate vote weight (priest gets special weight if below threshold)
         uint256 voteWeight = 1;
         if (msg.sender == priest && members.length < priestWeightThreshold) {
             voteWeight = priestVoteWeight;
@@ -366,8 +357,9 @@ contract TEMPL {
     }
     
     /**
-     * @dev Execute a proposal if it passed
-     * @param _proposalId The proposal to execute
+     * @notice Execute a passed proposal after voting ends
+     * @dev Requires simple majority (yesVotes > noVotes)
+     * @param _proposalId Proposal to execute
      */
     function executeProposal(uint256 _proposalId) external {
         require(_proposalId < proposalCount, "Invalid proposal");
@@ -376,27 +368,21 @@ contract TEMPL {
         require(block.timestamp >= proposal.endTime, "Voting not ended");
         require(!proposal.executed, "Already executed");
         
-        // Check if proposal passed: >50% of eligible voters voted yes
-        // Note: Using simple majority of votes cast (yes > no) as 50% threshold
-        // Could be changed to require yes > eligibleVoters/2 for absolute majority
         require(proposal.yesVotes > proposal.noVotes, "Proposal did not pass");
         
         proposal.executed = true;
         
-        // Clear the proposer's active proposal status
         address proposer = proposal.proposer;
         if (hasActiveProposal[proposer] && activeProposalId[proposer] == _proposalId) {
             hasActiveProposal[proposer] = false;
             activeProposalId[proposer] = 0;
         }
         
-        // Execute the proposal
         (bool success, bytes memory returnData) = address(this).call(proposal.callData);
         
         emit ProposalExecuted(_proposalId, success, returnData);
         
         if (!success) {
-            // If execution failed, revert the executed flag and restore active status
             proposal.executed = false;
             hasActiveProposal[proposer] = true;
             activeProposalId[proposer] = _proposalId;
@@ -405,10 +391,12 @@ contract TEMPL {
     }
     
     /**
-     * @dev DAO-controlled function to withdraw treasury funds
-     * Can only be called by the DAO through a proposal
+     * @notice Withdraw funds from DAO treasury (proposal required)
+     * @param recipient Address to receive treasury funds
+     * @param amount Token amount to withdraw
+     * @param reason Withdrawal explanation
      */
-    function withdrawTreasuryDAO(address recipient, uint256 amount, string memory reason) external onlyDAO {
+    function withdrawTreasuryDAO(address recipient, uint256 amount, string memory reason) external onlyDAO nonReentrant {
         require(recipient != address(0), "Invalid recipient");
         require(amount > 0, "Amount must be greater than 0");
         require(amount <= treasuryBalance, "Insufficient treasury balance");
@@ -418,30 +406,29 @@ contract TEMPL {
         bool success = IERC20(accessToken).transfer(recipient, amount);
         require(success, "Treasury withdrawal failed");
         
-        // proposalCount - 1 because this is called during proposal execution
         emit TreasuryAction(proposalCount - 1, recipient, amount, reason);
     }
     
     /**
-     * @dev Legacy function - now requires DAO approval
-     * Kept for interface compatibility but redirects to DAO function
+     * @notice DEPRECATED - Use withdrawTreasuryDAO through proposal
      */
-    function withdrawTreasury(address recipient, uint256 amount) external {
+    function withdrawTreasury(address, uint256) external pure {
         revert("Treasury withdrawals require DAO approval. Use withdrawTreasuryDAO through a proposal.");
     }
     
     /**
-     * @dev Legacy function - now requires DAO approval
-     * Kept for interface compatibility but redirects to DAO function
+     * @notice DEPRECATED - Use withdrawAllTreasuryDAO through proposal
      */
-    function withdrawAllTreasury(address recipient) external {
+    function withdrawAllTreasury(address) external pure {
         revert("Treasury withdrawals require DAO approval. Use withdrawTreasuryDAO through a proposal.");
     }
     
     /**
-     * @dev DAO-controlled function to withdraw all treasury funds
+     * @notice Withdraw entire treasury balance (proposal required)
+     * @param recipient Address to receive all treasury funds
+     * @param reason Withdrawal explanation
      */
-    function withdrawAllTreasuryDAO(address recipient, string memory reason) external onlyDAO {
+    function withdrawAllTreasuryDAO(address recipient, string memory reason) external onlyDAO nonReentrant {
         require(recipient != address(0), "Invalid recipient");
         require(treasuryBalance > 0, "No treasury funds");
         
@@ -455,13 +442,14 @@ contract TEMPL {
     }
     
     /**
-     * @dev DAO-controlled function to execute arbitrary calls
-     * Allows DAO to interact with other contracts (transfer tokens, approve, stake, etc.)
-     * @param target The contract to call
-     * @param value ETH to send (usually 0 for token operations)
-     * @param data The calldata to execute
+     * @notice Execute arbitrary external calls on behalf of DAO
+     * @dev CRITICAL: Can interact with any contract - proposals must be carefully reviewed
+     * @param target Contract address to call
+     * @param value ETH amount to send
+     * @param data Function call data
+     * @return Result data from external call
      */
-    function executeDAO(address target, uint256 value, bytes memory data) external onlyDAO returns (bytes memory) {
+    function executeDAO(address target, uint256 value, bytes memory data) external onlyDAO nonReentrant returns (bytes memory) {
         require(target != address(0), "Invalid target");
         
         (bool success, bytes memory result) = target.call{value: value}(data);
@@ -471,7 +459,9 @@ contract TEMPL {
     }
     
     /**
-     * @dev DAO-controlled function to update contract configuration
+     * @notice Update contract configuration via DAO proposal
+     * @param _token New ERC20 token address (or address(0) to keep current)
+     * @param _entryFee New entry fee amount (or 0 to keep current)
      */
     function updateConfigDAO(address _token, uint256 _entryFee) external onlyDAO {
         if (_token != address(0)) {
@@ -486,15 +476,15 @@ contract TEMPL {
     }
     
     /**
-     * @dev Legacy function - now requires DAO approval
-     * Kept for interface compatibility
+     * @notice DEPRECATED - Use updateConfigDAO through proposal
      */
-    function updateConfig(address _token, uint256 _entryFee) external {
+    function updateConfig(address, uint256) external pure {
         revert("Config updates require DAO approval. Use updateConfigDAO through a proposal.");
     }
     
     /**
-     * @dev DAO-controlled pause function
+     * @notice Pause or unpause new memberships via DAO proposal
+     * @param _paused true to pause, false to unpause
      */
     function setPausedDAO(bool _paused) external onlyDAO {
         paused = _paused;
@@ -502,15 +492,16 @@ contract TEMPL {
     }
     
     /**
-     * @dev Legacy function - now requires DAO approval
-     * Kept for interface compatibility
+     * @notice DEPRECATED - Use setPausedDAO through proposal
      */
-    function setPaused(bool _paused) external {
+    function setPaused(bool) external pure {
         revert("Pause/unpause requires DAO approval. Use setPausedDAO through a proposal.");
     }
     
     /**
-     * @dev Calculate claimable amount from member pool
+     * @notice Calculate member's unclaimed rewards from pool
+     * @param member Address to check rewards for
+     * @return Claimable token amount from member pool
      */
     function getClaimablePoolAmount(address member) public view returns (uint256) {
         if (!hasPurchased[member]) {
@@ -520,7 +511,6 @@ contract TEMPL {
         uint256 memberIdx = memberIndex[member];
         uint256 totalClaimable = 0;
         
-        // Calculate share from each deposit after this member joined
         for (uint256 i = memberIdx + 1; i < poolDeposits.length; i++) {
             if (poolDeposits[i] > 0) {
                 uint256 eligibleMembers = i;
@@ -531,15 +521,14 @@ contract TEMPL {
             }
         }
         
-        // Subtract already claimed amount
         return totalClaimable > memberPoolClaims[member] ? 
                totalClaimable - memberPoolClaims[member] : 0;
     }
     
     /**
-     * @dev Claim member pool rewards
+     * @notice Claim accumulated rewards from member pool
      */
-    function claimMemberPool() external {
+    function claimMemberPool() external nonReentrant {
         uint256 claimable = getClaimablePoolAmount(msg.sender);
         require(claimable > 0, "No rewards to claim");
         require(memberPoolBalance >= claimable, "Insufficient pool balance");
@@ -554,7 +543,16 @@ contract TEMPL {
     }
     
     /**
-     * @dev Get proposal details
+     * @notice Get comprehensive proposal information
+     * @param _proposalId Proposal ID to query
+     * @return proposer Address that created the proposal
+     * @return title Proposal title
+     * @return description Detailed description
+     * @return yesVotes Total weighted yes votes
+     * @return noVotes Total weighted no votes
+     * @return endTime Timestamp when voting ends
+     * @return executed Whether proposal has been executed
+     * @return passed Whether proposal has enough votes to pass
      */
     function getProposal(uint256 _proposalId) external view returns (
         address proposer,
@@ -582,7 +580,11 @@ contract TEMPL {
     }
     
     /**
-     * @dev Check if user has voted on a proposal
+     * @notice Check member's vote on a specific proposal
+     * @param _proposalId Proposal to check
+     * @param _voter Address to check vote for
+     * @return voted Whether the address has voted
+     * @return support Vote choice (true = yes, false = no)
      */
     function hasVoted(uint256 _proposalId, address _voter) external view returns (bool voted, bool support) {
         require(_proposalId < proposalCount, "Invalid proposal");
@@ -592,19 +594,18 @@ contract TEMPL {
     }
     
     /**
-     * @dev Get active proposals (not expired, not executed)
+     * @notice Get list of currently active proposals
+     * @dev WARNING: Gas usage grows with proposal count. Use paginated version for large counts.
+     * @return Array of active proposal IDs
      */
     function getActiveProposals() external view returns (uint256[] memory) {
         uint256 activeCount = 0;
         
-        // Count active proposals
         for (uint256 i = 0; i < proposalCount; i++) {
             if (block.timestamp < proposals[i].endTime && !proposals[i].executed) {
                 activeCount++;
             }
         }
-        
-        // Collect active proposal IDs
         uint256[] memory activeIds = new uint256[](activeCount);
         uint256 index = 0;
         
@@ -618,14 +619,64 @@ contract TEMPL {
     }
     
     /**
-     * @dev Check if an address has purchased access
+     * @notice Get paginated list of active proposals (gas-efficient)
+     * @param offset Starting position in proposal list
+     * @param limit Maximum proposals to return
+     * @return proposalIds Array of active proposal IDs
+     * @return hasMore True if more active proposals exist
+     */
+    function getActiveProposalsPaginated(
+        uint256 offset, 
+        uint256 limit
+    ) external view returns (
+        uint256[] memory proposalIds,
+        bool hasMore
+    ) {
+        require(limit > 0 && limit <= 100, "Limit must be 1-100");
+        
+        uint256[] memory tempIds = new uint256[](limit);
+        uint256 count = 0;
+        uint256 scanned = 0;
+        
+        for (uint256 i = offset; i < proposalCount && count < limit; i++) {
+            if (block.timestamp < proposals[i].endTime && !proposals[i].executed) {
+                tempIds[count++] = i;
+            }
+            scanned = i + 1;
+        }
+        hasMore = false;
+        if (scanned < proposalCount) {
+            for (uint256 i = scanned; i < proposalCount; i++) {
+                if (block.timestamp < proposals[i].endTime && !proposals[i].executed) {
+                    hasMore = true;
+                    break;
+                }
+            }
+        }
+        
+        proposalIds = new uint256[](count);
+        for (uint256 i = 0; i < count; i++) {
+            proposalIds[i] = tempIds[i];
+        }
+        
+        return (proposalIds, hasMore);
+    }
+    
+    /**
+     * @notice Check if an address has purchased membership
+     * @param user Address to check
+     * @return True if user has purchased access
      */
     function hasAccess(address user) external view returns (bool) {
         return hasPurchased[user];
     }
     
     /**
-     * @dev Get purchase details for an address
+     * @notice Get membership purchase details for an address
+     * @param user Address to query
+     * @return purchased Whether user has membership
+     * @return timestamp When membership was purchased
+     * @return blockNum Block number of purchase
      */
     function getPurchaseDetails(address user) external view returns (
         bool purchased,
@@ -640,7 +691,13 @@ contract TEMPL {
     }
     
     /**
-     * @dev Get treasury and pool information
+     * @notice Get comprehensive treasury and fee distribution info
+     * @return treasury Current DAO treasury balance
+     * @return memberPool Current member pool balance  
+     * @return totalReceived Total amount sent to treasury
+     * @return totalBurnedAmount Total tokens burned
+     * @return totalProtocolFees Total protocol fees collected
+     * @return protocolAddress Protocol fee recipient address
      */
     function getTreasuryInfo() external view returns (
         uint256 treasury,
@@ -661,7 +718,13 @@ contract TEMPL {
     }
     
     /**
-     * @dev Get current configuration
+     * @notice Get current contract configuration
+     * @return token ERC20 token address for payments
+     * @return fee Membership entry fee amount
+     * @return isPaused Whether purchases are paused
+     * @return purchases Total number of members
+     * @return treasury Current treasury balance
+     * @return pool Current member pool balance
      */
     function getConfig() external view returns (
         address token,
@@ -675,15 +738,17 @@ contract TEMPL {
     }
     
     /**
-     * @dev Get member count
+     * @notice Get total number of members
+     * @return Current member count
      */
     function getMemberCount() external view returns (uint256) {
         return members.length;
     }
     
     /**
-     * @dev Get current vote weight for an address
-     * @param voter The address to check
+     * @notice Get voting power for a specific address
+     * @param voter Address to check voting weight for
+     * @return Current voting power (0, 1, or priestVoteWeight)
      */
     function getVoteWeight(address voter) external view returns (uint256) {
         if (!hasPurchased[voter]) {

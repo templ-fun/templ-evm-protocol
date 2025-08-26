@@ -1,35 +1,41 @@
 {
-  "name": "templ-protocol",
+  "name": "templ-contracts",
   "version": "1.0.0",
-  "description": "TEMPL - Telegram Entry Management Protocol",
-  "main": "src/tokenGatedService.js",
+  "description": "TEMPL - Smart contracts for DAO-governed token-gated access",
   "scripts": {
-    "start": "node src/tokenGatedService.js",
     "compile": "npx hardhat compile",
-    "deploy": "npx hardhat run scripts/deploy.js --network base",
-    "deploy:local": "npx hardhat run scripts/deploy.js --network hardhat",
-    "init-db": "psql -U postgres -d telegram_access -f src/database/schema.sql",
     "test": "npx hardhat test",
-    "verify": "node scripts/verify-system.js",
-    "setup": "./setup.sh",
-    "first-run": "./first-run.sh"
+    "deploy": "npx hardhat run scripts/deploy.js --network base",
+    "deploy:local": "npx hardhat run scripts/deploy.js --network localhost",
+    "node": "npx hardhat node"
+  },
+  "keywords": [
+    "solidity",
+    "ethereum",
+    "base",
+    "dao",
+    "smart-contracts"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-chai-matchers": "^2.0.0",
+    "@nomicfoundation/hardhat-ethers": "^3.0.0",
+    "@nomicfoundation/hardhat-network-helpers": "^1.0.0",
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "@nomicfoundation/hardhat-verify": "^2.0.0",
+    "@typechain/ethers-v6": "^0.5.0",
+    "@typechain/hardhat": "^9.0.0",
+    "@types/chai": "^4.2.0",
+    "@types/mocha": ">=9.1.0",
+    "chai": "^4.2.0",
+    "ethers": "^6.9.0",
+    "hardhat": "^2.19.2",
+    "hardhat-gas-reporter": "^1.0.8",
+    "solidity-coverage": "^0.8.1",
+    "typechain": "^8.3.0"
   },
   "dependencies": {
-    "cors": "^2.8.5",
-    "dotenv": "^16.6.1",
-    "ethers": "^6.9.0",
-    "express": "^4.18.2",
-    "express-rate-limit": "^7.1.5",
-    "helmet": "^7.1.0",
-    "input": "^1.0.1",
-    "jsonwebtoken": "^9.0.2",
-    "pg": "^8.11.3",
-    "telegram": "^2.19.8"
-  },
-  "devDependencies": {
-    "@nomicfoundation/hardhat-ethers": "^3.0.0",
-    "@nomicfoundation/hardhat-toolbox": "^3.0.0",
-    "@nomicfoundation/hardhat-verify": "^1.1.1",
-    "hardhat": "^2.19.0"
+    "dotenv": "^16.3.1"
   }
 }
