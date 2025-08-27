@@ -392,11 +392,19 @@ contract TEMPL {
             activeProposalId[proposer] = 0;
         }
 
-        executingProposalId = _proposalId;
+        _startProposalExecution(_proposalId);
         bytes memory returnData = _executeCall(proposal.callData);
-        executingProposalId = type(uint256).max;
+        _clearProposalExecution();
 
         emit ProposalExecuted(_proposalId, true, returnData);
+    }
+
+    function _startProposalExecution(uint256 proposalId) internal {
+        executingProposalId = proposalId;
+    }
+
+    function _clearProposalExecution() internal {
+        executingProposalId = type(uint256).max;
     }
 
     function _executeCall(bytes memory callData) internal returns (bytes memory) {
