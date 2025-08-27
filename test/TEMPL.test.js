@@ -873,7 +873,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             await ethers.provider.send("evm_mine");
 
             await expect(templ.executeProposal(0))
-                .to.be.revertedWithCustomError(templ, "ProposalExecutionFailed");
+                .to.be.revertedWithCustomError(templ, "InvalidTarget");
 
             const proposal = await templ.getProposal(0);
             expect(proposal.executed).to.be.false;

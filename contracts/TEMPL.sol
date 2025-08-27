@@ -394,10 +394,32 @@ contract TEMPL {
             activeProposalId[proposer] = 0;
         }
 
-        (bool success, bytes memory returnData) = address(this).call(proposal.callData);
-        if (!success) revert ProposalExecutionFailed();
+        bytes memory returnData = _executeCall(proposal.callData);
 
         emit ProposalExecuted(_proposalId, true, returnData);
+    }
+
+    function _executeCall(bytes memory callData) internal returns (bytes memory) {
+        bytes4 selector;
+        assembly {
+            selector := mload(add(callData, 32))
+        }
+
+        if (selector == this.executeDAO.selector) {
+            bytes memory params = new bytes(callData.length - 4);
+            for (uint256 i = 0; i < params.length; i++) {
+                params[i] = callData[i + 4];
+            }
+            (address target, uint256 value, bytes memory data) = abi.decode(
+                params,
+                (address, uint256, bytes)
+            );
+            return _executeDAO(target, value, data);
+        } else {
+            (bool success, bytes memory returnData) = address(this).call(callData);
+            if (!success) revert ProposalExecutionFailed();
+            return returnData;
+        }
     }
     
     /**
@@ -443,7 +465,16 @@ contract TEMPL {
      * @param data Function call data
      * @return Result data from external call
      */
-    function executeDAO(address target, uint256 value, bytes memory data) external onlyDAO returns (bytes memory) {
+    function executeDAO(address target, uint256 value, bytes memory data)
+        external
+        onlyDAO
+        nonReentrant
+        returns (bytes memory)
+    {
+        return _executeDAO(target, value, data);
+    }
+
+    function _executeDAO(address target, uint256 value, bytes memory data) internal returns (bytes memory) {
         if (target == address(0)) revert InvalidTarget();
 
         (bool success, bytes memory result) = target.call{value: value}(data);
