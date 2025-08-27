@@ -406,14 +406,19 @@ contract TEMPL {
      * @param amount Token amount to withdraw
      * @param reason Withdrawal explanation
      */
-    function withdrawTreasuryDAO(address recipient, uint256 amount, string memory reason) external onlyDAO {
+    function withdrawTreasuryDAO(
+        uint256 proposalId,
+        address recipient,
+        uint256 amount,
+        string memory reason
+    ) external onlyDAO {
         if (recipient == address(0)) revert InvalidRecipient();
         if (amount == 0) revert AmountZero();
         if (amount > treasuryBalance) revert InsufficientTreasuryBalance();
-        
+
         treasuryBalance -= amount;
 
-        emit TreasuryAction(proposalCount - 1, recipient, amount, reason);
+        emit TreasuryAction(proposalId, recipient, amount, reason);
 
         IERC20(accessToken).safeTransfer(recipient, amount);
     }
@@ -423,14 +428,18 @@ contract TEMPL {
      * @param recipient Address to receive all treasury funds
      * @param reason Withdrawal explanation
      */
-    function withdrawAllTreasuryDAO(address recipient, string memory reason) external onlyDAO {
+    function withdrawAllTreasuryDAO(
+        uint256 proposalId,
+        address recipient,
+        string memory reason
+    ) external onlyDAO {
         if (recipient == address(0)) revert InvalidRecipient();
         if (treasuryBalance == 0) revert NoTreasuryFunds();
-        
+
         uint256 amount = treasuryBalance;
         treasuryBalance = 0;
 
-        emit TreasuryAction(proposalCount - 1, recipient, amount, reason);
+        emit TreasuryAction(proposalId, recipient, amount, reason);
 
         IERC20(accessToken).safeTransfer(recipient, amount);
     }

@@ -168,10 +168,12 @@ describe("TEMPL Contract with DAO Governance", function () {
             await templ.connect(user3).purchaseAccess();
 
             // Create a proposal
+            const nextId = await templ.proposalCount();
             const iface = new ethers.Interface([
-                "function withdrawTreasuryDAO(address,uint256,string)"
+                "function withdrawTreasuryDAO(uint256,address,uint256,string)"
             ]);
             const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
+                nextId,
                 treasury.address,
                 ethers.parseUnits("10", 18),
                 "Test withdrawal"
@@ -247,10 +249,12 @@ describe("TEMPL Contract with DAO Governance", function () {
         it("Should execute passed treasury withdrawal proposal", async function () {
             // Create treasury withdrawal proposal
             const withdrawAmount = ethers.parseUnits("10", 18);
+            const nextId = await templ.proposalCount();
             const iface = new ethers.Interface([
-                "function withdrawTreasuryDAO(address,uint256,string)"
+                "function withdrawTreasuryDAO(uint256,address,uint256,string)"
             ]);
             const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
+                nextId,
                 treasury.address,
                 withdrawAmount,
                 "Test withdrawal"
@@ -290,10 +294,12 @@ describe("TEMPL Contract with DAO Governance", function () {
 
         it("Should not execute failed proposals", async function () {
             // Create proposal
+            const nextId = await templ.proposalCount();
             const iface = new ethers.Interface([
-                "function withdrawTreasuryDAO(address,uint256,string)"
+                "function withdrawTreasuryDAO(uint256,address,uint256,string)"
             ]);
             const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
+                nextId,
                 treasury.address,
                 ethers.parseUnits("10", 18),
                 "Test"
@@ -493,6 +499,7 @@ describe("TEMPL Contract with DAO Governance", function () {
         it("Should prevent direct treasury withdrawal by priest", async function () {
             // Priest cannot call withdrawTreasuryDAO directly
             await expect(templ.connect(priest).withdrawTreasuryDAO(
+                0,
                 priest.address,
                 ethers.parseUnits("10", 18),
                 "Unauthorized"
@@ -501,6 +508,7 @@ describe("TEMPL Contract with DAO Governance", function () {
 
         it("Should prevent direct treasury withdrawal by members", async function () {
             await expect(templ.connect(user1).withdrawTreasuryDAO(
+                0,
                 user1.address,
                 ethers.parseUnits("10", 18),
                 "Unauthorized"
@@ -510,6 +518,7 @@ describe("TEMPL Contract with DAO Governance", function () {
         it("Should prevent direct full treasury withdrawal", async function () {
             await expect(
                 templ.connect(priest).withdrawAllTreasuryDAO(
+                    0,
                     priest.address,
                     "Unauthorized"
                 )
@@ -530,10 +539,12 @@ describe("TEMPL Contract with DAO Governance", function () {
             const treasuryBalance = await templ.treasuryBalance();
             const withdrawAmount = treasuryBalance / 2n; // Half of treasury
 
+            const nextId = await templ.proposalCount();
             const iface = new ethers.Interface([
-                "function withdrawTreasuryDAO(address,uint256,string)"
+                "function withdrawTreasuryDAO(uint256,address,uint256,string)"
             ]);
             const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
+                nextId,
                 treasury.address,
                 withdrawAmount,
                 "Approved withdrawal"
@@ -821,10 +832,12 @@ describe("TEMPL Contract with DAO Governance", function () {
         });
 
         it("Should execute withdrawAllTreasuryDAO through proposal", async function () {
+            const nextId = await templ.proposalCount();
             const iface = new ethers.Interface([
-                "function withdrawAllTreasuryDAO(address,string)"
+                "function withdrawAllTreasuryDAO(uint256,address,string)"
             ]);
             const callData = iface.encodeFunctionData("withdrawAllTreasuryDAO", [
+                nextId,
                 treasury.address,
                 "Empty treasury"
             ]);
@@ -963,10 +976,12 @@ describe("TEMPL Contract with DAO Governance", function () {
             await templ.connect(user1).claimMemberPool();
 
             // User 1 creates proposal
+            const nextId = await templ.proposalCount();
             const iface = new ethers.Interface([
-                "function withdrawTreasuryDAO(address,uint256,string)"
+                "function withdrawTreasuryDAO(uint256,address,uint256,string)"
             ]);
             const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
+                nextId,
                 treasury.address,
                 ethers.parseUnits("10", 18),
                 "Community fund"
