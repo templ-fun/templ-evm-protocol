@@ -24,7 +24,8 @@ jobs:
       - run:
           name: Install slither
           command: |
-            pip3 install --user slither-analyzer solc-select
+            sudo apt-get update && sudo apt-get install -y python3-pip
+            python3 -m pip install --user slither-analyzer solc-select
             echo 'export PATH="$PATH:/home/circleci/.local/bin"' >> $BASH_ENV
             export PATH="$PATH:/home/circleci/.local/bin"
             solc-select install 0.8.19
