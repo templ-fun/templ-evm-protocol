@@ -169,11 +169,18 @@ describe("Priest Vote Weight Feature", function () {
             await templ.connect(priest).vote(0, true);
             await templ.connect(member1).vote(0, false);
 
-            const proposal = await templ.getProposal(0);
+            let proposal = await templ.getProposal(0);
             expect(proposal.yesVotes).to.equal(10); // Priest's weighted vote
             expect(proposal.noVotes).to.equal(1);   // Member's regular vote
 
-            // Proposal should pass (10 > 1)
+            // Voting period still active
+            expect(proposal.passed).to.be.false;
+
+            // Fast forward past voting period
+            await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
+            await ethers.provider.send("evm_mine");
+
+            proposal = await templ.getProposal(0);
             expect(proposal.passed).to.be.true;
         });
 
@@ -259,10 +266,18 @@ describe("Priest Vote Weight Feature", function () {
                 await templ.connect(member).vote(0, false);
             }
 
-            const proposal = await templ.getProposal(0);
+            let proposal = await templ.getProposal(0);
             expect(proposal.yesVotes).to.equal(10); // Priest's weighted vote
             expect(proposal.noVotes).to.equal(5);   // 5 members' votes
 
+            // Voting period still active
+            expect(proposal.passed).to.be.false;
+
+            // Fast forward past voting period
+            await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
+            await ethers.provider.send("evm_mine");
+
+            proposal = await templ.getProposal(0);
             // Proposal should pass (10 > 5)
             expect(proposal.passed).to.be.true;
         });

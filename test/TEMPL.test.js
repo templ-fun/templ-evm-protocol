@@ -216,7 +216,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             const proposal = await templ.getProposal(0);
             expect(proposal.yesVotes).to.equal(2);
             expect(proposal.noVotes).to.equal(1);
-            expect(proposal.passed).to.be.true; // 2 > 1
+            expect(proposal.passed).to.be.false; // voting period not yet ended
         });
 
         it("Should track individual vote choices", async function () {
