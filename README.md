@@ -137,6 +137,7 @@ executeProposal()        // Anyone can execute; reverts restore state
 ### DAO-Only Functions (Double Protected)
 ```solidity
 withdrawTreasuryDAO()    // Proposal + reentrancy guard
+withdrawAllTreasuryDAO() // Withdraw entire treasury balance (proposal required)
 executeDAO()             // Arbitrary calls protected
 updateConfigDAO()        // Change parameters (no reentrancy; token change risky)
 setPausedDAO()           // Pause new memberships
