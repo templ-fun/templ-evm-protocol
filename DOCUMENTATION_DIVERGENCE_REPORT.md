@@ -76,13 +76,13 @@ function executeProposal(uint256 _proposalId) external
 
 **Contract Implementation:**
 ```solidity
-function withdrawTreasuryDAO(address recipient, uint256 amount, string memory reason) external onlyDAO nonReentrant
+function withdrawTreasuryDAO(uint256 proposalId, address recipient, uint256 amount, string memory reason) external onlyDAO nonReentrant
 ```
-- Uses `proposalCount - 1` for event emission
+- Emits the supplied `proposalId` in the `TreasuryAction` event
 
 **README Documentation:**
 - ✅ Correctly states "Proposal + reentrancy guard"
-- ⚠️ **UNCLEAR**: Doesn't explain the proposalCount - 1 logic for events
+- ⚠️ **UNCLEAR**: Must now pass the proposal ID when encoding call data
 
 ---
 
@@ -255,7 +255,7 @@ Members | Each Member Receives
 
 ## MINOR INCONSISTENCIES
 
-- Contract uses `proposalCount - 1` in treasury events (implementation detail)
+- Contract requires proposal ID to be included in treasury calls (implementation detail)
 - Some DAO functions lack reentrancy guards (updateConfigDAO, setPausedDAO)
 - Default voting period behavior when passing 0 not documented
 
