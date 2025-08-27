@@ -250,7 +250,6 @@ contract TEMPL {
             cumulativeMemberRewards += rewardPerMember;
         }
 
-        // snapshot member's share at join time
         memberRewardSnapshot[msg.sender] = cumulativeMemberRewards;
 
         treasuryBalance += thirtyPercent;
