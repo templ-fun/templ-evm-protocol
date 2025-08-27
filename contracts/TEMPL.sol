@@ -149,14 +149,7 @@ contract TEMPL {
         uint256 amount,
         string description
     );
-    
-    event TreasuryWithdrawn(
-        address indexed priest,
-        address indexed recipient,
-        uint256 amount,
-        uint256 timestamp
-    );
-    
+
     event ConfigUpdated(
         address indexed token,
         uint256 entryFee

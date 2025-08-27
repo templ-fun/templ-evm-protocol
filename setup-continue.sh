@@ -254,7 +254,7 @@ echo ""
 echo -e "${YELLOW}Important Reminders:${NC}"
 echo "• Ensure the Telegram group is created manually"
 echo "• Add your bot as admin with restricted permissions"
-echo "• Only the priest address can withdraw treasury funds"
+echo "• Treasury withdrawals require DAO proposals"
 echo "• Users must pay tokens to join the group"
 echo ""
 
