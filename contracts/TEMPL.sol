@@ -36,6 +36,7 @@ error NoTreasuryFunds();
 error InvalidTarget();
 error ExternalCallFailed();
 error EntryFeeTooSmall();
+error InvalidEntryFee();
 error NoRewardsToClaim();
 error InsufficientPoolBalance();
 error LimitOutOfRange();
@@ -187,7 +188,7 @@ contract TEMPL {
      * @param _priest Temple creator with enhanced voting weight until threshold
      * @param _protocolFeeRecipient Receives 10% protocol fee
      * @param _token ERC20 token for membership payments
-     * @param _entryFee Membership cost (minimum 10 for proper distribution)
+     * @param _entryFee Membership cost (minimum 10 and divisible by 10)
      * @param _priestVoteWeight Vote multiplier for priest
      * @param _priestWeightThreshold Member count when priest advantage expires
      */
@@ -204,6 +205,7 @@ contract TEMPL {
         }
         if (_entryFee == 0) revert AmountZero();
         if (_entryFee < 10) revert EntryFeeTooSmall();
+        if (_entryFee % 10 != 0) revert InvalidEntryFee();
         if (_priestVoteWeight == 0) revert AmountZero();
         if (_priestWeightThreshold == 0) revert AmountZero();
         
@@ -225,7 +227,7 @@ contract TEMPL {
         if (hasPurchased[msg.sender]) revert AlreadyPurchased();
         
         uint256 thirtyPercent = (entryFee * 30) / 100;
-        uint256 tenPercent = entryFee - (thirtyPercent * 3);
+        uint256 tenPercent = (entryFee * 10) / 100;
 
         if (IERC20(accessToken).balanceOf(msg.sender) < entryFee) revert InsufficientBalance();
 
@@ -478,6 +480,7 @@ contract TEMPL {
         }
         if (_entryFee > 0) {
             if (_entryFee < 10) revert EntryFeeTooSmall();
+            if (_entryFee % 10 != 0) revert InvalidEntryFee();
             entryFee = _entryFee;
         }
         
