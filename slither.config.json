@@ -1,3 +1,6 @@
 {
-  "fail_on": "medium"
+  "fail_on": "medium",
+  "solc_remaps": [
+    "@openzeppelin=node_modules/@openzeppelin"
+  ]
 }
