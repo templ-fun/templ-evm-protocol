@@ -74,6 +74,7 @@ contract TEMPL {
     mapping(address => uint256) public memberIndex;
     mapping(address => uint256) public memberPoolClaims;
     uint256 public cumulativeMemberRewards;
+    uint256 public memberRewardRemainder;
     mapping(address => uint256) public memberRewardSnapshot;
     
     struct Proposal {
@@ -237,7 +238,9 @@ contract TEMPL {
         totalPurchases++;
 
         if (members.length > 1) {
-            uint256 rewardPerMember = thirtyPercent / (members.length - 1);
+            uint256 totalRewards = thirtyPercent + memberRewardRemainder;
+            uint256 rewardPerMember = totalRewards / (members.length - 1);
+            memberRewardRemainder = totalRewards % (members.length - 1);
             cumulativeMemberRewards += rewardPerMember;
         }
 
@@ -538,8 +541,9 @@ contract TEMPL {
     function claimMemberPool() external nonReentrant {
         uint256 claimable = getClaimablePoolAmount(msg.sender);
         if (claimable == 0) revert NoRewardsToClaim();
-        if (memberPoolBalance < claimable) revert InsufficientPoolBalance();
-        
+        uint256 distributable = memberPoolBalance - memberRewardRemainder;
+        if (distributable < claimable) revert InsufficientPoolBalance();
+
         memberRewardSnapshot[msg.sender] = cumulativeMemberRewards;
         memberPoolClaims[msg.sender] += claimable;
         memberPoolBalance -= claimable;
