@@ -290,6 +290,7 @@ The deployment script:
 ## 📚 Documentation
 
 - [Security Audit](./SECURITY_AUDIT.md) - Detailed security analysis
+- [Threat Model](./docs/THREAT_MODEL.md) - Architecture, assumptions, and failure modes
 - [Test Suite](./test/) - Implementation examples
 - [Deploy Script](./scripts/deploy.js) - Deployment configuration
 - [Contract Source](./contracts/TEMPL.sol) - Fully commented code
