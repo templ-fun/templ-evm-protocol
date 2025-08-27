@@ -4,9 +4,10 @@
   "description": "TEMPL - Smart contracts for DAO-governed token-gated access",
   "scripts": {
     "compile": "npx hardhat compile",
+    "shrink": "npm run compile && node scripts/shrink.js",
     "test": "npx hardhat test",
-    "deploy": "npx hardhat run scripts/deploy.js --network base",
-    "deploy:local": "npx hardhat run scripts/deploy.js --network localhost",
+    "deploy": "npm run shrink && npx hardhat run --no-compile scripts/deploy.js --network base",
+    "deploy:local": "npm run shrink && npx hardhat run --no-compile scripts/deploy.js --network localhost",
     "node": "npx hardhat node"
   },
   "keywords": [
