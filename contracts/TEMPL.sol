@@ -165,8 +165,15 @@ contract TEMPL {
         address indexed token,
         uint256 entryFee
     );
-    
+
     event ContractPaused(bool isPaused);
+
+    event DAOExecuted(
+        address indexed target,
+        uint256 value,
+        bytes data,
+        bytes result
+    );
     
     modifier onlyMember() {
         if (!hasPurchased[msg.sender]) revert NotMember();
@@ -465,6 +472,8 @@ contract TEMPL {
 
         (bool success, bytes memory result) = target.call{value: value}(data);
         if (!success) revert ExternalCallFailed();
+
+        emit DAOExecuted(target, value, data, result);
 
         return result;
     }

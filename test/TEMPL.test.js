@@ -380,7 +380,7 @@ describe("TEMPL Contract with DAO Governance", function () {
 
             // Create proposal to transfer the other token
             const erc20Interface = new ethers.Interface([
-                "function transfer(address,uint256)"
+                "function transfer(address,uint256) returns (bool)"
             ]);
             const transferCalldata = erc20Interface.encodeFunctionData("transfer", [
                 treasury.address,
@@ -390,8 +390,9 @@ describe("TEMPL Contract with DAO Governance", function () {
             const iface = new ethers.Interface([
                 "function executeDAO(address,uint256,bytes)"
             ]);
+            const target = await otherToken.getAddress();
             const callData = iface.encodeFunctionData("executeDAO", [
-                await otherToken.getAddress(),
+                target,
                 0, // No ETH
                 transferCalldata
             ]);
@@ -410,8 +411,13 @@ describe("TEMPL Contract with DAO Governance", function () {
             await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
             await ethers.provider.send("evm_mine");
 
+            const resultData = erc20Interface.encodeFunctionResult("transfer", [true]);
+
             const balanceBefore = await otherToken.balanceOf(treasury.address);
-            await templ.executeProposal(0);
+            const tx = await templ.executeProposal(0);
+            await expect(tx)
+                .to.emit(templ, "DAOExecuted")
+                .withArgs(target, 0, transferCalldata, resultData);
             const balanceAfter = await otherToken.balanceOf(treasury.address);
 
             expect(balanceAfter - balanceBefore).to.equal(ethers.parseUnits("500", 18));
