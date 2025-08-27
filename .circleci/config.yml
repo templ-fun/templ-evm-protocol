@@ -1,0 +1,27 @@
+version: 2.1
+
+jobs:
+  test:
+    docker:
+      - image: cimg/node:18.20
+    steps:
+      - checkout
+      - run:
+          name: Install dependencies
+          command: npm ci
+      - run:
+          name: Run tests
+          command: npm test
+
+workflows:
+  test:
+    jobs:
+      - test:
+          filters:
+            branches:
+              only: main
+      - test:
+          name: test-pr
+          filters:
+            branches:
+              ignore: main
