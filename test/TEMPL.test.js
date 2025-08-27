@@ -501,6 +501,25 @@ describe("TEMPL Contract with DAO Governance", function () {
             )).to.be.revertedWithCustomError(templ, "NotDAO");
         });
 
+        it("Should prevent direct full treasury withdrawal", async function () {
+            await expect(
+                templ.connect(priest).withdrawAllTreasuryDAO(
+                    priest.address,
+                    "Unauthorized"
+                )
+            ).to.be.revertedWithCustomError(templ, "NotDAO");
+        });
+
+        it("Should prevent direct executeDAO calls", async function () {
+            await expect(
+                templ.connect(priest).executeDAO(
+                    priest.address,
+                    0,
+                    "0x"
+                )
+            ).to.be.revertedWithCustomError(templ, "NotDAO");
+        });
+
         it("Should only allow treasury withdrawal through passed proposals", async function () {
             const treasuryBalance = await templ.treasuryBalance();
             const withdrawAmount = treasuryBalance / 2n; // Half of treasury
@@ -819,9 +838,39 @@ describe("TEMPL Contract with DAO Governance", function () {
 
             const treasuryBefore = await templ.treasuryBalance();
             await templ.executeProposal(0);
-            
+
             expect(await templ.treasuryBalance()).to.equal(0);
             expect(await token.balanceOf(treasury.address)).to.equal(treasuryBefore);
+        });
+
+        it("Should fail to execute executeDAO with invalid target", async function () {
+            const iface = new ethers.Interface([
+                "function executeDAO(address,uint256,bytes)"
+            ]);
+            const callData = iface.encodeFunctionData("executeDAO", [
+                ethers.ZeroAddress,
+                0,
+                "0x"
+            ]);
+
+            await templ.connect(user1).createProposal(
+                "Invalid exec",
+                "Bad target",
+                callData,
+                7 * 24 * 60 * 60
+            );
+
+            await templ.connect(user1).vote(0, true);
+            await templ.connect(user2).vote(0, true);
+
+            await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
+            await ethers.provider.send("evm_mine");
+
+            await expect(templ.executeProposal(0))
+                .to.be.revertedWithCustomError(templ, "ProposalExecutionFailed");
+
+            const proposal = await templ.getProposal(0);
+            expect(proposal.executed).to.be.false;
         });
     });
 
