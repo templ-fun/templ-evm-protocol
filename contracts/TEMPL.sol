@@ -74,7 +74,6 @@ contract TEMPL {
     mapping(address => uint256) public memberIndex;
     mapping(address => uint256) public memberPoolClaims;
     uint256 public cumulativeMemberRewards;
-    // member's last observed cumulative reward for O(1) claim calculation
     mapping(address => uint256) public memberRewardSnapshot;
     
     struct Proposal {
