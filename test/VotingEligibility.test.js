@@ -53,12 +53,10 @@ describe("Voting Eligibility Based on Join Time", function () {
             await ethers.provider.send("evm_mine");
 
             // Member 1 creates proposal
-            const nextId = await templ.proposalCount();
             const iface = new ethers.Interface([
-                "function withdrawTreasuryDAO(uint256,address,uint256,string)"
+                "function withdrawTreasuryDAO(address,uint256,string)"
             ]);
             const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
-                nextId,
                 member1.address,
                 ethers.parseUnits("10", 18),
                 "Test"
@@ -104,12 +102,10 @@ describe("Voting Eligibility Based on Join Time", function () {
             await ethers.provider.send("evm_mine");
 
             // Create proposal
-            const nextId = await templ.proposalCount();
             const iface = new ethers.Interface([
-                "function withdrawTreasuryDAO(uint256,address,uint256,string)"
+                "function withdrawTreasuryDAO(address,uint256,string)"
             ]);
             const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
-                nextId,
                 member1.address,
                 ethers.parseUnits("10", 18),
                 "Test"
@@ -217,12 +213,10 @@ describe("Voting Eligibility Based on Join Time", function () {
             await ethers.provider.send("evm_mine");
 
             // Create contentious proposal where member2 would vote no
-            const nextId = await templ.proposalCount();
             const iface = new ethers.Interface([
-                "function withdrawTreasuryDAO(uint256,address,uint256,string)"
+                "function withdrawTreasuryDAO(address,uint256,string)"
             ]);
             const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
-                nextId,
                 member1.address, // Only benefits member1
                 ethers.parseUnits("50", 18),
                 "Selfish withdrawal"

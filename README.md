@@ -142,7 +142,7 @@ updateConfigDAO()        // Change parameters (no reentrancy; token change risky
 setPausedDAO()           // Pause new memberships
 ```
 
-`updateConfigDAO` can change the access token; executing this mid-flight may break accounting. Both `updateConfigDAO` and `setPausedDAO` omit reentrancy guards. Treasury withdrawals now require the caller to supply the proposal ID, which is emitted with the `TreasuryAction` event.
+`updateConfigDAO` can change the access token; executing this mid-flight may break accounting. Both `updateConfigDAO` and `setPausedDAO` omit reentrancy guards. Treasury withdrawals derive the proposal ID internally and emit it with the `TreasuryAction` event.
 
 ### Gas-Optimized Views
 ```solidity
@@ -171,10 +171,9 @@ if (claimable > 0) {
 }
 
 // Create proposal (anti-spam protected)
-const nextId = await templ.proposalCount()
 const calldata = templ.interface.encodeFunctionData(
   'withdrawTreasuryDAO',
-  [nextId, recipient, amount, 'Development fund']
+  [recipient, amount, 'Development fund']
 )
 await templ.createProposal(title, description, calldata, duration)
 
