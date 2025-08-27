@@ -73,7 +73,6 @@ contract TEMPL {
     address[] public members;
     mapping(address => uint256) public memberIndex;
     mapping(address => uint256) public memberPoolClaims;
-    // cumulative reward per member index across all deposits
     uint256 public cumulativeMemberRewards;
     // member's last observed cumulative reward for O(1) claim calculation
     mapping(address => uint256) public memberRewardSnapshot;
