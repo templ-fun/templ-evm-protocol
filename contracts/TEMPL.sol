@@ -1,12 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-interface IERC20 {
-    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
-    function transfer(address recipient, uint256 amount) external returns (bool);
-    function balanceOf(address account) external view returns (uint256);
-    function decimals() external view returns (uint8);
-}
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 error ReentrantCall();
 error NotMember();
@@ -14,7 +10,6 @@ error NotDAO();
 error ContractPausedError();
 error AlreadyPurchased();
 error InsufficientBalance();
-error TransferFailed();
 error TitleRequired();
 error DescriptionRequired();
 error CallDataRequired();
@@ -47,6 +42,7 @@ error LimitOutOfRange();
  * @dev Fee distribution: 30% burn, 30% DAO treasury, 30% member pool, 10% protocol
  */
 contract TEMPL {
+    using SafeERC20 for IERC20;
     // Reentrancy guard state
     uint256 private constant _NOT_ENTERED = 1;
     uint256 private constant _ENTERED = 2;
@@ -260,33 +256,15 @@ contract TEMPL {
         totalToProtocol += tenPercent;
 
         // Interactions: execute external token transfers
-        bool burnSuccess = IERC20(accessToken).transferFrom(
+        IERC20 token = IERC20(accessToken);
+        token.safeTransferFrom(
             msg.sender,
             address(0x000000000000000000000000000000000000dEaD),
             thirtyPercent
         );
-        if (!burnSuccess) revert TransferFailed();
-
-        bool treasurySuccess = IERC20(accessToken).transferFrom(
-            msg.sender,
-            address(this),
-            thirtyPercent
-        );
-        if (!treasurySuccess) revert TransferFailed();
-
-        bool poolSuccess = IERC20(accessToken).transferFrom(
-            msg.sender,
-            address(this),
-            thirtyPercent
-        );
-        if (!poolSuccess) revert TransferFailed();
-
-        bool protocolSuccess = IERC20(accessToken).transferFrom(
-            msg.sender,
-            protocolFeeRecipient,
-            tenPercent
-        );
-        if (!protocolSuccess) revert TransferFailed();
+        token.safeTransferFrom(msg.sender, address(this), thirtyPercent);
+        token.safeTransferFrom(msg.sender, address(this), thirtyPercent);
+        token.safeTransferFrom(msg.sender, protocolFeeRecipient, tenPercent);
         
         emit AccessPurchased(
             msg.sender,
@@ -437,8 +415,7 @@ contract TEMPL {
 
         emit TreasuryAction(proposalCount - 1, recipient, amount, reason);
 
-        bool success = IERC20(accessToken).transfer(recipient, amount);
-        if (!success) revert TransferFailed();
+        IERC20(accessToken).safeTransfer(recipient, amount);
     }
     
     /**
@@ -455,8 +432,7 @@ contract TEMPL {
 
         emit TreasuryAction(proposalCount - 1, recipient, amount, reason);
 
-        bool success = IERC20(accessToken).transfer(recipient, amount);
-        if (!success) revert TransferFailed();
+        IERC20(accessToken).safeTransfer(recipient, amount);
     }
     
     /**
@@ -542,10 +518,9 @@ contract TEMPL {
         
         memberPoolClaims[msg.sender] += claimable;
         memberPoolBalance -= claimable;
-        
-        bool success = IERC20(accessToken).transfer(msg.sender, claimable);
-        if (!success) revert TransferFailed();
-        
+
+        IERC20(accessToken).safeTransfer(msg.sender, claimable);
+
         emit MemberPoolClaimed(msg.sender, claimable, block.timestamp);
     }
     
