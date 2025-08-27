@@ -57,6 +57,12 @@ Members | Each Member Receives
 - **Simple Majority**: >50% yes votes to pass
 - **Atomic Execution**: All-or-nothing proposal execution with state restore on failure
 
+### Nested Execution Flow
+`executeProposal` routes encoded function calls through an internal `_executeCall` helper. When the call targets `executeDAO`,
+the helper decodes the parameters and forwards them to the internal `_executeDAO` directly. This allows proposals to perform
+nested DAO operations without tripping the `nonReentrant` guard on the external `executeDAO` while still enforcing target and
+execution checks. Auditors should review this indirection carefully.
+
 ### Anti-Attack Mechanisms
 
 #### Flash Loan Protection
