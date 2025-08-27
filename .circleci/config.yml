@@ -25,8 +25,8 @@ jobs:
           name: Install slither
           command: |
             sudo pip3 install slither-analyzer solc-select && \
-            sudo solc-select install 0.8.19 && \
-            sudo solc-select use 0.8.19
+            solc-select install 0.8.19 && \
+            solc-select use 0.8.19
       - run:
           name: Run slither
           command: slither contracts/TEMPL.sol
