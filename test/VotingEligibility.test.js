@@ -128,7 +128,7 @@ describe("Voting Eligibility Based on Join Time", function () {
 
             // Late member should NOT be able to vote
             await expect(templ.connect(lateMember).vote(0, true))
-                .to.be.revertedWith("You cannot vote on proposals created before you joined");
+                .to.be.revertedWith("You joined after this proposal was created");
 
             // But original members still can
             await expect(templ.connect(member1).vote(0, true))
@@ -189,10 +189,10 @@ describe("Voting Eligibility Based on Join Time", function () {
 
             // New members cannot vote
             await expect(templ.connect(member4).vote(0, true))
-                .to.be.revertedWith("You cannot vote on proposals created before you joined");
+                .to.be.revertedWith("You joined after this proposal was created");
             
             await expect(templ.connect(lateMember).vote(0, true))
-                .to.be.revertedWith("You cannot vote on proposals created before you joined");
+                .to.be.revertedWith("You joined after this proposal was created");
 
             // Check final vote tally - should be 2 yes, 1 no (from 3 eligible voters)
             const proposal = await templ.getProposal(0);
@@ -246,10 +246,10 @@ describe("Voting Eligibility Based on Join Time", function () {
 
             // New "friendly" members CANNOT vote to help member1
             await expect(templ.connect(member3).vote(0, true))
-                .to.be.revertedWith("You cannot vote on proposals created before you joined");
+                .to.be.revertedWith("You joined after this proposal was created");
             
             await expect(templ.connect(member4).vote(0, true))
-                .to.be.revertedWith("You cannot vote on proposals created before you joined");
+                .to.be.revertedWith("You joined after this proposal was created");
 
             // Result: 1 yes, 1 no - tie means proposal fails
             const proposal = await templ.getProposal(0);
@@ -319,7 +319,7 @@ describe("Voting Eligibility Based on Join Time", function () {
             await templ.connect(member3).vote(1, false);
             
             await expect(templ.connect(member4).vote(1, true))
-                .to.be.revertedWith("You cannot vote on proposals created before you joined");
+                .to.be.revertedWith("You joined after this proposal was created");
 
             const proposal2 = await templ.getProposal(1);
             expect(proposal2.yesVotes).to.equal(2);

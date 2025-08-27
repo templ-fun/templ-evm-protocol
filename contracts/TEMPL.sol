@@ -336,8 +336,8 @@ contract TEMPL {
         require(block.timestamp < proposal.endTime, "Voting ended");
         require(!proposal.hasVoted[msg.sender], "Already voted");
         
-        require(purchaseTimestamp[msg.sender] < proposal.createdAt, 
-            "You cannot vote on proposals created before you joined");
+        require(purchaseTimestamp[msg.sender] < proposal.createdAt,
+            "You joined after this proposal was created");
         
         proposal.hasVoted[msg.sender] = true;
         proposal.voteChoice[msg.sender] = _support;

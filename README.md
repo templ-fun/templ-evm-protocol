@@ -13,6 +13,7 @@
 - **Sybil Resistance**: Economic cost per membership
 - **Anti-Spam Mechanisms**: One active proposal per member
 - **Gas Attack Prevention**: Paginated queries prevent DOS
+- **Emergency Circuit Breaker**: DAO can pause new memberships (purchaseAccess only)
 
 ### Audit Status ✅
 
@@ -40,7 +41,9 @@ Members | Each Member Receives
 --------|--------------------
    1    | 30% of next joiner's fee
    2    | 15% each
-   3+   | 10% each (capped)
+   3    | 10% each
+   4    | 7.5% each
+   n    | 30% / n each
 ```
 *Note: Integer division may leave dust (<members wei)*
 
@@ -48,10 +51,11 @@ Members | Each Member Receives
 
 ### Core Principles
 - **One Member, One Vote** (with priest weight exception)
-- **Proposal Limits**: 1 active per member (anti-spam)
-- **Time-Bounded Voting**: 7-30 day periods
+- **Proposal Limits**: 1 active per member with auto-cleanup
+- **Time-Bounded Voting**: 7-30 day periods (0 defaults to 7 days)
+- **Open Execution**: Any address can execute passed proposals
 - **Simple Majority**: >50% yes votes to pass
-- **Atomic Execution**: All-or-nothing proposal execution
+- **Atomic Execution**: All-or-nothing proposal execution with state restore on failure
 
 ### Anti-Attack Mechanisms
 
@@ -124,20 +128,26 @@ BASESCAN_API_KEY=...              # For verification
 
 ### Protected Member Functions
 ```solidity
-purchaseAccess()         // Join (reentrancy protected)
+purchaseAccess()         // Join (reentrancy protected, pausable)
 claimMemberPool()        // Claim rewards safely
-createProposal()         // 1 active limit enforced
+createProposal()         // 1 active limit enforced, auto-cleanup & default period
 vote()                   // Flash-loan protected
-executeProposal()        // Atomic with revert safety
+executeProposal()        // Anyone can execute; reverts restore state
 ```
 
 ### DAO-Only Functions (Double Protected)
 ```solidity
 withdrawTreasuryDAO()    // Proposal + reentrancy guard
 executeDAO()             // Arbitrary calls protected
-updateConfigDAO()        // Change parameters
-setPausedDAO()           // Emergency circuit breaker
+updateConfigDAO()        // Change parameters (no reentrancy; token change risky)
+setPausedDAO()           // Pause new memberships
 ```
+
+`updateConfigDAO` can change the access token; executing this mid-flight may break accounting. Both `updateConfigDAO` and `setPausedDAO` omit reentrancy guards. Events from `withdrawTreasuryDAO` log the last proposal ID (`proposalCount - 1`).
+
+### Deprecated Functions
+
+For ABI compatibility the contract retains `withdrawTreasury`, `withdrawAllTreasury`, `updateConfig`, and `setPaused` — these `pure` functions simply revert.
 
 ### Gas-Optimized Views
 ```solidity
