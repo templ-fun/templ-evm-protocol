@@ -205,17 +205,6 @@ Members | Each Member Receives
 **README Documentation:**
 - ✅ Correctly describes the threshold behavior
 
----
-
-### 14. Deprecated Functions
-
-**Contract Implementation:**
-- withdrawTreasury, withdrawAllTreasury, updateConfig, setPaused are `pure` functions that just revert
-
-**README Documentation:**
-- ❌ **NOT MENTIONED**: README doesn't mention these deprecated functions exist
-
----
 
 ### 15. Access Control
 

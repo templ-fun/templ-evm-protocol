@@ -90,7 +90,7 @@ describe("Single Active Proposal Restriction", function () {
                 "Description 2",
                 callData,
                 7 * 24 * 60 * 60
-            )).to.be.revertedWith("You already have an active proposal");
+            )).to.be.revertedWithCustomError(templ, "ActiveProposalExists");
         });
 
         it("Should allow different members to have active proposals simultaneously", async function () {
@@ -275,7 +275,7 @@ describe("Single Active Proposal Restriction", function () {
 
             // Try to execute - should fail
             await expect(templ.executeProposal(0))
-                .to.be.revertedWith("Proposal execution failed");
+                .to.be.revertedWithCustomError(templ, "ProposalExecutionFailed");
 
             // Check that proposal is still marked as active since execution failed
             expect(await templ.hasActiveProposal(member1.address)).to.be.true;
