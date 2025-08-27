@@ -73,7 +73,8 @@ contract TEMPL {
     address[] public members;
     mapping(address => uint256) public memberIndex;
     mapping(address => uint256) public memberPoolClaims;
-    uint256[] public poolDeposits;
+    uint256 public cumulativeMemberRewards;
+    mapping(address => uint256) public memberRewardSnapshot;
     
     struct Proposal {
         uint256 id;
@@ -236,10 +237,11 @@ contract TEMPL {
         totalPurchases++;
 
         if (members.length > 1) {
-            poolDeposits.push(thirtyPercent);
-        } else {
-            poolDeposits.push(0);
+            uint256 rewardPerMember = thirtyPercent / (members.length - 1);
+            cumulativeMemberRewards += rewardPerMember;
         }
+
+        memberRewardSnapshot[msg.sender] = cumulativeMemberRewards;
 
         treasuryBalance += thirtyPercent;
         memberPoolBalance += thirtyPercent;
@@ -493,21 +495,9 @@ contract TEMPL {
             return 0;
         }
         
-        uint256 memberIdx = memberIndex[member];
-        uint256 totalClaimable = 0;
-        
-        for (uint256 i = memberIdx + 1; i < poolDeposits.length; i++) {
-            if (poolDeposits[i] > 0) {
-                uint256 eligibleMembers = i;
-                if (eligibleMembers > 0) {
-                    uint256 sharePerMember = poolDeposits[i] / eligibleMembers;
-                    totalClaimable += sharePerMember;
-                }
-            }
-        }
-        
-        return totalClaimable > memberPoolClaims[member] ? 
-               totalClaimable - memberPoolClaims[member] : 0;
+        uint256 accrued = cumulativeMemberRewards;
+        uint256 snapshot = memberRewardSnapshot[member];
+        return accrued > snapshot ? accrued - snapshot : 0;
     }
     
     /**
@@ -518,6 +508,7 @@ contract TEMPL {
         if (claimable == 0) revert NoRewardsToClaim();
         if (memberPoolBalance < claimable) revert InsufficientPoolBalance();
         
+        memberRewardSnapshot[msg.sender] = cumulativeMemberRewards;
         memberPoolClaims[msg.sender] += claimable;
         memberPoolBalance -= claimable;
 

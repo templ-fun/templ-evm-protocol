@@ -54,7 +54,7 @@ describe("Fee Distribution Invariant", function () {
             expect(total).to.equal(expected);
 
             if (i === 0) {
-                expect(await templ.poolDeposits(0)).to.equal(0);
+                expect(await templ.cumulativeMemberRewards()).to.equal(0);
             }
         }
 
