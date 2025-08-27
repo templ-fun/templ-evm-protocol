@@ -145,10 +145,6 @@ setPausedDAO()           // Pause new memberships
 
 `updateConfigDAO` can change the access token; executing this mid-flight may break accounting. Both `updateConfigDAO` and `setPausedDAO` omit reentrancy guards. Events from `withdrawTreasuryDAO` log the last proposal ID (`proposalCount - 1`).
 
-### Deprecated Functions
-
-For ABI compatibility the contract retains `withdrawTreasury`, `withdrawAllTreasury`, `updateConfig`, and `setPaused` — these `pure` functions simply revert.
-
 ### Gas-Optimized Views
 ```solidity
 getActiveProposalsPaginated()  // Prevents unbounded loops

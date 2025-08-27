@@ -173,11 +173,11 @@ describe("TEMPL - Proposal Pagination", function () {
     it("Should enforce limit constraints", async function () {
       // Should revert with 0 limit
       await expect(templ.getActiveProposalsPaginated(0, 0))
-        .to.be.revertedWith("Limit must be 1-100");
+        .to.be.revertedWithCustomError(templ, "LimitOutOfRange");
       
       // Should revert with >100 limit
       await expect(templ.getActiveProposalsPaginated(0, 101))
-        .to.be.revertedWith("Limit must be 1-100");
+        .to.be.revertedWithCustomError(templ, "LimitOutOfRange");
       
       // Should work with limit 1
       const [ids1, more1] = await templ.getActiveProposalsPaginated(0, 1);

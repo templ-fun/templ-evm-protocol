@@ -95,7 +95,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             
             await token.connect(user1).approve(await templ.getAddress(), ENTRY_FEE);
             await expect(templ.connect(user1).purchaseAccess())
-                .to.be.revertedWith("Already purchased access");
+                .to.be.revertedWithCustomError(templ, "AlreadyPurchased");
         });
     });
 
@@ -133,7 +133,7 @@ describe("TEMPL Contract with DAO Governance", function () {
                 "Description",
                 "0x1234",
                 7 * 24 * 60 * 60
-            )).to.be.revertedWith("Only members can call this");
+            )).to.be.revertedWithCustomError(templ, "NotMember");
         });
 
         it("Should enforce minimum voting period", async function () {
@@ -142,7 +142,7 @@ describe("TEMPL Contract with DAO Governance", function () {
                 "Description",
                 "0x1234",
                 6 * 24 * 60 * 60 // 6 days (less than minimum 7 days)
-            )).to.be.revertedWith("Voting period too short");
+            )).to.be.revertedWithCustomError(templ, "VotingPeriodTooShort");
         });
 
         it("Should enforce maximum voting period", async function () {
@@ -151,7 +151,7 @@ describe("TEMPL Contract with DAO Governance", function () {
                 "Description",
                 "0x1234",
                 31 * 24 * 60 * 60 // 31 days (too long)
-            )).to.be.revertedWith("Voting period too long");
+            )).to.be.revertedWithCustomError(templ, "VotingPeriodTooLong");
         });
     });
 
@@ -196,14 +196,14 @@ describe("TEMPL Contract with DAO Governance", function () {
 
         it("Should prevent double voting", async function () {
             await templ.connect(user1).vote(0, true);
-            
+
             await expect(templ.connect(user1).vote(0, false))
-                .to.be.revertedWith("Already voted");
+                .to.be.revertedWithCustomError(templ, "AlreadyVoted");
         });
 
         it("Should prevent non-members from voting", async function () {
             await expect(templ.connect(user4).vote(0, true))
-                .to.be.revertedWith("Only members can call this");
+                .to.be.revertedWithCustomError(templ, "NotMember");
         });
 
         it("Should count yes and no votes correctly", async function () {
@@ -317,7 +317,7 @@ describe("TEMPL Contract with DAO Governance", function () {
 
             // Try to execute
             await expect(templ.connect(user1).executeProposal(0))
-                .to.be.revertedWith("Proposal did not pass");
+                .to.be.revertedWithCustomError(templ, "ProposalNotPassed");
         });
 
         it("Should not execute before voting ends", async function () {
@@ -340,7 +340,7 @@ describe("TEMPL Contract with DAO Governance", function () {
 
             // Try to execute immediately
             await expect(templ.connect(user1).executeProposal(0))
-                .to.be.revertedWith("Voting not ended");
+                .to.be.revertedWithCustomError(templ, "VotingNotEnded");
         });
 
         it("Should execute config update proposal", async function () {
@@ -445,7 +445,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             // Should prevent purchases when paused
             await token.connect(user4).approve(await templ.getAddress(), ENTRY_FEE);
             await expect(templ.connect(user4).purchaseAccess())
-                .to.be.revertedWith("Contract is paused");
+                .to.be.revertedWithCustomError(templ, "ContractPausedError");
         });
 
         it("Should prevent double execution", async function () {
@@ -470,7 +470,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             await templ.executeProposal(0);
 
             await expect(templ.executeProposal(0))
-                .to.be.revertedWith("Already executed");
+                .to.be.revertedWithCustomError(templ, "AlreadyExecuted");
         });
     });
 
@@ -490,7 +490,7 @@ describe("TEMPL Contract with DAO Governance", function () {
                 priest.address,
                 ethers.parseUnits("10", 18),
                 "Unauthorized"
-            )).to.be.revertedWith("Only DAO can call this");
+            )).to.be.revertedWithCustomError(templ, "NotDAO");
         });
 
         it("Should prevent direct treasury withdrawal by members", async function () {
@@ -498,7 +498,7 @@ describe("TEMPL Contract with DAO Governance", function () {
                 user1.address,
                 ethers.parseUnits("10", 18),
                 "Unauthorized"
-            )).to.be.revertedWith("Only DAO can call this");
+            )).to.be.revertedWithCustomError(templ, "NotDAO");
         });
 
         it("Should only allow treasury withdrawal through passed proposals", async function () {
@@ -538,12 +538,12 @@ describe("TEMPL Contract with DAO Governance", function () {
             await expect(templ.connect(priest).updateConfigDAO(
                 await token.getAddress(),
                 ethers.parseUnits("500", 18)
-            )).to.be.revertedWith("Only DAO can call this");
+            )).to.be.revertedWithCustomError(templ, "NotDAO");
         });
 
         it("Should prevent pause without DAO approval", async function () {
             await expect(templ.connect(priest).setPausedDAO(true))
-                .to.be.revertedWith("Only DAO can call this");
+                .to.be.revertedWithCustomError(templ, "NotDAO");
         });
     });
 
@@ -698,7 +698,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             await templ.connect(user1).purchaseAccess();
 
             await expect(templ.connect(user1).claimMemberPool())
-                .to.be.revertedWith("No rewards to claim");
+                .to.be.revertedWithCustomError(templ, "NoRewardsToClaim");
         });
 
         it("Should track claimed amounts correctly", async function () {
@@ -744,14 +744,15 @@ describe("TEMPL Contract with DAO Governance", function () {
         });
 
         it("Should reject entry fee below minimum", async function () {
-            await expect(ethers.deployContract("TEMPL", [
+            const factory = await ethers.getContractFactory("TEMPL");
+            await expect(factory.deploy(
                 priest.address,
                 priest.address, // protocolFeeRecipient
                 await token.getAddress(),
                 9, // Below minimum
                 10, // priestVoteWeight
                 10  // priestWeightThreshold
-            ])).to.be.revertedWith("Entry fee too small for distribution");
+            )).to.be.revertedWithCustomError(factory, "EntryFeeTooSmall");
         });
 
 
@@ -776,38 +777,11 @@ describe("TEMPL Contract with DAO Governance", function () {
 
             // Execution should revert
             await expect(templ.executeProposal(0))
-                .to.be.revertedWith("Proposal execution failed");
+                .to.be.revertedWithCustomError(templ, "ProposalExecutionFailed");
 
             // Proposal should not be marked as executed
             const proposal = await templ.getProposal(0);
             expect(proposal.executed).to.be.false;
-        });
-    });
-
-    describe("Legacy Function Compatibility", function () {
-        beforeEach(async function () {
-            await token.connect(user1).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(user1).purchaseAccess();
-        });
-
-        it("Should reject direct withdrawTreasury calls", async function () {
-            await expect(templ.connect(priest).withdrawTreasury(priest.address, ethers.parseUnits("10", 18)))
-                .to.be.revertedWith("Treasury withdrawals require DAO approval. Use withdrawTreasuryDAO through a proposal.");
-        });
-
-        it("Should reject direct withdrawAllTreasury calls", async function () {
-            await expect(templ.connect(priest).withdrawAllTreasury(priest.address))
-                .to.be.revertedWith("Treasury withdrawals require DAO approval. Use withdrawTreasuryDAO through a proposal.");
-        });
-
-        it("Should reject direct updateConfig calls", async function () {
-            await expect(templ.connect(priest).updateConfig(await token.getAddress(), ethers.parseUnits("200", 18)))
-                .to.be.revertedWith("Config updates require DAO approval. Use updateConfigDAO through a proposal.");
-        });
-
-        it("Should reject direct setPaused calls", async function () {
-            await expect(templ.connect(priest).setPaused(true))
-                .to.be.revertedWith("Pause/unpause requires DAO approval. Use setPausedDAO through a proposal.");
         });
     });
 

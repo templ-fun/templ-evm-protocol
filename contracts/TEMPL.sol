@@ -8,6 +8,38 @@ interface IERC20 {
     function decimals() external view returns (uint8);
 }
 
+error ReentrantCall();
+error NotMember();
+error NotDAO();
+error ContractPausedError();
+error AlreadyPurchased();
+error InsufficientBalance();
+error TransferFailed();
+error TitleRequired();
+error DescriptionRequired();
+error CallDataRequired();
+error ActiveProposalExists();
+error VotingPeriodTooShort();
+error VotingPeriodTooLong();
+error InvalidProposal();
+error VotingEnded();
+error AlreadyVoted();
+error JoinedAfterProposal();
+error VotingNotEnded();
+error AlreadyExecuted();
+error ProposalNotPassed();
+error ProposalExecutionFailed();
+error InvalidRecipient();
+error AmountZero();
+error InsufficientTreasuryBalance();
+error NoTreasuryFunds();
+error InvalidTarget();
+error ExternalCallFailed();
+error EntryFeeTooSmall();
+error NoRewardsToClaim();
+error InsufficientPoolBalance();
+error LimitOutOfRange();
+
 /**
  * @title TEMPL - Token Entry Management Protocol with DAO Governance
  * @notice Decentralized membership system with autonomous treasury management
@@ -20,12 +52,12 @@ contract TEMPL {
     uint256 private _status;
     
     modifier nonReentrant() {
-        require(_status != _ENTERED, "ReentrancyGuard: reentrant call");
+        if (_status == _ENTERED) revert ReentrantCall();
         _status = _ENTERED;
         _;
         _status = _NOT_ENTERED;
     }
-    
+
     address public immutable priest;
     address public immutable protocolFeeRecipient;
     address public accessToken;
@@ -136,17 +168,17 @@ contract TEMPL {
     event ContractPaused(bool isPaused);
     
     modifier onlyMember() {
-        require(hasPurchased[msg.sender], "Only members can call this");
+        if (!hasPurchased[msg.sender]) revert NotMember();
         _;
     }
-    
+
     modifier onlyDAO() {
-        require(msg.sender == address(this), "Only DAO can call this");
+        if (msg.sender != address(this)) revert NotDAO();
         _;
     }
-    
+
     modifier whenNotPaused() {
-        require(!paused, "Contract is paused");
+        if (paused) revert ContractPausedError();
         _;
     }
     
@@ -167,13 +199,13 @@ contract TEMPL {
         uint256 _priestVoteWeight,
         uint256 _priestWeightThreshold
     ) {
-        require(_priest != address(0), "Invalid priest address");
-        require(_protocolFeeRecipient != address(0), "Invalid protocol fee recipient address");
-        require(_token != address(0), "Invalid token address");
-        require(_entryFee > 0, "Entry fee must be greater than 0");
-        require(_entryFee >= 10, "Entry fee too small for distribution");
-        require(_priestVoteWeight > 0, "Priest vote weight must be greater than 0");
-        require(_priestWeightThreshold > 0, "Priest weight threshold must be greater than 0");
+        if (_priest == address(0) || _protocolFeeRecipient == address(0) || _token == address(0)) {
+            revert InvalidRecipient();
+        }
+        if (_entryFee == 0) revert AmountZero();
+        if (_entryFee < 10) revert EntryFeeTooSmall();
+        if (_priestVoteWeight == 0) revert AmountZero();
+        if (_priestWeightThreshold == 0) revert AmountZero();
         
         priest = _priest;
         protocolFeeRecipient = _protocolFeeRecipient;
@@ -190,15 +222,12 @@ contract TEMPL {
      * @dev Executes 4 transfers: burn (30%), treasury (30%), member pool (30%), protocol (10%)
      */
     function purchaseAccess() external whenNotPaused nonReentrant {
-        require(!hasPurchased[msg.sender], "Already purchased access");
+        if (hasPurchased[msg.sender]) revert AlreadyPurchased();
         
         uint256 thirtyPercent = (entryFee * 30) / 100;
         uint256 tenPercent = entryFee - (thirtyPercent * 3);
 
-        require(
-            IERC20(accessToken).balanceOf(msg.sender) >= entryFee,
-            "Insufficient token balance"
-        );
+        if (IERC20(accessToken).balanceOf(msg.sender) < entryFee) revert InsufficientBalance();
 
         // Effects: update membership state before external calls
         hasPurchased[msg.sender] = true;
@@ -227,28 +256,28 @@ contract TEMPL {
             address(0x000000000000000000000000000000000000dEaD),
             thirtyPercent
         );
-        require(burnSuccess, "Burn transfer failed");
+        if (!burnSuccess) revert TransferFailed();
 
         bool treasurySuccess = IERC20(accessToken).transferFrom(
             msg.sender,
             address(this),
             thirtyPercent
         );
-        require(treasurySuccess, "Treasury transfer failed");
+        if (!treasurySuccess) revert TransferFailed();
 
         bool poolSuccess = IERC20(accessToken).transferFrom(
             msg.sender,
             address(this),
             thirtyPercent
         );
-        require(poolSuccess, "Pool transfer failed");
+        if (!poolSuccess) revert TransferFailed();
 
         bool protocolSuccess = IERC20(accessToken).transferFrom(
             msg.sender,
             protocolFeeRecipient,
             tenPercent
         );
-        require(protocolSuccess, "Protocol transfer failed");
+        if (!protocolSuccess) revert TransferFailed();
         
         emit AccessPurchased(
             msg.sender,
@@ -278,15 +307,15 @@ contract TEMPL {
         bytes memory _callData,
         uint256 _votingPeriod
     ) external onlyMember returns (uint256) {
-        require(bytes(_title).length > 0, "Title required");
-        require(bytes(_description).length > 0, "Description required");
-        require(_callData.length > 0, "Call data required");
+        if (bytes(_title).length == 0) revert TitleRequired();
+        if (bytes(_description).length == 0) revert DescriptionRequired();
+        if (_callData.length == 0) revert CallDataRequired();
         
         if (hasActiveProposal[msg.sender]) {
             uint256 existingId = activeProposalId[msg.sender];
             Proposal storage existingProposal = proposals[existingId];
             if (!existingProposal.executed && block.timestamp < existingProposal.endTime) {
-                revert("You already have an active proposal");
+                revert ActiveProposalExists();
             } else {
                 hasActiveProposal[msg.sender] = false;
                 activeProposalId[msg.sender] = 0;
@@ -297,8 +326,8 @@ contract TEMPL {
         if (period == 0) {
             period = DEFAULT_VOTING_PERIOD;
         }
-        require(period >= MIN_VOTING_PERIOD, "Voting period too short");
-        require(period <= MAX_VOTING_PERIOD, "Voting period too long");
+        if (period < MIN_VOTING_PERIOD) revert VotingPeriodTooShort();
+        if (period > MAX_VOTING_PERIOD) revert VotingPeriodTooLong();
         
         uint256 proposalId = proposalCount++;
         Proposal storage proposal = proposals[proposalId];
@@ -330,14 +359,14 @@ contract TEMPL {
      * @param _support Vote choice (true = yes, false = no)
      */
     function vote(uint256 _proposalId, bool _support) external onlyMember {
-        require(_proposalId < proposalCount, "Invalid proposal");
+        if (_proposalId >= proposalCount) revert InvalidProposal();
         Proposal storage proposal = proposals[_proposalId];
-        
-        require(block.timestamp < proposal.endTime, "Voting ended");
-        require(!proposal.hasVoted[msg.sender], "Already voted");
-        
-        require(purchaseTimestamp[msg.sender] < proposal.createdAt,
-            "You joined after this proposal was created");
+
+        if (block.timestamp >= proposal.endTime) revert VotingEnded();
+        if (proposal.hasVoted[msg.sender]) revert AlreadyVoted();
+
+        if (purchaseTimestamp[msg.sender] >= proposal.createdAt)
+            revert JoinedAfterProposal();
         
         proposal.hasVoted[msg.sender] = true;
         proposal.voteChoice[msg.sender] = _support;
@@ -362,13 +391,13 @@ contract TEMPL {
      * @param _proposalId Proposal to execute
      */
     function executeProposal(uint256 _proposalId) external nonReentrant {
-        require(_proposalId < proposalCount, "Invalid proposal");
+        if (_proposalId >= proposalCount) revert InvalidProposal();
         Proposal storage proposal = proposals[_proposalId];
 
-        require(block.timestamp >= proposal.endTime, "Voting not ended");
-        require(!proposal.executed, "Already executed");
+        if (block.timestamp < proposal.endTime) revert VotingNotEnded();
+        if (proposal.executed) revert AlreadyExecuted();
 
-        require(proposal.yesVotes > proposal.noVotes, "Proposal did not pass");
+        if (proposal.yesVotes <= proposal.noVotes) revert ProposalNotPassed();
 
         proposal.executed = true;
 
@@ -379,7 +408,7 @@ contract TEMPL {
         }
 
         (bool success, bytes memory returnData) = address(this).call(proposal.callData);
-        require(success, "Proposal execution failed");
+        if (!success) revert ProposalExecutionFailed();
 
         emit ProposalExecuted(_proposalId, true, returnData);
     }
@@ -391,30 +420,16 @@ contract TEMPL {
      * @param reason Withdrawal explanation
      */
     function withdrawTreasuryDAO(address recipient, uint256 amount, string memory reason) external onlyDAO {
-        require(recipient != address(0), "Invalid recipient");
-        require(amount > 0, "Amount must be greater than 0");
-        require(amount <= treasuryBalance, "Insufficient treasury balance");
+        if (recipient == address(0)) revert InvalidRecipient();
+        if (amount == 0) revert AmountZero();
+        if (amount > treasuryBalance) revert InsufficientTreasuryBalance();
         
         treasuryBalance -= amount;
 
         emit TreasuryAction(proposalCount - 1, recipient, amount, reason);
 
         bool success = IERC20(accessToken).transfer(recipient, amount);
-        require(success, "Treasury withdrawal failed");
-    }
-    
-    /**
-     * @notice DEPRECATED - Use withdrawTreasuryDAO through proposal
-     */
-    function withdrawTreasury(address, uint256) external pure {
-        revert("Treasury withdrawals require DAO approval. Use withdrawTreasuryDAO through a proposal.");
-    }
-    
-    /**
-     * @notice DEPRECATED - Use withdrawAllTreasuryDAO through proposal
-     */
-    function withdrawAllTreasury(address) external pure {
-        revert("Treasury withdrawals require DAO approval. Use withdrawTreasuryDAO through a proposal.");
+        if (!success) revert TransferFailed();
     }
     
     /**
@@ -423,8 +438,8 @@ contract TEMPL {
      * @param reason Withdrawal explanation
      */
     function withdrawAllTreasuryDAO(address recipient, string memory reason) external onlyDAO {
-        require(recipient != address(0), "Invalid recipient");
-        require(treasuryBalance > 0, "No treasury funds");
+        if (recipient == address(0)) revert InvalidRecipient();
+        if (treasuryBalance == 0) revert NoTreasuryFunds();
         
         uint256 amount = treasuryBalance;
         treasuryBalance = 0;
@@ -432,7 +447,7 @@ contract TEMPL {
         emit TreasuryAction(proposalCount - 1, recipient, amount, reason);
 
         bool success = IERC20(accessToken).transfer(recipient, amount);
-        require(success, "Treasury withdrawal failed");
+        if (!success) revert TransferFailed();
     }
     
     /**
@@ -444,11 +459,11 @@ contract TEMPL {
      * @return Result data from external call
      */
     function executeDAO(address target, uint256 value, bytes memory data) external onlyDAO returns (bytes memory) {
-        require(target != address(0), "Invalid target");
-        
+        if (target == address(0)) revert InvalidTarget();
+
         (bool success, bytes memory result) = target.call{value: value}(data);
-        require(success, "External call failed");
-        
+        if (!success) revert ExternalCallFailed();
+
         return result;
     }
     
@@ -462,18 +477,11 @@ contract TEMPL {
             accessToken = _token;
         }
         if (_entryFee > 0) {
-            require(_entryFee >= 10, "Entry fee too small for distribution");
+            if (_entryFee < 10) revert EntryFeeTooSmall();
             entryFee = _entryFee;
         }
         
         emit ConfigUpdated(accessToken, entryFee);
-    }
-    
-    /**
-     * @notice DEPRECATED - Use updateConfigDAO through proposal
-     */
-    function updateConfig(address, uint256) external pure {
-        revert("Config updates require DAO approval. Use updateConfigDAO through a proposal.");
     }
     
     /**
@@ -483,13 +491,6 @@ contract TEMPL {
     function setPausedDAO(bool _paused) external onlyDAO {
         paused = _paused;
         emit ContractPaused(_paused);
-    }
-    
-    /**
-     * @notice DEPRECATED - Use setPausedDAO through proposal
-     */
-    function setPaused(bool) external pure {
-        revert("Pause/unpause requires DAO approval. Use setPausedDAO through a proposal.");
     }
     
     /**
@@ -524,14 +525,14 @@ contract TEMPL {
      */
     function claimMemberPool() external nonReentrant {
         uint256 claimable = getClaimablePoolAmount(msg.sender);
-        require(claimable > 0, "No rewards to claim");
-        require(memberPoolBalance >= claimable, "Insufficient pool balance");
+        if (claimable == 0) revert NoRewardsToClaim();
+        if (memberPoolBalance < claimable) revert InsufficientPoolBalance();
         
         memberPoolClaims[msg.sender] += claimable;
         memberPoolBalance -= claimable;
         
         bool success = IERC20(accessToken).transfer(msg.sender, claimable);
-        require(success, "Pool claim transfer failed");
+        if (!success) revert TransferFailed();
         
         emit MemberPoolClaimed(msg.sender, claimable, block.timestamp);
     }
@@ -558,7 +559,7 @@ contract TEMPL {
         bool executed,
         bool passed
     ) {
-        require(_proposalId < proposalCount, "Invalid proposal");
+        if (_proposalId >= proposalCount) revert InvalidProposal();
         Proposal storage proposal = proposals[_proposalId];
         
         return (
@@ -581,7 +582,7 @@ contract TEMPL {
      * @return support Vote choice (true = yes, false = no)
      */
     function hasVoted(uint256 _proposalId, address _voter) external view returns (bool voted, bool support) {
-        require(_proposalId < proposalCount, "Invalid proposal");
+        if (_proposalId >= proposalCount) revert InvalidProposal();
         Proposal storage proposal = proposals[_proposalId];
         
         return (proposal.hasVoted[_voter], proposal.voteChoice[_voter]);
@@ -626,7 +627,7 @@ contract TEMPL {
         uint256[] memory proposalIds,
         bool hasMore
     ) {
-        require(limit > 0 && limit <= 100, "Limit must be 1-100");
+        if (limit == 0 || limit > 100) revert LimitOutOfRange();
         
         uint256[] memory tempIds = new uint256[](limit);
         uint256 count = 0;
