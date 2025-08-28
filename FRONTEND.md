@@ -42,6 +42,7 @@ The frontend is a React single page app that interacts with the TEMPL contract a
 
 - **Wallet connection** via `ethers` and `window.ethereum`.
 - **Contract deployment** and group creation handled in `deployTempl` (token address, protocol fee recipient, entry fee, and vote weights).
+- The backend currently ignores the `protocolFeeRecipient` field. In production a contract factory will set this to the protocol treasury address automatically.
 - **Default configuration** – priest vote weight and priest weight threshold default to 10.
 - **Pay‑to‑join flow** in `purchaseAndJoin` verifies membership and requests an invite from the backend (defaults to `http://localhost:3001`).
 - **Chat UI** streams XMTP messages and sends new ones using the group inbox ID.
