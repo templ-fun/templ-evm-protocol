@@ -36,7 +36,6 @@ echo ""
 
 REQUIRED_VARS=(
     "JWT_SECRET"
-    "PRIEST_ADDRESS"
     "FRONTEND_URL"
     "RPC_URL"
     "TOKEN_ADDRESS"
@@ -213,7 +212,11 @@ echo ""
 
 echo -e "${GREEN}Configuration Summary:${NC}"
 echo "  Network: BASE (Chain ID: 8453)"
-echo "  Priest: $PRIEST_ADDRESS"
+if [ -n "$PRIEST_ADDRESS" ]; then
+    echo "  Priest: $PRIEST_ADDRESS"
+else
+    echo "  Priest: deployer wallet"
+fi
 echo "  Token: $TOKEN_ADDRESS"
 echo "  Entry Fee: $ENTRY_FEE (50% treasury, 50% burn)"
 echo "  Group ID: $TELEGRAM_GROUP_ID"
