@@ -137,51 +137,6 @@ getClaimablePoolAmount()       // O(n) complexity documented
 getVoteWeight()                // Returns weighted power
 ```
 
-## 🔄 Integration Examples
-
-### Web3 Integration
-```javascript
-import { ethers } from 'ethers'
-
-const provider = new ethers.JsonRpcProvider(BASE_RPC)
-const templ = new ethers.Contract(TEMPL_ADDRESS, ABI, signer)
-
-// Join as member (protected against reentrancy)
-await token.approve(TEMPL_ADDRESS, ENTRY_FEE)
-await templ.purchaseAccess()
-
-// Claim rewards safely
-const claimable = await templ.getClaimablePoolAmount(address)
-if (claimable > 0) {
-  await templ.claimMemberPool()
-}
-
-// Create proposal (anti-spam protected)
-const calldata = templ.interface.encodeFunctionData(
-  'withdrawTreasuryDAO',
-  [recipient, amount, 'Development fund']
-)
-await templ.createProposal(title, description, calldata, duration)
-
-// Get proposals efficiently (paginated)
-const [proposals, hasMore] = await templ.getActiveProposalsPaginated(0, 10)
-```
-
-### DeFi Integrations
-```javascript
-// Stake treasury tokens
-const stakeData = stakingContract.interface.encodeFunctionData('stake', [amount])
-const calldata = templ.interface.encodeFunctionData('executeDAO', [
-  STAKING_CONTRACT, 0, stakeData
-])
-
-// Swap tokens via DEX
-const swapData = router.interface.encodeFunctionData('swap', [...params])
-const calldata = templ.interface.encodeFunctionData('executeDAO', [
-  DEX_ROUTER, 0, swapData
-])
-```
-
 ## 🧪 Testing
 
 ### Test Coverage
