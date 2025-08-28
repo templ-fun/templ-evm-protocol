@@ -236,12 +236,10 @@ describe("Priest Vote Weight Feature", function () {
             }
 
             // Create proposal
-            const nextId = await templ.proposalCount();
             const iface = new ethers.Interface([
-                "function withdrawTreasuryDAO(uint256,address,uint256,string)"
+                "function withdrawTreasuryDAO(address,uint256,string)"
             ]);
             const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
-                nextId,
                 priest.address,
                 ethers.parseUnits("10", 18),
                 "Priest withdrawal"

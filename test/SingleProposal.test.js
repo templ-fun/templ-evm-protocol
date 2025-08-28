@@ -46,12 +46,10 @@ describe("Single Active Proposal Restriction", function () {
 
     describe("Single Proposal Per Account", function () {
         it("Should allow a member to create their first proposal", async function () {
-            const nextId = await templ.proposalCount();
             const iface = new ethers.Interface([
-                "function withdrawTreasuryDAO(uint256,address,uint256,string)"
+                "function withdrawTreasuryDAO(address,uint256,string)"
             ]);
             const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
-                nextId,
                 member1.address,
                 ethers.parseUnits("10", 18),
                 "Test withdrawal"
@@ -69,12 +67,10 @@ describe("Single Active Proposal Restriction", function () {
         });
 
         it("Should prevent creating a second proposal while one is active", async function () {
-            const nextId = await templ.proposalCount();
             const iface = new ethers.Interface([
-                "function withdrawTreasuryDAO(uint256,address,uint256,string)"
+                "function withdrawTreasuryDAO(address,uint256,string)"
             ]);
             const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
-                nextId,
                 member1.address,
                 ethers.parseUnits("10", 18),
                 "Test"
@@ -98,12 +94,10 @@ describe("Single Active Proposal Restriction", function () {
         });
 
         it("Should allow different members to have active proposals simultaneously", async function () {
-            const nextId = await templ.proposalCount();
             const iface = new ethers.Interface([
-                "function withdrawTreasuryDAO(uint256,address,uint256,string)"
+                "function withdrawTreasuryDAO(address,uint256,string)"
             ]);
             const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
-                nextId,
                 member1.address,
                 ethers.parseUnits("10", 18),
                 "Test"
@@ -184,12 +178,10 @@ describe("Single Active Proposal Restriction", function () {
         });
 
         it("Should allow creating new proposal after previous one expires without execution", async function () {
-            const nextId = await templ.proposalCount();
             const iface = new ethers.Interface([
-                "function withdrawTreasuryDAO(uint256,address,uint256,string)"
+                "function withdrawTreasuryDAO(address,uint256,string)"
             ]);
             const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
-                nextId,
                 member1.address,
                 ethers.parseUnits("10", 18),
                 "Test"
@@ -220,12 +212,10 @@ describe("Single Active Proposal Restriction", function () {
         });
 
         it("Should allow creating new proposal if previous one failed to pass", async function () {
-            const nextId = await templ.proposalCount();
             const iface = new ethers.Interface([
-                "function withdrawTreasuryDAO(uint256,address,uint256,string)"
+                "function withdrawTreasuryDAO(address,uint256,string)"
             ]);
             const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
-                nextId,
                 member1.address,
                 ethers.parseUnits("10", 18),
                 "Test"
@@ -300,12 +290,10 @@ describe("Single Active Proposal Restriction", function () {
             await ethers.provider.send("evm_mine");
 
             // Now should be able to create another proposal since the first expired
-            const nextId = await templ.proposalCount();
             const iface = new ethers.Interface([
-                "function withdrawTreasuryDAO(uint256,address,uint256,string)"
+                "function withdrawTreasuryDAO(address,uint256,string)"
             ]);
             const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
-                nextId,
                 member1.address,
                 ethers.parseUnits("10", 18),
                 "Test"

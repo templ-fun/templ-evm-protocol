@@ -76,13 +76,13 @@ function executeProposal(uint256 _proposalId) external
 
 **Contract Implementation:**
 ```solidity
-function withdrawTreasuryDAO(uint256 proposalId, address recipient, uint256 amount, string memory reason) external onlyDAO nonReentrant
+function withdrawTreasuryDAO(address recipient, uint256 amount, string memory reason) external onlyDAO
 ```
-- Emits the supplied `proposalId` in the `TreasuryAction` event
+- Uses the internally tracked proposal ID in the `TreasuryAction` event
 
 **README Documentation:**
 - ✅ Correctly states "Proposal + reentrancy guard"
-- ⚠️ **UNCLEAR**: Must now pass the proposal ID when encoding call data
+- ✅ Updated: Proposal ID derived internally; callers do not supply it
 
 ---
 

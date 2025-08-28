@@ -100,6 +100,9 @@ contract TEMPL {
     uint256 public constant DEFAULT_VOTING_PERIOD = 7 days;
     uint256 public constant MIN_VOTING_PERIOD = 7 days;
     uint256 public constant MAX_VOTING_PERIOD = 30 days;
+
+    // Tracks the proposal currently being executed
+    uint256 private executingProposalId = type(uint256).max;
     
     uint256 public totalPurchases;
     uint256 public totalBurned;
@@ -392,9 +395,19 @@ contract TEMPL {
             activeProposalId[proposer] = 0;
         }
 
+        _startProposalExecution(_proposalId);
         bytes memory returnData = _executeCall(proposal.callData);
+        _clearProposalExecution();
 
         emit ProposalExecuted(_proposalId, true, returnData);
+    }
+
+    function _startProposalExecution(uint256 proposalId) internal {
+        executingProposalId = proposalId;
+    }
+
+    function _clearProposalExecution() internal {
+        executingProposalId = type(uint256).max;
     }
 
     function _executeCall(bytes memory callData) internal returns (bytes memory) {
@@ -427,7 +440,6 @@ contract TEMPL {
      * @param reason Withdrawal explanation
      */
     function withdrawTreasuryDAO(
-        uint256 proposalId,
         address recipient,
         uint256 amount,
         string memory reason
@@ -435,6 +447,9 @@ contract TEMPL {
         if (recipient == address(0)) revert InvalidRecipient();
         if (amount == 0) revert AmountZero();
         if (amount > treasuryBalance) revert InsufficientTreasuryBalance();
+
+        uint256 proposalId = executingProposalId;
+        if (proposalId >= proposalCount) revert InvalidProposal();
 
         treasuryBalance -= amount;
 
@@ -449,12 +464,14 @@ contract TEMPL {
      * @param reason Withdrawal explanation
      */
     function withdrawAllTreasuryDAO(
-        uint256 proposalId,
         address recipient,
         string memory reason
     ) external onlyDAO {
         if (recipient == address(0)) revert InvalidRecipient();
         if (treasuryBalance == 0) revert NoTreasuryFunds();
+
+        uint256 proposalId = executingProposalId;
+        if (proposalId >= proposalCount) revert InvalidProposal();
 
         uint256 amount = treasuryBalance;
         treasuryBalance = 0;
