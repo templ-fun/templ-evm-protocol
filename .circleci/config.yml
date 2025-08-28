@@ -1,48 +1,61 @@
 version: 2.1
-
 jobs:
-  test:
+  contracts:
     docker:
-      - image: cimg/node:18.20
+      - image: cimg/node:20.8
     steps:
       - checkout
       - run:
           name: Install dependencies
           command: npm ci
       - run:
-          name: Run tests
+          name: Run contract tests
           command: npm test
 
   slither:
     docker:
-      - image: cimg/node:18.20
+      - image: cimg/node:20.8
     steps:
       - checkout
       - run:
           name: Install dependencies
           command: npm ci
       - run:
-          name: Install slither
+          name: Install Slither
           command: |
             sudo apt-get update && sudo apt-get install -y python3-pip
             python3 -m pip install --user slither-analyzer solc-select
             echo 'export PATH="$PATH:/home/circleci/.local/bin"' >> $BASH_ENV
             export PATH="$PATH:/home/circleci/.local/bin"
-            solc-select install 0.8.23
-            solc-select use 0.8.23
+            solc-select install 0.8.19
+            solc-select use 0.8.19
       - run:
-          name: Run slither
-          command: slither contracts/TEMPL.sol
+          name: Run Slither
+          command: npm run slither
+
+  web:
+    docker:
+      - image: cimg/node:20.8
+    steps:
+      - checkout
+      - run: npm ci
+      - run: npm --prefix backend ci
+      - run: npm --prefix frontend ci
+      - run: npm --prefix backend test
+      - run: npm --prefix frontend test
+      - run: npm --prefix backend run lint
+      - run: npm --prefix frontend run lint
+      - run: npm --prefix frontend run build
 
 workflows:
   test:
     jobs:
-      - test:
+      - contracts:
           filters:
             branches:
               only: main
-      - test:
-          name: test-pr
+      - contracts:
+          name: contracts-pr
           filters:
             branches:
               ignore: main
@@ -52,6 +65,15 @@ workflows:
               only: main
       - slither:
           name: slither-pr
+          filters:
+            branches:
+              ignore: main
+      - web:
+          filters:
+            branches:
+              only: main
+      - web:
+          name: web-pr
           filters:
             branches:
               ignore: main
