@@ -18,6 +18,8 @@ Use the docs below to audit each component:
    git clone <repo>
    cd templ
    npm install
+   npm --prefix backend install
+   npm --prefix frontend install
    npm run prepare # enable Husky pre‑commit
    ```
 2. **Run tests**
