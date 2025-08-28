@@ -14,7 +14,7 @@ export async function deployTempl({ ethers, xmtp, signer, walletAddress, tokenAd
   );
   await contract.waitForDeployment();
   const contractAddress = await contract.getAddress();
-  const message = `create:${contractAddress}`;
+  const message = `create:${contractAddress.toLowerCase()}`;
   const signature = await signer.signMessage(message);
   const res = await fetch(`${backendUrl}/templs`, {
     method: 'POST',
@@ -38,7 +38,7 @@ export async function purchaseAndJoin({ ethers, xmtp, signer, walletAddress, tem
     const tx = await contract.purchaseAccess();
     await tx.wait();
   }
-  const message = `join:${templAddress}`;
+  const message = `join:${templAddress.toLowerCase()}`;
   const signature = await signer.signMessage(message);
   const res = await fetch(`${backendUrl}/join`, {
     method: 'POST',
