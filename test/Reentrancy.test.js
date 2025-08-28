@@ -1,0 +1,46 @@
+const { expect } = require("chai");
+const { ethers } = require("hardhat");
+
+describe("Reentrancy protection", function () {
+  const ENTRY_FEE = ethers.parseUnits("100", 18);
+  let accounts;
+  let templ;
+  let token;
+
+  beforeEach(async function () {
+    accounts = await ethers.getSigners();
+    const [owner, priest] = accounts;
+
+    const ReentrantToken = await ethers.getContractFactory("ReentrantToken");
+    token = await ReentrantToken.deploy("Reentrant Token", "RNT");
+    await token.waitForDeployment();
+
+    const TEMPL = await ethers.getContractFactory("TEMPL");
+    templ = await TEMPL.deploy(
+      priest.address,
+      priest.address,
+      await token.getAddress(),
+      ENTRY_FEE,
+      10,
+      10
+    );
+    await templ.waitForDeployment();
+
+    await token.setTempl(await templ.getAddress());
+  });
+
+  it("reverts with ReentrantCall when purchaseAccess is reentered", async function () {
+    const attacker = accounts[2];
+
+    await token.mint(attacker.address, ENTRY_FEE);
+    await token.connect(attacker).approve(await templ.getAddress(), ENTRY_FEE);
+
+    // enable reentrancy attack
+    await token.setAttack(true);
+
+    await expect(
+      templ.connect(attacker).purchaseAccess()
+    ).to.be.revertedWithCustomError(templ, "ReentrantCall");
+  });
+});
+

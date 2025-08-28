@@ -403,4 +403,41 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
             console.log(`   Final pool balance: ${ethers.formatEther(expectedPoolBalance)}`);
         });
     });
+
+    describe("DAO Sweep Impact", function () {
+        it("Should revert claim after DAO sweeps remaining pool balance", async function () {
+            // Two members join to generate pool rewards
+            await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
+            await templ.connect(member1).purchaseAccess();
+
+            await token.connect(member2).approve(await templ.getAddress(), ENTRY_FEE);
+            await templ.connect(member2).purchaseAccess();
+
+            const claimable = await templ.getClaimablePoolAmount(member1.address);
+            expect(claimable).to.be.gt(0);
+
+            // DAO sweeps remaining pool balance
+            const callData = templ.interface.encodeFunctionData(
+                "sweepMemberRewardRemainderDAO",
+                [priest.address]
+            );
+            await templ.connect(member1).createProposal(
+                "Sweep Pool",
+                "drain pool balance",
+                callData,
+                7 * 24 * 60 * 60
+            );
+            await templ.connect(member1).vote(0, true);
+            await templ.connect(member2).vote(0, true);
+            await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
+            await ethers.provider.send("evm_mine");
+            await templ.executeProposal(0);
+
+            expect(await templ.memberPoolBalance()).to.equal(0);
+            expect(await templ.getClaimablePoolAmount(member1.address)).to.equal(claimable);
+
+            await expect(templ.connect(member1).claimMemberPool())
+                .to.be.revertedWithCustomError(templ, "InsufficientPoolBalance");
+        });
+    });
 });

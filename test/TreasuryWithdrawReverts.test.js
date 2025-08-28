@@ -1,0 +1,193 @@
+const { expect } = require("chai");
+const { ethers } = require("hardhat");
+
+describe("Treasury Withdrawal Reverts", function () {
+    let templ;
+    let token;
+    let owner, priest, user1, user2, treasuryRecipient;
+    const ENTRY_FEE = ethers.parseUnits("100", 18);
+    const TOKEN_SUPPLY = ethers.parseUnits("10000", 18);
+
+    beforeEach(async function () {
+        [owner, priest, user1, user2, treasuryRecipient] = await ethers.getSigners();
+
+        const Token = await ethers.getContractFactory("TestToken");
+        token = await Token.deploy("Test Token", "TEST", 18);
+        await token.waitForDeployment();
+
+        const TEMPL = await ethers.getContractFactory("TEMPL");
+        templ = await TEMPL.deploy(
+            priest.address,
+            priest.address,
+            await token.getAddress(),
+            ENTRY_FEE,
+            10,
+            10
+        );
+        await templ.waitForDeployment();
+
+        // Mint tokens and add two members
+        await token.mint(user1.address, TOKEN_SUPPLY);
+        await token.mint(user2.address, TOKEN_SUPPLY);
+
+        await token.connect(user1).approve(await templ.getAddress(), ENTRY_FEE);
+        await templ.connect(user1).purchaseAccess();
+
+        await token.connect(user2).approve(await templ.getAddress(), ENTRY_FEE);
+        await templ.connect(user2).purchaseAccess();
+    });
+
+    describe("withdrawTreasuryDAO", function () {
+        it("should revert with InvalidRecipient", async function () {
+            const iface = new ethers.Interface([
+                "function withdrawTreasuryDAO(address,uint256,string)"
+            ]);
+            const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
+                ethers.ZeroAddress,
+                ethers.parseUnits("1", 18),
+                "Invalid"
+            ]);
+
+            await templ.connect(user1).createProposal(
+                "Bad withdraw",
+                "Invalid recipient",
+                callData,
+                7 * 24 * 60 * 60
+            );
+
+            await templ.connect(user1).vote(0, true);
+            await templ.connect(user2).vote(0, true);
+
+            await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
+            await ethers.provider.send("evm_mine");
+
+            await expect(templ.executeProposal(0))
+                .to.be.revertedWithCustomError(templ, "InvalidRecipient");
+        });
+
+        it("should revert with AmountZero", async function () {
+            const iface = new ethers.Interface([
+                "function withdrawTreasuryDAO(address,uint256,string)"
+            ]);
+            const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
+                user1.address,
+                0,
+                "Zero"
+            ]);
+
+            await templ.connect(user1).createProposal(
+                "Zero amount",
+                "Zero withdrawal",
+                callData,
+                7 * 24 * 60 * 60
+            );
+
+            await templ.connect(user1).vote(0, true);
+            await templ.connect(user2).vote(0, true);
+
+            await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
+            await ethers.provider.send("evm_mine");
+
+            await expect(templ.executeProposal(0))
+                .to.be.revertedWithCustomError(templ, "AmountZero");
+        });
+
+        it("should revert with InsufficientTreasuryBalance", async function () {
+            const iface = new ethers.Interface([
+                "function withdrawTreasuryDAO(address,uint256,string)"
+            ]);
+            const treasury = await templ.treasuryBalance();
+            const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
+                user1.address,
+                treasury + 1n,
+                "Too much"
+            ]);
+
+            await templ.connect(user1).createProposal(
+                "Too much",
+                "Exceeds balance",
+                callData,
+                7 * 24 * 60 * 60
+            );
+
+            await templ.connect(user1).vote(0, true);
+            await templ.connect(user2).vote(0, true);
+
+            await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
+            await ethers.provider.send("evm_mine");
+
+            await expect(templ.executeProposal(0))
+                .to.be.revertedWithCustomError(templ, "InsufficientTreasuryBalance");
+        });
+    });
+
+    describe("withdrawAllTreasuryDAO", function () {
+        it("should revert with InvalidRecipient", async function () {
+            const iface = new ethers.Interface([
+                "function withdrawAllTreasuryDAO(address,string)"
+            ]);
+            const callData = iface.encodeFunctionData("withdrawAllTreasuryDAO", [
+                ethers.ZeroAddress,
+                "Invalid"
+            ]);
+
+            await templ.connect(user1).createProposal(
+                "Withdraw all bad",
+                "Invalid recipient",
+                callData,
+                7 * 24 * 60 * 60
+            );
+
+            await templ.connect(user1).vote(0, true);
+            await templ.connect(user2).vote(0, true);
+
+            await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
+            await ethers.provider.send("evm_mine");
+
+            await expect(templ.executeProposal(0))
+                .to.be.revertedWithCustomError(templ, "InvalidRecipient");
+        });
+
+        it("should revert with NoTreasuryFunds", async function () {
+            const iface = new ethers.Interface([
+                "function withdrawAllTreasuryDAO(address,string)"
+            ]);
+            const callData = iface.encodeFunctionData("withdrawAllTreasuryDAO", [
+                user1.address,
+                "Valid"
+            ]);
+
+            // First, withdraw all funds to empty treasury
+            await templ.connect(user1).createProposal(
+                "Withdraw all",
+                "Empty treasury",
+                callData,
+                7 * 24 * 60 * 60
+            );
+
+            await templ.connect(user1).vote(0, true);
+            await templ.connect(user2).vote(0, true);
+            await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
+            await ethers.provider.send("evm_mine");
+            await templ.executeProposal(0);
+            expect(await templ.treasuryBalance()).to.equal(0n);
+
+            // Now, attempt another withdrawAll with empty treasury
+            await templ.connect(user1).createProposal(
+                "Withdraw again",
+                "No funds",
+                callData,
+                7 * 24 * 60 * 60
+            );
+
+            await templ.connect(user1).vote(1, true);
+            await templ.connect(user2).vote(1, true);
+            await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
+            await ethers.provider.send("evm_mine");
+
+            await expect(templ.executeProposal(1))
+                .to.be.revertedWithCustomError(templ, "NoTreasuryFunds");
+        });
+    });
+});
+
