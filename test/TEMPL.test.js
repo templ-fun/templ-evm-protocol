@@ -174,6 +174,33 @@ describe("TEMPL Contract with DAO Governance", function () {
             )).to.be.revertedWithCustomError(templ, "VotingPeriodTooLong");
         });
 
+        it("Should require non-empty title", async function () {
+            await expect(templ.connect(user1).createProposal(
+                "",
+                "Description",
+                "0x12345678",
+                7 * 24 * 60 * 60
+            )).to.be.revertedWithCustomError(templ, "TitleRequired");
+        });
+
+        it("Should require non-empty description", async function () {
+            await expect(templ.connect(user1).createProposal(
+                "Test",
+                "",
+                "0x12345678",
+                7 * 24 * 60 * 60
+            )).to.be.revertedWithCustomError(templ, "DescriptionRequired");
+        });
+
+        it("Should require non-empty call data", async function () {
+            await expect(templ.connect(user1).createProposal(
+                "Test",
+                "Description",
+                "0x",
+                7 * 24 * 60 * 60
+            )).to.be.revertedWithCustomError(templ, "CallDataRequired");
+        });
+
         it("Should reject call data shorter than 4 bytes", async function () {
             await expect(
                 templ.connect(user1).createProposal(
