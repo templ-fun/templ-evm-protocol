@@ -22,10 +22,10 @@ Rewards per member are `30% / n` where `n` is current membership count (integer 
 - **Spam prevention** – `!hasActiveProposal[msg.sender]`.
 
 ## Configuration
-The deployment script expects the following environment variables:
+The deployment script accepts the following environment variables (the priest defaults to the deploying wallet):
 
 ```env
-PRIEST_ADDRESS=0x...
+# PRIEST_ADDRESS=0x...       # optional override for tests
 PROTOCOL_FEE_RECIPIENT=0x...
 TOKEN_ADDRESS=0x...
 ENTRY_FEE=100000000000000000 # wei
