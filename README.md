@@ -41,7 +41,15 @@ Use the docs below to audit each component:
    ```
 
 ## Deploying to production
-1. Configure `.env` with priest address, fee recipient, token address and Base RPC.
+1. Create a `.env` file in the project root with values for key addresses and RPC. The deploying wallet becomes the priest automatically, so `PRIEST_ADDRESS` is only needed when overriding in tests.
+   ```env
+   PROTOCOL_FEE_RECIPIENT=0x...
+   TOKEN_ADDRESS=0x...
+   RPC_URL=https://mainnet.base.org
+   PRIVATE_KEY=0x...
+   BOT_PRIVATE_KEY=0x...
+   ```
+   See [`CONTRACTS.md`](./CONTRACTS.md) for the full list of supported variables.
 2. Run the full test suite and Slither analysis.
 3. Deploy with `scripts/deploy.js` and record the contract address and XMTP group ID.
 4. Host the backend bot (e.g., on a VM) using the contract address and bot key.
