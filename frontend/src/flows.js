@@ -1,4 +1,4 @@
-export async function deployTempl({ ethers, xmtp, signer, walletAddress, tokenAddress, entryFee, priestVoteWeight, priestWeightThreshold, templArtifact, backendUrl = 'https://localhost:3001' }) {
+export async function deployTempl({ ethers, xmtp, signer, walletAddress, tokenAddress, entryFee, priestVoteWeight, priestWeightThreshold, templArtifact, backendUrl = 'http://localhost:3001' }) {
   const factory = new ethers.ContractFactory(
     templArtifact.abi,
     templArtifact.bytecode,
@@ -31,7 +31,7 @@ export async function deployTempl({ ethers, xmtp, signer, walletAddress, tokenAd
   return { contractAddress, group, groupId: data.groupId };
 }
 
-export async function purchaseAndJoin({ ethers, xmtp, signer, walletAddress, templAddress, templArtifact, backendUrl = 'https://localhost:3001' }) {
+export async function purchaseAndJoin({ ethers, xmtp, signer, walletAddress, templAddress, templArtifact, backendUrl = 'http://localhost:3001' }) {
   const contract = new ethers.Contract(templAddress, templArtifact.abi, signer);
   const purchased = await contract.hasPurchased(walletAddress);
   if (!purchased) {
