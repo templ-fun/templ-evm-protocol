@@ -36,6 +36,7 @@ error InvalidEntryFee();
 error NoRewardsToClaim();
 error InsufficientPoolBalance();
 error LimitOutOfRange();
+error NonZeroBalances();
 
 /**
  * @title TEMPL - Token Entry Management Protocol with DAO Governance
@@ -426,7 +427,15 @@ contract TEMPL {
             return _executeDAO(target, value, data);
         } else {
             (bool success, bytes memory returnData) = address(this).call(callData);
-            if (!success) revert ProposalExecutionFailed();
+            if (!success) {
+                if (returnData.length > 0) {
+                    assembly {
+                        revert(add(returnData, 32), mload(returnData))
+                    }
+                } else {
+                    revert ProposalExecutionFailed();
+                }
+            }
             return returnData;
         }
     }
@@ -515,7 +524,12 @@ contract TEMPL {
      */
     function updateConfigDAO(address _token, uint256 _entryFee) external onlyDAO {
         if (_token != address(0)) {
-            accessToken = _token;
+            if (_token != accessToken) {
+                if (treasuryBalance > 0 || memberPoolBalance > 0) {
+                    revert NonZeroBalances();
+                }
+                accessToken = _token;
+            }
         }
         if (_entryFee > 0) {
             if (_entryFee < 10) revert EntryFeeTooSmall();
