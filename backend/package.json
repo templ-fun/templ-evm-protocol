@@ -9,17 +9,18 @@
     "lint:fix": "eslint . --fix"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "ethers": "^6.15.0",
-    "dotenv": "^16.3.1",
     "@xmtp/xmtp-js": "^13.0.4",
+    "dotenv": "^16.3.1",
+    "ethers": "^6.15.0",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.0.0",
     "helmet": "^7.0.0",
-    "express-rate-limit": "^7.0.0"
+    "pino": "^9.9.0"
   },
   "devDependencies": {
-    "supertest": "^6.3.3",
-    "eslint": "^9.33.0",
     "@eslint/js": "^9.33.0",
-    "globals": "^16.3.0"
+    "eslint": "^9.33.0",
+    "globals": "^16.3.0",
+    "supertest": "^6.3.3"
   }
 }

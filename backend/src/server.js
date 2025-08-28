@@ -5,6 +5,9 @@ import { Client } from '@xmtp/xmtp-js';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import fs from 'fs/promises';
+import pino from 'pino';
+
+const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
 /**
  * Build an express application for managing TEMPL groups.
@@ -185,7 +188,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const app = createApp({ xmtp, hasPurchased });
   const port = process.env.PORT || 3001;
   app.listen(port, () => {
-    console.log(`TEMPL backend listening on ${port}`);
+    logger.info({ port }, 'TEMPL backend listening');
   });
 }
 

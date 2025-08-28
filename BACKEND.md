@@ -18,6 +18,25 @@ Start the API service:
 npm --prefix backend start
 ```
 
+## Logging
+
+Structured logging is provided by [Pino](https://github.com/pinojs/pino).
+Logs are emitted in JSON format to `stdout` and the verbosity can be
+controlled with the `LOG_LEVEL` environment variable. In development you
+may pipe the output through `pino-pretty` for human‑readable logs.
+
+### Log rotation
+
+For production deployments, pipe the process output to a file and rotate it
+with a tool such as `logrotate`:
+
+```bash
+node src/server.js | pino >> /var/log/templ/backend.log
+```
+
+Configure your rotation utility to roll the log file periodically to avoid
+unbounded growth.
+
 ## Testing
 
 Run unit tests and lint:
