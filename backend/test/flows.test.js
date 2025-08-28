@@ -45,6 +45,40 @@ test('creates templ and returns group id', async () => {
     .expect(200, { groupId: fakeGroup.id });
 });
 
+test('rejects templ creation with malformed addresses', async () => {
+  const fakeGroup = { id: 'group-x', addMembers: async () => {}, removeMembers: async () => {} };
+  const fakeXmtp = { conversations: { newGroup: async () => fakeGroup } };
+  const hasPurchased = async () => false;
+
+  const app = createApp({ xmtp: fakeXmtp, hasPurchased });
+  const signature = await wallets.priest.signMessage(`create:${addresses.contract}`);
+  await request(app)
+    .post('/templs')
+    .send({
+      contractAddress: 'not-an-address',
+      priestAddress: 'also-bad',
+      signature
+    })
+    .expect(400);
+});
+
+test('rejects templ creation with bad signature', async () => {
+  const fakeGroup = { id: 'group-y', addMembers: async () => {}, removeMembers: async () => {} };
+  const fakeXmtp = { conversations: { newGroup: async () => fakeGroup } };
+  const hasPurchased = async () => false;
+
+  const app = createApp({ xmtp: fakeXmtp, hasPurchased });
+  const signature = await wallets.member.signMessage(`create:${addresses.contract}`);
+  await request(app)
+    .post('/templs')
+    .send({
+      contractAddress: addresses.contract,
+      priestAddress: addresses.priest,
+      signature
+    })
+    .expect(403);
+});
+
 test('join requires on-chain purchase', async () => {
   const added = [];
   const fakeGroup = {
@@ -154,6 +188,37 @@ test('only priest can mute members', async () => {
     .expect(200, { ok: true });
 
   assert.deepEqual(removed, [addresses.member]);
+});
+
+test('rejects mute with bad signature', async () => {
+  const fakeGroup = { id: 'group-3a', addMembers: async () => {}, removeMembers: async () => {} };
+  const fakeXmtp = { conversations: { newGroup: async () => fakeGroup } };
+  const hasPurchased = async () => true;
+
+  const app = createApp({ xmtp: fakeXmtp, hasPurchased });
+
+  const templSig = await wallets.priest.signMessage(`create:${addresses.contract}`);
+  await request(app)
+    .post('/templs')
+    .send({
+      contractAddress: addresses.contract,
+      priestAddress: addresses.priest,
+      signature: templSig
+    })
+    .expect(200);
+
+  const badSig = await wallets.member.signMessage(
+    `mute:${addresses.contract}:${addresses.member.toLowerCase()}`
+  );
+  await request(app)
+    .post('/mute')
+    .send({
+      contractAddress: addresses.contract,
+      priestAddress: addresses.priest,
+      targetAddress: addresses.member,
+      signature: badSig
+    })
+    .expect(403);
 });
 
 test('broadcasts proposal and vote events to group', async () => {
