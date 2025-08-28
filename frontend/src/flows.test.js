@@ -47,8 +47,8 @@ describe('templ flows', () => {
       '0xfee',
       '0xdef',
       BigInt(1),
-      BigInt(1),
-      BigInt(1)
+      BigInt(10),
+      BigInt(10)
     );
     expect(signer.signMessage).toHaveBeenCalledWith('create:0xdead');
     expect(result).toEqual({ contractAddress: '0xDeAd', group: 'groupObj', groupId: 'group-1' });
