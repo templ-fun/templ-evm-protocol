@@ -79,6 +79,67 @@ test('rejects templ creation with bad signature', async () => {
     .expect(403);
 });
 
+test('rejects join with malformed addresses', async () => {
+  const app = createApp({
+    xmtp: { conversations: {} },
+    hasPurchased: async () => true
+  });
+  const signature = await wallets.member.signMessage(`join:${addresses.contract}`);
+  await request(app)
+    .post('/join')
+    .send({
+      contractAddress: 'not-an-address',
+      memberAddress: 'also-bad',
+      signature
+    })
+    .expect(400);
+});
+
+test('rejects join with bad signature', async () => {
+  const fakeGroup = { id: 'group-bad', addMembers: async () => {}, removeMembers: async () => {} };
+  const fakeXmtp = { conversations: { newGroup: async () => fakeGroup } };
+  const hasPurchased = async () => true;
+
+  const app = createApp({ xmtp: fakeXmtp, hasPurchased });
+
+  const templSig = await wallets.priest.signMessage(`create:${addresses.contract}`);
+  await request(app)
+    .post('/templs')
+    .send({
+      contractAddress: addresses.contract,
+      priestAddress: addresses.priest,
+      signature: templSig
+    })
+    .expect(200);
+
+  const badSig = await wallets.stranger.signMessage(`join:${addresses.contract}`);
+  await request(app)
+    .post('/join')
+    .send({
+      contractAddress: addresses.contract,
+      memberAddress: addresses.member,
+      signature: badSig
+    })
+    .expect(403);
+});
+
+test('rejects join for unknown templ', async () => {
+  const app = createApp({
+    xmtp: { conversations: {} },
+    hasPurchased: async () => true
+  });
+
+  const signature = await wallets.member.signMessage(`join:${addresses.contract}`);
+  await request(app)
+    .post('/join')
+    .send({
+      contractAddress: addresses.contract,
+      memberAddress: addresses.member,
+      signature
+    })
+    .expect(404);
+});
+
 test('join requires on-chain purchase', async () => {
   const added = [];
   const fakeGroup = {
