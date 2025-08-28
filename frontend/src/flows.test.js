@@ -34,6 +34,7 @@ describe('templ flows', () => {
       signer,
       walletAddress: '0xabc',
       tokenAddress: '0xdef',
+      protocolFeeRecipient: '0xfee',
       entryFee: '1',
       priestVoteWeight: '10',
       priestWeightThreshold: '10',
@@ -41,7 +42,14 @@ describe('templ flows', () => {
     });
 
     expect(ethers.ContractFactory).toHaveBeenCalled();
-    expect(factory.deploy).toHaveBeenCalled();
+    expect(factory.deploy).toHaveBeenCalledWith(
+      '0xabc',
+      '0xfee',
+      '0xdef',
+      BigInt(1),
+      BigInt(1),
+      BigInt(1)
+    );
     expect(signer.signMessage).toHaveBeenCalledWith('create:0xdead');
     expect(result).toEqual({ contractAddress: '0xDeAd', group: 'groupObj', groupId: 'group-1' });
   });
