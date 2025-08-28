@@ -121,14 +121,14 @@ executeProposal()        // Anyone can execute; reverts restore state
 
 ### DAO-Only Functions (Double Protected)
 ```solidity
-withdrawTreasuryDAO()    // Proposal + reentrancy guard
-withdrawAllTreasuryDAO() // Withdraw entire treasury balance (proposal required)
+withdrawTreasuryDAO()    // Proposal; reentrancy guarded by executeProposal/executeDAO
+withdrawAllTreasuryDAO() // Full withdrawal; relies on executeProposal/executeDAO guard
 executeDAO()             // Arbitrary calls protected
 updateConfigDAO()        // Change parameters (no reentrancy; token change risky)
 setPausedDAO()           // Pause new memberships
 ```
 
-`updateConfigDAO` can change the access token; executing this mid-flight may break accounting. Both `updateConfigDAO` and `setPausedDAO` omit reentrancy guards. Treasury withdrawals derive the proposal ID internally and emit it with the `TreasuryAction` event.
+`updateConfigDAO` can change the access token; executing this mid-flight may break accounting. Both `updateConfigDAO` and `setPausedDAO` omit reentrancy guards. Treasury withdrawals omit a local `nonReentrant` modifier because they can only be invoked through proposals. The surrounding `executeProposal`/`executeDAO` functions are `nonReentrant`, providing the actual protection. While this centralizes the guard and saves gas, a future change that bypasses these executors could expose reentrancy risk. Treasury actions still derive the proposal ID internally and emit it with the `TreasuryAction` event.
 
 ### Gas-Optimized Views
 ```solidity
