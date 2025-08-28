@@ -251,6 +251,15 @@ describe("TEMPL - Proposal Pagination", function () {
       expect(activeIds).to.not.include(3); // Expired
       expect(activeIds).to.not.include(4); // Executed
     });
+
+    it("Should return hasMore false when offset exceeds proposal count", async function () {
+      const calldata = templ.interface.encodeFunctionData("setPausedDAO", [false]);
+      await templ.connect(priest).createProposal("P0", "D0", calldata, 7 * 24 * 60 * 60);
+
+      const [ids, hasMore] = await templ.getActiveProposalsPaginated(5, 10);
+      expect(ids).to.have.lengthOf(0);
+      expect(hasMore).to.be.false;
+    });
   });
 
   describe("Backwards compatibility", function () {
