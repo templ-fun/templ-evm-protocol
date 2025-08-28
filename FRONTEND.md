@@ -18,20 +18,12 @@ Start a hot-reloading dev server:
 npm --prefix frontend run dev
 ```
 
-## Build
-
-Create production assets in `frontend/dist`:
-
-```bash
-npm --prefix frontend run build
-```
-
-## Testing
-
-Run unit tests:
+## Tests & Lint
 
 ```bash
 npm --prefix frontend test
+npm --prefix frontend run lint
+npm --prefix frontend run build
 ```
 
 ## Auditing
@@ -47,13 +39,6 @@ The frontend is a React single page app that interacts with the TEMPL contract a
 - **Pay‑to‑join flow** in `purchaseAndJoin` verifies membership and requests an invite from the backend (defaults to `http://localhost:3001`).
 - **Chat UI** streams XMTP messages and sends new ones using the group inbox ID.
 - **Governance** – members create proposals and vote from the chat; `watchProposals` updates the UI when events fire.
-
-## Tests & lint
-```bash
-npm --prefix frontend test
-npm --prefix frontend run lint
-npm --prefix frontend run build
-```
 
 ## Security considerations
 - Membership verification happens on-chain; bypassing the backend would require membership proof.
