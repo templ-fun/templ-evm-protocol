@@ -36,8 +36,8 @@ describe('templ flows', () => {
       tokenAddress: '0xdef',
       protocolFeeRecipient: '0xfee',
       entryFee: '1',
-      priestVoteWeight: '1',
-      priestWeightThreshold: '1',
+      priestVoteWeight: '10',
+      priestWeightThreshold: '10',
       templArtifact
     });
 

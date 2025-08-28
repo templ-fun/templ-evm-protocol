@@ -28,8 +28,8 @@ function App() {
   const [tokenAddress, setTokenAddress] = useState('');
   const [protocolFeeRecipient, setProtocolFeeRecipient] = useState('');
   const [entryFee, setEntryFee] = useState('');
-  const [priestVoteWeight, setPriestVoteWeight] = useState('1');
-  const [priestWeightThreshold, setPriestWeightThreshold] = useState('1');
+  const [priestVoteWeight, setPriestVoteWeight] = useState('10');
+  const [priestWeightThreshold, setPriestWeightThreshold] = useState('10');
 
   // joining form
   const [templAddress, setTemplAddress] = useState('');
@@ -193,12 +193,12 @@ function App() {
               onChange={(e) => setEntryFee(e.target.value)}
             />
             <input
-              placeholder="Priest vote weight"
+              placeholder="Priest vote weight (default 10)"
               value={priestVoteWeight}
               onChange={(e) => setPriestVoteWeight(e.target.value)}
             />
             <input
-              placeholder="Priest weight threshold"
+              placeholder="Priest weight threshold (default 10)"
               value={priestWeightThreshold}
               onChange={(e) => setPriestWeightThreshold(e.target.value)}
             />
