@@ -2,5 +2,9 @@
   "fail_on": "medium",
   "solc_remaps": [
     "@openzeppelin=node_modules/@openzeppelin"
-  ]
+  ],
+  "detectors_to_exclude": [
+    "arbitrary-send-eth"
+  ],
+  "_note": "ReturnEth.sol intentionally returns funds to the caller, so we suppress arbitrary-send-eth warnings."
 }
