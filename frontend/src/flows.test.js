@@ -18,7 +18,7 @@ describe('templ flows', () => {
   it('deployTempl deploys contract and registers group', async () => {
     const fakeContract = {
       waitForDeployment: vi.fn(),
-      getAddress: vi.fn().mockResolvedValue('0xdead')
+      getAddress: vi.fn().mockResolvedValue('0xDeAd')
     };
     const factory = { deploy: vi.fn().mockResolvedValue(fakeContract) };
     const ethers = {
@@ -42,7 +42,8 @@ describe('templ flows', () => {
 
     expect(ethers.ContractFactory).toHaveBeenCalled();
     expect(factory.deploy).toHaveBeenCalled();
-    expect(result).toEqual({ contractAddress: '0xdead', group: 'groupObj', groupId: 'group-1' });
+    expect(signer.signMessage).toHaveBeenCalledWith('create:0xdead');
+    expect(result).toEqual({ contractAddress: '0xDeAd', group: 'groupObj', groupId: 'group-1' });
   });
 
   it('purchaseAndJoin purchases access and joins group', async () => {
@@ -60,11 +61,12 @@ describe('templ flows', () => {
       xmtp,
       signer,
       walletAddress: '0xabc',
-      templAddress: '0xtempl',
+      templAddress: '0xTeMpL',
       templArtifact
     });
 
     expect(contract.purchaseAccess).toHaveBeenCalled();
+    expect(signer.signMessage).toHaveBeenCalledWith('join:0xtempl');
     expect(result).toEqual({ group: 'groupObj2', groupId: 'group-2' });
   });
 
