@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
+import { EventEmitter } from 'node:events';
 import { createApp } from '../src/server.js';
 
 const addresses = {
@@ -113,5 +114,51 @@ test('only priest can mute members', async () => {
     .expect(200, { ok: true });
 
   assert.deepEqual(removed, [addresses.member]);
+});
+
+test('broadcasts proposal and vote events to group', async () => {
+  const messages = [];
+  const fakeGroup = {
+    id: 'group-3',
+    addMembers: async () => {},
+    removeMembers: async () => {},
+    send: async (msg) => {
+      messages.push(JSON.parse(msg));
+    }
+  };
+  const fakeXmtp = {
+    conversations: {
+      newGroup: async () => fakeGroup
+    }
+  };
+  const emitter = new EventEmitter();
+  const connectContract = () => emitter;
+  const hasPurchased = async () => false;
+
+  const app = createApp({ xmtp: fakeXmtp, hasPurchased, connectContract });
+
+  await request(app)
+    .post('/templs')
+    .send({ contractAddress: addresses.contract, priestAddress: addresses.priest })
+    .expect(200);
+
+  emitter.emit('ProposalCreated', 1, addresses.member, 'Test', 123);
+  emitter.emit('VoteCast', 1, addresses.member, true);
+
+  assert.deepEqual(messages, [
+    {
+      type: 'proposal',
+      id: 1,
+      proposer: addresses.member,
+      title: 'Test',
+      endTime: 123
+    },
+    {
+      type: 'vote',
+      id: 1,
+      voter: addresses.member,
+      support: true
+    }
+  ]);
 });
 

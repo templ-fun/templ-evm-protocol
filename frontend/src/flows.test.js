@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { deployTempl, purchaseAndJoin, sendMessage } from './flows.js';
+import {
+  deployTempl,
+  purchaseAndJoin,
+  sendMessage,
+  proposeVote,
+  voteOnProposal,
+  watchProposals
+} from './flows.js';
 
 const templArtifact = { abi: [], bytecode: '0x' };
 
@@ -63,5 +70,51 @@ describe('templ flows', () => {
     const group = { send: vi.fn() };
     await sendMessage({ group, content: 'hello' });
     expect(group.send).toHaveBeenCalledWith('hello');
+  });
+
+  it('proposeVote calls createProposal', async () => {
+    const contract = {
+      createProposal: vi.fn().mockResolvedValue({ wait: vi.fn() })
+    };
+    const ethers = { Contract: vi.fn().mockReturnValue(contract) };
+    await proposeVote({
+      ethers,
+      signer: {},
+      templAddress: '0xtempl',
+      templArtifact,
+      title: 't',
+      description: 'd',
+      callData: '0x00'
+    });
+    expect(contract.createProposal).toHaveBeenCalled();
+  });
+
+  it('voteOnProposal calls vote', async () => {
+    const contract = { vote: vi.fn().mockResolvedValue({ wait: vi.fn() }) };
+    const ethers = { Contract: vi.fn().mockReturnValue(contract) };
+    await voteOnProposal({
+      ethers,
+      signer: {},
+      templAddress: '0xtempl',
+      templArtifact,
+      proposalId: 1,
+      support: true
+    });
+    expect(contract.vote).toHaveBeenCalledWith(1, true);
+  });
+
+  it('watchProposals registers event listeners', () => {
+    const on = vi.fn();
+    const contract = { on };
+    const ethers = { Contract: vi.fn().mockReturnValue(contract) };
+    watchProposals({
+      ethers,
+      provider: {},
+      templAddress: '0xtempl',
+      templArtifact,
+      onProposal: vi.fn(),
+      onVote: vi.fn()
+    });
+    expect(on).toHaveBeenCalledTimes(2);
   });
 });

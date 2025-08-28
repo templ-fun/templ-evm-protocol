@@ -2,7 +2,14 @@ import { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 import { Client } from '@xmtp/xmtp-js';
 import templArtifact from './contracts/TEMPL.json';
-import { deployTempl, purchaseAndJoin, sendMessage } from './flows.js';
+import {
+  deployTempl,
+  purchaseAndJoin,
+  sendMessage,
+  proposeVote,
+  voteOnProposal,
+  watchProposals
+} from './flows.js';
 import './App.css';
 
 function App() {
@@ -12,6 +19,10 @@ function App() {
   const [group, setGroup] = useState();
   const [messages, setMessages] = useState([]);
   const [messageInput, setMessageInput] = useState('');
+  const [proposals, setProposals] = useState([]);
+  const [proposalTitle, setProposalTitle] = useState('');
+  const [proposalDesc, setProposalDesc] = useState('');
+  const [proposalCalldata, setProposalCalldata] = useState('');
 
   // deployment form
   const [tokenAddress, setTokenAddress] = useState('');
@@ -83,10 +94,61 @@ function App() {
     };
   }, [group]);
 
+  useEffect(() => {
+    if (!templAddress || !signer) return;
+    const provider = signer.provider;
+    const contract = watchProposals({
+      ethers,
+      provider,
+      templAddress,
+      templArtifact,
+      onProposal: (p) => setProposals((prev) => [...prev, { ...p, yes: 0, no: 0 }]),
+      onVote: (v) =>
+        setProposals((prev) =>
+          prev.map((p) =>
+            p.id === v.id
+              ? { ...p, [v.support ? 'yes' : 'no']: (p[v.support ? 'yes' : 'no'] || 0) + 1 }
+              : p
+          )
+        )
+    });
+    return () => {
+      contract.removeAllListeners();
+    };
+  }, [templAddress, signer]);
+
   async function handleSend() {
     if (!group || !messageInput) return;
     await sendMessage({ group, content: messageInput });
     setMessageInput('');
+  }
+
+  async function handlePropose() {
+    if (!templAddress || !signer) return;
+    await proposeVote({
+      ethers,
+      signer,
+      templAddress,
+      templArtifact,
+      title: proposalTitle,
+      description: proposalDesc,
+      callData: proposalCalldata
+    });
+    setProposalTitle('');
+    setProposalDesc('');
+    setProposalCalldata('');
+  }
+
+  async function handleVote(id, support) {
+    if (!templAddress || !signer) return;
+    await voteOnProposal({
+      ethers,
+      signer,
+      templAddress,
+      templArtifact,
+      proposalId: id,
+      support
+    });
   }
 
   return (
@@ -154,6 +216,39 @@ function App() {
             onChange={(e) => setMessageInput(e.target.value)}
           />
           <button onClick={handleSend}>Send</button>
+
+          <div className="proposal-form">
+            <h3>New Proposal</h3>
+            <input
+              placeholder="Title"
+              value={proposalTitle}
+              onChange={(e) => setProposalTitle(e.target.value)}
+            />
+            <input
+              placeholder="Description"
+              value={proposalDesc}
+              onChange={(e) => setProposalDesc(e.target.value)}
+            />
+            <input
+              placeholder="Call data"
+              value={proposalCalldata}
+              onChange={(e) => setProposalCalldata(e.target.value)}
+            />
+            <button onClick={handlePropose}>Propose</button>
+          </div>
+
+          <div className="proposals">
+            <h3>Proposals</h3>
+            {proposals.map((p) => (
+              <div key={p.id} className="proposal">
+                <p>
+                  {p.title} — yes {p.yes || 0} / no {p.no || 0}
+                </p>
+                <button onClick={() => handleVote(p.id, true)}>Yes</button>
+                <button onClick={() => handleVote(p.id, false)}>No</button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

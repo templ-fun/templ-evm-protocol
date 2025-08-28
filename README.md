@@ -52,5 +52,7 @@ Use the docs below to audit each component:
 2. **Pay‑to‑join** – wallet calls `purchaseAccess` and backend invites it into the group.
 3. **Messaging** – members send and receive XMTP messages in the group chat.
 4. **Priest muting** – priest can mute members but cannot rug the group.
+5. **Proposal creation** – any member drafts a call‑data proposal from the chat UI.
+6. **Voting** – members cast yes/no votes and see live tallies as events arrive.
 
 For detailed auditing guides, continue with the docs linked above.

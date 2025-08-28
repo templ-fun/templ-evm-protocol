@@ -10,8 +10,10 @@ import { Client } from '@xmtp/xmtp-js';
  * @param {object} deps
  * @param {object} deps.xmtp XMTP client instance
  * @param {(contract: string, member: string) => Promise<boolean>} deps.hasPurchased
+ * @param {(address: string) => { on: Function }} [deps.connectContract] Optional
+ *        factory returning a contract instance used to watch on-chain events.
  */
-export function createApp({ xmtp, hasPurchased }) {
+export function createApp({ xmtp, hasPurchased, connectContract }) {
   const app = express();
   app.use(express.json());
 
@@ -27,10 +29,38 @@ export function createApp({ xmtp, hasPurchased }) {
         title: `Templ ${contractAddress}`,
         description: 'Private TEMPL group'
       });
-      groups.set(contractAddress.toLowerCase(), {
+      const record = {
         group,
         priest: priestAddress.toLowerCase()
-      });
+      };
+
+      if (connectContract) {
+        const contract = connectContract(contractAddress);
+        contract.on('ProposalCreated', (id, proposer, title, endTime) => {
+          group.send(
+            JSON.stringify({
+              type: 'proposal',
+              id: Number(id),
+              proposer,
+              title,
+              endTime: Number(endTime)
+            })
+          );
+        });
+        contract.on('VoteCast', (id, voter, support) => {
+          group.send(
+            JSON.stringify({
+              type: 'vote',
+              id: Number(id),
+              voter,
+              support: Boolean(support)
+            })
+          );
+        });
+        record.contract = contract;
+      }
+
+      groups.set(contractAddress.toLowerCase(), record);
       res.json({ groupId: group.id });
     } catch (err) {
       res.status(500).json({ error: err.message });

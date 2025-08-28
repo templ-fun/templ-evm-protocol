@@ -51,3 +51,49 @@ export async function purchaseAndJoin({ ethers, xmtp, signer, walletAddress, tem
 export async function sendMessage({ group, content }) {
   await group.send(content);
 }
+
+export async function proposeVote({
+  ethers,
+  signer,
+  templAddress,
+  templArtifact,
+  title,
+  description,
+  callData,
+  votingPeriod = 0
+}) {
+  const contract = new ethers.Contract(templAddress, templArtifact.abi, signer);
+  const tx = await contract.createProposal(title, description, callData, votingPeriod);
+  await tx.wait();
+}
+
+export async function voteOnProposal({
+  ethers,
+  signer,
+  templAddress,
+  templArtifact,
+  proposalId,
+  support
+}) {
+  const contract = new ethers.Contract(templAddress, templArtifact.abi, signer);
+  const tx = await contract.vote(proposalId, support);
+  await tx.wait();
+}
+
+export function watchProposals({
+  ethers,
+  provider,
+  templAddress,
+  templArtifact,
+  onProposal,
+  onVote
+}) {
+  const contract = new ethers.Contract(templAddress, templArtifact.abi, provider);
+  contract.on('ProposalCreated', (id, proposer, title, endTime) => {
+    onProposal({ id: Number(id), proposer, title, endTime: Number(endTime) });
+  });
+  contract.on('VoteCast', (id, voter, support) => {
+    onVote({ id: Number(id), voter, support: Boolean(support) });
+  });
+  return contract;
+}
