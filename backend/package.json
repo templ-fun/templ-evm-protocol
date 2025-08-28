@@ -11,5 +11,8 @@
     "ethers": "^6.15.0",
     "dotenv": "^16.3.1",
     "@xmtp/xmtp-js": "^13.0.4"
+  },
+  "devDependencies": {
+    "supertest": "^6.3.3"
   }
 }

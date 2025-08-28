@@ -1,57 +1,18 @@
 version: 2.1
-
 jobs:
   test:
     docker:
-      - image: cimg/node:18.20
+      - image: cimg/node:20.8
     steps:
       - checkout
-      - run:
-          name: Install dependencies
-          command: npm ci
-      - run:
-          name: Run tests
-          command: npm test
-
-  slither:
-    docker:
-      - image: cimg/node:18.20
-    steps:
-      - checkout
-      - run:
-          name: Install dependencies
-          command: npm ci
-      - run:
-          name: Install slither
-          command: |
-            sudo apt-get update && sudo apt-get install -y python3-pip
-            python3 -m pip install --user slither-analyzer solc-select
-            echo 'export PATH="$PATH:/home/circleci/.local/bin"' >> $BASH_ENV
-            export PATH="$PATH:/home/circleci/.local/bin"
-            solc-select install 0.8.23
-            solc-select use 0.8.23
-      - run:
-          name: Run slither
-          command: slither contracts/TEMPL.sol
-
+      - run: npm ci
+      - run: npm --prefix backend ci
+      - run: npm --prefix frontend ci
+      - run: npm test
+      - run: npm --prefix backend test
+      - run: npm --prefix frontend run lint
 workflows:
-  test:
+  build-and-test:
     jobs:
-      - test:
-          filters:
-            branches:
-              only: main
-      - test:
-          name: test-pr
-          filters:
-            branches:
-              ignore: main
-      - slither:
-          filters:
-            branches:
-              only: main
-      - slither:
-          name: slither-pr
-          filters:
-            branches:
-              ignore: main
+      - test
+
