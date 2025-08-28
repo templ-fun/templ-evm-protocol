@@ -5,10 +5,17 @@ This document describes the on-chain portion of TEMPL for auditors.
 ## Economic model
 - **30% Burn** – sent to `0xdead`.
 - **30% Treasury** – DAO controlled, released via proposals.
-- **30% Member pool** – distributed pro‑rata to existing members (`n - 1`).
+- **30% Member pool** – accrued for existing members (`n - 1`) to claim via `claimMemberPool`.
 - **10% Protocol fee** – forwarded to a fixed recipient.
 
 Rewards per existing member are `30% / (n - 1)` where `n` is current membership count (integer division may leave dust).
+
+### Member pool claims
+The member pool does not distribute automatically. Each entry fee increases
+`memberPoolBalance` and `cumulativeMemberRewards`. Existing members accrue a
+share of each new membership, tracked per address. To withdraw these rewards, a
+member calls `claimMemberPool`, which transfers their unclaimed balance and
+updates their snapshot. Unclaimed rewards continue to accumulate until claimed.
 
 ## DAO governance
 - One member, one vote. The priest has `PRIEST_VOTE_WEIGHT` until membership exceeds `PRIEST_WEIGHT_THRESHOLD`.
@@ -63,12 +70,12 @@ sequenceDiagram
     participant TEMPL
     participant Burn
     participant Treasury
-    participant Members
+    participant MemberPool
     participant Protocol
     User->>TEMPL: purchaseAccess()
     TEMPL->>Burn: 30% burn
     TEMPL->>Treasury: 30% deposit
-    TEMPL->>Members: 30% distributed
+    TEMPL->>MemberPool: 30% claimable
     TEMPL->>Protocol: 10% fee
     TEMPL-->>User: Membership granted
 ```
