@@ -17,6 +17,15 @@ BOT_PRIVATE_KEY=0x...
 ```
 Optional environment variables include port selection.
 
+## Persistence
+- Group metadata persists to `backend/groups.json`. Each TEMPL contract address maps to its XMTP group ID and priest address.
+- On startup the file is read and groups are reopened; if the file is missing the backend starts empty.
+
+### Operational implications
+- Back up `backend/groups.json` to avoid losing group state across deployments.
+- The file may become stale if groups are modified outside the backend; prune or edit entries when necessary.
+- To reset or migrate, stop the service and delete or update `backend/groups.json`. A fresh file is created when new groups are added.
+
 ## Tests
 Run unit tests and lint:
 ```bash
