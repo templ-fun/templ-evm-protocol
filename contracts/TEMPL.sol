@@ -584,6 +584,19 @@ contract TEMPL {
 
         emit MemberPoolClaimed(msg.sender, claimable, block.timestamp);
     }
+
+    /**
+     * @notice Sweep remaining member pool balance to a specified recipient
+     * @param recipient Address to receive the swept remainder
+     */
+    function sweepMemberRewardRemainderDAO(address recipient) external onlyDAO {
+        if (recipient == address(0)) revert InvalidRecipient();
+        uint256 amount = memberPoolBalance;
+        if (amount == 0) revert AmountZero();
+        memberPoolBalance = 0;
+        memberRewardRemainder = 0;
+        IERC20(accessToken).safeTransfer(recipient, amount);
+    }
     
     /**
      * @notice Get comprehensive proposal information
