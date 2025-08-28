@@ -1,4 +1,3 @@
-// Tests for claimMemberPool access control
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
