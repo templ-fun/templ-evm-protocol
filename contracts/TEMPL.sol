@@ -219,6 +219,9 @@ contract TEMPL {
         paused = false;
         _status = _NOT_ENTERED;
     }
+
+    /// @notice Allow contract to receive ETH
+    receive() external payable {}
     
     /**
      * @notice Purchase membership with automatic fee distribution
