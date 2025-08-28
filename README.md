@@ -55,4 +55,4 @@ Use the docs below to audit each component:
 5. **Proposal creation** – any member drafts a call‑data proposal from the chat UI.
 6. **Voting** – members cast yes/no votes and see live tallies as events arrive.
 
-For detailed auditing guides, continue with the docs linked above.
+For auditing guides, continue with the docs linked above.
