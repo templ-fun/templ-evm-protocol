@@ -31,11 +31,17 @@ Use the docs below to audit each component:
    ```bash
    npx hardhat run scripts/deploy.js --network base
    ```
-4. **Launch backend bot**
+4. **Create backend environment**
+   ```env
+   # backend/.env
+   RPC_URL=https://mainnet.base.org
+   BOT_PRIVATE_KEY=0x...
+   ```
+5. **Launch backend bot**
    ```bash
    npm --prefix backend start
    ```
-5. **Start frontend**
+6. **Start frontend**
    ```bash
    npm --prefix frontend run dev
    ```
