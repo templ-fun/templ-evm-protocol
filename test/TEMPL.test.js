@@ -92,10 +92,15 @@ describe("TEMPL Contract with DAO Governance", function () {
         it("Should prevent double purchase", async function () {
             await token.connect(user1).approve(await templ.getAddress(), ENTRY_FEE);
             await templ.connect(user1).purchaseAccess();
-            
+
             await token.connect(user1).approve(await templ.getAddress(), ENTRY_FEE);
             await expect(templ.connect(user1).purchaseAccess())
                 .to.be.revertedWithCustomError(templ, "AlreadyPurchased");
+        });
+
+        it("Should revert when user has insufficient balance", async function () {
+            await expect(templ.connect(owner).purchaseAccess())
+                .to.be.revertedWithCustomError(templ, "InsufficientBalance");
         });
     });
 
