@@ -889,6 +889,47 @@ describe("TEMPL Contract with DAO Governance", function () {
             const proposal = await templ.getProposal(0);
             expect(proposal.executed).to.be.false;
         });
+
+        it("Should reject executeDAO calls transferring accessToken", async function () {
+            const erc20 = new ethers.Interface([
+                "function transfer(address,uint256) returns (bool)"
+            ]);
+            const transferCalldata = erc20.encodeFunctionData("transfer", [
+                user3.address,
+                ethers.parseUnits("10", 18)
+            ]);
+
+            const iface = new ethers.Interface([
+                "function executeDAO(address,uint256,bytes)"
+            ]);
+            const callData = iface.encodeFunctionData("executeDAO", [
+                await token.getAddress(),
+                0,
+                transferCalldata
+            ]);
+
+            await templ.connect(user1).createProposal(
+                "Transfer Access Token",
+                "Attempt access token transfer",
+                callData,
+                7 * 24 * 60 * 60
+            );
+
+            await templ.connect(user1).vote(0, true);
+            await templ.connect(user2).vote(0, true);
+
+            await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
+            await ethers.provider.send("evm_mine");
+
+            const treasuryBefore = await templ.treasuryBalance();
+            const contractBalanceBefore = await token.balanceOf(await templ.getAddress());
+
+            await expect(templ.executeProposal(0))
+                .to.be.revertedWithCustomError(templ, "InvalidTarget");
+
+            expect(await templ.treasuryBalance()).to.equal(treasuryBefore);
+            expect(await token.balanceOf(await templ.getAddress())).to.equal(contractBalanceBefore);
+        });
     });
 
     describe("Comprehensive View Functions", function () {

@@ -501,7 +501,7 @@ contract TEMPL {
     }
 
     function _executeDAO(address target, uint256 value, bytes memory data) internal returns (bytes memory) {
-        if (target == address(0)) revert InvalidTarget();
+        if (target == address(0) || target == accessToken) revert InvalidTarget();
 
         // slither-disable-next-line arbitrary-send-eth
         (bool success, bytes memory result) = target.call{value: value}(data);
