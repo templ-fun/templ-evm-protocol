@@ -33,7 +33,9 @@ Use the docs below to audit each component:
    ```bash
    npx hardhat run scripts/deploy.js --network base
    ```
-4. **Create backend environment**
+4. **Configure environment files**
+   - **Root `.env`** – used by deployment scripts. Populate values like RPC URL and deployer keys (see *Deploying to production* below).
+   - **`backend/.env`** – used only by the XMTP bot. Copy any shared values from the root `.env` or provide separate ones as needed.
    ```env
    # backend/.env
    RPC_URL=https://mainnet.base.org
@@ -49,7 +51,7 @@ Use the docs below to audit each component:
    ```
 
 ## Deploying to production
-1. Create a `.env` file in the project root with values for key addresses and RPC. The deploying wallet becomes the priest automatically, so `PRIEST_ADDRESS` is only needed when overriding in tests.
+1. Create a `.env` file in the project root for the deployment scripts. This file is distinct from `backend/.env` used by the bot; copy any overlapping variables (e.g., `RPC_URL`, keys) into `backend/.env` if the bot requires them. The deploying wallet becomes the priest automatically, so `PRIEST_ADDRESS` is only needed when overriding in tests.
     ```env
     PROTOCOL_FEE_RECIPIENT=0x...
     TOKEN_ADDRESS=0x...
