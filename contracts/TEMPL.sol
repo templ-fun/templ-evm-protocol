@@ -567,7 +567,7 @@ contract TEMPL {
     /**
      * @notice Claim accumulated rewards from member pool
      */
-    function claimMemberPool() external nonReentrant {
+    function claimMemberPool() external onlyMember nonReentrant {
         uint256 claimable = getClaimablePoolAmount(msg.sender);
         if (claimable == 0) revert NoRewardsToClaim();
         uint256 distributable = memberPoolBalance - memberRewardRemainder;

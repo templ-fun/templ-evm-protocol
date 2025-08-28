@@ -113,7 +113,7 @@ BASESCAN_API_KEY=...              # For verification
 ### Protected Member Functions
 ```solidity
 purchaseAccess()         // Join (reentrancy protected, pausable)
-claimMemberPool()        // Claim rewards safely
+claimMemberPool()        // Claim rewards safely (reverts if not a member)
 createProposal()         // 1 active limit enforced, auto-cleanup & default period
 vote()                   // Flash-loan protected
 executeProposal()        // Anyone can execute; reverts restore state

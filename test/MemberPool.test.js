@@ -328,7 +328,7 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
 
         it("Should prevent claims when member hasn't purchased", async function () {
             await expect(templ.connect(member1).claimMemberPool())
-                .to.be.revertedWithCustomError(templ, "NoRewardsToClaim");
+                .to.be.revertedWithCustomError(templ, "NotMember");
         });
 
         it("Should handle partial claims correctly", async function () {
