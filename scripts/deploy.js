@@ -19,7 +19,8 @@ async function main() {
     throw new Error("TOKEN_ADDRESS not set in environment");
   }
 
-  if (parseInt(ENTRY_FEE) < 10) {
+  const entryFee = BigInt(ENTRY_FEE);
+  if (entryFee < 10n) {
     throw new Error("ENTRY_FEE must be at least 10 wei for proper distribution");
   }
 
@@ -32,14 +33,14 @@ async function main() {
   console.log("Priest Vote Weight:", PRIEST_VOTE_WEIGHT);
   console.log("Priest Weight Threshold:", PRIEST_WEIGHT_THRESHOLD, "members");
   
-  const thirtyPercent = Math.floor((parseInt(ENTRY_FEE) * 30) / 100);
-  const tenPercent = Math.floor((parseInt(ENTRY_FEE) * 10) / 100);
-  console.log("\nEntry Fee:", ENTRY_FEE);
+  const thirtyPercent = (entryFee * 30n) / 100n;
+  const tenPercent = (entryFee * 10n) / 100n;
+  console.log("\nEntry Fee:", entryFee.toString());
   console.log("Fee Split:");
-  console.log("  - 30% Burn:", thirtyPercent);
-  console.log("  - 30% DAO Treasury:", thirtyPercent);
-  console.log("  - 30% Member Pool:", thirtyPercent);
-  console.log("  - 10% Protocol Fee:", tenPercent);
+  console.log("  - 30% Burn:", thirtyPercent.toString());
+  console.log("  - 30% DAO Treasury:", thirtyPercent.toString());
+  console.log("  - 30% Member Pool:", thirtyPercent.toString());
+  console.log("  - 10% Protocol Fee:", tenPercent.toString());
   
   const [deployer] = await hre.ethers.getSigners();
   console.log("\nDeploying from:", deployer.address);
@@ -47,7 +48,7 @@ async function main() {
   console.log("Deployer balance:", hre.ethers.formatEther(balance), "ETH");
   
   const network = await hre.ethers.provider.getNetwork();
-  console.log("Network Chain ID:", network.chainId);
+  console.log("Network Chain ID:", network.chainId.toString());
   
   if (network.chainId === 8453n) {
     console.log("\n⚠️  Deploying to BASE MAINNET");
