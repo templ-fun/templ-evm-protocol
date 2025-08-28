@@ -240,6 +240,19 @@ describe("TEMPL Contract with DAO Governance", function () {
             expect(hasVoted.voted).to.be.true;
             expect(hasVoted.support).to.be.false;
         });
+
+        it("Should revert when voting on a non-existent proposal", async function () {
+            await expect(templ.connect(user1).vote(1, true))
+                .to.be.revertedWithCustomError(templ, "InvalidProposal");
+        });
+
+        it("Should revert when voting after the voting period has ended", async function () {
+            await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
+            await ethers.provider.send("evm_mine");
+
+            await expect(templ.connect(user1).vote(0, true))
+                .to.be.revertedWithCustomError(templ, "VotingEnded");
+        });
     });
 
     describe("DAO Proposal Execution", function () {
