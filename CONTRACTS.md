@@ -23,6 +23,8 @@ updates their snapshot. Unclaimed rewards continue to accumulate until claimed.
 - Voting period: 7–30 days (`0` defaults to 7).
 - Any address can execute a passed proposal; execution is atomic.
 - Internal calls use `_executeCall` and `_executeDAO` to allow nested operations without reentrancy.
+- Proposals invoking `executeDAO` can perform arbitrary external calls with ETH.
+  Members must review such proposals carefully to prevent malicious fund transfers or unsafe interactions.
 
 ### Anti‑attack checks
 - **Flash loan protection** – `purchaseTimestamp[voter] < proposal.createdAt`.
