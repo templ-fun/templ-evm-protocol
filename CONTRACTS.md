@@ -28,13 +28,17 @@ The deployment script accepts the following environment variables (the priest de
 # PRIEST_ADDRESS=0x...       # optional override for tests
 PROTOCOL_FEE_RECIPIENT=0x... # required
 TOKEN_ADDRESS=0x...          # required
-ENTRY_FEE=100000000000000000 # wei, minimum 10
+ENTRY_FEE=100000000000000000 # wei, minimum 10 and divisible by 10
 PRIEST_VOTE_WEIGHT=10
 PRIEST_WEIGHT_THRESHOLD=10
 PRIVATE_KEY=0x...
 RPC_URL=https://mainnet.base.org
 BASESCAN_API_KEY=...
 ```
+
+`ENTRY_FEE` must be at least 10 and a multiple of 10 so the 30/30/30/10
+fee split divides evenly. This requirement is enforced in the
+[constructor check](contracts/TEMPL.sol#L213-L215).
 
 ## Trust assumptions
 - Contract code is immutable after deployment.
