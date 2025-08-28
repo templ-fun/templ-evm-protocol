@@ -1,4 +1,16 @@
-export async function deployTempl({ ethers, xmtp, signer, walletAddress, tokenAddress, entryFee, priestVoteWeight, priestWeightThreshold, templArtifact, backendUrl = 'http://localhost:3001' }) {
+export async function deployTempl({
+  ethers,
+  xmtp,
+  signer,
+  walletAddress,
+  tokenAddress,
+  protocolFeeRecipient,
+  entryFee,
+  priestVoteWeight,
+  priestWeightThreshold,
+  templArtifact,
+  backendUrl = 'http://localhost:3001'
+}) {
   const factory = new ethers.ContractFactory(
     templArtifact.abi,
     templArtifact.bytecode,
@@ -6,7 +18,7 @@ export async function deployTempl({ ethers, xmtp, signer, walletAddress, tokenAd
   );
   const contract = await factory.deploy(
     walletAddress,
-    walletAddress,
+    protocolFeeRecipient,
     tokenAddress,
     BigInt(entryFee),
     BigInt(priestVoteWeight),
@@ -22,6 +34,7 @@ export async function deployTempl({ ethers, xmtp, signer, walletAddress, tokenAd
     body: JSON.stringify({
       contractAddress,
       priestAddress: walletAddress,
+      protocolFeeRecipient,
       signature
     })
   });

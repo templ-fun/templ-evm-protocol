@@ -26,6 +26,7 @@ function App() {
 
   // deployment form
   const [tokenAddress, setTokenAddress] = useState('');
+  const [protocolFeeRecipient, setProtocolFeeRecipient] = useState('');
   const [entryFee, setEntryFee] = useState('');
   const [priestVoteWeight, setPriestVoteWeight] = useState('1');
   const [priestWeightThreshold, setPriestWeightThreshold] = useState('1');
@@ -48,6 +49,8 @@ function App() {
   async function handleDeploy() {
     if (!signer || !xmtp) return;
     if (!ethers.isAddress(tokenAddress)) return alert('Invalid token address');
+    if (!ethers.isAddress(protocolFeeRecipient))
+      return alert('Invalid protocol fee recipient address');
     const nums = [entryFee, priestVoteWeight, priestWeightThreshold];
     if (!nums.every((n) => /^\d+$/.test(n))) return alert('Invalid numeric input');
     try {
@@ -57,6 +60,7 @@ function App() {
         signer,
         walletAddress,
         tokenAddress,
+        protocolFeeRecipient,
         entryFee,
         priestVoteWeight,
         priestWeightThreshold,
@@ -177,6 +181,11 @@ function App() {
               placeholder="Token address"
               value={tokenAddress}
               onChange={(e) => setTokenAddress(e.target.value)}
+            />
+            <input
+              placeholder="Protocol fee recipient"
+              value={protocolFeeRecipient}
+              onChange={(e) => setProtocolFeeRecipient(e.target.value)}
             />
             <input
               placeholder="Entry fee"
