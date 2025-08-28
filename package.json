@@ -5,9 +5,11 @@
   "scripts": {
     "compile": "npx hardhat compile",
     "test": "npx hardhat test",
+    "slither": "slither . --config-file slither.config.json",
     "deploy": "npx hardhat run scripts/deploy.js --network base",
     "deploy:local": "npx hardhat run scripts/deploy.js --network localhost",
-    "node": "npx hardhat node"
+    "node": "npx hardhat node",
+    "prepare": "husky"
   },
   "keywords": [
     "solidity",
@@ -24,6 +26,7 @@
     "@nomicfoundation/hardhat-network-helpers": "^1.0.0",
     "@nomicfoundation/hardhat-toolbox": "^4.0.0",
     "@nomicfoundation/hardhat-verify": "^2.0.0",
+    "@openzeppelin/contracts": "^5.0.2",
     "@typechain/ethers-v6": "^0.5.0",
     "@typechain/hardhat": "^9.0.0",
     "@types/chai": "^4.2.0",
@@ -32,9 +35,9 @@
     "ethers": "^6.9.0",
     "hardhat": "^2.19.2",
     "hardhat-gas-reporter": "^1.0.8",
+    "husky": "^9.1.7",
     "solidity-coverage": "^0.8.1",
-    "typechain": "^8.3.0",
-    "@openzeppelin/contracts": "^5.0.2"
+    "typechain": "^8.3.0"
   },
   "dependencies": {
     "dotenv": "^16.3.1"
