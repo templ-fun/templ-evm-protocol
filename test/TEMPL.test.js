@@ -49,6 +49,21 @@ describe("TEMPL Contract with DAO Governance", function () {
             expect(await templ.treasuryBalance()).to.equal(0);
             expect(await templ.memberPoolBalance()).to.equal(0);
         });
+
+        it("Should revert when entry fee not divisible by 10", async function () {
+            const invalidFee = ENTRY_FEE + 5n;
+            const TEMPL = await ethers.getContractFactory("TEMPL");
+            await expect(
+                TEMPL.deploy(
+                    priest.address,
+                    priest.address,
+                    await token.getAddress(),
+                    invalidFee,
+                    10,
+                    10
+                )
+            ).to.be.revertedWithCustomError(TEMPL, "InvalidEntryFee");
+        });
     });
 
     describe("Access Purchase with 30/30/30/10 Split", function () {

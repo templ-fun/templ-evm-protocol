@@ -36,6 +36,31 @@ describe("updateConfigDAO", function () {
         await templ.connect(member).purchaseAccess();
     });
 
+    it("reverts when entry fee is not divisible by 10", async function () {
+        const invalidFee = ENTRY_FEE + 5n;
+        const iface = new ethers.Interface([
+            "function updateConfigDAO(address,uint256)"
+        ]);
+        const callData = iface.encodeFunctionData("updateConfigDAO", [
+            ethers.ZeroAddress,
+            invalidFee
+        ]);
+
+        await templ.connect(member).createProposal(
+            "Invalid Fee",
+            "desc",
+            callData,
+            7 * 24 * 60 * 60
+        );
+
+        await templ.connect(member).vote(0, true);
+        await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
+        await ethers.provider.send("evm_mine");
+
+        await expect(templ.executeProposal(0))
+            .to.be.revertedWithCustomError(templ, "InvalidEntryFee");
+    });
+
     it("reverts when balances are non-zero", async function () {
         const iface = new ethers.Interface([
             "function updateConfigDAO(address,uint256)"
