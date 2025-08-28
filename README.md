@@ -2,12 +2,12 @@
 
 Open-source contracts for decentralized membership management and automated treasury governance on the BASE blockchain.
 
-[![Tests](https://img.shields.io/badge/tests-passing-brightgreen)]() [![Audit](https://img.shields.io/badge/audit-reports-blue)]() [![License](https://img.shields.io/badge/license-MIT-green)]()
+[![Tests](https://img.shields.io/badge/tests-passing-brightgreen)](./test) [![Audit](https://img.shields.io/badge/audit-docs-blue)](./docs/THREAT_MODEL.md) [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 
 ## 🛡️ Security First Design
 
 ### Multi-Layer Protection
-- **Reentrancy Guards**: Custom implementation protecting all external calls
+- **Reentrancy Guards**: Custom guard covering membership and treasury operations (config functions unguarded)
 - **No Admin Backdoors**: Fully decentralized, immutable critical parameters  
 - **Flash Loan Protection**: Timestamp-based voting eligibility
 - **Sybil Resistance**: Economic cost per membership
@@ -17,7 +17,7 @@ Open-source contracts for decentralized membership management and automated trea
 
 ### Audit Status
 
-External reviews have examined the protocol and reported no critical issues. Full findings are available in the [audit reports](./docs). Audits can highlight potential risks but cannot guarantee complete security.
+External reviews have examined the protocol and reported no critical issues. Full findings are available in the [documentation](./docs/THREAT_MODEL.md). Audits can highlight potential risks but cannot guarantee complete security.
 
 ## 💰 Economic Model
 
@@ -87,7 +87,7 @@ Enhanced early control, automatic decentralization
 ```bash
 # Clone repository
 git clone <repo>
-cd templ-contracts
+cd templ
 
 # Install dependencies
 npm install
@@ -117,7 +117,7 @@ PRIEST_WEIGHT_THRESHOLD=10        # Decentralization point
 
 # Network
 PRIVATE_KEY=0x...                 # Deployer wallet
-BASE_RPC_URL=https://mainnet.base.org
+RPC_URL=https://mainnet.base.org
 BASESCAN_API_KEY=...              # For verification
 ```
 
@@ -285,7 +285,6 @@ The deployment script:
 
 ## 📚 Documentation
 
-- [Audit Reports](./docs) - Detailed security analysis
 - [Threat Model](./docs/THREAT_MODEL.md) - Architecture, assumptions, and failure modes
 - [Test Suite](./test/) - Implementation examples
 - [Deploy Script](./scripts/deploy.js) - Deployment configuration
@@ -310,7 +309,7 @@ Optimized for BASE mainnet (Chain ID: 8453)
 
 For integration support:
 - Review test files for examples
-- Review audit reports in the `docs` directory for design rationale
+- Review documentation in the `docs` directory for design rationale
 - Open an issue for bugs/improvements
 
 ## 📄 License
