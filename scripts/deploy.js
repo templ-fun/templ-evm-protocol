@@ -6,14 +6,20 @@ require("dotenv").config();
 async function main() {
   const [deployer] = await hre.ethers.getSigners();
   const PRIEST_ADDRESS = process.env.PRIEST_ADDRESS || deployer.address;
-  const PROTOCOL_FEE_RECIPIENT = process.env.PROTOCOL_FEE_RECIPIENT || PRIEST_ADDRESS;
+  const PROTOCOL_FEE_RECIPIENT = process.env.PROTOCOL_FEE_RECIPIENT;
   const TOKEN_ADDRESS = process.env.TOKEN_ADDRESS;
-  const ENTRY_FEE = process.env.ENTRY_FEE || "100";
+  const ENTRY_FEE = process.env.ENTRY_FEE;
   const PRIEST_VOTE_WEIGHT = process.env.PRIEST_VOTE_WEIGHT || 10;
   const PRIEST_WEIGHT_THRESHOLD = process.env.PRIEST_WEIGHT_THRESHOLD || 10;
-  
+
   if (!TOKEN_ADDRESS) {
     throw new Error("TOKEN_ADDRESS not set in environment");
+  }
+  if (!PROTOCOL_FEE_RECIPIENT) {
+    throw new Error("PROTOCOL_FEE_RECIPIENT not set in environment");
+  }
+  if (!ENTRY_FEE) {
+    throw new Error("ENTRY_FEE not set in environment");
   }
 
   const entryFee = BigInt(ENTRY_FEE);

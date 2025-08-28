@@ -26,9 +26,9 @@ The deployment script accepts the following environment variables (the priest de
 
 ```env
 # PRIEST_ADDRESS=0x...       # optional override for tests
-PROTOCOL_FEE_RECIPIENT=0x...
-TOKEN_ADDRESS=0x...
-ENTRY_FEE=100000000000000000 # wei
+PROTOCOL_FEE_RECIPIENT=0x... # required
+TOKEN_ADDRESS=0x...          # required
+ENTRY_FEE=100000000000000000 # wei, minimum 10
 PRIEST_VOTE_WEIGHT=10
 PRIEST_WEIGHT_THRESHOLD=10
 PRIVATE_KEY=0x...
