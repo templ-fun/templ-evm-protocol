@@ -65,7 +65,7 @@ Use the docs below to audit each component:
 5. Build the frontend (`npm --prefix frontend run build`) and serve the static files.
 
 ## Core flows
-1. **Templ creation** – deploy contract and create an empty private XMTP group.
+1. **Templ creation** – deploy contract and create a private XMTP group with the priest added at creation time.
 2. **Pay‑to‑join** – wallet calls `purchaseAccess` and backend invites it into the group.
 3. **Messaging** – members send and receive XMTP messages in the group chat.
 4. **Priest muting** – priest can mute members but cannot rug the group.
