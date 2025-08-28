@@ -1,8 +1,45 @@
-# Frontend Auditing Guide
+# TEMPL Frontend
+
+The TEMPL frontend is a React + Vite application that lets members deploy contracts, verify purchases, and chat.
+
+## Setup
+
+Install dependencies:
+
+```bash
+npm --prefix frontend install
+```
+
+## Development
+
+Start a hot-reloading dev server:
+
+```bash
+npm --prefix frontend run dev
+```
+
+## Build
+
+Create production assets in `frontend/dist`:
+
+```bash
+npm --prefix frontend run build
+```
+
+## Testing
+
+Run unit tests:
+
+```bash
+npm --prefix frontend test
+```
+
+## Auditing
 
 The frontend is a React single page app that interacts with the TEMPL contract and XMTP.
 
 ## Architecture
+
 - **Wallet connection** via `ethers` and `window.ethereum`.
 - **Contract deployment** and group creation handled in `deployTempl`.
 - **Pay‑to‑join flow** in `purchaseAndJoin` verifies membership and requests an invite from the backend (defaults to `http://localhost:3001`).
