@@ -2,7 +2,7 @@
 
 Open-source contracts for decentralized membership management and automated treasury governance on the BASE blockchain.
 
-[![Tests](https://img.shields.io/badge/tests-passing-brightgreen)](./test) [![Audit](https://img.shields.io/badge/audit-docs-blue)](./docs/THREAT_MODEL.md) [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 
 ## 🛡️ Security First Design
 
