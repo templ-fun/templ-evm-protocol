@@ -655,18 +655,21 @@ contract TEMPL {
      * @return hasMore True if more active proposals exist
      */
     function getActiveProposalsPaginated(
-        uint256 offset, 
+        uint256 offset,
         uint256 limit
     ) external view returns (
         uint256[] memory proposalIds,
         bool hasMore
     ) {
         if (limit == 0 || limit > 100) revert LimitOutOfRange();
-        
+        if (offset >= proposalCount) {
+            return (new uint256[](0), false);
+        }
+
         uint256[] memory tempIds = new uint256[](limit);
         uint256 count = 0;
-        uint256 scanned = 0;
-        
+        uint256 scanned = offset;
+
         for (uint256 i = offset; i < proposalCount && count < limit; i++) {
             if (block.timestamp < proposals[i].endTime && !proposals[i].executed) {
                 tempIds[count++] = i;
@@ -682,12 +685,12 @@ contract TEMPL {
                 }
             }
         }
-        
+
         proposalIds = new uint256[](count);
         for (uint256 i = 0; i < count; i++) {
             proposalIds[i] = tempIds[i];
         }
-        
+
         return (proposalIds, hasMore);
     }
     
