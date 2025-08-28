@@ -37,6 +37,7 @@ error NoRewardsToClaim();
 error InsufficientPoolBalance();
 error LimitOutOfRange();
 error NonZeroBalances();
+error InvalidSender();
 
 /**
  * @title TEMPL - Token Entry Management Protocol with DAO Governance
@@ -179,6 +180,11 @@ contract TEMPL {
         _;
     }
 
+    modifier notSelf() {
+        if (msg.sender == address(this)) revert InvalidSender();
+        _;
+    }
+
     modifier whenNotPaused() {
         if (paused) revert ContractPausedError();
         _;
@@ -227,7 +233,7 @@ contract TEMPL {
      * @notice Purchase membership with automatic fee distribution
      * @dev Executes 4 transfers: burn (30%), treasury (30%), member pool (30%), protocol (10%)
      */
-    function purchaseAccess() external whenNotPaused nonReentrant {
+    function purchaseAccess() external whenNotPaused notSelf nonReentrant {
         if (hasPurchased[msg.sender]) revert AlreadyPurchased();
         
         uint256 thirtyPercent = (entryFee * 30) / 100;
