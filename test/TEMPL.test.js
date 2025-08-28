@@ -647,7 +647,7 @@ describe("TEMPL Contract with DAO Governance", function () {
                 .to.be.revertedWithCustomError(templ, "ContractPausedError");
         });
 
-        it("Should revert createProposal when paused", async function () {
+        it("Should allow createProposal when paused", async function () {
             await expect(
                 templ.connect(user2).createProposal(
                     "New",
@@ -655,12 +655,14 @@ describe("TEMPL Contract with DAO Governance", function () {
                     "0x12345678",
                     7 * 24 * 60 * 60
                 )
-            ).to.be.revertedWithCustomError(templ, "ContractPausedError");
+            ).to.emit(templ, "ProposalCreated");
         });
 
-        it("Should revert vote when paused", async function () {
-            await expect(templ.connect(user2).vote(0, true))
-                .to.be.revertedWithCustomError(templ, "ContractPausedError");
+        it("Should allow vote when paused", async function () {
+            await expect(templ.connect(user2).vote(0, true)).to.emit(
+                templ,
+                "VoteCast"
+            );
         });
     });
 
