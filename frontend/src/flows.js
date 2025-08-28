@@ -34,7 +34,6 @@ export async function deployTempl({
     body: JSON.stringify({
       contractAddress,
       priestAddress: walletAddress,
-      protocolFeeRecipient,
       signature
     })
   });

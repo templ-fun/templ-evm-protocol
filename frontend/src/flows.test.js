@@ -51,6 +51,18 @@ describe('templ flows', () => {
       BigInt(10)
     );
     expect(signer.signMessage).toHaveBeenCalledWith('create:0xdead');
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://localhost:3001/templs',
+      expect.objectContaining({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contractAddress: '0xDeAd',
+          priestAddress: '0xabc',
+          signature: 'sig'
+        })
+      })
+    );
     expect(result).toEqual({ contractAddress: '0xDeAd', group: 'groupObj', groupId: 'group-1' });
   });
 
