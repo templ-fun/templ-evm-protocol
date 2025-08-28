@@ -80,3 +80,7 @@ Use the docs below to audit each component:
 6. **Voting** – members cast yes/no votes and see live tallies as events arrive.
 
 For auditing guides, continue with the docs linked above.
+
+## Security considerations
+- Proposals invoking `executeDAO` can call any external contract with ETH.
+  Members should carefully audit these proposals because malicious or misconfigured calls can drain funds or interact with unsafe contracts.
