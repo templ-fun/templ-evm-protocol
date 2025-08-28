@@ -131,7 +131,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             await expect(templ.connect(user2).createProposal(
                 "Test",
                 "Description",
-                "0x1234",
+                "0x12345678",
                 7 * 24 * 60 * 60
             )).to.be.revertedWithCustomError(templ, "NotMember");
         });
@@ -140,7 +140,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             await expect(templ.connect(user1).createProposal(
                 "Test",
                 "Description",
-                "0x1234",
+                "0x12345678",
                 6 * 24 * 60 * 60 // 6 days (less than minimum 7 days)
             )).to.be.revertedWithCustomError(templ, "VotingPeriodTooShort");
         });
@@ -149,9 +149,20 @@ describe("TEMPL Contract with DAO Governance", function () {
             await expect(templ.connect(user1).createProposal(
                 "Test",
                 "Description",
-                "0x1234",
+                "0x12345678",
                 31 * 24 * 60 * 60 // 31 days (too long)
             )).to.be.revertedWithCustomError(templ, "VotingPeriodTooLong");
+        });
+
+        it("Should reject call data shorter than 4 bytes", async function () {
+            await expect(
+                templ.connect(user1).createProposal(
+                    "Test",
+                    "Description",
+                    "0x123456",
+                    7 * 24 * 60 * 60
+                )
+            ).to.be.revertedWithCustomError(templ, "CallDataTooShort");
         });
     });
 
@@ -588,14 +599,14 @@ describe("TEMPL Contract with DAO Governance", function () {
             await templ.connect(user1).createProposal(
                 "Active 1",
                 "First active",
-                "0x1234",
+                "0x12345678",
                 7 * 24 * 60 * 60
             );
 
             await templ.connect(user2).createProposal(
                 "Active 2",
                 "Second active",
-                "0x5678",
+                "0x56781234",
                 10 * 24 * 60 * 60
             );
 
@@ -609,14 +620,14 @@ describe("TEMPL Contract with DAO Governance", function () {
             await templ.connect(user1).createProposal(
                 "Short",
                 "Expires soon",
-                "0x1234",
+                "0x12345678",
                 7 * 24 * 60 * 60 // 7 days
             );
 
             await templ.connect(user2).createProposal(
                 "Long",
                 "Active longer",
-                "0x5678",
+                "0x56781234",
                 14 * 24 * 60 * 60 // 14 days
             );
 
@@ -645,7 +656,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             await templ.connect(user2).createProposal(
                 "Still Active",
                 "Not executed",
-                "0x5678",
+                "0x56781234",
                 14 * 24 * 60 * 60
             );
 

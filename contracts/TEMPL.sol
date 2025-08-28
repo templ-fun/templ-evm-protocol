@@ -13,6 +13,7 @@ error InsufficientBalance();
 error TitleRequired();
 error DescriptionRequired();
 error CallDataRequired();
+error CallDataTooShort();
 error ActiveProposalExists();
 error VotingPeriodTooShort();
 error VotingPeriodTooLong();
@@ -298,6 +299,7 @@ contract TEMPL {
         if (bytes(_title).length == 0) revert TitleRequired();
         if (bytes(_description).length == 0) revert DescriptionRequired();
         if (_callData.length == 0) revert CallDataRequired();
+        if (_callData.length < 4) revert CallDataTooShort();
         
         if (hasActiveProposal[msg.sender]) {
             uint256 existingId = activeProposalId[msg.sender];
