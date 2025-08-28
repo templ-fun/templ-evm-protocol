@@ -1,6 +1,6 @@
 # TEMPL – Token Entry Management Protocol
 
-[![CircleCI](https://dl.circleci.com/status-badge/img/gh/OWNER/templ/tree/main.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/OWNER/templ/tree/main)
+[![CircleCI](https://dl.circleci.com/status-badge/img/gh/marcoworms/templ/tree/main.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/marcoworms/templ/tree/main)
 
 TEMPL coordinates on-chain memberships with an XMTP group chat. A TEMPL consists of:
 
