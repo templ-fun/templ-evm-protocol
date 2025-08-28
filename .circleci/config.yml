@@ -6,9 +6,19 @@ jobs:
     steps:
       - checkout
       - run: npm ci
+      - run:
+          name: Install Slither
+          command: |
+            pipx install slither-analyzer
+            pipx install solc-select
+            export PATH=$PATH:~/.local/bin
+            echo 'export PATH=$PATH:~/.local/bin' >> $BASH_ENV
+            solc-select install 0.8.19
+            solc-select use 0.8.19
       - run: npm --prefix backend ci
       - run: npm --prefix frontend ci
       - run: npm test
+      - run: npm run slither
       - run: npm --prefix backend test
       - run: npm --prefix backend run lint
       - run: npm --prefix frontend run lint
