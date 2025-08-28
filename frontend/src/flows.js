@@ -6,8 +6,8 @@ export async function deployTempl({
   tokenAddress,
   protocolFeeRecipient,
   entryFee,
-  priestVoteWeight,
-  priestWeightThreshold,
+  priestVoteWeight = 10,
+  priestWeightThreshold = 10,
   templArtifact,
   backendUrl = 'http://localhost:3001'
 }) {

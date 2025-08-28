@@ -28,18 +28,16 @@ describe('templ flows', () => {
     const xmtp = { conversations: { getGroup: vi.fn().mockResolvedValue('groupObj') } };
     const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
 
-    const result = await deployTempl({
-      ethers,
-      xmtp,
-      signer,
-      walletAddress: '0xabc',
-      tokenAddress: '0xdef',
-      protocolFeeRecipient: '0xfee',
-      entryFee: '1',
-      priestVoteWeight: '10',
-      priestWeightThreshold: '10',
-      templArtifact
-    });
+      const result = await deployTempl({
+        ethers,
+        xmtp,
+        signer,
+        walletAddress: '0xabc',
+        tokenAddress: '0xdef',
+        protocolFeeRecipient: '0xfee',
+        entryFee: '1',
+        templArtifact
+      });
 
     expect(ethers.ContractFactory).toHaveBeenCalled();
     expect(factory.deploy).toHaveBeenCalledWith(
