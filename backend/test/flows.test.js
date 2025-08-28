@@ -99,6 +99,48 @@ test('join requires on-chain purchase', async () => {
   assert.deepEqual(added, [addresses.member]);
 });
 
+test('responds with 500 when purchase check fails', async () => {
+  const fakeGroup = {
+    id: 'group-err',
+    addMembers: async () => {},
+    removeMembers: async () => {}
+  };
+  const fakeXmtp = {
+    conversations: {
+      newGroup: async () => fakeGroup
+    }
+  };
+  const hasPurchased = async () => {
+    throw new Error('oops');
+  };
+
+  const app = createApp({ xmtp: fakeXmtp, hasPurchased });
+
+  const templSig = await wallets.priest.signMessage(
+    `create:${addresses.contract}`
+  );
+  await request(app)
+    .post('/templs')
+    .send({
+      contractAddress: addresses.contract,
+      priestAddress: addresses.priest,
+      signature: templSig
+    })
+    .expect(200);
+
+  const joinSig = await wallets.member.signMessage(
+    `join:${addresses.contract}`
+  );
+  await request(app)
+    .post('/join')
+    .send({
+      contractAddress: addresses.contract,
+      memberAddress: addresses.member,
+      signature: joinSig
+    })
+    .expect(500, { error: 'Purchase check failed' });
+});
+
 test('only priest can mute members', async () => {
   const removed = [];
   const fakeGroup = {
