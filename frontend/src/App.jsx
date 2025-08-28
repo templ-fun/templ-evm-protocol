@@ -47,35 +47,47 @@ function App() {
 
   async function handleDeploy() {
     if (!signer || !xmtp) return;
-    const result = await deployTempl({
-      ethers,
-      xmtp,
-      signer,
-      walletAddress,
-      tokenAddress,
-      entryFee,
-      priestVoteWeight,
-      priestWeightThreshold,
-      templArtifact
-    });
-    setTemplAddress(result.contractAddress);
-    setGroup(result.group);
-    setGroupId(result.groupId);
+    if (!ethers.isAddress(tokenAddress)) return alert('Invalid token address');
+    const nums = [entryFee, priestVoteWeight, priestWeightThreshold];
+    if (!nums.every((n) => /^\d+$/.test(n))) return alert('Invalid numeric input');
+    try {
+      const result = await deployTempl({
+        ethers,
+        xmtp,
+        signer,
+        walletAddress,
+        tokenAddress,
+        entryFee,
+        priestVoteWeight,
+        priestWeightThreshold,
+        templArtifact
+      });
+      setTemplAddress(result.contractAddress);
+      setGroup(result.group);
+      setGroupId(result.groupId);
+    } catch (err) {
+      alert(err.message);
+    }
   }
 
   async function handlePurchaseAndJoin() {
     if (!signer || !xmtp || !templAddress) return;
-    const result = await purchaseAndJoin({
-      ethers,
-      xmtp,
-      signer,
-      walletAddress,
-      templAddress,
-      templArtifact
-    });
-    if (result) {
-      setGroup(result.group);
-      setGroupId(result.groupId);
+    if (!ethers.isAddress(templAddress)) return alert('Invalid contract address');
+    try {
+      const result = await purchaseAndJoin({
+        ethers,
+        xmtp,
+        signer,
+        walletAddress,
+        templAddress,
+        templArtifact
+      });
+      if (result) {
+        setGroup(result.group);
+        setGroupId(result.groupId);
+      }
+    } catch (err) {
+      alert(err.message);
     }
   }
 

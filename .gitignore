@@ -22,6 +22,9 @@ sessions/
 # Docker volumes
 redis_data/
 
+# Backend runtime files
+backend/groups.json
+
 # Build
 dist/
 build/
