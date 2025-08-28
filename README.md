@@ -77,6 +77,11 @@ cd templ
 # Install dependencies
 npm install
 
+# Enable Git hooks
+npm run prepare
+
+Commits will now automatically run backend and frontend linters with `--fix` and abort if any lint errors remain.
+
 # Run tests (critical!)
 npm test
 
