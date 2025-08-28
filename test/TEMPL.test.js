@@ -610,24 +610,27 @@ describe("TEMPL Contract with DAO Governance", function () {
             await token.connect(user2).approve(await templ.getAddress(), ENTRY_FEE);
             await templ.connect(user2).purchaseAccess();
 
+            // interface for pause/unpause proposals
+            const iface = new ethers.Interface([
+                "function setPausedDAO(bool)"
+            ]);
+
             // create proposal that remains active for voting after pause
+            const unpauseData = iface.encodeFunctionData("setPausedDAO", [false]);
             await templ.connect(user1).createProposal(
-                "Dummy",
-                "Dummy proposal",
-                "0x12345678",
+                "Unpause",
+                "Resume operations",
+                unpauseData,
                 14 * 24 * 60 * 60
             );
 
             // create and execute pause proposal
-            const iface = new ethers.Interface([
-                "function setPausedDAO(bool)"
-            ]);
-            const callData = iface.encodeFunctionData("setPausedDAO", [true]);
+            const pauseData = iface.encodeFunctionData("setPausedDAO", [true]);
 
             await templ.connect(user2).createProposal(
                 "Pause",
                 "Emergency pause",
-                callData,
+                pauseData,
                 7 * 24 * 60 * 60
             );
 
@@ -663,6 +666,20 @@ describe("TEMPL Contract with DAO Governance", function () {
                 templ,
                 "VoteCast"
             );
+        });
+
+        it("Should allow executeProposal when paused", async function () {
+            await templ.connect(user1).vote(0, true);
+            await templ.connect(user2).vote(0, true);
+
+            await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60]);
+            await ethers.provider.send("evm_mine");
+
+            await expect(templ.executeProposal(0)).to.emit(
+                templ,
+                "ProposalExecuted"
+            );
+            expect(await templ.paused()).to.be.false;
         });
     });
 
