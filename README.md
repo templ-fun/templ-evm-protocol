@@ -51,14 +51,16 @@ Use the docs below to audit each component:
    ```
 
 ## Deploying to production
-1. Create a `.env` file in the project root for the deployment scripts. This file is distinct from `backend/.env` used by the bot; copy any overlapping variables (e.g., `RPC_URL`, keys) into `backend/.env` if the bot requires them. The deploying wallet becomes the priest automatically, so `PRIEST_ADDRESS` is only needed when overriding in tests.
+1. Create a `.env` file in the project root for the deployment scripts. This file is distinct from `backend/.env` used by the bot; copy any overlapping variables (e.g., `RPC_URL`, keys) into `backend/.env` if the bot requires them. The bot's key (`BOT_PRIVATE_KEY`) belongs only in `backend/.env`. The deploying wallet becomes the priest automatically, so `PRIEST_ADDRESS` is only needed when overriding in tests.
     ```env
     PROTOCOL_FEE_RECIPIENT=0x...
     TOKEN_ADDRESS=0x...
     ENTRY_FEE=100000000000000000 # wei
     RPC_URL=https://mainnet.base.org
     PRIVATE_KEY=0x...
-    BOT_PRIVATE_KEY=0x...
+    PRIEST_VOTE_WEIGHT=10
+    PRIEST_WEIGHT_THRESHOLD=10
+    BASESCAN_API_KEY=...
     ```
    See [`CONTRACTS.md`](./CONTRACTS.md) for the full list of supported variables.
 2. Run the full test suite and Slither analysis.
