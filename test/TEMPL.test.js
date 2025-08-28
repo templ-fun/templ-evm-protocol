@@ -601,6 +601,69 @@ describe("TEMPL Contract with DAO Governance", function () {
         });
     });
 
+    describe("Paused contract behavior", function () {
+        beforeEach(async function () {
+            // user1 and user2 become members
+            await token.connect(user1).approve(await templ.getAddress(), ENTRY_FEE);
+            await templ.connect(user1).purchaseAccess();
+
+            await token.connect(user2).approve(await templ.getAddress(), ENTRY_FEE);
+            await templ.connect(user2).purchaseAccess();
+
+            // create proposal that remains active for voting after pause
+            await templ.connect(user1).createProposal(
+                "Dummy",
+                "Dummy proposal",
+                "0x12345678",
+                14 * 24 * 60 * 60
+            );
+
+            // create and execute pause proposal
+            const iface = new ethers.Interface([
+                "function setPausedDAO(bool)"
+            ]);
+            const callData = iface.encodeFunctionData("setPausedDAO", [true]);
+
+            await templ.connect(user2).createProposal(
+                "Pause",
+                "Emergency pause",
+                callData,
+                7 * 24 * 60 * 60
+            );
+
+            await templ.connect(user1).vote(1, true);
+            await templ.connect(user2).vote(1, true);
+
+            await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
+            await ethers.provider.send("evm_mine");
+
+            await templ.executeProposal(1);
+            expect(await templ.paused()).to.be.true;
+        });
+
+        it("Should revert purchaseAccess when paused", async function () {
+            await token.connect(user3).approve(await templ.getAddress(), ENTRY_FEE);
+            await expect(templ.connect(user3).purchaseAccess())
+                .to.be.revertedWithCustomError(templ, "ContractPausedError");
+        });
+
+        it("Should revert createProposal when paused", async function () {
+            await expect(
+                templ.connect(user2).createProposal(
+                    "New",
+                    "New proposal",
+                    "0x12345678",
+                    7 * 24 * 60 * 60
+                )
+            ).to.be.revertedWithCustomError(templ, "ContractPausedError");
+        });
+
+        it("Should revert vote when paused", async function () {
+            await expect(templ.connect(user2).vote(0, true))
+                .to.be.revertedWithCustomError(templ, "ContractPausedError");
+        });
+    });
+
     describe("Active Proposals Query", function () {
         beforeEach(async function () {
             // Setup members
