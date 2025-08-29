@@ -99,6 +99,18 @@ export async function voteOnProposal({
   await tx.wait();
 }
 
+export async function executeProposal({
+  ethers,
+  signer,
+  templAddress,
+  templArtifact,
+  proposalId
+}) {
+  const contract = new ethers.Contract(templAddress, templArtifact.abi, signer);
+  const tx = await contract.executeProposal(proposalId);
+  await tx.wait();
+}
+
 export function watchProposals({
   ethers,
   provider,
@@ -120,6 +132,54 @@ export function watchProposals({
     });
   });
   return contract;
+}
+
+export async function delegateMute({
+  signer,
+  contractAddress,
+  priestAddress,
+  delegateAddress,
+  backendUrl = 'http://localhost:3001'
+}) {
+  const message = `delegate:${contractAddress.toLowerCase()}:${delegateAddress.toLowerCase()}`;
+  const signature = await signer.signMessage(message);
+  const res = await fetch(`${backendUrl}/delegates`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contractAddress,
+      priestAddress,
+      delegateAddress,
+      signature
+    })
+  });
+  if (!res.ok) return false;
+  const data = await res.json();
+  return data.delegated;
+}
+
+export async function muteMember({
+  signer,
+  contractAddress,
+  moderatorAddress,
+  targetAddress,
+  backendUrl = 'http://localhost:3001'
+}) {
+  const message = `mute:${contractAddress.toLowerCase()}:${targetAddress.toLowerCase()}`;
+  const signature = await signer.signMessage(message);
+  const res = await fetch(`${backendUrl}/mute`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contractAddress,
+      moderatorAddress,
+      targetAddress,
+      signature
+    })
+  });
+  if (!res.ok) return 0;
+  const data = await res.json();
+  return data.mutedUntil;
 }
 
 export async function fetchActiveMutes({

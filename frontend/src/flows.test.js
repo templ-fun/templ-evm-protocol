@@ -5,7 +5,10 @@ import {
   sendMessage,
   proposeVote,
   voteOnProposal,
+  executeProposal,
   watchProposals,
+  delegateMute,
+  muteMember,
   fetchActiveMutes
 } from './flows.js';
 
@@ -126,6 +129,19 @@ describe('templ flows', () => {
     expect(contract.vote).toHaveBeenCalledWith(1, true);
   });
 
+  it('executeProposal calls executeProposal', async () => {
+    const contract = { executeProposal: vi.fn().mockResolvedValue({ wait: vi.fn() }) };
+    const ethers = { Contract: vi.fn().mockReturnValue(contract) };
+    await executeProposal({
+      ethers,
+      signer: {},
+      templAddress: '0xtempl',
+      templArtifact,
+      proposalId: 2
+    });
+    expect(contract.executeProposal).toHaveBeenCalledWith(2);
+  });
+
   it('watchProposals registers event listeners', () => {
     const on = vi.fn();
     const contract = { on };
@@ -139,6 +155,62 @@ describe('templ flows', () => {
       onVote: vi.fn()
     });
     expect(on).toHaveBeenCalledTimes(2);
+  });
+
+  it('delegateMute posts delegation to backend', async () => {
+    const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValue({ ok: true, json: () => Promise.resolve({ delegated: true }) });
+    const result = await delegateMute({
+      signer,
+      contractAddress: '0xTempl',
+      priestAddress: '0xPriest',
+      delegateAddress: '0xDel'
+    });
+    expect(signer.signMessage).toHaveBeenCalledWith('delegate:0xtempl:0xdel');
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://localhost:3001/delegates',
+      expect.objectContaining({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contractAddress: '0xTempl',
+          priestAddress: '0xPriest',
+          delegateAddress: '0xDel',
+          signature: 'sig'
+        })
+      })
+    );
+    expect(result).toBe(true);
+  });
+
+  it('muteMember posts mute to backend', async () => {
+    const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValue({ ok: true, json: () => Promise.resolve({ mutedUntil: 123 }) });
+    const result = await muteMember({
+      signer,
+      contractAddress: '0xTempl',
+      moderatorAddress: '0xMod',
+      targetAddress: '0xTar'
+    });
+    expect(signer.signMessage).toHaveBeenCalledWith('mute:0xtempl:0xtar');
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://localhost:3001/mute',
+      expect.objectContaining({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contractAddress: '0xTempl',
+          moderatorAddress: '0xMod',
+          targetAddress: '0xTar',
+          signature: 'sig'
+        })
+      })
+    );
+    expect(result).toBe(123);
   });
 
   it('fetchActiveMutes queries backend for mutes', async () => {
