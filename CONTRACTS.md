@@ -100,7 +100,7 @@ sequenceDiagram
 Run contract tests and Slither:
 ```bash
 npm test
-npm run slither   # static analysis of TEMPL.sol only
+npm run slither
 ```
 
 ## Deployment

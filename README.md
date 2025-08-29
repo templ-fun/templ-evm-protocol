@@ -25,7 +25,7 @@ Use the docs below to audit each component:
 2. **Run tests**
    ```bash
    npm test
-    npm run slither       # static analysis of TEMPL.sol only
+   npm run slither
    npm --prefix backend test
    npm --prefix frontend test
    ```
