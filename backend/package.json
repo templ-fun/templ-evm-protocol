@@ -14,7 +14,8 @@
     "dotenv": "^16.3.1",
     "@xmtp/xmtp-js": "^13.0.4",
     "helmet": "^7.0.0",
-    "express-rate-limit": "^7.0.0"
+    "express-rate-limit": "^7.0.0",
+    "better-sqlite3": "^12.2.0"
   },
   "devDependencies": {
     "supertest": "^6.3.3",

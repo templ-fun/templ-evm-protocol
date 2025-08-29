@@ -3,7 +3,14 @@ import assert from 'node:assert/strict';
 import request from 'supertest';
 import { EventEmitter } from 'node:events';
 import { Wallet } from 'ethers';
+import { rm } from 'node:fs/promises';
 import { createApp } from '../src/server.js';
+
+const DB_FILE = new URL('../groups.sqlite', import.meta.url);
+
+test.beforeEach(async () => {
+  await rm(DB_FILE, { force: true });
+});
 
 const wallets = {
   priest: new Wallet('0x' + '2'.repeat(64)),

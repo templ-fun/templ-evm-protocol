@@ -4,7 +4,7 @@ import { ethers } from 'ethers';
 import { Client } from '@xmtp/xmtp-js';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import fs from 'fs/promises';
+import Database from 'better-sqlite3';
 
 /**
  * Build an express application for managing TEMPL groups.
@@ -28,23 +28,35 @@ export function createApp({ xmtp, hasPurchased, connectContract }) {
   );
 
   const groups = new Map();
-  const GROUPS_FILE = new URL('../groups.json', import.meta.url);
+  const DB_FILE = new URL('../groups.sqlite', import.meta.url);
+  const db = new Database(DB_FILE.pathname);
+  db.pragma('journal_mode = WAL');
+  db
+    .prepare(
+      'CREATE TABLE IF NOT EXISTS groups (contract TEXT PRIMARY KEY, groupId TEXT NOT NULL, priest TEXT NOT NULL)'
+    )
+    .run();
 
-  async function persist() {
-    const data = {};
-    for (const [addr, { group, priest }] of groups.entries()) {
-      data[addr] = { groupId: group.id, priest };
-    }
-    await fs.writeFile(GROUPS_FILE, JSON.stringify(data, null, 2));
+  function persist(contract, { group, priest }) {
+    db
+      .prepare(
+        'INSERT OR REPLACE INTO groups (contract, groupId, priest) VALUES (?, ?, ?)'
+      )
+      .run(contract, group.id, priest);
   }
 
   (async () => {
     try {
-      const raw = await fs.readFile(GROUPS_FILE, 'utf8');
-      const data = JSON.parse(raw);
-      for (const [addr, meta] of Object.entries(data)) {
-        const group = await xmtp.conversations.getGroup(meta.groupId);
-        groups.set(addr, { group, priest: meta.priest });
+      const rows = db
+        .prepare('SELECT contract, groupId, priest FROM groups')
+        .all();
+      for (const row of rows) {
+        try {
+          const group = await xmtp.conversations.getGroup(row.groupId);
+          groups.set(row.contract, { group, priest: row.priest });
+        } catch {
+          /* ignore */
+        }
       }
     } catch {
       /* ignore */
@@ -108,8 +120,9 @@ export function createApp({ xmtp, hasPurchased, connectContract }) {
         record.contract = contract;
       }
 
-      groups.set(contractAddress.toLowerCase(), record);
-      await persist();
+      const key = contractAddress.toLowerCase();
+      groups.set(key, record);
+      persist(key, record);
       res.json({ groupId: group.id });
     } catch (err) {
       res.status(500).json({ error: err.message });
