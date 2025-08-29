@@ -5,7 +5,7 @@
   "scripts": {
     "compile": "npx hardhat compile",
     "test": "npx hardhat test",
-    "slither": "slither contracts/TEMPL.sol --config-file slither.config.json",
+    "slither": "solc-select install 0.8.23 && solc-select use 0.8.23 && slither contracts/TEMPL.sol --config-file slither.config.json",
     "deploy": "npx hardhat run scripts/deploy.js --network base",
     "deploy:local": "npx hardhat run scripts/deploy.js --network localhost",
     "node": "npx hardhat node",
