@@ -3,9 +3,9 @@ import dotenv from 'dotenv';
 import { ethers } from 'ethers';
 import { Client } from '@xmtp/xmtp-js';
 import helmet from 'helmet';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { MemoryStore } from 'express-rate-limit';
 import cors from 'cors';
-import sqlite3 from 'sqlite3';
+import Database from 'better-sqlite3';
 import pino from 'pino';
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
@@ -29,48 +29,35 @@ export function createApp({ xmtp, hasPurchased, connectContract, dbPath, db }) {
   app.use(cors({ origin: allowedOrigins }));
   app.use(express.json());
   app.use(helmet());
-  app.use(
-    rateLimit({
-      windowMs: 60_000,
-      max: 100
-    })
-  );
+  const store = new MemoryStore();
+  const limiter = rateLimit({
+    windowMs: 60_000,
+    max: 100,
+    store
+  });
+  app.use(limiter);
 
   const groups = new Map();
   const database =
     db ??
-    new sqlite3.Database(
-      dbPath ?? new URL('../groups.db', import.meta.url).pathname
-    );
-  const ready = new Promise((resolve, reject) => {
-    database.run(
-      'CREATE TABLE IF NOT EXISTS groups (contract TEXT PRIMARY KEY, groupId TEXT, priest TEXT)',
-      (err) => (err ? reject(err) : resolve())
-    );
-  });
+    new Database(dbPath ?? new URL('../groups.db', import.meta.url).pathname);
+  database.exec(
+    'CREATE TABLE IF NOT EXISTS groups (contract TEXT PRIMARY KEY, groupId TEXT, priest TEXT)'
+  );
 
   function persist(contract, record) {
-    return ready.then(
-      () =>
-        new Promise((resolve, reject) => {
-          database.run(
-            'INSERT OR REPLACE INTO groups (contract, groupId, priest) VALUES (?, ?, ?)',
-            [contract, record.group.id, record.priest],
-            (err) => (err ? reject(err) : resolve())
-          );
-        })
-    );
+    database
+      .prepare(
+        'INSERT OR REPLACE INTO groups (contract, groupId, priest) VALUES (?, ?, ?)'
+      )
+      .run(contract, record.group.id, record.priest);
   }
 
   (async () => {
     try {
-      await ready;
-      const rows = await new Promise((resolve, reject) => {
-        database.all(
-          'SELECT contract, groupId, priest FROM groups',
-          (err, rows) => (err ? reject(err) : resolve(rows))
-        );
-      });
+      const rows = database
+        .prepare('SELECT contract, groupId, priest FROM groups')
+        .all();
       for (const row of rows) {
         try {
           const group = await xmtp.conversations.getGroup(row.groupId);
@@ -198,6 +185,11 @@ export function createApp({ xmtp, hasPurchased, connectContract, dbPath, db }) {
       res.status(500).json({ error: err.message });
     }
   });
+
+  app.close = () => {
+    store.shutdown();
+    database.close();
+  };
 
   return app;
 }

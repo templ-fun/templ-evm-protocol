@@ -45,6 +45,7 @@ test('creates templ and returns group id', async () => {
       signature
     })
     .expect(200, { groupId: fakeGroup.id });
+  await app.close();
 });
 
 test('rejects templ creation with malformed addresses', async () => {
@@ -62,6 +63,7 @@ test('rejects templ creation with malformed addresses', async () => {
       signature
     })
     .expect(400);
+  await app.close();
 });
 
 test('rejects templ creation with bad signature', async () => {
@@ -79,6 +81,7 @@ test('rejects templ creation with bad signature', async () => {
       signature
     })
     .expect(403);
+  await app.close();
 });
 
 test('rejects join with malformed addresses', async () => {
@@ -95,6 +98,7 @@ test('rejects join with malformed addresses', async () => {
       signature
     })
     .expect(400);
+  await app.close();
 });
 
 test('rejects join with bad signature', async () => {
@@ -123,6 +127,7 @@ test('rejects join with bad signature', async () => {
       signature: badSig
     })
     .expect(403);
+  await app.close();
 });
 
 test('rejects join for unknown templ', async () => {
@@ -140,6 +145,7 @@ test('rejects join for unknown templ', async () => {
       signature
     })
     .expect(404);
+  await app.close();
 });
 
 test('join requires on-chain purchase', async () => {
@@ -194,6 +200,7 @@ test('join requires on-chain purchase', async () => {
     .expect(200, { groupId: fakeGroup.id });
 
   assert.deepEqual(added, [addresses.member]);
+  await app.close();
 });
 
 test('responds with 500 when purchase check fails', async () => {
@@ -236,6 +243,7 @@ test('responds with 500 when purchase check fails', async () => {
       signature: joinSig
     })
     .expect(500, { error: 'Purchase check failed' });
+  await app.close();
 });
 
 test('only priest can mute members', async () => {
@@ -293,6 +301,7 @@ test('only priest can mute members', async () => {
     .expect(200, { ok: true });
 
   assert.deepEqual(removed, [addresses.member]);
+  await app.close();
 });
 
 test('rejects mute with bad signature', async () => {
@@ -324,6 +333,7 @@ test('rejects mute with bad signature', async () => {
       signature: badSig
     })
     .expect(403);
+  await app.close();
 });
 
 test('rejects mute with malformed addresses', async () => {
@@ -342,6 +352,7 @@ test('rejects mute with malformed addresses', async () => {
       signature: '0x'
     })
     .expect(400);
+  await app.close();
 });
 
 test('rejects mute for unknown templ', async () => {
@@ -360,6 +371,7 @@ test('rejects mute for unknown templ', async () => {
       signature: '0x'
     })
     .expect(404);
+  await app.close();
 });
 
 test('broadcasts proposal and vote events to group', async () => {
@@ -414,5 +426,6 @@ test('broadcasts proposal and vote events to group', async () => {
       timestamp: 456
     }
   ]);
+  await app.close();
 });
 

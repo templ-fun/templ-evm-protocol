@@ -42,6 +42,7 @@ test('reloads groups from disk on restart', async () => {
       signature: createSig
     })
     .expect(200);
+  await app.close();
 
   const xmtp2 = { conversations: { getGroup: async () => fakeGroup } };
   app = createApp({ xmtp: xmtp2, hasPurchased, dbPath });
@@ -58,6 +59,7 @@ test('reloads groups from disk on restart', async () => {
       signature: joinSig
     })
     .expect(200, { groupId: fakeGroup.id });
+  await app.close();
 });
 
 test('returns 500 when persistence fails', async () => {
@@ -65,13 +67,18 @@ test('returns 500 when persistence fails', async () => {
   const xmtp = { conversations: { newGroup: async () => fakeGroup } };
   const hasPurchased = async () => false;
   const failingDb = {
-    run(sql, _params, cb) {
-      if (sql.startsWith('INSERT')) cb(new Error('disk full'));
-      else cb && cb(null);
+    exec() {},
+    prepare(sql) {
+      return {
+        run() {
+          if (sql.startsWith('INSERT')) throw new Error('disk full');
+        },
+        all() {
+          return [];
+        }
+      };
     },
-    all(_sql, cb) {
-      cb(null, []);
-    }
+    close() {}
   };
 
   const app = createApp({ xmtp, hasPurchased, db: failingDb });
@@ -85,4 +92,5 @@ test('returns 500 when persistence fails', async () => {
       signature: sig
     })
     .expect(500);
+  await app.close();
 });
