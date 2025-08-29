@@ -1,9 +1,15 @@
-# TEMPL – Token Entry Management Protocol
+# TEMPL: Onchain memberships and XMTP group chat technology.
 
-TEMPL coordinates on-chain memberships with an XMTP group chat.
+<p align="center">
+<img width="300" alt="templ logo" src="https://github.com/user-attachments/assets/fa3513b4-75e4-4dbf-a1fb-73e9e27d766f" />
+</p>
+<p align="center">
+<a href="https://templ.fun">templ.fun</a> 
+</p>
 
 ## Architecture
-TEMPL is composed of three parts that work together:
+
+A TEMPL is composed of three parts that work together:
 
 - **Smart contracts** on Base gate access by requiring a paid `purchaseAccess` call.
 - **Backend bot** owns the XMTP group and only invites wallets that purchased.
