@@ -1,12 +1,20 @@
 # TEMPL – Token Entry Management Protocol
 
-TEMPL coordinates on-chain memberships with an XMTP group chat. A TEMPL consists of:
+TEMPL coordinates on-chain memberships with an XMTP group chat.
 
-- **Smart contracts** on Base that gate access by requiring a paid `purchaseAccess` call.
-- **Backend bot** that owns the XMTP group and only invites wallets that purchased.
-- **React frontend** that deploys contracts, verifies purchases and lets members chat.
+## Architecture
+TEMPL is composed of three parts that work together:
 
-Use the docs below to audit each component:
+- **Smart contracts** on Base gate access by requiring a paid `purchaseAccess` call.
+- **Backend bot** owns the XMTP group and only invites wallets that purchased.
+- **React frontend** deploys contracts, verifies purchases and lets members chat.
+
+The frontend calls the contract to purchase membership, then asks the backend to invite
+the wallet into the group. The backend can also watch contract events and forward
+proposal or vote updates to the chat.
+
+## Documentation
+Use the docs below to dive into each component:
 
 - [CONTRACTS.md](./CONTRACTS.md) – smart‑contract specification
 - [BACKEND.md](./BACKEND.md) – XMTP bot and API
