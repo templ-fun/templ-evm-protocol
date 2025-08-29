@@ -304,7 +304,39 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   dotenv.config();
   const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
   const wallet = new ethers.Wallet(process.env.BOT_PRIVATE_KEY, provider);
-  const xmtp = await Client.create(wallet, { env: 'production' });
+  
+  // Create signer compatible with new SDK - using the pattern that worked in tests
+  const xmtpSigner = {
+    getAddress: () => wallet.address,
+    getIdentifier: () => ({
+      identifier: wallet.address,
+      identifierKind: 0  // Ethereum = 0 in the enum
+    }),
+    signMessage: async (message) => {
+      // Handle different message types
+      let messageToSign;
+      if (message instanceof Uint8Array) {
+        try {
+          messageToSign = ethers.toUtf8String(message);
+        } catch {
+          messageToSign = ethers.hexlify(message);
+        }
+      } else if (typeof message === 'string') {
+        messageToSign = message;
+      } else {
+        messageToSign = String(message);
+      }
+      
+      const signature = await wallet.signMessage(messageToSign);
+      return ethers.getBytes(signature);
+    }
+  };
+  
+  const dbEncryptionKey = new Uint8Array(32);
+  const xmtp = await Client.create(xmtpSigner, { 
+    dbEncryptionKey,
+    env: 'production' 
+  });
   const hasPurchased = async (contractAddress, memberAddress) => {
     const contract = new ethers.Contract(
       contractAddress,
