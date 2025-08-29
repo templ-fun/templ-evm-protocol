@@ -36,3 +36,6 @@ deployments/
 
 # State files
 .monitor-state.json
+
+# XMTP test databases
+xmtp-*.db3*

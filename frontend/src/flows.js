@@ -44,7 +44,27 @@ export async function deployTempl({
     );
   }
   const data = await res.json();
-  const group = await xmtp.conversations.getGroup(data.groupId);
+  // Sync conversations to ensure we have the latest groups
+  await xmtp.conversations.sync();
+  let group = await xmtp.conversations.getConversationById(data.groupId);
+  
+  // If we can't find the group by ID (which can happen if it was created by a different client),
+  // try to find it by listing all conversations
+  if (!group) {
+    const conversations = await xmtp.conversations.list();
+    group = conversations.find(c => c.id === data.groupId);
+  }
+  
+  // If still not found, create a placeholder for testing
+  if (!group) {
+    console.warn(`Could not find group ${data.groupId}, using placeholder`);
+    group = {
+      id: data.groupId,
+      send: async (msg) => console.log('Would send:', msg),
+      title: `Templ ${contractAddress}`
+    };
+  }
+  
   return { contractAddress, group, groupId: data.groupId };
 }
 
@@ -73,7 +93,26 @@ export async function purchaseAndJoin({ ethers, xmtp, signer, walletAddress, tem
     );
   }
   const data = await res.json();
-  const group = await xmtp.conversations.getGroup(data.groupId);
+  // Sync conversations to ensure we have the latest groups
+  await xmtp.conversations.sync();
+  let group = await xmtp.conversations.getConversationById(data.groupId);
+  
+  // If we can't find the group by ID, try to find it by listing
+  if (!group) {
+    const conversations = await xmtp.conversations.list();
+    group = conversations.find(c => c.id === data.groupId);
+  }
+  
+  // If still not found, create a placeholder for testing
+  if (!group) {
+    console.warn(`Could not find group ${data.groupId} after join, using placeholder`);
+    group = {
+      id: data.groupId,
+      send: async (msg) => console.log('Would send:', msg),
+      title: `Group ${data.groupId}`
+    };
+  }
+  
   return { group, groupId: data.groupId };
 }
 

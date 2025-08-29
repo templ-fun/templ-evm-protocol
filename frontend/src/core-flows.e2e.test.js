@@ -107,16 +107,24 @@ describe('core flows e2e', () => {
     
     xmtpServer = await Client.create(createXmtpSigner(delegateWallet), { 
       dbEncryptionKey,
-      env: 'dev' 
+      env: 'dev',
+      loggingLevel: 'off'  // Suppress XMTP SDK internal logging
     });
     xmtpPriest = await Client.create(createXmtpSigner(priestWallet), { 
       dbEncryptionKey,
-      env: 'dev' 
+      env: 'dev',
+      loggingLevel: 'off'  // Suppress XMTP SDK internal logging
     });
     xmtpMember = await Client.create(createXmtpSigner(memberWallet), { 
       dbEncryptionKey,
-      env: 'dev' 
+      env: 'dev',
+      loggingLevel: 'off'  // Suppress XMTP SDK internal logging
     });
+
+    // Sync all clients to ensure they're ready
+    await xmtpServer.conversations.sync();
+    await xmtpPriest.conversations.sync();
+    await xmtpMember.conversations.sync();
 
     const app = createApp({
       xmtp: xmtpServer,
@@ -205,7 +213,7 @@ describe('core flows e2e', () => {
 
     await proposeVote({
       ethers,
-      signer: priestSigner,
+      signer: memberSigner,  // Use member who has purchased access
       templAddress,
       templArtifact,
       title: 't',

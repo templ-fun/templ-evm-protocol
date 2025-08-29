@@ -29,7 +29,11 @@ describe('templ flows', () => {
       ContractFactory: vi.fn().mockImplementation(() => factory)
     };
     globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ groupId: 'group-1' }) });
-    const xmtp = { conversations: { getGroup: vi.fn().mockResolvedValue('groupObj') } };
+    const xmtp = { conversations: { 
+      getConversationById: vi.fn().mockResolvedValue('groupObj'),
+      sync: vi.fn().mockResolvedValue(undefined),
+      list: vi.fn().mockResolvedValue([])
+    } };
     const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
 
       const result = await deployTempl({
@@ -75,7 +79,11 @@ describe('templ flows', () => {
     };
     const ethers = { Contract: vi.fn().mockReturnValue(contract) };
     globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ groupId: 'group-2' }) });
-    const xmtp = { conversations: { getGroup: vi.fn().mockResolvedValue('groupObj2') } };
+    const xmtp = { conversations: { 
+      getConversationById: vi.fn().mockResolvedValue('groupObj2'),
+      sync: vi.fn().mockResolvedValue(undefined),
+      list: vi.fn().mockResolvedValue([])
+    } };
     const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
 
     const result = await purchaseAndJoin({
