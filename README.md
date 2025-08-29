@@ -86,6 +86,7 @@ Use the docs below to dive into each component:
 4. **Priest muting** – priest can mute members but cannot rug the group.
 5. **Proposal creation** – any member drafts a call‑data proposal from the chat UI.
 6. **Voting** – members cast yes/no votes and see live tallies as events arrive.
+7. **Proposal creation** – proposals that win with yes result has callData executed.
 
 For auditing guides, continue with the docs linked above.
 
