@@ -2,6 +2,9 @@
   "name": "templ-contracts",
   "version": "1.0.0",
   "description": "TEMPL - Smart contracts for DAO-governed token-gated access",
+  "engine": {
+    "node": "22.18.0"
+  },
   "scripts": {
     "compile": "npx hardhat compile",
     "test": "npx hardhat test",

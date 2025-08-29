@@ -11,7 +11,7 @@ parameters:
 jobs:
   contracts:
     docker:
-      - image: cimg/node:20.8
+      - image: cimg/node:22.18
     steps:
       - checkout
       - run:
@@ -23,7 +23,7 @@ jobs:
 
   slither:
     docker:
-      - image: cimg/node:20.8
+      - image: cimg/node:22.18
     steps:
       - checkout
       - run:
@@ -42,7 +42,7 @@ jobs:
 
   app:
     docker:
-      - image: cimg/node:20.8
+      - image: cimg/node:22.18
     steps:
       - checkout
       - run: npm ci
