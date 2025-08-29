@@ -15,5 +15,5 @@ workflows:
           mapping: |
             contracts/.* run_contracts true
             test/.* run_contracts true
-            backend/.* run_backend true
-            frontend/.* run_frontend true
+            backend/.* run_app true
+            frontend/.* run_app true
