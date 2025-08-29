@@ -1,0 +1,92 @@
+version: 2.1
+
+parameters:
+  run_contracts:
+    type: boolean
+    default: false
+  run_backend:
+    type: boolean
+    default: false
+  run_frontend:
+    type: boolean
+    default: false
+
+jobs:
+  contracts:
+    docker:
+      - image: cimg/node:20.8
+    steps:
+      - checkout
+      - run:
+          name: Install dependencies
+          command: npm ci
+      - run:
+          name: Run contract tests
+          command: npm test
+
+  slither:
+    docker:
+      - image: cimg/node:20.8
+    steps:
+      - checkout
+      - run:
+          name: Install dependencies
+          command: npm ci
+      - run:
+          name: Install Slither
+          command: |
+            sudo apt-get update && sudo apt-get install -y python3-pip
+            python3 -m pip install --user slither-analyzer solc-select
+            echo 'export PATH="$PATH:/home/circleci/.local/bin"' >> $BASH_ENV
+            export PATH="$PATH:/home/circleci/.local/bin"
+      - run:
+          name: Run Slither
+          command: npm run slither
+
+  backend:
+    docker:
+      - image: cimg/node:20.8
+    steps:
+      - checkout
+      - run: npm ci
+      - run: npm --prefix backend ci
+      - run: npm --prefix backend test
+      - run: npm --prefix backend run lint
+
+  frontend:
+    docker:
+      - image: cimg/node:20.8
+    steps:
+      - checkout
+      - run: npm ci
+      - run: npm --prefix frontend ci
+      - run: npm --prefix frontend test
+      - run: npm --prefix frontend run lint
+      - run: npm --prefix frontend run build
+
+workflows:
+  contracts:
+    when: << pipeline.parameters.run_contracts >>
+    jobs:
+      - contracts:
+          filters:
+            branches:
+              ignore: main
+      - slither:
+          filters:
+            branches:
+              ignore: main
+  backend:
+    when: << pipeline.parameters.run_backend >>
+    jobs:
+      - backend:
+          filters:
+            branches:
+              ignore: main
+  frontend:
+    when: << pipeline.parameters.run_frontend >>
+    jobs:
+      - frontend:
+          filters:
+            branches:
+              ignore: main
