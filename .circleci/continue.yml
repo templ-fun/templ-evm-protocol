@@ -4,10 +4,7 @@ parameters:
   run_contracts:
     type: boolean
     default: false
-  run_backend:
-    type: boolean
-    default: false
-  run_frontend:
+  run_app:
     type: boolean
     default: false
 
@@ -43,23 +40,17 @@ jobs:
           name: Run Slither
           command: npm run slither
 
-  backend:
+  app:
     docker:
       - image: cimg/node:20.8
     steps:
       - checkout
       - run: npm ci
+      - run: npm run compile
       - run: npm --prefix backend ci
+      - run: npm --prefix frontend ci
       - run: npm --prefix backend test
       - run: npm --prefix backend run lint
-
-  frontend:
-    docker:
-      - image: cimg/node:20.8
-    steps:
-      - checkout
-      - run: npm ci
-      - run: npm --prefix frontend ci
       - run: npm --prefix frontend test
       - run: npm --prefix frontend run lint
       - run: npm --prefix frontend run build
@@ -76,17 +67,10 @@ workflows:
           filters:
             branches:
               ignore: main
-  backend:
-    when: << pipeline.parameters.run_backend >>
+  app:
+    when: << pipeline.parameters.run_app >>
     jobs:
-      - backend:
-          filters:
-            branches:
-              ignore: main
-  frontend:
-    when: << pipeline.parameters.run_frontend >>
-    jobs:
-      - frontend:
+      - app:
           filters:
             branches:
               ignore: main
