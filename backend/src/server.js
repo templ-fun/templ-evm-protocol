@@ -382,7 +382,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const dbEncryptionKey = new Uint8Array(32);
   const xmtp = await Client.create(xmtpSigner, { 
     dbEncryptionKey,
-    env: 'production',
+    env: 'dev',  // Use dev for testing
     loggingLevel: 'off'  // Suppress XMTP SDK internal logging
   });
   const hasPurchased = async (contractAddress, memberAddress) => {

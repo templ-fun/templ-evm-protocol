@@ -39,15 +39,15 @@ export default defineConfig({
       timeout: 120 * 1000,
     },
     {
-      command: 'cd ../backend && npm start',
+      command: 'cd ../backend && cp .env.test .env 2>/dev/null || true && npm start',
       url: 'http://localhost:3001',
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: true, // Always reuse if running
       timeout: 120 * 1000,
     },
     {
       command: 'cd .. && npx hardhat node',
       url: 'http://localhost:8545',
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: true, // Always reuse if running
       timeout: 120 * 1000,
     }
   ],
