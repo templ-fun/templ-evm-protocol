@@ -7,7 +7,7 @@ This document illustrates which service each core flow uses in TEMPL.
 flowchart LR
     F[Frontend] -->|deploy contract| C[Smart Contract]
     F -->|POST /templs| B[Backend]
-    B -->|newGroup(priest)| X[XMTP]
+    B -->|"newGroup(priest)"| X[XMTP]
 ```
 
 ## 2. Pay-to-join
