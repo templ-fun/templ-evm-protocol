@@ -32,14 +32,14 @@ Use the docs below to dive into each component:
    ```bash
    git clone <repo>
    cd templ
-   npm install
+   npm install # install contract tests and deployment dependencies
    npm --prefix backend install
    npm --prefix frontend install
    npm run prepare # enable Husky pre‑commit
    ```
 2. **Run tests**
    ```bash
-   npm test
+   npm test # run contract tests
    npm run slither
    npm --prefix backend test
    npm --prefix frontend test
