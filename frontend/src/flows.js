@@ -37,7 +37,12 @@ export async function deployTempl({
       signature
     })
   });
-  if (!res.ok) throw new Error('Templ registration failed');
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(
+      `Templ registration failed: ${res.status} ${res.statusText} ${body}`.trim()
+    );
+  }
   const data = await res.json();
   const group = await xmtp.conversations.getGroup(data.groupId);
   return { contractAddress, group, groupId: data.groupId };
@@ -61,7 +66,12 @@ export async function purchaseAndJoin({ ethers, xmtp, signer, walletAddress, tem
       signature
     })
   });
-  if (!res.ok) return null;
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(
+      `Join failed: ${res.status} ${res.statusText} ${body}`.trim()
+    );
+  }
   const data = await res.json();
   const group = await xmtp.conversations.getGroup(data.groupId);
   return { group, groupId: data.groupId };

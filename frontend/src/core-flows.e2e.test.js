@@ -49,7 +49,7 @@ describe('core flows e2e', () => {
     const repoRoot = path.resolve(fileURLToPath(new URL('../../', import.meta.url)));
     hardhat = spawn('npx', ['hardhat', 'node'], {
       cwd: repoRoot,
-      stdio: 'ignore'
+      stdio: 'inherit'
     });
     await wait(5000);
     provider = new ethers.JsonRpcProvider('http://127.0.0.1:8545');
