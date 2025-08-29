@@ -25,6 +25,7 @@ Use the docs below to dive into each component:
 - [CONTRACTS.md](./CONTRACTS.md) – smart‑contract specification
 - [BACKEND.md](./BACKEND.md) – XMTP bot and API
 - [FRONTEND.md](./FRONTEND.md) – React client
+- [CORE_FLOW_DOCS.MD](./CORE_FLOW_DOCS.MD) – core flow service diagrams
 
 ## Quick start
 1. **Clone & install**
@@ -89,7 +90,8 @@ Use the docs below to dive into each component:
 1. **Templ creation** – deploy contract and create a private XMTP group with the priest added at creation time.
 2. **Pay‑to‑join** – wallet calls `purchaseAccess` and backend invites it into the group.
 3. **Messaging** – members send and receive XMTP messages in the group chat.
-4. **Priest muting** – priest can mute members but cannot rug the group.
+4. **Priest muting** – priest can silence members (currently removing them from the
+   XMTP group, but should be a web2 server that filters out messages in frontend if priest mutes a person in chat for other people, mute action should instantly mute and work like this: first mute is 1 hour mute then 1day, 1week, 1month, and fifth mute is forever).
 5. **Proposal creation** – any member drafts a call‑data proposal from the chat UI.
 6. **Voting** – members cast yes/no votes and see live tallies as events arrive.
 7. **Proposal creation** – proposals that win with yes result has callData executed.
