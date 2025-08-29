@@ -1,19 +1,11 @@
-import { test, expect } from '@playwright/test';
+import { test } from '@playwright/test';
 
 test.describe('TEMPL Simple Demo Recording', () => {
   test('Record TEMPL UI Demo', async ({ page, context }) => {
-    // Don't start backend - just test the frontend UI
-    await page.goto('http://localhost:5173');
-    
-    // Take initial screenshot
-    await page.screenshot({ 
-      path: 'test-results/01-landing.png',
-      fullPage: true 
-    });
-    
-    // Mock wallet connection
-    await page.evaluate(() => {
+    // Mock wallet connection before navigation
+    await context.addInitScript(() => {
       window.ethereum = {
+        isMetaMask: true,
         request: async ({ method }) => {
           if (method === 'eth_requestAccounts') {
             return ['0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266'];
@@ -21,11 +13,26 @@ test.describe('TEMPL Simple Demo Recording', () => {
           if (method === 'eth_accounts') {
             return ['0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266'];
           }
+          if (method === 'eth_chainId') {
+            return '0x7a69';
+          }
+          if (method === 'personal_sign') {
+            return '0xmocksignature';
+          }
           return null;
         },
         on: () => {},
         removeListener: () => {},
       };
+    });
+    
+    // Navigate to the app
+    await page.goto('http://localhost:5173');
+    
+    // Take initial screenshot
+    await page.screenshot({ 
+      path: 'test-results/01-landing.png',
+      fullPage: true 
     });
     
     // Connect wallet
@@ -51,27 +58,16 @@ test.describe('TEMPL Simple Demo Recording', () => {
     });
     
     // Show join form
-    await page.fill('input[placeholder*="TEMPL contract address"]', '0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9');
+    await page.fill('input[placeholder*="Contract address"]', '0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9');
     
     await page.screenshot({ 
       path: 'test-results/04-join-form.png',
       fullPage: true 
     });
     
-    // Show message form
-    await page.fill('input[placeholder*="Type a message"]', 'Hello from TEMPL! This is a secure, token-gated message.');
-    
+    // Final screenshot
     await page.screenshot({ 
-      path: 'test-results/05-message-form.png',
-      fullPage: true 
-    });
-    
-    // Show proposal form
-    await page.fill('input[placeholder*="Proposal title"]', 'Enable Emergency Pause');
-    await page.fill('textarea[placeholder*="Description"]', 'This proposal enables the emergency pause feature for enhanced security.');
-    
-    await page.screenshot({ 
-      path: 'test-results/06-proposal-form.png',
+      path: 'test-results/05-final-view.png',
       fullPage: true 
     });
     

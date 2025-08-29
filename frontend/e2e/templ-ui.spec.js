@@ -1,13 +1,11 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('TEMPL UI E2E Tests', () => {
-  test.beforeEach(async ({ page }) => {
-    // Navigate to the app
-    await page.goto('/');
-    
-    // Mock ethereum provider for testing
-    await page.addInitScript(() => {
+  test.beforeEach(async ({ page, context }) => {
+    // Mock ethereum provider for testing - must be done before navigation
+    await context.addInitScript(() => {
       window.ethereum = {
+        isMetaMask: true,
         request: async ({ method }) => {
           if (method === 'eth_requestAccounts') {
             return ['0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266'];
@@ -16,7 +14,7 @@ test.describe('TEMPL UI E2E Tests', () => {
             return ['0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266'];
           }
           if (method === 'eth_chainId') {
-            return '0x1';
+            return '0x7a69'; // 31337 for local hardhat
           }
           if (method === 'personal_sign') {
             return '0x' + '0'.repeat(130); // Mock signature
@@ -27,6 +25,9 @@ test.describe('TEMPL UI E2E Tests', () => {
         removeListener: () => {},
       };
     });
+    
+    // Navigate to the app after setting up mocks
+    await page.goto('/');
   });
 
   test('Complete TEMPL flow through UI', async ({ page }) => {
@@ -42,8 +43,8 @@ test.describe('TEMPL UI E2E Tests', () => {
       await expect(connectButton).toBeVisible();
       await connectButton.click();
       
-      // Wait for wallet to connect (address should appear)
-      await expect(page.locator('text=0xf39F')).toBeVisible({ timeout: 10000 });
+      // Wait for deployment form to appear (indicates wallet connected)
+      await expect(page.locator('h2:has-text("Create Templ")')).toBeVisible({ timeout: 5000 });
     });
 
     // Step 2: Fill deployment form
@@ -60,7 +61,7 @@ test.describe('TEMPL UI E2E Tests', () => {
       // Keep default priest weights
       
       // Click deploy button
-      const deployButton = page.locator('button:has-text("Deploy TEMPL")');
+      const deployButton = page.locator('button:has-text("Deploy")');
       await deployButton.click();
       
       // Wait for deployment (contract address should appear)
