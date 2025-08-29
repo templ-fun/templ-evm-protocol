@@ -44,6 +44,12 @@ export function createApp({ xmtp, hasPurchased, connectContract, dbPath, db }) {
   database.exec(
     'CREATE TABLE IF NOT EXISTS groups (contract TEXT PRIMARY KEY, groupId TEXT, priest TEXT)'
   );
+  database.exec(
+    'CREATE TABLE IF NOT EXISTS mutes (contract TEXT, target TEXT, count INTEGER, until INTEGER, PRIMARY KEY(contract, target))'
+  );
+  database.exec(
+    'CREATE TABLE IF NOT EXISTS delegates (contract TEXT, delegate TEXT, PRIMARY KEY(contract, delegate))'
+  );
 
   function persist(contract, record) {
     database
@@ -163,11 +169,69 @@ export function createApp({ xmtp, hasPurchased, connectContract, dbPath, db }) {
     }
   });
 
-  app.post('/mute', async (req, res) => {
-    const { contractAddress, priestAddress, targetAddress, signature } = req.body;
+  app.post('/delegates', (req, res) => {
+    const { contractAddress, priestAddress, delegateAddress, signature } = req.body;
     if (
       !ethers.isAddress(contractAddress) ||
       !ethers.isAddress(priestAddress) ||
+      !ethers.isAddress(delegateAddress)
+    ) {
+      return res.status(400).json({ error: 'Invalid addresses' });
+    }
+    const record = groups.get(contractAddress.toLowerCase());
+    if (!record) return res.status(404).json({ error: 'Unknown Templ' });
+    const message = `delegate:${contractAddress.toLowerCase()}:${delegateAddress.toLowerCase()}`;
+    if (
+      record.priest !== priestAddress.toLowerCase() ||
+      !verify(priestAddress, signature, message)
+    ) {
+      return res.status(403).json({ error: 'Only priest can delegate' });
+    }
+    try {
+      database
+        .prepare(
+          'INSERT OR REPLACE INTO delegates (contract, delegate) VALUES (?, ?)'
+        )
+        .run(contractAddress.toLowerCase(), delegateAddress.toLowerCase());
+      res.json({ delegated: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete('/delegates', (req, res) => {
+    const { contractAddress, priestAddress, delegateAddress, signature } = req.body;
+    if (
+      !ethers.isAddress(contractAddress) ||
+      !ethers.isAddress(priestAddress) ||
+      !ethers.isAddress(delegateAddress)
+    ) {
+      return res.status(400).json({ error: 'Invalid addresses' });
+    }
+    const record = groups.get(contractAddress.toLowerCase());
+    if (!record) return res.status(404).json({ error: 'Unknown Templ' });
+    const message = `delegate:${contractAddress.toLowerCase()}:${delegateAddress.toLowerCase()}`;
+    if (
+      record.priest !== priestAddress.toLowerCase() ||
+      !verify(priestAddress, signature, message)
+    ) {
+      return res.status(403).json({ error: 'Only priest can delegate' });
+    }
+    try {
+      database
+        .prepare('DELETE FROM delegates WHERE contract = ? AND delegate = ?')
+        .run(contractAddress.toLowerCase(), delegateAddress.toLowerCase());
+      res.json({ delegated: false });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/mute', async (req, res) => {
+    const { contractAddress, moderatorAddress, targetAddress, signature } = req.body;
+    if (
+      !ethers.isAddress(contractAddress) ||
+      !ethers.isAddress(moderatorAddress) ||
       !ethers.isAddress(targetAddress)
     ) {
       return res.status(400).json({ error: 'Invalid addresses' });
@@ -175,15 +239,56 @@ export function createApp({ xmtp, hasPurchased, connectContract, dbPath, db }) {
     const record = groups.get(contractAddress.toLowerCase());
     if (!record) return res.status(404).json({ error: 'Unknown Templ' });
     const message = `mute:${contractAddress.toLowerCase()}:${targetAddress.toLowerCase()}`;
-    if (record.priest !== priestAddress.toLowerCase() || !verify(priestAddress, signature, message)) {
-      return res.status(403).json({ error: 'Only priest can mute' });
+    const contractKey = contractAddress.toLowerCase();
+    const actorKey = moderatorAddress.toLowerCase();
+    const delegated = database
+      .prepare('SELECT 1 FROM delegates WHERE contract = ? AND delegate = ?')
+      .get(contractKey, actorKey);
+    if (record.priest !== actorKey && !delegated) {
+      return res
+        .status(403)
+        .json({ error: 'Only priest or delegate can mute' });
+    }
+    if (!verify(moderatorAddress, signature, message)) {
+      return res.status(403).json({ error: 'Bad signature' });
     }
     try {
-      await record.group.removeMembers([targetAddress]);
-      res.json({ ok: true });
+      const targetKey = targetAddress.toLowerCase();
+      const existing = database
+        .prepare(
+          'SELECT count FROM mutes WHERE contract = ? AND target = ?'
+        )
+        .get(contractKey, targetKey);
+      const count = (existing?.count ?? 0) + 1;
+      const durations = [3600e3, 86400e3, 7 * 86400e3, 30 * 86400e3];
+      const now = Date.now();
+      const until =
+        count <= durations.length ? now + durations[count - 1] : 0;
+      database
+        .prepare(
+          'INSERT OR REPLACE INTO mutes (contract, target, count, until) VALUES (?, ?, ?, ?)'
+        )
+        .run(contractKey, targetKey, count, until);
+      res.json({ mutedUntil: until });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
+  });
+
+  app.get('/mutes', (req, res) => {
+    const { contractAddress } = req.query;
+    if (!ethers.isAddress(contractAddress)) {
+      return res.status(400).json({ error: 'Invalid addresses' });
+    }
+    const now = Date.now();
+    const rows = database
+      .prepare(
+        'SELECT target, count, until FROM mutes WHERE contract = ? AND (until = 0 OR until > ?)'
+      )
+      .all(contractAddress.toLowerCase(), now);
+    res.json({
+      mutes: rows.map((r) => ({ address: r.target, count: r.count, until: r.until }))
+    });
   });
 
   app.close = () => {

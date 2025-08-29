@@ -90,8 +90,11 @@ Use the docs below to dive into each component:
 1. **Templ creation** – deploy contract and create a private XMTP group with the priest added at creation time.
 2. **Pay‑to‑join** – wallet calls `purchaseAccess` and backend invites it into the group.
 3. **Messaging** – members send and receive XMTP messages in the group chat.
-4. **Priest muting** – priest can silence members (currently removing them from the
-   XMTP group, but should be a web2 server that filters out messages in frontend if priest mutes a person in chat for other people, mute action should instantly mute and work like this: first mute is 1 hour mute then 1day, 1week, 1month, and fifth mute is forever).
+4. **Priest muting** – priest can silence members or delegate that power to
+   other moderators via the backend. Each mute is recorded in SQLite with
+   escalating durations of 1 hour, 1 day, 1 week, 1 month and finally
+   permanent after the fifth strike. Frontends query the backend for active
+   mutes and hide messages from muted addresses.
 5. **Proposal creation** – any member drafts a call‑data proposal from the chat UI.
 6. **Voting** – members cast yes/no votes and see live tallies as events arrive.
 7. **Proposal creation** – proposals that win with yes result has callData executed.

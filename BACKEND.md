@@ -46,7 +46,10 @@ npm --prefix backend run lint
 - **Endpoints**
   - `POST /templs` – create a group for a deployed contract; if a `connectContract` factory is supplied the backend also watches governance events.
   - `POST /join` – verify `hasPurchased` on-chain and invite the wallet.
-  - `POST /mute` – priest address may mute a member; no other admin powers exist.
+  - `POST /delegates` – priest assigns mute rights to a member.
+  - `DELETE /delegates` – revoke a delegate's mute rights.
+  - `POST /mute` – priest or delegate records an escalating mute for a member.
+  - `GET /mutes` – list active mutes for a contract so the frontend can hide messages.
 - **Dependencies** – XMTP JS SDK and an on-chain provider; event watching requires a `connectContract` factory.
 - **Persistence** – group metadata persists to a SQLite database at `backend/groups.db`. The database is read on startup and updated when groups change; back it up to avoid losing state.
 

@@ -8,7 +8,8 @@ import {
   sendMessage,
   proposeVote,
   voteOnProposal,
-  watchProposals
+  watchProposals,
+  fetchActiveMutes
 } from './flows.js';
 import './App.css';
 
@@ -23,6 +24,7 @@ function App() {
   const [proposalTitle, setProposalTitle] = useState('');
   const [proposalDesc, setProposalDesc] = useState('');
   const [proposalCalldata, setProposalCalldata] = useState('');
+  const [mutes, setMutes] = useState([]);
 
   // deployment form
   const [tokenAddress, setTokenAddress] = useState('');
@@ -101,6 +103,7 @@ function App() {
     const stream = async () => {
       for await (const msg of await group.streamMessages()) {
         if (cancelled) break;
+        if (mutes.includes(msg.senderAddress.toLowerCase())) continue;
         setMessages((m) => [...m, msg]);
       }
     };
@@ -108,7 +111,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [group]);
+  }, [group, mutes]);
 
   useEffect(() => {
     if (!templAddress || !signer) return;
@@ -132,6 +135,22 @@ function App() {
       contract.removeAllListeners();
     };
   }, [templAddress, signer]);
+
+  useEffect(() => {
+    if (!templAddress) return;
+    let cancelled = false;
+    const load = async () => {
+      const data = await fetchActiveMutes({ contractAddress: templAddress });
+      if (!cancelled)
+        setMutes(data.map((m) => m.address.toLowerCase()));
+    };
+    load();
+    const id = setInterval(load, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [templAddress]);
 
   async function handleSend() {
     if (!group || !messageInput) return;

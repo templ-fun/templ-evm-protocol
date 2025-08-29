@@ -10,14 +10,16 @@ const makeApp = (opts) => createApp({ dbPath: ':memory:', ...opts });
 const wallets = {
   priest: new Wallet('0x' + '2'.repeat(64)),
   member: new Wallet('0x' + '3'.repeat(64)),
-  stranger: new Wallet('0x' + '4'.repeat(64))
+  stranger: new Wallet('0x' + '4'.repeat(64)),
+  delegate: new Wallet('0x' + '5'.repeat(64))
 };
 
 const addresses = {
   contract: '0x0000000000000000000000000000000000000001',
   priest: wallets.priest.address,
   member: wallets.member.address,
-  stranger: wallets.stranger.address
+  stranger: wallets.stranger.address,
+  delegate: wallets.delegate.address
 };
 
 test('creates templ and returns group id', async () => {
@@ -246,14 +248,11 @@ test('responds with 500 when purchase check fails', async () => {
   await app.close();
 });
 
-test('only priest can mute members', async () => {
-  const removed = [];
+test('only authorized addresses can mute members', async () => {
   const fakeGroup = {
     id: 'group-2',
     addMembers: async () => {},
-    removeMembers: async (members) => {
-      removed.push(...members);
-    }
+    removeMembers: async () => {}
   };
   const fakeXmtp = {
     conversations: {
@@ -281,7 +280,7 @@ test('only priest can mute members', async () => {
     .post('/mute')
     .send({
       contractAddress: addresses.contract,
-      priestAddress: addresses.stranger,
+      moderatorAddress: addresses.stranger,
       targetAddress: addresses.member,
       signature: muteSig
     })
@@ -290,17 +289,147 @@ test('only priest can mute members', async () => {
   muteSig = await wallets.priest.signMessage(
     `mute:${addresses.contract}:${addresses.member.toLowerCase()}`
   );
+  const resp = await request(app)
+    .post('/mute')
+    .send({
+      contractAddress: addresses.contract,
+      moderatorAddress: addresses.priest,
+      targetAddress: addresses.member,
+      signature: muteSig
+    })
+    .expect(200);
+
+  assert.ok(resp.body.mutedUntil > Date.now());
+  const list = await request(app)
+    .get('/mutes')
+    .query({ contractAddress: addresses.contract })
+    .expect(200);
+  assert.deepEqual(list.body.mutes, [
+    {
+      address: addresses.member.toLowerCase(),
+      count: 1,
+      until: resp.body.mutedUntil
+    }
+  ]);
+  await app.close();
+});
+
+test('priest can delegate mute power', async () => {
+  const fakeGroup = { id: 'group-deleg', addMembers: async () => {}, removeMembers: async () => {} };
+  const fakeXmtp = { conversations: { newGroup: async () => fakeGroup } };
+  const hasPurchased = async () => true;
+
+  const app = makeApp({ xmtp: fakeXmtp, hasPurchased });
+
+  const templSig = await wallets.priest.signMessage(`create:${addresses.contract}`);
+  await request(app)
+    .post('/templs')
+    .send({
+      contractAddress: addresses.contract,
+      priestAddress: addresses.priest,
+      signature: templSig
+    })
+    .expect(200);
+
+  let delSig = await wallets.priest.signMessage(
+    `delegate:${addresses.contract}:${addresses.delegate.toLowerCase()}`
+  );
+  await request(app)
+    .post('/delegates')
+    .send({
+      contractAddress: addresses.contract,
+      priestAddress: addresses.priest,
+      delegateAddress: addresses.delegate,
+      signature: delSig
+    })
+    .expect(200, { delegated: true });
+
+  const muteSig = await wallets.delegate.signMessage(
+    `mute:${addresses.contract}:${addresses.member.toLowerCase()}`
+  );
   await request(app)
     .post('/mute')
     .send({
       contractAddress: addresses.contract,
-      priestAddress: addresses.priest,
+      moderatorAddress: addresses.delegate,
       targetAddress: addresses.member,
       signature: muteSig
     })
-    .expect(200, { ok: true });
+    .expect(200);
 
-  assert.deepEqual(removed, [addresses.member]);
+  delSig = await wallets.priest.signMessage(
+    `delegate:${addresses.contract}:${addresses.delegate.toLowerCase()}`
+  );
+  await request(app)
+    .delete('/delegates')
+    .send({
+      contractAddress: addresses.contract,
+      priestAddress: addresses.priest,
+      delegateAddress: addresses.delegate,
+      signature: delSig
+    })
+    .expect(200, { delegated: false });
+
+  const badSig = await wallets.delegate.signMessage(
+    `mute:${addresses.contract}:${addresses.member.toLowerCase()}`
+  );
+  await request(app)
+    .post('/mute')
+    .send({
+      contractAddress: addresses.contract,
+      moderatorAddress: addresses.delegate,
+      targetAddress: addresses.member,
+      signature: badSig
+    })
+    .expect(403);
+
+  await app.close();
+});
+
+test('mute durations escalate', async () => {
+  const fakeGroup = { id: 'group-2b', addMembers: async () => {}, removeMembers: async () => {} };
+  const fakeXmtp = { conversations: { newGroup: async () => fakeGroup } };
+  const hasPurchased = async () => true;
+  const app = makeApp({ xmtp: fakeXmtp, hasPurchased });
+
+  const templSig = await wallets.priest.signMessage(`create:${addresses.contract}`);
+  await request(app)
+    .post('/templs')
+    .send({
+      contractAddress: addresses.contract,
+      priestAddress: addresses.priest,
+      signature: templSig
+    })
+    .expect(200);
+
+  let muteSig = await wallets.priest.signMessage(
+    `mute:${addresses.contract}:${addresses.member.toLowerCase()}`
+  );
+  const first = await request(app)
+    .post('/mute')
+    .send({
+      contractAddress: addresses.contract,
+      moderatorAddress: addresses.priest,
+      targetAddress: addresses.member,
+      signature: muteSig
+    })
+    .expect(200);
+
+  muteSig = await wallets.priest.signMessage(
+    `mute:${addresses.contract}:${addresses.member.toLowerCase()}`
+  );
+  const second = await request(app)
+    .post('/mute')
+    .send({
+      contractAddress: addresses.contract,
+      moderatorAddress: addresses.priest,
+      targetAddress: addresses.member,
+      signature: muteSig
+    })
+    .expect(200);
+
+  const diff = second.body.mutedUntil - first.body.mutedUntil;
+  assert.ok(diff > 23 * 3600 * 1000 && diff < 25 * 3600 * 1000);
   await app.close();
 });
 
@@ -328,7 +457,7 @@ test('rejects mute with bad signature', async () => {
     .post('/mute')
     .send({
       contractAddress: addresses.contract,
-      priestAddress: addresses.priest,
+      moderatorAddress: addresses.priest,
       targetAddress: addresses.member,
       signature: badSig
     })
@@ -347,7 +476,7 @@ test('rejects mute with malformed addresses', async () => {
     .post('/mute')
     .send({
       contractAddress: 'not-an-address',
-      priestAddress: 'also-bad',
+      moderatorAddress: 'also-bad',
       targetAddress: 'nope',
       signature: '0x'
     })
@@ -366,7 +495,7 @@ test('rejects mute for unknown templ', async () => {
     .post('/mute')
     .send({
       contractAddress: addresses.contract,
-      priestAddress: addresses.priest,
+      moderatorAddress: addresses.priest,
       targetAddress: addresses.member,
       signature: '0x'
     })

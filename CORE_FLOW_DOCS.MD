@@ -24,14 +24,17 @@ flowchart LR
     M[Member] -->|send message| X[XMTP Group]
 ```
 
-## 4. Priest muting
-XMTP groups do not yet support a true mute. When the priest mutes a member,
-the backend removes them from the group to silence them.
+## 4. Moderation
+The backend tracks mutes with escalating durations. The priest can delegate
+mute power to other members. Frontends hide messages from muted members.
 
 ```mermaid
 flowchart LR
-    P[Priest] -->|POST /mute| B[Backend]
-    B -->|removeMembers| X[XMTP Group]
+    P[Priest] -->|POST /delegates| B[Backend]
+    P -->|POST /mute| B
+    M[Delegate] -->|POST /mute| B
+    F[Frontend] -->|GET /mutes| B
+    B -->|store| D[(SQLite)]
 ```
 
 ## 5. Proposal creation

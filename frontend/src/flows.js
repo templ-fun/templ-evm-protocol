@@ -121,3 +121,15 @@ export function watchProposals({
   });
   return contract;
 }
+
+export async function fetchActiveMutes({
+  contractAddress,
+  backendUrl = 'http://localhost:3001'
+}) {
+  const res = await fetch(
+    `${backendUrl}/mutes?contractAddress=${contractAddress}`
+  );
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.mutes;
+}
