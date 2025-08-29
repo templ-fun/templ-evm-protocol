@@ -27,7 +27,10 @@ test('reloads groups from disk on restart', async () => {
     removeMembers: async () => {}
   };
 
-  const xmtp1 = { conversations: { newGroup: async () => fakeGroup } };
+  const xmtp1 = { 
+    inboxId: 'test-inbox-id',
+    conversations: { newGroup: async () => fakeGroup } 
+  };
   const hasPurchased = async () => true;
 
   let app = createApp({ xmtp: xmtp1, hasPurchased, dbPath });
@@ -44,7 +47,10 @@ test('reloads groups from disk on restart', async () => {
     .expect(200);
   await app.close();
 
-  const xmtp2 = { conversations: { getGroup: async () => fakeGroup } };
+  const xmtp2 = { 
+    inboxId: 'test-inbox-id',
+    conversations: { getConversationById: async () => fakeGroup } 
+  };
   app = createApp({ xmtp: xmtp2, hasPurchased, dbPath });
   await new Promise((r) => setTimeout(r, 10));
 
@@ -64,7 +70,10 @@ test('reloads groups from disk on restart', async () => {
 
 test('returns 500 when persistence fails', async () => {
   const fakeGroup = { id: 'group-err', addMembers: async () => {}, removeMembers: async () => {} };
-  const xmtp = { conversations: { newGroup: async () => fakeGroup } };
+  const xmtp = { 
+    inboxId: 'test-inbox-id',
+    conversations: { newGroup: async () => fakeGroup } 
+  };
   const hasPurchased = async () => false;
   const failingDb = {
     exec() {},

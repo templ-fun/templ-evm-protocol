@@ -29,6 +29,7 @@ test('creates templ and returns group id', async () => {
     removeMembers: async () => {}
   };
   const fakeXmtp = {
+    inboxId: 'test-inbox-id',
     conversations: {
       newGroup: async () => fakeGroup
     }
@@ -52,7 +53,10 @@ test('creates templ and returns group id', async () => {
 
 test('rejects templ creation with malformed addresses', async () => {
   const fakeGroup = { id: 'group-x', addMembers: async () => {}, removeMembers: async () => {} };
-  const fakeXmtp = { conversations: { newGroup: async () => fakeGroup } };
+  const fakeXmtp = { 
+    inboxId: 'test-inbox-id',
+    conversations: { newGroup: async () => fakeGroup } 
+  };
   const hasPurchased = async () => false;
 
   const app = makeApp({ xmtp: fakeXmtp, hasPurchased });
@@ -70,7 +74,10 @@ test('rejects templ creation with malformed addresses', async () => {
 
 test('rejects templ creation with bad signature', async () => {
   const fakeGroup = { id: 'group-y', addMembers: async () => {}, removeMembers: async () => {} };
-  const fakeXmtp = { conversations: { newGroup: async () => fakeGroup } };
+  const fakeXmtp = { 
+    inboxId: 'test-inbox-id',
+    conversations: { newGroup: async () => fakeGroup } 
+  };
   const hasPurchased = async () => false;
 
   const app = makeApp({ xmtp: fakeXmtp, hasPurchased });
@@ -105,7 +112,10 @@ test('rejects join with malformed addresses', async () => {
 
 test('rejects join with bad signature', async () => {
   const fakeGroup = { id: 'group-bad', addMembers: async () => {}, removeMembers: async () => {} };
-  const fakeXmtp = { conversations: { newGroup: async () => fakeGroup } };
+  const fakeXmtp = { 
+    inboxId: 'test-inbox-id',
+    conversations: { newGroup: async () => fakeGroup } 
+  };
   const hasPurchased = async () => true;
 
   const app = makeApp({ xmtp: fakeXmtp, hasPurchased });
@@ -160,6 +170,7 @@ test('join requires on-chain purchase', async () => {
     removeMembers: async () => {}
   };
   const fakeXmtp = {
+    inboxId: 'test-inbox-id',
     conversations: {
       newGroup: async () => fakeGroup
     }
@@ -201,7 +212,14 @@ test('join requires on-chain purchase', async () => {
     })
     .expect(200, { groupId: fakeGroup.id });
 
-  assert.deepEqual(added, [addresses.member]);
+  // Now we add inbox IDs instead of addresses
+  const { generateInboxId } = await import('@xmtp/node-sdk');
+  const memberIdentifier = {
+    identifier: addresses.member.toLowerCase(),
+    identifierKind: 0
+  };
+  const expectedInboxId = generateInboxId(memberIdentifier);
+  assert.deepEqual(added, [expectedInboxId]);
   await app.close();
 });
 
@@ -212,6 +230,7 @@ test('responds with 500 when purchase check fails', async () => {
     removeMembers: async () => {}
   };
   const fakeXmtp = {
+    inboxId: 'test-inbox-id',
     conversations: {
       newGroup: async () => fakeGroup
     }
@@ -255,6 +274,7 @@ test('only authorized addresses can mute members', async () => {
     removeMembers: async () => {}
   };
   const fakeXmtp = {
+    inboxId: 'test-inbox-id',
     conversations: {
       newGroup: async () => fakeGroup
     }
@@ -316,7 +336,10 @@ test('only authorized addresses can mute members', async () => {
 
 test('priest can delegate mute power', async () => {
   const fakeGroup = { id: 'group-deleg', addMembers: async () => {}, removeMembers: async () => {} };
-  const fakeXmtp = { conversations: { newGroup: async () => fakeGroup } };
+  const fakeXmtp = { 
+    inboxId: 'test-inbox-id',
+    conversations: { newGroup: async () => fakeGroup } 
+  };
   const hasPurchased = async () => true;
 
   const app = makeApp({ xmtp: fakeXmtp, hasPurchased });
@@ -388,7 +411,10 @@ test('priest can delegate mute power', async () => {
 
 test('mute durations escalate', async () => {
   const fakeGroup = { id: 'group-2b', addMembers: async () => {}, removeMembers: async () => {} };
-  const fakeXmtp = { conversations: { newGroup: async () => fakeGroup } };
+  const fakeXmtp = { 
+    inboxId: 'test-inbox-id',
+    conversations: { newGroup: async () => fakeGroup } 
+  };
   const hasPurchased = async () => true;
   const app = makeApp({ xmtp: fakeXmtp, hasPurchased });
 
@@ -435,7 +461,10 @@ test('mute durations escalate', async () => {
 
 test('rejects mute with bad signature', async () => {
   const fakeGroup = { id: 'group-3a', addMembers: async () => {}, removeMembers: async () => {} };
-  const fakeXmtp = { conversations: { newGroup: async () => fakeGroup } };
+  const fakeXmtp = { 
+    inboxId: 'test-inbox-id',
+    conversations: { newGroup: async () => fakeGroup } 
+  };
   const hasPurchased = async () => true;
 
   const app = makeApp({ xmtp: fakeXmtp, hasPurchased });
@@ -468,7 +497,10 @@ test('rejects mute with bad signature', async () => {
 test('rejects mute with malformed addresses', async () => {
   const hasPurchased = async () => true;
   const fakeGroup = { id: 'group-3b', addMembers: async () => {}, removeMembers: async () => {} };
-  const fakeXmtp = { conversations: { newGroup: async () => fakeGroup } };
+  const fakeXmtp = { 
+    inboxId: 'test-inbox-id',
+    conversations: { newGroup: async () => fakeGroup } 
+  };
 
   const app = makeApp({ xmtp: fakeXmtp, hasPurchased });
 
@@ -487,7 +519,10 @@ test('rejects mute with malformed addresses', async () => {
 test('rejects mute for unknown templ', async () => {
   const hasPurchased = async () => true;
   const fakeGroup = { id: 'group-3c', addMembers: async () => {}, removeMembers: async () => {} };
-  const fakeXmtp = { conversations: { newGroup: async () => fakeGroup } };
+  const fakeXmtp = { 
+    inboxId: 'test-inbox-id',
+    conversations: { newGroup: async () => fakeGroup } 
+  };
 
   const app = makeApp({ xmtp: fakeXmtp, hasPurchased });
 
@@ -514,6 +549,7 @@ test('broadcasts proposal and vote events to group', async () => {
     }
   };
   const fakeXmtp = {
+    inboxId: 'test-inbox-id',
     conversations: {
       newGroup: async () => fakeGroup
     }
