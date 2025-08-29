@@ -31,7 +31,7 @@ jobs:
             solc-select use 0.8.19
       - run:
           name: Run Slither
-          command: npm run slither
+          command: slither contracts/TEMPL.sol --config-file slither.config.json
 
   web:
     docker:

@@ -6,5 +6,6 @@
   "detectors_to_exclude": [
     "arbitrary-send-eth"
   ],
-  "_note": "ReturnEth.sol intentionally returns funds to the caller, so we suppress arbitrary-send-eth warnings."
+  "_note": "ReturnEth.sol intentionally returns funds to the caller, so we suppress arbitrary-send-eth warnings.",
+  "_analysis": "npm run slither analyzes only contracts/TEMPL.sol; test helpers are excluded"
 }
