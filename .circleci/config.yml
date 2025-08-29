@@ -27,11 +27,9 @@ jobs:
             python3 -m pip install --user slither-analyzer solc-select
             echo 'export PATH="$PATH:/home/circleci/.local/bin"' >> $BASH_ENV
             export PATH="$PATH:/home/circleci/.local/bin"
-            solc-select install 0.8.19
-            solc-select use 0.8.19
       - run:
           name: Run Slither
-          command: slither contracts/TEMPL.sol --config-file slither.config.json
+          command: npm run slither
 
   web:
     docker:
