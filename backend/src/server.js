@@ -89,7 +89,7 @@ export function createApp({ xmtp, hasPurchased, connectContract, dbPath, db }) {
   }
 
   app.post('/templs', async (req, res) => {
-    const { contractAddress, priestAddress, signature } = req.body;
+    const { contractAddress, priestAddress, priestInboxId, signature } = req.body;
     if (!ethers.isAddress(contractAddress) || !ethers.isAddress(priestAddress)) {
       return res.status(400).json({ error: 'Invalid addresses' });
     }
@@ -98,48 +98,75 @@ export function createApp({ xmtp, hasPurchased, connectContract, dbPath, db }) {
       return res.status(403).json({ error: 'Bad signature' });
     }
     try {
-      // For testing, let's try using the server's own inbox ID
-      // In production, we'd need the priest to pass their inbox ID or ensure they're registered
-      const priestInboxId = xmtp.inboxId;
-      logger.info({ priestInboxId, priestAddress }, 'Using server inbox ID for group creation (test mode)');
+      // Use the priest's actual inbox ID if provided, otherwise fall back to server's (for backward compat)
+      const inboxIdToUse = priestInboxId || xmtp.inboxId;
+      logger.info({ 
+        inboxIdToUse, 
+        priestAddress,
+        priestInboxIdProvided: !!priestInboxId,
+        serverInboxId: xmtp.inboxId
+      }, 'Creating group with inbox ID');
       
-      // Create group - note: XMTP SDK has a bug where it throws sync messages as errors
-      const group = await xmtp.conversations.newGroup([priestInboxId], {
-        title: `Templ ${contractAddress}`,
-        description: 'Private TEMPL group'
-      }).catch(async (err) => {
-        // Check if this is the known XMTP SDK sync message bug
-        if (err && err.message && typeof err.message === 'string' && 
-            err.message.includes('synced') && err.message.includes('succeeded')) {
-          logger.warn({ message: err.message }, 'XMTP SDK sync bug - ignoring and continuing');
-          
-          // The group was likely created successfully despite the error
-          // Try to find it by syncing and listing
+      // Create group with priest as initial member
+      // Server will be the super admin, priest will be a member
+      logger.info({ members: [inboxIdToUse], inboxIdToUse }, 'About to create group with members');
+      
+      // Create group - the SDK throws sync errors but the group is created
+      const membersToAdd = inboxIdToUse ? [inboxIdToUse] : [];
+      logger.info({ membersToAdd }, 'Calling newGroup with members');
+      
+      let group;
+      try {
+        group = await xmtp.conversations.newGroup(membersToAdd);
+      } catch (err) {
+        // If the error mentions "succeeded", the group was created despite the error
+        if (err.message && err.message.includes('succeeded')) {
+          logger.info({ message: err.message }, 'XMTP sync message during group creation - ignoring');
+          // Return the last created group
           await xmtp.conversations.sync();
           const conversations = await xmtp.conversations.list();
-          const targetTitle = `Templ ${contractAddress}`;
-          const foundGroup = conversations.find(conv => 
-            conv.title === targetTitle || 
-            (conv.metadata && conv.metadata.title === targetTitle)
-          );
-          
-          if (foundGroup) {
-            logger.info({ groupId: foundGroup.id }, 'Found group despite sync error');
-            return foundGroup;
-          }
-          
-          // If we still can't find it, create a dummy group object
-          // This is a workaround for the XMTP SDK bug
-          logger.warn('Creating placeholder group due to XMTP sync bug');
-          return {
-            id: `temp-${contractAddress.toLowerCase()}`,
-            title: targetTitle,
-            send: async (msg) => logger.info({ msg }, 'Would send message to group'),
-            addMembers: async (inboxIds) => logger.info({ inboxIds }, 'Would add members to group')
-          };
+          logger.info({ conversationCount: conversations.length }, 'Conversations after sync error');
+          // Return the most recently created conversation (should be our group)
+          group = conversations[conversations.length - 1];
+        } else {
+          throw err;
         }
-        throw err;
-      });
+      }
+      
+      logger.info({ 
+        groupId: group.id,
+        groupName: group.name,
+        memberCount: group.members?.length
+      }, 'Group created successfully');
+      
+      // Log member count after creation
+      logger.info({ 
+        memberCount: group.members?.length,
+        members: group.members
+      }, 'Group members after creation');
+      
+      // Set the group metadata - these may throw sync errors too
+      try {
+        await group.updateName(`Templ ${contractAddress}`);
+      } catch (err) {
+        if (!err.message || !err.message.includes('succeeded')) {
+          throw err;
+        }
+        logger.info({ message: err.message }, 'XMTP sync message during name update - ignoring');
+      }
+      
+      try {
+        await group.updateDescription('Private TEMPL group');
+      } catch (err) {
+        if (!err.message || !err.message.includes('succeeded')) {
+          throw err;
+        }
+        logger.info({ message: err.message }, 'XMTP sync message during description update - ignoring');
+      }
+      
+      // Ensure the group is fully synced before returning
+      await xmtp.conversations.sync();
+      
       const record = {
         group,
         priest: priestAddress.toLowerCase()
@@ -183,7 +210,7 @@ export function createApp({ xmtp, hasPurchased, connectContract, dbPath, db }) {
   });
 
   app.post('/join', async (req, res) => {
-    const { contractAddress, memberAddress, signature } = req.body;
+    const { contractAddress, memberAddress, memberInboxId, signature } = req.body;
     if (!ethers.isAddress(contractAddress) || !ethers.isAddress(memberAddress)) {
       return res.status(400).json({ error: 'Invalid addresses' });
     }
@@ -201,15 +228,18 @@ export function createApp({ xmtp, hasPurchased, connectContract, dbPath, db }) {
     }
     if (!purchased) return res.status(403).json({ error: 'Access not purchased' });
     try {
-      // Get the inbox ID for the member address
-      const memberIdentifier = {
-        identifier: memberAddress.toLowerCase(),
-        identifierKind: 0
-      };
-      // Generate inbox ID deterministically from the identifier
-      const memberInboxId = generateInboxId(memberIdentifier);
+      // Use the provided inbox ID, or generate one from the address as fallback
+      let inboxIdToAdd = memberInboxId;
+      if (!inboxIdToAdd) {
+        const memberIdentifier = {
+          identifier: memberAddress.toLowerCase(),
+          identifierKind: 0
+        };
+        // Generate inbox ID deterministically from the identifier
+        inboxIdToAdd = generateInboxId(memberIdentifier);
+      }
       
-      await record.group.addMembers([memberInboxId]);
+      await record.group.addMembers([inboxIdToAdd]);
       res.json({ groupId: record.group.id });
     } catch (err) {
       res.status(500).json({ error: err.message });

@@ -105,51 +105,42 @@ describe('core flows e2e', () => {
       };
     };
     
-    // Try to create real XMTP clients, fall back to mocks in CI
-    try {
-      xmtpServer = await Client.create(createXmtpSigner(delegateWallet), { 
-        dbEncryptionKey,
-        env: 'dev',
-        loggingLevel: 'off'  // Suppress XMTP SDK internal logging
-      });
-      xmtpPriest = await Client.create(createXmtpSigner(priestWallet), { 
-        dbEncryptionKey,
-        env: 'dev',
-        loggingLevel: 'off'  // Suppress XMTP SDK internal logging
-      });
-      xmtpMember = await Client.create(createXmtpSigner(memberWallet), { 
-        dbEncryptionKey,
-        env: 'dev',
-        loggingLevel: 'off'  // Suppress XMTP SDK internal logging
-      });
+    // Create real XMTP clients - no mocks!
+    xmtpServer = await Client.create(createXmtpSigner(delegateWallet), { 
+      dbEncryptionKey,
+      env: 'dev',
+      loggingLevel: 'off'  // Suppress XMTP SDK internal logging
+    });
+    xmtpPriest = await Client.create(createXmtpSigner(priestWallet), { 
+      dbEncryptionKey,
+      env: 'dev',
+      loggingLevel: 'off'  // Suppress XMTP SDK internal logging
+    });
+    xmtpMember = await Client.create(createXmtpSigner(memberWallet), { 
+      dbEncryptionKey,
+      env: 'dev',
+      loggingLevel: 'off'  // Suppress XMTP SDK internal logging
+    });
 
-      // Sync all clients to ensure they're ready
-      await xmtpServer.conversations.sync();
-      await xmtpPriest.conversations.sync();
-      await xmtpMember.conversations.sync();
+    // Ensure all clients are registered and can message each other
+    console.log('XMTP clients created:', {
+      server: xmtpServer.inboxId,
+      priest: xmtpPriest.inboxId,
+      member: xmtpMember.inboxId
+    });
+
+    // Test connectivity: Try to create a DM between server and priest
+    try {
+      const dm = await xmtpServer.conversations.newDm(xmtpPriest.inboxId);
+      console.log('Successfully created DM between server and priest:', dm.id);
     } catch (err) {
-      console.log('XMTP SDK initialization failed (expected in CI), using mocks:', err.message);
-      
-      // Create mock XMTP clients for CI
-      const createMockClient = () => ({
-        inboxId: 'mock-inbox-id',
-        conversations: {
-          sync: async () => {},
-          newGroup: async () => ({
-            id: 'mock-group-id',
-            send: async () => {},
-            addMembers: async () => {}
-          }),
-          getConversationById: async () => null,
-          list: async () => []
-        },
-        close: () => {}
-      });
-      
-      xmtpServer = createMockClient();
-      xmtpPriest = createMockClient();
-      xmtpMember = createMockClient();
+      console.error('Failed to create DM:', err.message);
     }
+
+    // Sync all clients to ensure they're ready
+    await xmtpServer.conversations.sync();
+    await xmtpPriest.conversations.sync();
+    await xmtpMember.conversations.sync();
 
     const app = createApp({
       xmtp: xmtpServer,

@@ -25,6 +25,11 @@ function App() {
   const [proposalDesc, setProposalDesc] = useState('');
   const [proposalCalldata, setProposalCalldata] = useState('');
   const [mutes, setMutes] = useState([]);
+  
+  // muting form
+  const [muteAddress, setMuteAddress] = useState('');
+  const [delegateAddress, setDelegateAddress] = useState('');
+  const [isPriest, setIsPriest] = useState(false);
 
   // deployment form
   const [tokenAddress, setTokenAddress] = useState('');
@@ -46,12 +51,12 @@ function App() {
     const address = await signer.getAddress();
     setWalletAddress(address);
     
-    // Create signer compatible with new SDK - using the pattern that works
+    // Create signer compatible with browser SDK
     const xmtpSigner = {
-      getAddress: () => address,
+      type: 'EOA',
       getIdentifier: () => ({
-        identifier: address,
-        identifierKind: 0  // Ethereum = 0 in the enum
+        identifier: address.toLowerCase(),
+        identifierKind: 'Ethereum'  // Must be string "Ethereum" for browser SDK
       }),
       signMessage: async (message) => {
         // Handle different message types
@@ -215,6 +220,62 @@ function App() {
     });
   }
 
+  async function handleMute() {
+    if (!templAddress || !signer || !muteAddress) return;
+    try {
+      const contract = new ethers.Contract(templAddress, templArtifact.abi, signer);
+      const tx = await contract.muteAddress(muteAddress);
+      await tx.wait();
+      alert(`Muted ${muteAddress}`);
+      setMuteAddress('');
+      // Refresh mutes
+      const data = await fetchActiveMutes({ contractAddress: templAddress });
+      setMutes(data.map((m) => m.address.toLowerCase()));
+    } catch (err) {
+      alert('Mute failed: ' + err.message);
+    }
+  }
+
+  async function handleDelegate() {
+    if (!templAddress || !signer || !delegateAddress) return;
+    try {
+      const contract = new ethers.Contract(templAddress, templArtifact.abi, signer);
+      const tx = await contract.delegateMute(delegateAddress);
+      await tx.wait();
+      alert(`Delegated muting power to ${delegateAddress}`);
+      setDelegateAddress('');
+    } catch (err) {
+      alert('Delegate failed: ' + err.message);
+    }
+  }
+
+  async function handleExecuteProposal(proposalId) {
+    if (!templAddress || !signer) return;
+    try {
+      const contract = new ethers.Contract(templAddress, templArtifact.abi, signer);
+      const tx = await contract.executeProposal(proposalId);
+      await tx.wait();
+      alert(`Executed proposal ${proposalId}`);
+    } catch (err) {
+      alert('Execution failed: ' + err.message);
+    }
+  }
+
+  // Check if user is priest
+  useEffect(() => {
+    async function checkPriest() {
+      if (!templAddress || !walletAddress || !signer) return;
+      try {
+        const contract = new ethers.Contract(templAddress, templArtifact.abi, signer);
+        const config = await contract.getConfig();
+        setIsPriest(config.priest?.toLowerCase() === walletAddress.toLowerCase());
+      } catch (err) {
+        console.error('Error checking priest status:', err);
+      }
+    }
+    checkPriest();
+  }, [templAddress, walletAddress, signer]);
+
   return (
     <div className="App">
       {!walletAddress && (
@@ -315,9 +376,40 @@ function App() {
                 </p>
                 <button onClick={() => handleVote(p.id, true)}>Yes</button>
                 <button onClick={() => handleVote(p.id, false)}>No</button>
+                <button onClick={() => handleExecuteProposal(p.id)}>Execute</button>
               </div>
             ))}
           </div>
+
+          {isPriest && (
+            <div className="muting-controls">
+              <h3>Moderation Controls</h3>
+              <div className="mute-form">
+                <input
+                  placeholder="Address to mute"
+                  value={muteAddress}
+                  onChange={(e) => setMuteAddress(e.target.value)}
+                />
+                <button onClick={handleMute}>Mute Address</button>
+              </div>
+              <div className="delegate-form">
+                <input
+                  placeholder="Delegate moderation to address"
+                  value={delegateAddress}
+                  onChange={(e) => setDelegateAddress(e.target.value)}
+                />
+                <button onClick={handleDelegate}>Delegate</button>
+              </div>
+              {mutes.length > 0 && (
+                <div className="active-mutes">
+                  <h4>Currently Muted:</h4>
+                  {mutes.map((addr) => (
+                    <div key={addr}>{addr}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
