@@ -1,4 +1,4 @@
-# TEMPL: Onchain memberships and XMTP group chat technology.
+# TEMPL
 
 <p align="center">
 <img width="300" alt="templ logo" src="https://github.com/user-attachments/assets/fa3513b4-75e4-4dbf-a1fb-73e9e27d766f" />
