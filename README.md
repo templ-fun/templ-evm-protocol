@@ -19,6 +19,7 @@ Use the docs below to dive into each component:
 - [CONTRACTS.md](./CONTRACTS.md) – smart‑contract specification
 - [BACKEND.md](./BACKEND.md) – XMTP bot and API
 - [FRONTEND.md](./FRONTEND.md) – React client
+- [CORE_FLOW_DOCS.MD](./CORE_FLOW_DOCS.MD) – core flow service diagrams
 
 ## Quick start
 1. **Clone & install**
