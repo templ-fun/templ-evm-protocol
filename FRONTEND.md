@@ -33,6 +33,7 @@ npm --prefix frontend run build
 - **Default configuration** – priest vote weight and priest weight threshold default to 10.
 - **Pay‑to‑join flow** in `purchaseAndJoin` verifies membership and requests an invite from the backend (defaults to `http://localhost:3001`).
 - **Chat UI** streams XMTP messages and sends new ones using the group inbox ID.
+- **Moderation** – the client polls `GET /mutes` and filters out messages from muted addresses before rendering.
 - **Governance** – members create proposals and vote from the chat; `watchProposals` updates the UI when events fire.
 
 ## Security considerations

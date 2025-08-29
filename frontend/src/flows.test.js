@@ -5,7 +5,8 @@ import {
   sendMessage,
   proposeVote,
   voteOnProposal,
-  watchProposals
+  watchProposals,
+  fetchActiveMutes
 } from './flows.js';
 
 const templArtifact = { abi: [], bytecode: '0x' };
@@ -138,5 +139,20 @@ describe('templ flows', () => {
       onVote: vi.fn()
     });
     expect(on).toHaveBeenCalledTimes(2);
+  });
+
+  it('fetchActiveMutes queries backend for mutes', async () => {
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({ mutes: [{ address: '0xabc', count: 1, until: 0 }] })
+      });
+    const result = await fetchActiveMutes({ contractAddress: '0xTempl' });
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://localhost:3001/mutes?contractAddress=0xTempl'
+    );
+    expect(result).toEqual([{ address: '0xabc', count: 1, until: 0 }]);
   });
 });
