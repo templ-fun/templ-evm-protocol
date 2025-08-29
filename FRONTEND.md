@@ -25,11 +25,6 @@ npm --prefix frontend test
 npm --prefix frontend run lint
 npm --prefix frontend run build
 ```
-
-## Auditing
-
-The frontend is a React single page app that interacts with the TEMPL contract and XMTP.
-
 ## Architecture
 
 - **Wallet connection** via `ethers` and `window.ethereum`.

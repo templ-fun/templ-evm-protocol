@@ -1,5 +1,6 @@
-# Smart Contract Specification
+# TEMPL Contracts
 
+## Overview
 This document describes the on-chain portion of TEMPL for auditors.
 
 ## Economic model
@@ -98,7 +99,7 @@ sequenceDiagram
     end
 ```
 
-## Testing
+## Tests & Lint
 Run contract tests and Slither:
 ```bash
 npm test
