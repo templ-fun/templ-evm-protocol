@@ -30,7 +30,7 @@ jobs:
             solc-select install 0.8.19
             solc-select use 0.8.19
       - run:
-          name: Run Slither (TEMPL.sol only)
+          name: Run Slither
           command: slither contracts/TEMPL.sol --config-file slither.config.json
 
   web:
