@@ -80,10 +80,16 @@ export async function deployTempl({
     
     if (group) {
       console.log('Found group:', group.id, 'consent state:', group.consentState);
-      // Ensure the group is allowed
-      if (group.consentState !== 'allowed') {
-        console.log('Updating consent state to allowed');
-        await group.updateConsentState('allowed');
+      // Ensure the group is allowed if the SDK exposes consent controls
+      if (
+        group.consentState !== 'allowed' &&
+        typeof group.updateConsentState === 'function'
+      ) {
+        try {
+          await group.updateConsentState('allowed');
+        } catch (err) {
+          console.log('updateConsentState failed:', err.message);
+        }
       }
       break;
     }
@@ -152,9 +158,16 @@ export async function purchaseAndJoin({ ethers, xmtp, signer, walletAddress, tem
     throw new Error(`Could not find group ${data.groupId} after joining`);
   }
   
-  // Ensure consent is allowed
-  if (group.consentState !== 'allowed') {
-    await group.updateConsentState('allowed');
+  // Ensure consent is allowed if possible
+  if (
+    group.consentState !== 'allowed' &&
+    typeof group.updateConsentState === 'function'
+  ) {
+    try {
+      await group.updateConsentState('allowed');
+    } catch (err) {
+      console.log('updateConsentState failed:', err.message);
+    }
   }
   
   return { group, groupId: data.groupId };

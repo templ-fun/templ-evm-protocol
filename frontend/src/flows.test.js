@@ -29,11 +29,14 @@ describe('templ flows', () => {
       ContractFactory: vi.fn().mockImplementation(() => factory)
     };
     globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ groupId: 'group-1' }) });
-    const xmtp = { conversations: { 
-      getConversationById: vi.fn().mockResolvedValue('groupObj'),
-      sync: vi.fn().mockResolvedValue(undefined),
-      list: vi.fn().mockResolvedValue([])
-    } };
+    const xmtp = {
+      inboxId: 'inbox-1',
+      conversations: {
+        getConversationById: vi.fn().mockResolvedValue({ id: 'group-1', consentState: 'allowed' }),
+        sync: vi.fn().mockResolvedValue(undefined),
+        list: vi.fn().mockResolvedValue([])
+      }
+    };
     const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
 
       const result = await deployTempl({
@@ -65,11 +68,12 @@ describe('templ flows', () => {
         body: JSON.stringify({
           contractAddress: '0xDeAd',
           priestAddress: '0xabc',
+          priestInboxId: 'inbox-1',
           signature: 'sig'
         })
       })
     );
-    expect(result).toEqual({ contractAddress: '0xDeAd', group: 'groupObj', groupId: 'group-1' });
+    expect(result).toEqual({ contractAddress: '0xDeAd', group: { id: 'group-1', consentState: 'allowed' }, groupId: 'group-1' });
   });
 
   it('purchaseAndJoin purchases access and joins group', async () => {
@@ -79,11 +83,14 @@ describe('templ flows', () => {
     };
     const ethers = { Contract: vi.fn().mockReturnValue(contract) };
     globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ groupId: 'group-2' }) });
-    const xmtp = { conversations: { 
-      getConversationById: vi.fn().mockResolvedValue('groupObj2'),
-      sync: vi.fn().mockResolvedValue(undefined),
-      list: vi.fn().mockResolvedValue([])
-    } };
+    const xmtp = {
+      inboxId: 'inbox-2',
+      conversations: {
+        getConversationById: vi.fn().mockResolvedValue({ id: 'group-2', consentState: 'allowed' }),
+        sync: vi.fn().mockResolvedValue(undefined),
+        list: vi.fn().mockResolvedValue([])
+      }
+    };
     const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
 
     const result = await purchaseAndJoin({
@@ -97,7 +104,7 @@ describe('templ flows', () => {
 
     expect(contract.purchaseAccess).toHaveBeenCalled();
     expect(signer.signMessage).toHaveBeenCalledWith('join:0xtempl');
-    expect(result).toEqual({ group: 'groupObj2', groupId: 'group-2' });
+    expect(result).toEqual({ group: { id: 'group-2', consentState: 'allowed' }, groupId: 'group-2' });
   });
 
   it('sendMessage forwards content to group', async () => {

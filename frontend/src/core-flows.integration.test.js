@@ -20,16 +20,8 @@ import {
 } from './flows.js';
 import { createApp } from '../../backend/src/server.js';
 
-const templArtifact = JSON.parse(
-  readFileSync(
-    new URL('../../artifacts/contracts/TEMPL.sol/TEMPL.json', import.meta.url)
-  )
-);
-const tokenArtifact = JSON.parse(
-  readFileSync(
-    new URL('../../artifacts/contracts/TestToken.sol/TestToken.json', import.meta.url)
-  )
-);
+let templArtifact;
+let tokenArtifact;
 
 describe('core flows e2e', () => {
   let hardhat;
@@ -47,6 +39,27 @@ describe('core flows e2e', () => {
 
   beforeAll(async () => {
     const repoRoot = path.resolve(fileURLToPath(new URL('../../', import.meta.url)));
+
+    // Compile contracts to ensure artifacts exist
+    await new Promise((resolve, reject) => {
+      const compile = spawn('npx', ['hardhat', 'compile'], {
+        cwd: repoRoot,
+        stdio: 'inherit'
+      });
+      compile.on('exit', code => (code === 0 ? resolve() : reject(new Error('compile failed'))));
+    });
+
+    templArtifact = JSON.parse(
+      readFileSync(
+        new URL('../../artifacts/contracts/TEMPL.sol/TEMPL.json', import.meta.url)
+      )
+    );
+    tokenArtifact = JSON.parse(
+      readFileSync(
+        new URL('../../artifacts/contracts/TestToken.sol/TestToken.json', import.meta.url)
+      )
+    );
+
     hardhat = spawn('npx', ['hardhat', 'node'], {
       cwd: repoRoot,
       stdio: 'inherit'
@@ -57,87 +70,52 @@ describe('core flows e2e', () => {
     memberSigner = await provider.getSigner(1);
     delegateSigner = await provider.getSigner(2);
 
-    // The new SDK expects a specific signer interface
     const dbEncryptionKey = new Uint8Array(32);
-    
-    // For tests, we need to convert ethers signers to wallets with private keys
-    // This is a workaround for testing - in production, use proper wallet instances
+
     const accounts = [
-      '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80', // account 0
-      '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d', // account 1
-      '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a'  // account 2
+      '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80',
+      '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d',
+      '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a'
     ];
-    
+
     const delegateWallet = new ethers.Wallet(accounts[2], provider);
     const priestWallet = new ethers.Wallet(accounts[0], provider);
     const memberWallet = new ethers.Wallet(accounts[1], provider);
-    
-    // Create a proper signer wrapper for the SDK
-    const createXmtpSigner = (wallet) => {
-      return {
-        getAddress: () => wallet.address,
-        getIdentifier: () => ({
-          identifier: wallet.address.toLowerCase(),  // Ensure lowercase
-          identifierKind: 0
-        }),
-        signMessage: async (message) => {
-          // Handle different message types
-          let messageToSign;
-          if (message instanceof Uint8Array) {
-            // Try to convert to string, but if it fails, use hex
-            try {
-              messageToSign = ethers.toUtf8String(message);
-            } catch {
-              // If not UTF-8, treat as binary data
-              messageToSign = ethers.hexlify(message);
-            }
-          } else if (typeof message === 'string') {
-            messageToSign = message;
-          } else {
-            // Handle other types
-            messageToSign = String(message);
-          }
-          
-          const signature = await wallet.signMessage(messageToSign);
-          // Always return as Uint8Array
-          return ethers.getBytes(signature);
-        }
-      };
-    };
-    
-    // Create real XMTP clients - no mocks!
-    xmtpServer = await Client.create(createXmtpSigner(delegateWallet), { 
-      dbEncryptionKey,
-      env: 'dev',
-      loggingLevel: 'off'  // Suppress XMTP SDK internal logging
-    });
-    xmtpPriest = await Client.create(createXmtpSigner(priestWallet), { 
-      dbEncryptionKey,
-      env: 'dev',
-      loggingLevel: 'off'  // Suppress XMTP SDK internal logging
-    });
-    xmtpMember = await Client.create(createXmtpSigner(memberWallet), { 
-      dbEncryptionKey,
-      env: 'dev',
-      loggingLevel: 'off'  // Suppress XMTP SDK internal logging
+
+    const createXmtpSigner = (wallet) => ({
+      type: 'EOA',
+      getIdentifier: () => ({
+        identifier: wallet.address.toLowerCase(),
+        identifierKind: 0
+      }),
+      signMessage: async (message) => {
+        const signature = await wallet.signMessage(message);
+        return ethers.getBytes(signature);
+      }
     });
 
-    // Ensure all clients are registered and can message each other
+    xmtpServer = await Client.create(createXmtpSigner(delegateWallet), {
+      dbEncryptionKey,
+      env: 'dev',
+      loggingLevel: 'off'
+    });
+    xmtpPriest = await Client.create(createXmtpSigner(priestWallet), {
+      dbEncryptionKey,
+      env: 'dev',
+      loggingLevel: 'off'
+    });
+    xmtpMember = await Client.create(createXmtpSigner(memberWallet), {
+      dbEncryptionKey,
+      env: 'dev',
+      loggingLevel: 'off'
+    });
+
     console.log('XMTP clients created:', {
       server: xmtpServer.inboxId,
       priest: xmtpPriest.inboxId,
       member: xmtpMember.inboxId
     });
 
-    // Test connectivity: Try to create a DM between server and priest
-    try {
-      const dm = await xmtpServer.conversations.newDm(xmtpPriest.inboxId);
-      console.log('Successfully created DM between server and priest:', dm.id);
-    } catch (err) {
-      console.error('Failed to create DM:', err.message);
-    }
-
-    // Sync all clients to ensure they're ready
     await xmtpServer.conversations.sync();
     await xmtpPriest.conversations.sync();
     await xmtpMember.conversations.sync();
@@ -165,7 +143,7 @@ describe('core flows e2e', () => {
     await tx.wait();
     tx = await token.mint(await memberSigner.getAddress(), 1000n);
     await tx.wait();
-  }, 30000);  // Increase timeout to 30 seconds
+  }, 30000);
 
   afterAll(async () => {
     server?.close();

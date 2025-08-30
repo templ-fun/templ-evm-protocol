@@ -98,35 +98,28 @@ export function createApp({ xmtp, hasPurchased, connectContract, dbPath, db }) {
       return res.status(403).json({ error: 'Bad signature' });
     }
     try {
-      // Use the priest's actual inbox ID if provided, otherwise fall back to server's (for backward compat)
-      const inboxIdToUse = priestInboxId || xmtp.inboxId;
-      logger.info({ 
-        inboxIdToUse, 
-        priestAddress,
-        priestInboxIdProvided: !!priestInboxId,
-        serverInboxId: xmtp.inboxId
-      }, 'Creating group with inbox ID');
-      
-      // Create group with priest as initial member
-      // Server will be the super admin, priest will be a member
-      logger.info({ members: [inboxIdToUse], inboxIdToUse }, 'About to create group with members');
-      
-      // Create group - the SDK throws sync errors but the group is created
-      const membersToAdd = inboxIdToUse ? [inboxIdToUse] : [];
-      logger.info({ membersToAdd }, 'Calling newGroup with members');
-      
+      // Create a new group including the priest so they can discover it immediately.
+      // If an explicit inbox ID isn't provided, derive one from the address.
+      let priestId = priestInboxId;
+      if (!priestId) {
+        const priestIdentifier = {
+          identifier: priestAddress.toLowerCase(),
+          identifierKind: 0
+        };
+        priestId = generateInboxId(priestIdentifier);
+      }
+
+      // The SDK often reports successful syncs as errors, so capture that case.
       let group;
       try {
-        group = await xmtp.conversations.newGroup(membersToAdd);
+        group = await xmtp.conversations.newGroup([priestId]);
       } catch (err) {
-        // If the error mentions "succeeded", the group was created despite the error
         if (err.message && err.message.includes('succeeded')) {
           logger.info({ message: err.message }, 'XMTP sync message during group creation - ignoring');
-          // Return the last created group
-          await xmtp.conversations.sync();
-          const conversations = await xmtp.conversations.list();
-          logger.info({ conversationCount: conversations.length }, 'Conversations after sync error');
-          // Return the most recently created conversation (should be our group)
+          if (xmtp.conversations.sync) {
+            await xmtp.conversations.sync();
+          }
+          const conversations = (await xmtp.conversations.list?.()) ?? [];
           group = conversations[conversations.length - 1];
         } else {
           throw err;
@@ -139,33 +132,39 @@ export function createApp({ xmtp, hasPurchased, connectContract, dbPath, db }) {
         memberCount: group.members?.length
       }, 'Group created successfully');
       
-      // Log member count after creation
-      logger.info({ 
+      // Log member count after creation (expected to be 1 - the server itself)
+      logger.info({
         memberCount: group.members?.length,
         members: group.members
       }, 'Group members after creation');
       
       // Set the group metadata - these may throw sync errors too
-      try {
-        await group.updateName(`Templ ${contractAddress}`);
-      } catch (err) {
-        if (!err.message || !err.message.includes('succeeded')) {
-          throw err;
+      if (typeof group.updateName === 'function') {
+        try {
+          await group.updateName(`Templ ${contractAddress}`);
+        } catch (err) {
+          if (!err.message || !err.message.includes('succeeded')) {
+            throw err;
+          }
+          logger.info({ message: err.message }, 'XMTP sync message during name update - ignoring');
         }
-        logger.info({ message: err.message }, 'XMTP sync message during name update - ignoring');
       }
-      
-      try {
-        await group.updateDescription('Private TEMPL group');
-      } catch (err) {
-        if (!err.message || !err.message.includes('succeeded')) {
-          throw err;
+
+      if (typeof group.updateDescription === 'function') {
+        try {
+          await group.updateDescription('Private TEMPL group');
+        } catch (err) {
+          if (!err.message || !err.message.includes('succeeded')) {
+            throw err;
+          }
+          logger.info({ message: err.message }, 'XMTP sync message during description update - ignoring');
         }
-        logger.info({ message: err.message }, 'XMTP sync message during description update - ignoring');
       }
-      
+
       // Ensure the group is fully synced before returning
-      await xmtp.conversations.sync();
+      if (xmtp.conversations.sync) {
+        await xmtp.conversations.sync();
+      }
       
       const record = {
         group,
@@ -239,7 +238,19 @@ export function createApp({ xmtp, hasPurchased, connectContract, dbPath, db }) {
         inboxIdToAdd = generateInboxId(memberIdentifier);
       }
       
-      await record.group.addMembers([inboxIdToAdd]);
+      try {
+        await record.group.addMembers([inboxIdToAdd]);
+      } catch (err) {
+        if (!err.message || !err.message.includes('succeeded')) {
+          throw err;
+        }
+        logger.info({ message: err.message }, 'XMTP sync message during member add - ignoring');
+      }
+
+      // Ensure the server sees the updated membership before responding
+      if (xmtp.conversations.sync) {
+        await xmtp.conversations.sync();
+      }
       res.json({ groupId: record.group.id });
     } catch (err) {
       res.status(500).json({ error: err.message });
