@@ -10,6 +10,12 @@ flowchart LR
     B -->|newGroup| X[XMTP]
 ```
 
+During Templ creation the backend's bot wallet creates and owns the XMTP group:
+
+- The frontend sends the deployed contract address and the priest's inbox ID to the backend via `POST /templs`.
+- The backend calls `newGroup` on XMTP, adds the priest as a member, and records the resulting group ID.
+- Group ownership remains with the backend service; the priest does not control the group.
+
 ## 2. Pay-to-join
 ```mermaid
 flowchart LR
