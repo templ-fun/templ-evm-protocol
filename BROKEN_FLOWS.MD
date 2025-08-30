@@ -87,3 +87,10 @@ To resolve this issue, consider:
 - [XMTP Group Permissions](https://docs.xmtp.org/inboxes/core-messaging/group-permissions)
 - [XMTP Create Conversations](https://docs.xmtp.org/inboxes/core-messaging/create-conversations)
 - [XMTP SDK Tests](https://github.com/xmtp/xmtp-js/blob/main/sdks/node-sdk/test/Conversations.test.ts)
+
+## Resolution
+
+The backend now creates XMTP groups without adding initial members and treats
+"sync succeeded" messages from the SDK as non-fatal. Members join through the
+`/join` endpoint, which also tolerates these sync messages. This ensures group
+creation and membership flows operate reliably.
