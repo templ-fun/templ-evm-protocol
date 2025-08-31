@@ -49,11 +49,13 @@ jobs:
       - run: npm run compile
       - run: npm --prefix backend ci
       - run: npm --prefix frontend ci
+      - run: npm --prefix frontend exec playwright install --with-deps
       - run: npm --prefix backend test
       - run: npm --prefix backend run lint
       - run: npm --prefix frontend test -- --reporter verbose
       - run: npm --prefix frontend run lint
       - run: npm --prefix frontend run build
+      - run: npm --prefix frontend run test:e2e
 
 workflows:
   contracts:
