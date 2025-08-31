@@ -22,6 +22,8 @@ import { createApp } from '../../backend/src/server.js';
 
 let templArtifact;
 let tokenArtifact;
+let priestNonce;
+let memberNonce;
 
 describe('core flows e2e', () => {
   let hardhat;
@@ -66,49 +68,61 @@ describe('core flows e2e', () => {
     });
     await wait(5000);
     provider = new ethers.JsonRpcProvider('http://127.0.0.1:8545');
-    priestSigner = await provider.getSigner(0);
-    memberSigner = await provider.getSigner(1);
-    delegateSigner = await provider.getSigner(2);
+    const funder = new ethers.Wallet(
+      '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80',
+      provider
+    );
+    priestSigner = ethers.Wallet.createRandom().connect(provider);
+    memberSigner = ethers.Wallet.createRandom().connect(provider);
+    delegateSigner = new ethers.Wallet(
+      '0x69ececf360048c98256e21505b1bdb79ffc09d039cd667b66f85d335ef183088',
+      provider
+    );
+
+    // fund all signers with ETH for gas
+    let nonce = await funder.getNonce();
+    for (const wallet of [priestSigner, memberSigner, delegateSigner]) {
+      const tx = await funder.sendTransaction({
+        to: await wallet.getAddress(),
+        value: ethers.parseEther('1'),
+        nonce: nonce++
+      });
+      await tx.wait();
+    }
 
     const dbEncryptionKey = new Uint8Array(32);
 
-    const accounts = [
-      '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80',
-      '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d',
-      '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a'
-    ];
-
-    const delegateWallet = new ethers.Wallet(accounts[2], provider);
-    const priestWallet = new ethers.Wallet(accounts[0], provider);
-    const memberWallet = new ethers.Wallet(accounts[1], provider);
-
-    const createXmtpSigner = (wallet) => ({
-      type: 'EOA',
-      getIdentifier: () => ({
-        identifier: wallet.address.toLowerCase(),
-        identifierKind: 0
-      }),
-      signMessage: async (message) => {
-        const signature = await wallet.signMessage(message);
-        return ethers.getBytes(signature);
+    const createXmtpClient = async (wallet) => {
+      let nonce = 0;
+      while (nonce < 20) {
+        try {
+          return await Client.create(
+            {
+              type: 'EOA',
+              getIdentifier: () => ({
+                identifier: wallet.address.toLowerCase(),
+                identifierKind: 0,
+                nonce: ++nonce
+              }),
+              signMessage: async (message) => {
+                const signature = await wallet.signMessage(message);
+                return ethers.getBytes(signature);
+              }
+            },
+            { dbEncryptionKey, env: 'dev', loggingLevel: 'off' }
+          );
+        } catch (err) {
+          if (!String(err.message).includes('already registered 10/10 installations')) {
+            throw err;
+          }
+        }
       }
-    });
+      throw new Error('Unable to register XMTP client');
+    };
 
-    xmtpServer = await Client.create(createXmtpSigner(delegateWallet), {
-      dbEncryptionKey,
-      env: 'dev',
-      loggingLevel: 'off'
-    });
-    xmtpPriest = await Client.create(createXmtpSigner(priestWallet), {
-      dbEncryptionKey,
-      env: 'dev',
-      loggingLevel: 'off'
-    });
-    xmtpMember = await Client.create(createXmtpSigner(memberWallet), {
-      dbEncryptionKey,
-      env: 'dev',
-      loggingLevel: 'off'
-    });
+    xmtpServer = await createXmtpClient(delegateSigner);
+    xmtpPriest = await createXmtpClient(priestSigner);
+    xmtpMember = await createXmtpClient(memberSigner);
 
     console.log('XMTP clients created:', {
       server: xmtpServer.inboxId,
@@ -138,11 +152,16 @@ describe('core flows e2e', () => {
     const token = await tokenFactory.deploy('Test', 'TEST', 18);
     await token.waitForDeployment();
     tokenAddress = await token.getAddress();
-
-    let tx = await token.mint(await priestSigner.getAddress(), 1000n);
+    priestNonce = await priestSigner.getNonce();
+    let tx = await token.mint(await priestSigner.getAddress(), 1000n, {
+      nonce: priestNonce++
+    });
     await tx.wait();
-    tx = await token.mint(await memberSigner.getAddress(), 1000n);
+    tx = await token.mint(await memberSigner.getAddress(), 1000n, {
+      nonce: priestNonce++
+    });
     await tx.wait();
+    memberNonce = await memberSigner.getNonce();
   }, 30000);
 
   afterAll(async () => {
@@ -162,7 +181,8 @@ describe('core flows e2e', () => {
       tokenAddress,
       protocolFeeRecipient: await delegateSigner.getAddress(),
       entryFee: 100,
-      templArtifact
+      templArtifact,
+      txOptions: { nonce: priestNonce++ }
     });
     templAddress = deployResult.contractAddress;
     group = deployResult.group;
@@ -172,7 +192,9 @@ describe('core flows e2e', () => {
       tokenArtifact.abi,
       memberSigner
     );
-    let tx = await tokenMember.approve(templAddress, 100n);
+    let tx = await tokenMember.approve(templAddress, 100n, {
+      nonce: memberNonce++
+    });
     await tx.wait();
 
     await purchaseAndJoin({
@@ -181,7 +203,8 @@ describe('core flows e2e', () => {
       signer: memberSigner,
       walletAddress: await memberSigner.getAddress(),
       templAddress,
-      templArtifact
+      templArtifact,
+      txOptions: { nonce: memberNonce++ }
     });
 
     await sendMessage({ group, content: 'hello' });
@@ -207,13 +230,14 @@ describe('core flows e2e', () => {
 
     await proposeVote({
       ethers,
-      signer: memberSigner,  // Use member who has purchased access
+      signer: memberSigner, // Use member who has purchased access
       templAddress,
       templArtifact,
       title: 't',
       description: 'd',
       callData,
-      votingPeriod: 7 * 24 * 60 * 60
+      votingPeriod: 7 * 24 * 60 * 60,
+      txOptions: { nonce: memberNonce++ }
     });
 
     await voteOnProposal({
@@ -222,7 +246,8 @@ describe('core flows e2e', () => {
       templAddress,
       templArtifact,
       proposalId: 0,
-      support: true
+      support: true,
+      txOptions: { nonce: memberNonce++ }
     });
 
     await provider.send('evm_increaseTime', [7 * 24 * 60 * 60]);
@@ -233,7 +258,8 @@ describe('core flows e2e', () => {
       signer: priestSigner,
       templAddress,
       templArtifact,
-      proposalId: 0
+      proposalId: 0,
+      txOptions: { nonce: priestNonce++ }
     });
   }, 120000);
 });

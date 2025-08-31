@@ -1,71 +1,39 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, TestToken } from './fixtures.js';
 import { ethers } from 'ethers';
-import { readFileSync } from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-// Load contract artifacts
-const tokenArtifact = JSON.parse(
-  readFileSync(
-    path.join(path.dirname(fileURLToPath(import.meta.url)), '../../artifacts/contracts/TestToken.sol/TestToken.json')
-  )
-);
 
 test.describe('TEMPL E2E - All 7 Core Flows', () => {
-  let provider;
-  let signer;
-  let tokenAddress;
   let templAddress;
 
-  test.beforeAll(async () => {
-    // Connect to hardhat node (should already be running)
-    provider = new ethers.JsonRpcProvider('http://127.0.0.1:8545');
-    signer = await provider.getSigner(0);
-    
-    // Deploy test token
-    console.log('Deploying test token...');
-    const tokenFactory = new ethers.ContractFactory(
-      tokenArtifact.abi,
-      tokenArtifact.bytecode,
-      signer
-    );
-    const token = await tokenFactory.deploy('TestToken', 'TEST', 18);
-    await token.waitForDeployment();
-    tokenAddress = await token.getAddress();
-    console.log('Token deployed at:', tokenAddress);
-    
-    // Mint tokens to test account
-    const mintTx = await token.mint(await signer.getAddress(), ethers.parseEther('1000'));
-    await mintTx.wait();
-    console.log('Minted tokens');
-  });
+  test('All 7 Core Flows', async ({ page, context, wallets }) => {
 
-  test('All 7 Core Flows', async ({ page, context }) => {
-    // Generate a new wallet for this test run to avoid XMTP inbox limits
-    const testWallet = ethers.Wallet.createRandom().connect(provider);
-    const testAddress = testWallet.address;
-    const testPrivateKey = testWallet.privateKey;
-    
-    console.log('Using test wallet:', testAddress);
-    
-    // Fund the test wallet from hardhat account 0
-    const fundTx = await signer.sendTransaction({
-      to: testAddress,
-      value: ethers.parseEther('10')
+    page.on('console', msg => console.log('PAGE LOG:', msg.text()));
+    page.on('pageerror', err => console.log('PAGE ERROR:', err.message));
+    page.on('dialog', dialog => {
+      console.log('PAGE DIALOG:', dialog.message());
+      dialog.dismiss();
     });
-    await fundTx.wait();
-    console.log('Funded test wallet with ETH');
-    
-    // Also send some test tokens to the new wallet
-    const token = new ethers.Contract(tokenAddress, tokenArtifact.abi, signer);
+
+    // Deploy a fresh test token
+    const tokenFactory = new ethers.ContractFactory(
+      TestToken.abi,
+      TestToken.bytecode,
+      wallets.priest
+    );
+    const token = await tokenFactory.deploy();
+    await token.waitForDeployment();
+    const tokenAddress = await token.getAddress();
+
+    // Use the priest account as the connected wallet
+    const testWallet = wallets.priest;
+    const testAddress = await testWallet.getAddress();
+
+    // Mint test tokens to the priest wallet
     const tokenTx = await token.mint(testAddress, ethers.parseEther('1000'));
     await tokenTx.wait();
-    console.log('Funded test wallet with tokens');
-    
-    // Inject ethereum provider that uses the new wallet
-    await context.addInitScript(({ address, privateKey }) => {
+
+    // Inject ethereum provider that uses the priest wallet
+    await context.addInitScript(({ address }) => {
       const TEST_ACCOUNT = address;
-      const TEST_PRIVATE_KEY = privateKey;
       
       window.ethereum = {
         isMetaMask: true,
@@ -105,29 +73,7 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
         on: () => {},
         removeListener: () => {}
       };
-      
-      // Mock XMTP to avoid inbox limits
-      window.Client = {
-        create: async () => {
-          console.log('Creating mock XMTP client');
-          const mockGroup = {
-            id: 'mock-group-' + Date.now(),
-            send: async (msg) => ({ id: 'msg1', content: msg }),
-            messages: async () => [],
-            streamMessages: async function* () {}
-          };
-          
-          return {
-            address: TEST_ACCOUNT,
-            conversations: {
-              sync: async () => {},
-              getConversationById: async () => mockGroup,
-              list: async () => [mockGroup]
-            }
-          };
-        }
-      };
-    }, { address: testAddress, privateKey: testPrivateKey });
+    }, { address: testAddress });
 
     // Navigate to app
     await page.goto('http://localhost:5173');
@@ -146,10 +92,10 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
     await page.fill('input[placeholder*="Entry fee"]', '100');
     
     await page.click('button:has-text("Deploy")');
-    await page.waitForTimeout(5000);
-    
+    await page.waitForTimeout(10000);
+
     // Get deployed contract address
-    const contractElement = await page.locator('text=Contract:').textContent({ timeout: 10000 });
+    const contractElement = await page.locator('text=Contract:').textContent({ timeout: 30000 });
     templAddress = contractElement.split(':')[1].trim();
     console.log('TEMPL deployed at:', templAddress);
 
