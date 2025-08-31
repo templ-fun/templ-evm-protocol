@@ -9,7 +9,8 @@ export async function deployTempl({
   priestVoteWeight = 10,
   priestWeightThreshold = 10,
   templArtifact,
-  backendUrl = 'http://localhost:3001'
+  backendUrl = 'http://localhost:3001',
+  txOptions = {}
 }) {
   const factory = new ethers.ContractFactory(
     templArtifact.abi,
@@ -22,7 +23,8 @@ export async function deployTempl({
     tokenAddress,
     BigInt(entryFee),
     BigInt(priestVoteWeight),
-    BigInt(priestWeightThreshold)
+    BigInt(priestWeightThreshold),
+    txOptions
   );
   await contract.waitForDeployment();
   const contractAddress = await contract.getAddress();
@@ -112,11 +114,20 @@ export async function deployTempl({
   return { contractAddress, group, groupId: data.groupId };
 }
 
-export async function purchaseAndJoin({ ethers, xmtp, signer, walletAddress, templAddress, templArtifact, backendUrl = 'http://localhost:3001' }) {
+export async function purchaseAndJoin({
+  ethers,
+  xmtp,
+  signer,
+  walletAddress,
+  templAddress,
+  templArtifact,
+  backendUrl = 'http://localhost:3001',
+  txOptions = {}
+}) {
   const contract = new ethers.Contract(templAddress, templArtifact.abi, signer);
   const purchased = await contract.hasPurchased(walletAddress);
   if (!purchased) {
-    const tx = await contract.purchaseAccess();
+    const tx = await contract.purchaseAccess(txOptions);
     await tx.wait();
   }
   const message = `join:${templAddress.toLowerCase()}`;
@@ -185,10 +196,17 @@ export async function proposeVote({
   title,
   description,
   callData,
-  votingPeriod = 0
+  votingPeriod = 0,
+  txOptions = {}
 }) {
   const contract = new ethers.Contract(templAddress, templArtifact.abi, signer);
-  const tx = await contract.createProposal(title, description, callData, votingPeriod);
+  const tx = await contract.createProposal(
+    title,
+    description,
+    callData,
+    votingPeriod,
+    txOptions
+  );
   await tx.wait();
 }
 
@@ -198,10 +216,11 @@ export async function voteOnProposal({
   templAddress,
   templArtifact,
   proposalId,
-  support
+  support,
+  txOptions = {}
 }) {
   const contract = new ethers.Contract(templAddress, templArtifact.abi, signer);
-  const tx = await contract.vote(proposalId, support);
+  const tx = await contract.vote(proposalId, support, txOptions);
   await tx.wait();
 }
 
@@ -210,10 +229,11 @@ export async function executeProposal({
   signer,
   templAddress,
   templArtifact,
-  proposalId
+  proposalId,
+  txOptions = {}
 }) {
   const contract = new ethers.Contract(templAddress, templArtifact.abi, signer);
-  const tx = await contract.executeProposal(proposalId);
+  const tx = await contract.executeProposal(proposalId, txOptions);
   await tx.wait();
 }
 
