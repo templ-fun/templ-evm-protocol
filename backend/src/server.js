@@ -398,12 +398,13 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     const dbEncryptionKey = new Uint8Array(32);
     let nonce = 0;
     while (nonce < 20) {
+      const currentNonce = nonce;
       const xmtpSigner = {
         getAddress: () => wallet.address,
         getIdentifier: () => ({
           identifier: wallet.address.toLowerCase(),
           identifierKind: 0, // Ethereum = 0 in the enum
-          nonce: ++nonce
+          nonce: currentNonce
         }),
         signMessage: async (message) => {
           // Handle different message types
@@ -431,9 +432,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
           loggingLevel: 'off' // Suppress XMTP SDK internal logging
         });
       } catch (err) {
-        if (!String(err.message).includes('already registered 10/10 installations')) {
+        if (!String(err.message).includes('already registered')) {
           throw err;
         }
+        nonce++;
       }
     }
     throw new Error('Unable to register XMTP client');
