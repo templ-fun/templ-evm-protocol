@@ -74,10 +74,7 @@ describe('core flows e2e', () => {
     );
     priestSigner = ethers.Wallet.createRandom().connect(provider);
     memberSigner = ethers.Wallet.createRandom().connect(provider);
-    delegateSigner = new ethers.Wallet(
-      '0x69ececf360048c98256e21505b1bdb79ffc09d039cd667b66f85d335ef183088',
-      provider
-    );
+    delegateSigner = ethers.Wallet.createRandom().connect(provider);
 
     // fund all signers with ETH for gas
     let nonce = await funder.getNonce();
