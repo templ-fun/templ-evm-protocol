@@ -150,10 +150,14 @@ describe('core flows e2e', () => {
     const token = await tokenFactory.deploy('Test', 'TEST', 18);
     await token.waitForDeployment();
     tokenAddress = await token.getAddress();
-
-    let tx = await token.mint(await priestSigner.getAddress(), 1000n);
+    let priestNonce = await priestSigner.getNonce();
+    let tx = await token.mint(await priestSigner.getAddress(), 1000n, {
+      nonce: priestNonce++
+    });
     await tx.wait();
-    tx = await token.mint(await memberSigner.getAddress(), 1000n);
+    tx = await token.mint(await memberSigner.getAddress(), 1000n, {
+      nonce: priestNonce++
+    });
     await tx.wait();
   }, 30000);
 
