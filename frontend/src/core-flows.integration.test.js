@@ -22,6 +22,8 @@ import { createApp } from '../../backend/src/server.js';
 
 let templArtifact;
 let tokenArtifact;
+let priestNonce;
+let memberNonce;
 
 describe('core flows e2e', () => {
   let hardhat;
@@ -150,7 +152,7 @@ describe('core flows e2e', () => {
     const token = await tokenFactory.deploy('Test', 'TEST', 18);
     await token.waitForDeployment();
     tokenAddress = await token.getAddress();
-    let priestNonce = await priestSigner.getNonce();
+    priestNonce = await priestSigner.getNonce();
     let tx = await token.mint(await priestSigner.getAddress(), 1000n, {
       nonce: priestNonce++
     });
@@ -159,6 +161,7 @@ describe('core flows e2e', () => {
       nonce: priestNonce++
     });
     await tx.wait();
+    memberNonce = await memberSigner.getNonce();
   }, 30000);
 
   afterAll(async () => {
@@ -178,7 +181,8 @@ describe('core flows e2e', () => {
       tokenAddress,
       protocolFeeRecipient: await delegateSigner.getAddress(),
       entryFee: 100,
-      templArtifact
+      templArtifact,
+      txOptions: { nonce: priestNonce++ }
     });
     templAddress = deployResult.contractAddress;
     group = deployResult.group;
@@ -188,7 +192,9 @@ describe('core flows e2e', () => {
       tokenArtifact.abi,
       memberSigner
     );
-    let tx = await tokenMember.approve(templAddress, 100n);
+    let tx = await tokenMember.approve(templAddress, 100n, {
+      nonce: memberNonce++
+    });
     await tx.wait();
 
     await purchaseAndJoin({
@@ -197,7 +203,8 @@ describe('core flows e2e', () => {
       signer: memberSigner,
       walletAddress: await memberSigner.getAddress(),
       templAddress,
-      templArtifact
+      templArtifact,
+      txOptions: { nonce: memberNonce++ }
     });
 
     await sendMessage({ group, content: 'hello' });
@@ -223,13 +230,14 @@ describe('core flows e2e', () => {
 
     await proposeVote({
       ethers,
-      signer: memberSigner,  // Use member who has purchased access
+      signer: memberSigner, // Use member who has purchased access
       templAddress,
       templArtifact,
       title: 't',
       description: 'd',
       callData,
-      votingPeriod: 7 * 24 * 60 * 60
+      votingPeriod: 7 * 24 * 60 * 60,
+      txOptions: { nonce: memberNonce++ }
     });
 
     await voteOnProposal({
@@ -238,7 +246,8 @@ describe('core flows e2e', () => {
       templAddress,
       templArtifact,
       proposalId: 0,
-      support: true
+      support: true,
+      txOptions: { nonce: memberNonce++ }
     });
 
     await provider.send('evm_increaseTime', [7 * 24 * 60 * 60]);
@@ -249,7 +258,8 @@ describe('core flows e2e', () => {
       signer: priestSigner,
       templAddress,
       templArtifact,
-      proposalId: 0
+      proposalId: 0,
+      txOptions: { nonce: priestNonce++ }
     });
   }, 120000);
 });

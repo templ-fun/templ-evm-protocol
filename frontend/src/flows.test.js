@@ -57,7 +57,8 @@ describe('templ flows', () => {
       '0xdef',
       BigInt(1),
       BigInt(10),
-      BigInt(10)
+      BigInt(10),
+      {}
     );
     expect(signer.signMessage).toHaveBeenCalledWith('create:0xdead');
     expect(globalThis.fetch).toHaveBeenCalledWith(
@@ -141,7 +142,7 @@ describe('templ flows', () => {
       proposalId: 1,
       support: true
     });
-    expect(contract.vote).toHaveBeenCalledWith(1, true);
+    expect(contract.vote).toHaveBeenCalledWith(1, true, {});
   });
 
   it('executeProposal calls executeProposal', async () => {
@@ -154,7 +155,7 @@ describe('templ flows', () => {
       templArtifact,
       proposalId: 2
     });
-    expect(contract.executeProposal).toHaveBeenCalledWith(2);
+    expect(contract.executeProposal).toHaveBeenCalledWith(2, {});
   });
 
   it('watchProposals registers event listeners', () => {
