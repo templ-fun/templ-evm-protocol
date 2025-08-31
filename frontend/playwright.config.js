@@ -31,10 +31,31 @@ export default defineConfig({
     },
   ],
 
-  webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:5173',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120 * 1000,
-  },
+  webServer: [
+    {
+      command: 'npx hardhat node',
+      port: 8545,
+      cwd: '..',
+      reuseExistingServer: false,
+      timeout: 120 * 1000,
+    },
+    {
+      command: 'npm start',
+      port: 3001,
+      cwd: '../backend',
+      env: {
+        RPC_URL: 'http://127.0.0.1:8545',
+        BOT_PRIVATE_KEY: '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80',
+        PORT: '3001',
+      },
+      reuseExistingServer: false,
+      timeout: 120 * 1000,
+    },
+    {
+      command: 'npm run dev',
+      port: 5173,
+      reuseExistingServer: !process.env.CI,
+      timeout: 120 * 1000,
+    },
+  ],
 });

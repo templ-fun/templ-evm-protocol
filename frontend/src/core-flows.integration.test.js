@@ -82,11 +82,13 @@ describe('core flows e2e', () => {
     const priestWallet = new ethers.Wallet(accounts[0], provider);
     const memberWallet = new ethers.Wallet(accounts[1], provider);
 
+    let xmtpNonce = 0;
     const createXmtpSigner = (wallet) => ({
       type: 'EOA',
       getIdentifier: () => ({
         identifier: wallet.address.toLowerCase(),
-        identifierKind: 0
+        identifierKind: 0,
+        nonce: ++xmtpNonce
       }),
       signMessage: async (message) => {
         const signature = await wallet.signMessage(message);
