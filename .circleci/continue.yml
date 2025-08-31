@@ -76,3 +76,16 @@ workflows:
           filters:
             branches:
               ignore: main
+  manual_tests:
+    jobs:
+      - run_all_tests:
+          type: approval
+      - contracts:
+          requires:
+            - run_all_tests
+      - slither:
+          requires:
+            - run_all_tests
+      - app:
+          requires:
+            - run_all_tests
