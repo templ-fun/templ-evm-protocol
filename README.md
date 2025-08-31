@@ -36,6 +36,7 @@ Use the docs below to dive into each component:
    npm --prefix backend install
    npm --prefix frontend install
    npm run prepare # enable Husky pre‑commit
+   pipx install slither-analyzer solc-select # install Slither and solc-select
    ```
 2. **Run tests**
    ```bash
