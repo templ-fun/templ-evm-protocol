@@ -6,7 +6,7 @@ import { setTimeout as wait } from 'timers/promises';
 import { ethers } from 'ethers';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
-import { Client } from '@xmtp/node-sdk';
+import { Client, generateInboxId } from '@xmtp/node-sdk';
 import {
   deployTempl,
   purchaseAndJoin,
@@ -93,28 +93,36 @@ describe('core flows e2e', () => {
     const dbEncryptionKey = new Uint8Array(32);
 
     const createXmtpClient = async (wallet) => {
+      const signer = {
+        type: 'EOA',
+        getIdentifier: () => ({
+          identifier: wallet.address.toLowerCase(),
+          identifierKind: 0
+        }),
+        signMessage: async (message) => {
+          const signature = await wallet.signMessage(message);
+          return ethers.getBytes(signature);
+        }
+      };
       let nonce = 0;
       while (nonce < 20) {
+        const inboxId = generateInboxId({
+          identifier: wallet.address.toLowerCase(),
+          identifierKind: 0,
+          nonce
+        });
         try {
-          return await Client.create(
-            {
-              type: 'EOA',
-              getIdentifier: () => ({
-                identifier: wallet.address.toLowerCase(),
-                identifierKind: 0,
-                nonce: ++nonce
-              }),
-              signMessage: async (message) => {
-                const signature = await wallet.signMessage(message);
-                return ethers.getBytes(signature);
-              }
-            },
-            { dbEncryptionKey, env: 'dev', loggingLevel: 'off' }
-          );
+          return await Client.create(signer, {
+            dbEncryptionKey,
+            env: 'dev',
+            loggingLevel: 'off',
+            inboxId
+          });
         } catch (err) {
-          if (!String(err.message).includes('already registered 10/10 installations')) {
+          if (!String(err.message).includes('already registered')) {
             throw err;
           }
+          nonce++;
         }
       }
       throw new Error('Unable to register XMTP client');
