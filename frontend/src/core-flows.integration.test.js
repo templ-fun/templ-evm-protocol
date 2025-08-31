@@ -66,28 +66,27 @@ describe('core flows e2e', () => {
     });
     await wait(5000);
     provider = new ethers.JsonRpcProvider('http://127.0.0.1:8545');
-    const priestWallet = new ethers.Wallet(
+    const funder = new ethers.Wallet(
       '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80',
       provider
     );
-    const memberWallet = new ethers.Wallet(
-      '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d',
-      provider
-    );
-    const delegateWallet = new ethers.Wallet(
+    priestSigner = ethers.Wallet.createRandom().connect(provider);
+    memberSigner = ethers.Wallet.createRandom().connect(provider);
+    delegateSigner = new ethers.Wallet(
       '0x69ececf360048c98256e21505b1bdb79ffc09d039cd667b66f85d335ef183088',
       provider
     );
-    priestSigner = priestWallet;
-    memberSigner = memberWallet;
-    delegateSigner = delegateWallet;
 
-    // fund delegate with ETH for gas
-    let fundTx = await priestSigner.sendTransaction({
-      to: await delegateSigner.getAddress(),
-      value: ethers.parseEther('1')
-    });
-    await fundTx.wait();
+    // fund all signers with ETH for gas
+    let nonce = await funder.getNonce();
+    for (const wallet of [priestSigner, memberSigner, delegateSigner]) {
+      const tx = await funder.sendTransaction({
+        to: await wallet.getAddress(),
+        value: ethers.parseEther('1'),
+        nonce: nonce++
+      });
+      await tx.wait();
+    }
 
     const dbEncryptionKey = new Uint8Array(32);
 
@@ -119,9 +118,9 @@ describe('core flows e2e', () => {
       throw new Error('Unable to register XMTP client');
     };
 
-    xmtpServer = await createXmtpClient(delegateWallet);
-    xmtpPriest = await createXmtpClient(priestWallet);
-    xmtpMember = await createXmtpClient(memberWallet);
+    xmtpServer = await createXmtpClient(delegateSigner);
+    xmtpPriest = await createXmtpClient(priestSigner);
+    xmtpMember = await createXmtpClient(memberSigner);
 
     console.log('XMTP clients created:', {
       server: xmtpServer.inboxId,
