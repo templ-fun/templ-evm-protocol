@@ -40,6 +40,7 @@ describe('core flows e2e', () => {
   let group;
 
   beforeAll(async () => {
+    console.log('[setup] starting beforeAll: compiling, hardhat, XMTP, backend');
     const repoRoot = path.resolve(fileURLToPath(new URL('../../', import.meta.url)));
 
     // Compile contracts to ensure artifacts exist
@@ -66,6 +67,7 @@ describe('core flows e2e', () => {
       cwd: repoRoot,
       stdio: 'inherit'
     });
+    console.log('[setup] launched hardhat node, waiting for JSON-RPC...');
     await wait(5000);
     provider = new ethers.JsonRpcProvider('http://127.0.0.1:8545');
     const funder = new ethers.Wallet(
@@ -74,10 +76,8 @@ describe('core flows e2e', () => {
     );
     priestSigner = ethers.Wallet.createRandom().connect(provider);
     memberSigner = ethers.Wallet.createRandom().connect(provider);
-    delegateSigner = new ethers.Wallet(
-      '0x69ececf360048c98256e21505b1bdb79ffc09d039cd667b66f85d335ef183088',
-      provider
-    );
+    // Use a fresh delegate each run to avoid XMTP dev installation limits
+    delegateSigner = ethers.Wallet.createRandom().connect(provider);
 
     // fund all signers with ETH for gas
     let nonce = await funder.getNonce();
@@ -96,6 +96,7 @@ describe('core flows e2e', () => {
       let nonce = 0;
       while (nonce < 20) {
         try {
+          console.log('[setup] creating XMTP client', wallet.address, 'attempt', nonce + 1);
           return await Client.create(
             {
               type: 'EOA',
@@ -112,6 +113,7 @@ describe('core flows e2e', () => {
             { dbEncryptionKey, env: 'dev', loggingLevel: 'off' }
           );
         } catch (err) {
+          console.log('[setup] XMTP create failed:', err?.message ?? String(err));
           if (!String(err.message).includes('already registered 10/10 installations')) {
             throw err;
           }
@@ -130,6 +132,7 @@ describe('core flows e2e', () => {
       member: xmtpMember.inboxId
     });
 
+    console.log('[setup] syncing conversations for all clients...');
     await xmtpServer.conversations.sync();
     await xmtpPriest.conversations.sync();
     await xmtpMember.conversations.sync();
@@ -142,6 +145,7 @@ describe('core flows e2e', () => {
       },
       connectContract: (addr) => new ethers.Contract(addr, templArtifact.abi, provider)
     });
+    console.log('[setup] starting backend on :3001');
     server = app.listen(3001);
 
     const tokenFactory = new ethers.ContractFactory(
@@ -162,7 +166,7 @@ describe('core flows e2e', () => {
     });
     await tx.wait();
     memberNonce = await memberSigner.getNonce();
-  }, 30000);
+  }, 180000);
 
   afterAll(async () => {
     server?.close();
@@ -263,4 +267,3 @@ describe('core flows e2e', () => {
     });
   }, 120000);
 });
-
