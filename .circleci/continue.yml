@@ -47,6 +47,9 @@ jobs:
     steps:
       - checkout
       - run: npm ci
+      - run:
+          name: Run contract tests
+          command: npm test
       - run: npm run compile
       - run: npm --prefix backend ci
       - run: npm --prefix frontend ci

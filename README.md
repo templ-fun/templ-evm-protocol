@@ -46,6 +46,7 @@ In addition, all core workflows are covered by automated tests:
    ```
 2. **Run tests**
    ```bash
+   npm run test:all                      # full sweep: contracts, slither, types, lint, unit, integration, e2e
    npm test # run contract tests
    npm run slither
    npm --prefix backend test
