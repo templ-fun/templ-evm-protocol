@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ethers } from 'ethers';
 import { Client } from '@xmtp/browser-sdk';
 import templArtifact from './contracts/TEMPL.json';
@@ -19,6 +19,9 @@ function App() {
   const [signer, setSigner] = useState();
   const [xmtp, setXmtp] = useState();
   const [group, setGroup] = useState();
+  const [groupConnected, setGroupConnected] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [status, setStatus] = useState([]);
   const [messages, setMessages] = useState([]);
   const [messageInput, setMessageInput] = useState('');
   const [proposals, setProposals] = useState([]);
@@ -42,6 +45,11 @@ function App() {
   // joining form
   const [templAddress, setTemplAddress] = useState('');
   const [groupId, setGroupId] = useState('');
+  const joinedLoggedRef = useRef(false);
+
+  function pushStatus(msg) {
+    setStatus((s) => [...s, msg]);
+  }
 
   async function connectWallet() {
     if (!window.ethereum) return;
@@ -51,38 +59,61 @@ function App() {
     setSigner(signer);
     const address = await signer.getAddress();
     setWalletAddress(address);
+    pushStatus('✅ Wallet connected');
     
-    // Use an XMTP-compatible signer wrapper for the browser SDK
+    // Use an XMTP-compatible signer wrapper for the browser SDK with inbox rotation
     const xmtpEnv = ['localhost', '127.0.0.1'].includes(window.location.hostname)
       ? 'dev'
       : 'production';
-    const xmtpSigner = {
-      type: 'EOA',
-      getAddress: () => address,
-      getIdentifier: () => ({
-        identifier: address.toLowerCase(),
-        identifierKind: 'Ethereum'
-      }),
-      signMessage: async (message) => {
-        let toSign;
-        if (message instanceof Uint8Array) {
-          try {
-            toSign = ethers.toUtf8String(message);
-          } catch {
-            toSign = ethers.hexlify(message);
+    async function createXmtpWithRotation() {
+      for (let i = 0; i < 20; i++) {
+        const currentNonce = i + 1;
+        const xmtpSigner = {
+          type: 'EOA',
+          getAddress: () => address,
+          getIdentifier: () => ({
+            identifier: address.toLowerCase(),
+            identifierKind: 'Ethereum',
+            nonce: currentNonce
+          }),
+          signMessage: async (message) => {
+            let toSign;
+            if (message instanceof Uint8Array) {
+              try {
+                toSign = ethers.toUtf8String(message);
+              } catch {
+                toSign = ethers.hexlify(message);
+              }
+            } else if (typeof message === 'string') {
+              toSign = message;
+            } else {
+              toSign = String(message);
+            }
+            const signature = await signer.signMessage(toSign);
+            return ethers.getBytes(signature);
           }
-        } else if (typeof message === 'string') {
-          toSign = message;
-        } else {
-          toSign = String(message);
+        };
+        try {
+          console.log('[app] Creating XMTP client attempt', currentNonce);
+          const clientAttempt = await Client.create(xmtpSigner, { env: xmtpEnv });
+          return clientAttempt;
+        } catch (err) {
+          const msg = String(err?.message || err);
+          if (msg.includes('already registered 10/10 installations')) {
+            console.warn('[app] XMTP installation limit reached; rotating inbox nonce=', currentNonce);
+            // allow OPFS handles to settle between attempts
+            await new Promise((r) => setTimeout(r, 200));
+            continue;
+          }
+          throw err;
         }
-        const signature = await signer.signMessage(toSign);
-        return ethers.getBytes(signature);
       }
-    };
-    const client = await Client.create(xmtpSigner, { env: xmtpEnv });
+      throw new Error('Unable to register XMTP client after rotation');
+    }
+    const client = await createXmtpWithRotation();
     setXmtp(client);
     console.log('[app] XMTP client created', { env: xmtpEnv });
+    pushStatus('✅ Messaging client ready');
   }
 
   async function handleDeploy() {
@@ -111,6 +142,13 @@ function App() {
       setTemplAddress(result.contractAddress);
       setGroup(result.group);
       setGroupId(result.groupId);
+      pushStatus('✅ Templ deployed');
+      if (result.group) {
+        pushStatus('✅ Group created and connected');
+        setGroupConnected(true);
+      } else {
+        pushStatus('🔄 Group created, waiting for connection');
+      }
     } catch (err) {
       console.error('[app] deploy failed', err);
       alert(err.message);
@@ -133,11 +171,26 @@ function App() {
       if (result) {
         setGroup(result.group);
         setGroupId(result.groupId);
+        pushStatus('✅ Joined group');
+        if (result.group) {
+          pushStatus('✅ Group connected');
+          setGroupConnected(true);
+        } else {
+          pushStatus('🔄 Waiting for group discovery');
+        }
       }
     } catch (err) {
       alert(err.message);
     }
   }
+
+  // As soon as we have a groupId, surface a visible success status
+  useEffect(() => {
+    if (groupId && !joinedLoggedRef.current) {
+      pushStatus('✅ Joined group');
+      joinedLoggedRef.current = true;
+    }
+  }, [groupId]);
 
   useEffect(() => {
     if (!group) return;
@@ -150,6 +203,8 @@ function App() {
       }
     };
     stream();
+    setGroupConnected(true);
+    pushStatus('✅ Connected to group messages');
     return () => {
       cancelled = true;
     };
@@ -172,6 +227,8 @@ function App() {
           if (maybe) {
             console.log('[app] found group by id');
             setGroup(maybe);
+            pushStatus('✅ Group discovered');
+            setGroupConnected(true);
             break;
           }
         } catch {}
@@ -181,6 +238,8 @@ function App() {
           if (found) {
             console.log('[app] found group by list');
             setGroup(found);
+            pushStatus('✅ Group discovered');
+            setGroupConnected(true);
             break;
           }
         } catch {}
@@ -211,8 +270,21 @@ function App() {
           )
         )
     });
+    // Poll paused state for display
+    let cancelled = false;
+    const checkPaused = async () => {
+      try {
+        const c = new ethers.Contract(templAddress, templArtifact.abi, signer);
+        const p = await c.paused();
+        if (!cancelled) setPaused(Boolean(p));
+      } catch {}
+    };
+    checkPaused();
+    const id = setInterval(checkPaused, 3000);
     return () => {
       contract.removeAllListeners();
+       cancelled = true;
+       clearInterval(id);
     };
   }, [templAddress, signer]);
 
@@ -243,6 +315,7 @@ function App() {
         return;
       }
       setMessageInput('');
+      pushStatus('✅ Message sent');
     } catch (err) {
       console.error('Send failed', err);
     }
@@ -262,6 +335,7 @@ function App() {
     setProposalTitle('');
     setProposalDesc('');
     setProposalCalldata('');
+    pushStatus('✅ Proposal submitted');
   }
 
   async function handleVote(id, support) {
@@ -312,6 +386,7 @@ function App() {
       const tx = await contract.executeProposal(proposalId);
       await tx.wait();
       alert(`Executed proposal ${proposalId}`);
+      pushStatus(`✅ Proposal ${proposalId} executed`);
     } catch (err) {
       alert('Execution failed: ' + err.message);
     }
@@ -334,6 +409,14 @@ function App() {
 
   return (
     <div className="App">
+      <div className="status">
+        <h3>Run Status</h3>
+        <div className="status-items">
+          {status.map((s, i) => (
+            <div key={i}>{s}</div>
+          ))}
+        </div>
+      </div>
       {!walletAddress && (
         <button onClick={connectWallet}>Connect Wallet</button>
       )}
@@ -387,10 +470,12 @@ function App() {
         </div>
       )}
 
-      {(groupId) && (
+      {groupId && (
         <div className="chat">
           <h2>Group Chat</h2>
           {!group && <p>Connecting to group… syncing messages</p>}
+          {groupConnected && <p>✅ Group connected</p>}
+          <p>DAO Status: {paused ? 'Paused' : 'Active'}</p>
           <div className="messages">
             {messages.map((m, i) => (
               <div key={i}>

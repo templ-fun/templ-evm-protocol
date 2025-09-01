@@ -438,39 +438,53 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const wallet = new ethers.Wallet(process.env.BOT_PRIVATE_KEY, provider);
   
   // Create signer compatible with new SDK - using the pattern that worked in tests
-  const xmtpSigner = {
-    getAddress: () => wallet.address,
-    getIdentifier: () => ({
-      identifier: wallet.address.toLowerCase(),
-      identifierKind: 0  // Ethereum = 0 in the enum
-    }),
-    signMessage: async (message) => {
-      // Handle different message types
-      let messageToSign;
-      if (message instanceof Uint8Array) {
-        try {
-          messageToSign = ethers.toUtf8String(message);
-        } catch {
-          messageToSign = ethers.hexlify(message);
+  async function createXmtpWithRotation() {
+    const dbEncryptionKey = new Uint8Array(32);
+    for (let attempt = 1; attempt <= 20; attempt++) {
+      const xmtpSigner = {
+        getAddress: () => wallet.address,
+        getIdentifier: () => ({
+          identifier: wallet.address.toLowerCase(),
+          identifierKind: 0, // Ethereum enum
+          nonce: attempt,
+        }),
+        signMessage: async (message) => {
+          let messageToSign;
+          if (message instanceof Uint8Array) {
+            try {
+              messageToSign = ethers.toUtf8String(message);
+            } catch {
+              messageToSign = ethers.hexlify(message);
+            }
+          } else if (typeof message === 'string') {
+            messageToSign = message;
+          } else {
+            messageToSign = String(message);
+          }
+          const signature = await wallet.signMessage(messageToSign);
+          return ethers.getBytes(signature);
         }
-      } else if (typeof message === 'string') {
-        messageToSign = message;
-      } else {
-        messageToSign = String(message);
+      };
+      try {
+        // @ts-ignore - Node SDK accepts EOA-like signers
+        return await Client.create(xmtpSigner, {
+          dbEncryptionKey,
+          env: 'dev',
+          loggingLevel: 'off'
+        });
+      } catch (err) {
+        const msg = String(err?.message || err);
+        if (msg.includes('already registered 10/10 installations')) {
+          logger.warn({ attempt }, 'XMTP installation limit reached, rotating inbox');
+          continue;
+        }
+        throw err;
       }
-      
-      const signature = await wallet.signMessage(messageToSign);
-      return ethers.getBytes(signature);
     }
-  };
-  
-  const dbEncryptionKey = new Uint8Array(32);
-  // @ts-ignore - Node SDK accepts EOA-like signers in tests
-  const xmtp = await Client.create(xmtpSigner, { 
-    dbEncryptionKey,
-    env: 'dev',  // Use dev for testing
-    loggingLevel: 'off'  // Suppress XMTP SDK internal logging
-  });
+    throw new Error('Unable to register XMTP client after nonce rotation');
+  }
+
+  const xmtp = await createXmtpWithRotation();
   const hasPurchased = async (contractAddress, memberAddress) => {
     const contract = new ethers.Contract(
       contractAddress,

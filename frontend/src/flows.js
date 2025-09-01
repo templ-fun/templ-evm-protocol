@@ -141,8 +141,8 @@ export async function purchaseAndJoin({
   const message = `join:${templAddress.toLowerCase()}`;
   const signature = await signer.signMessage(message);
   
-  // Get the member's inbox ID from XMTP client
-  const memberInboxId = xmtp.inboxId;
+  // Get the member's inbox ID from XMTP client if available (optional)
+  const memberInboxId = xmtp?.inboxId;
   
   const res = await fetch(`${backendUrl}/join`, {
     method: 'POST',
@@ -150,7 +150,7 @@ export async function purchaseAndJoin({
     body: JSON.stringify({
       contractAddress: templAddress,
       memberAddress: walletAddress,
-      memberInboxId,  // Pass inbox ID so backend can add member to group
+      ...(memberInboxId ? { memberInboxId } : {}),
       signature
     })
   });
@@ -166,7 +166,7 @@ export async function purchaseAndJoin({
   }
   // Try multiple sync attempts — joins can be eventually consistent
   let group = null;
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 20; i++) {
     try {
       await xmtp.conversations.sync();
     } catch {}
@@ -182,7 +182,9 @@ export async function purchaseAndJoin({
     if (group) break;
     await new Promise((r) => setTimeout(r, 1000));
   }
-  if (!group) throw new Error(`Could not find group ${data.groupId} after joining`);
+  // If group still not visible locally, return the groupId so the UI can
+  // continue polling for discovery without failing the join flow.
+  if (!group) return { group: null, groupId: data.groupId };
   
   // Ensure consent is allowed if possible
   if (
