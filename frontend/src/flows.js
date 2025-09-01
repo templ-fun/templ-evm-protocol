@@ -1,3 +1,8 @@
+/**
+ * Deploy a new TEMPL contract and register a group with the backend.
+ * @param {import('./flows.types').DeployRequest} params
+ * @returns {Promise<import('./flows.types').DeployResponse>}
+ */
 export async function deployTempl({
   ethers,
   xmtp,
@@ -12,6 +17,9 @@ export async function deployTempl({
   backendUrl = 'http://localhost:3001',
   txOptions = {}
 }) {
+  if (!ethers || !signer || !walletAddress || !tokenAddress || !protocolFeeRecipient || !templArtifact) {
+    throw new Error('Missing required deployTempl parameters');
+  }
   const factory = new ethers.ContractFactory(
     templArtifact.abi,
     templArtifact.bytecode,
@@ -60,6 +68,9 @@ export async function deployTempl({
     );
   }
   const data = await res.json();
+  if (!data || typeof data.groupId !== 'string' || data.groupId.length === 0) {
+    throw new Error('Invalid /templs response: missing groupId');
+  }
   
   // If XMTP isn’t ready yet on the client, skip fetching the group for now.
   if (!xmtp) {
@@ -106,6 +117,11 @@ export async function deployTempl({
   return { contractAddress, group, groupId: data.groupId };
 }
 
+/**
+ * Purchase membership (if needed) and join the group via backend.
+ * @param {import('./flows.types').JoinRequest} params
+ * @returns {Promise<import('./flows.types').JoinResponse>}
+ */
 export async function purchaseAndJoin({
   ethers,
   xmtp,
@@ -145,6 +161,9 @@ export async function purchaseAndJoin({
     );
   }
   const data = await res.json();
+  if (!data || typeof data.groupId !== 'string' || data.groupId.length === 0) {
+    throw new Error('Invalid /join response: missing groupId');
+  }
   // Try multiple sync attempts — joins can be eventually consistent
   let group = null;
   for (let i = 0; i < 5; i++) {
@@ -184,6 +203,10 @@ export async function sendMessage({ group, content }) {
   await group.send(content);
 }
 
+/**
+ * Fallback: ask backend to post into the group conversation.
+ * @returns {Promise<boolean>}
+ */
 export async function sendMessageBackend({ contractAddress, content, backendUrl = 'http://localhost:3001' }) {
   const res = await fetch(`${backendUrl}/send`, {
     method: 'POST',
@@ -287,6 +310,9 @@ export async function delegateMute({
   });
   if (!res.ok) return false;
   const data = await res.json();
+  if (!data || typeof data.delegated !== 'boolean') {
+    throw new Error('Invalid /delegates response');
+  }
   return data.delegated;
 }
 
@@ -311,6 +337,9 @@ export async function muteMember({
   });
   if (!res.ok) return 0;
   const data = await res.json();
+  if (!data || typeof data.mutedUntil !== 'number') {
+    throw new Error('Invalid /mute response');
+  }
   return data.mutedUntil;
 }
 
@@ -323,5 +352,9 @@ export async function fetchActiveMutes({
   );
   if (!res.ok) return [];
   const data = await res.json();
+  if (!data || !Array.isArray(data.mutes)) {
+    throw new Error('Invalid /mutes response');
+  }
   return data.mutes;
 }
+// @ts-check

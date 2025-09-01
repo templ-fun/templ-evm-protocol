@@ -50,8 +50,19 @@ npm --prefix backend run lint
   - `DELETE /delegates` – revoke a delegate's mute rights.
   - `POST /mute` – priest or delegate records an escalating mute for a member.
   - `GET /mutes` – list active mutes for a contract so the frontend can hide messages.
+  - `POST /send` – convenience endpoint to have the backend post a message into a group's chat (useful during discovery on dev networks).
 - **Dependencies** – XMTP JS SDK and an on-chain provider; event watching requires a `connectContract` factory.
-- **Persistence** – group metadata persists to a SQLite database at `backend/groups.db`. The database is read on startup and updated when groups change; back it up to avoid losing state.
+- **Persistence** – group metadata persists to a SQLite database at `backend/groups.db` (or a custom path via `createApp({ dbPath })` in tests). The database is read on startup and updated when groups change; back it up to avoid losing state.
+
+### Endpoint behaviors
+- `/templs`
+  - Request: `{ contractAddress, priestAddress, signature, priestInboxId? }` where `signature = sign("create:<contract>")`.
+  - If `priestInboxId` is not provided, the server derives it deterministically from the address.
+  - After group creation the server posts a small warm‑up message so XMTP clients can discover the conversation quickly.
+- `/join`
+  - Request: `{ contractAddress, memberAddress, signature, memberInboxId? }` with `signature = sign("join:<contract>")`.
+  - Requires `hasPurchased(contract, member)` to return `true`.
+  - If `memberInboxId` is not provided, the server derives it from the address and posts a "member‑joined" warm‑up message.
 
 ## Security considerations
 - The service trusts the provided wallet address; production deployments should authenticate requests.

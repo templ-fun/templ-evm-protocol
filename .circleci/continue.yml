@@ -50,6 +50,8 @@ jobs:
       - run: npm run compile
       - run: npm --prefix backend ci
       - run: npm --prefix frontend ci
+      - run: npm --prefix backend run typecheck
+      - run: npm --prefix frontend run typecheck
       - run: npm --prefix frontend exec playwright install --with-deps
       - run: npm --prefix backend test
       - run: npm --prefix backend run lint

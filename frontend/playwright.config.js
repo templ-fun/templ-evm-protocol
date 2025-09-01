@@ -11,7 +11,7 @@ export default defineConfig({
   reporter: 'html',
   
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: 'http://localhost:5179',
     trace: 'on-first-retry',
     video: 'retain-on-failure',
     screenshot: 'only-on-failure',
@@ -47,14 +47,15 @@ export default defineConfig({
         RPC_URL: 'http://127.0.0.1:8545',
         BOT_PRIVATE_KEY: '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80',
         PORT: '3001',
+        ALLOWED_ORIGINS: 'http://localhost:5179',
       },
       reuseExistingServer: false,
       timeout: 120 * 1000,
     },
     {
-      command: 'npm run build && npm run preview -- --port 5173',
-      port: 5173,
-      reuseExistingServer: !process.env.CI,
+      command: 'npm run build && npm run preview -- --port 5179',
+      port: 5179,
+      reuseExistingServer: false,
       timeout: 180 * 1000,
     },
   ],

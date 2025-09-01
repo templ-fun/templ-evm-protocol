@@ -474,3 +474,4 @@ function App() {
 }
 
 export default App;
+// @ts-check

@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/rules-of-hooks */
 import { test as base, expect } from '@playwright/test';
 import { ethers } from 'ethers';
 import { readFileSync } from 'fs';

@@ -105,6 +105,7 @@ Run contract tests and Slither:
 npm test
 npm run slither
 ```
+The Hardhat suite covers: fee‑split invariants, reentrancy protection (including nested paths), voting rules (priest weight/threshold), eligibility by join time, DAO execution (executeDAO, paused states), pagination, integration user journey, and all view functions.
 
 ## Deployment
 ```bash

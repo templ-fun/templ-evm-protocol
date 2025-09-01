@@ -1,3 +1,4 @@
+// @ts-check
 import express from 'express';
 import dotenv from 'dotenv';
 import { ethers } from 'ethers';
@@ -19,8 +20,18 @@ const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
  * @param {(contract: string, member: string) => Promise<boolean>} deps.hasPurchased
  * @param {(address: string) => { on: Function }} [deps.connectContract] Optional
  *        factory returning a contract instance used to watch on-chain events.
+ * @param {{
+ *   xmtp: any,
+ *   hasPurchased: (contract: string, member: string) => Promise<boolean>,
+ *   connectContract?: (address: string) => { on: Function },
+ *   dbPath?: string,
+ *   db?: any,
+ * }} opts
  */
-export function createApp({ xmtp, hasPurchased, connectContract, dbPath, db }) {
+export function createApp(opts) {
+  /** @type {{xmtp:any, hasPurchased:(contract:string,member:string)=>Promise<boolean>, connectContract?: (address:string)=>{on:Function}, dbPath?: string, db?: any}} */
+  // @ts-ignore - runtime validation below
+  const { xmtp, hasPurchased, connectContract, dbPath, db } = opts || {};
   const app = express();
   const allowedOrigins =
     process.env.ALLOWED_ORIGINS?.split(',').filter(Boolean) ?? [
@@ -454,6 +465,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   };
   
   const dbEncryptionKey = new Uint8Array(32);
+  // @ts-ignore - Node SDK accepts EOA-like signers in tests
   const xmtp = await Client.create(xmtpSigner, { 
     dbEncryptionKey,
     env: 'dev',  // Use dev for testing

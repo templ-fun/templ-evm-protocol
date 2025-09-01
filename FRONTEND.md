@@ -24,6 +24,8 @@ npm --prefix frontend run dev
 npm --prefix frontend test
 npm --prefix frontend run lint
 npm --prefix frontend run build
+npm --prefix frontend test -- src/core-flows.integration.test.js # integration (local Hardhat + backend + XMTP dev)
+npm --prefix frontend run test:e2e                          # end‑to‑end (Playwright)
 ```
 ## Architecture
 
@@ -35,6 +37,12 @@ npm --prefix frontend run build
 - **Chat UI** streams XMTP messages and sends new ones using the group inbox ID.
 - **Moderation** – the client polls `GET /mutes` and filters out messages from muted addresses before rendering.
 - **Governance** – members create proposals and vote from the chat; `watchProposals` updates the UI when events fire.
+  The backend mirrors on‑chain events into the group as JSON so clients see real‑time updates.
+
+## Notes
+- XMTP environment: dev on localhost, production in deployment. Inbox installations on XMTP dev are limited to 10 per inbox; tests rotate wallets or reuse local XMTP databases to avoid hitting this limit.
+- Group discovery: the chat renders as soon as a `groupId` is known; a background sync resolves the group conversation. The backend sends warm‑up messages to speed discovery on dev.
+- Typed flows: `src/flows.js` is documented with JSDoc and backed by `src/flows.types.d.ts`, and runtime validation ensures backend responses have the expected shape.
 
 ## Security considerations
 - Membership verification happens on-chain; bypassing the backend would require membership proof.

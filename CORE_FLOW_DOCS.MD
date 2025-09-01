@@ -12,7 +12,7 @@ flowchart LR
 
 During Templ creation the backend's bot wallet creates and owns the XMTP group:
 
-- The frontend sends the deployed contract address and the priest's inbox ID to the backend via `POST /templs`.
+- The frontend sends the deployed contract address and the priest's inbox ID to the backend via `POST /templs` (if the inbox ID isn't provided, the backend derives it deterministically from the priest's address).
 - The backend calls `newGroup` on XMTP, adds the priest as a member, and records the resulting group ID.
 - Group ownership remains with the backend service; the priest does not control the group.
 
@@ -22,6 +22,8 @@ flowchart LR
     F[Frontend] -->|purchaseAccess| C[Smart Contract]
     F -->|POST /join| B[Backend]
     B -->|addMembers| X[XMTP]
+
+The frontend signs `join:<contractAddress>` and the backend verifies purchase on‑chain before adding the member. The backend may send a small "member-joined" message to help clients discover the group quickly on XMTP dev.
 ```
 
 ## 3. Messaging
@@ -49,6 +51,8 @@ flowchart LR
     F[Member] -->|createProposal| C[Smart Contract]
     C -->|ProposalCreated event| B[Backend]
     B -->|send proposal JSON| X[XMTP Group]
+
+The backend watches on‑chain events and mirrors them into the group as JSON payloads so clients can render proposal and vote updates in real time.
 ```
 
 ## 6. Voting
@@ -65,4 +69,3 @@ flowchart LR
     F[Member] -->|executeProposal| C[Smart Contract]
     C -->|execute callData| T[Target Contract]
 ```
-

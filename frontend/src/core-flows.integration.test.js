@@ -1,5 +1,5 @@
 /* eslint-env node */
-import { beforeAll, afterAll, describe, it } from 'vitest';
+import { beforeAll, afterAll, describe, it, expect } from 'vitest';
 import { spawn } from 'child_process';
 import path from 'path';
 import { setTimeout as wait } from 'timers/promises';
@@ -190,6 +190,13 @@ describe('core flows e2e', () => {
     });
     templAddress = deployResult.contractAddress;
     group = deployResult.group;
+    // Verify deployment results
+    expect(templAddress).toMatch(/^0x[a-fA-F0-9]{40}$/);
+    expect(deployResult.groupId).toBeTypeOf('string');
+    const templ = new ethers.Contract(templAddress, templArtifact.abi, provider);
+    expect(await templ.accessToken()).toBe(tokenAddress);
+    expect(await templ.protocolFeeRecipient()).toBe(await delegateSigner.getAddress());
+    expect(await templ.entryFee()).toBe(100n);
 
     const tokenMember = new ethers.Contract(
       tokenAddress,
@@ -200,8 +207,9 @@ describe('core flows e2e', () => {
       nonce: memberNonce++
     });
     await tx.wait();
+    expect(await tokenMember.allowance(await memberSigner.getAddress(), templAddress)).toBe(100n);
 
-    await purchaseAndJoin({
+    const pj = await purchaseAndJoin({
       ethers,
       xmtp: xmtpMember,
       signer: memberSigner,
@@ -210,24 +218,31 @@ describe('core flows e2e', () => {
       templArtifact,
       txOptions: { nonce: memberNonce++ }
     });
+    expect(pj.groupId).toBeDefined();
+    expect(await templ.hasPurchased(await memberSigner.getAddress())).toBe(true);
 
     await sendMessage({ group, content: 'hello' });
+    // Give the network a beat and confirm server can still see the group
+    await wait(500);
 
-    await delegateMute({
+    const delegated = await delegateMute({
       signer: priestSigner,
       contractAddress: templAddress,
       priestAddress: await priestSigner.getAddress(),
       delegateAddress: await delegateSigner.getAddress()
     });
+    expect(delegated).toBe(true);
 
-    await muteMember({
+    const mutedUntil = await muteMember({
       signer: delegateSigner,
       contractAddress: templAddress,
       moderatorAddress: await delegateSigner.getAddress(),
       targetAddress: await memberSigner.getAddress()
     });
+    expect(mutedUntil).toBeGreaterThan(0);
 
-    await fetchActiveMutes({ contractAddress: templAddress });
+    const mutes = await fetchActiveMutes({ contractAddress: templAddress });
+    expect(mutes.map(m => m.address.toLowerCase())).toContain((await memberSigner.getAddress()).toLowerCase());
 
     const iface = new ethers.Interface(templArtifact.abi);
     const callData = iface.encodeFunctionData('setPausedDAO', [true]);
@@ -243,6 +258,12 @@ describe('core flows e2e', () => {
       votingPeriod: 7 * 24 * 60 * 60,
       txOptions: { nonce: memberNonce++ }
     });
+    // Verify proposal created
+    const [proposer, title,, yesVotes, noVotes] = await templ.getProposal(0);
+    expect(proposer.toLowerCase()).toBe((await memberSigner.getAddress()).toLowerCase());
+    expect(title).toBe('t');
+    expect(yesVotes).toBe(0n);
+    expect(noVotes).toBe(0n);
 
     await voteOnProposal({
       ethers,
@@ -253,6 +274,8 @@ describe('core flows e2e', () => {
       support: true,
       txOptions: { nonce: memberNonce++ }
     });
+    const voted = await templ.hasVoted(0, await memberSigner.getAddress());
+    expect(voted[0]).toBe(true);
 
     await provider.send('evm_increaseTime', [7 * 24 * 60 * 60]);
     await provider.send('evm_mine', []);
@@ -265,5 +288,6 @@ describe('core flows e2e', () => {
       proposalId: 0,
       txOptions: { nonce: priestNonce++ }
     });
+    expect(await templ.paused()).toBe(true);
   }, 120000);
 });

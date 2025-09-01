@@ -27,4 +27,16 @@ export default defineConfig([
       'no-empty': ['off'],
     },
   },
+  {
+    files: ['e2e/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2020,
+      globals: globals.node,
+      sourceType: 'module',
+    },
+    rules: {
+      // e2e files are Node context; disable React hooks rules here
+      'react-hooks/rules-of-hooks': 'off',
+    },
+  },
 ])

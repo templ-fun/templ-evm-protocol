@@ -26,6 +26,12 @@ Use the docs below to dive into each component:
 - [BACKEND.md](./BACKEND.md) – XMTP bot and API
 - [FRONTEND.md](./FRONTEND.md) – React client
 - [CORE_FLOW_DOCS.MD](./CORE_FLOW_DOCS.MD) – core flow service diagrams
+  
+In addition, all core workflows are covered by automated tests:
+- Contract unit tests (Hardhat + Chai)
+- Backend API tests (Node test runner + supertest)
+- Frontend unit + integration tests (Vitest)
+- End‑to‑end tests (Playwright) hitting: local Hardhat, XMTP dev network, backend + SQLite, and the React app
 
 ## Quick start
 1. **Clone & install**
@@ -43,7 +49,11 @@ Use the docs below to dive into each component:
    npm test # run contract tests
    npm run slither
    npm --prefix backend test
-   npm --prefix frontend test
+   npm --prefix frontend test              # unit tests
+   npm --prefix frontend test -- src/core-flows.integration.test.js # integration
+   npm --prefix frontend run test:e2e      # end‑to‑end
+   npm --prefix backend run typecheck && npm --prefix frontend run typecheck
+   npm --prefix backend run lint && npm --prefix frontend run lint
    ```
 3. **Deploy contracts**
    ```bash
@@ -96,12 +106,22 @@ Use the docs below to dive into each component:
    escalating durations of 1 hour, 1 day, 1 week, 1 month and finally
    permanent after the fifth strike. Frontends query the backend for active
    mutes and hide messages from muted addresses.
-5. **Proposal creation** – any member drafts a call‑data proposal from the chat UI.
+5. **Proposal creation** – any member drafts a call‑data proposal from the chat UI (or direct on‑chain). The backend rebroadcasts ProposalCreated as JSON to the group.
 6. **Voting** – members cast yes/no votes and see live tallies as events arrive.
-7. **Proposal creation** – proposals that win with yes result has callData executed.
+7. **Proposal execution** – proposals that pass execute the calldata.
 
 For auditing guides, continue with the docs linked above.
 
 ## Security considerations
 - Proposals invoking `executeDAO` can call any external contract with ETH.
   Members should carefully audit these proposals because malicious or misconfigured calls can drain funds or interact with unsafe contracts.
+ - The backend owns the XMTP group. The priest does not control membership directly; actions are mediated via the backend’s bot, which verifies on‑chain purchase. See BACKEND.md for API auth and rate‑limit details.
+ - XMTP dev network has a 10‑installation limit per inbox. Tests rotate wallets or reuse local XMTP databases to avoid hitting this limit.
+ - For auditors: CONTRACTS.md documents all custom errors, events, invariants, fee splits, and DAO constraints. The Hardhat test suite covers these invariants; Slither reports are part of CI.
+
+## Testing matrix (at a glance)
+- `npm test` (root): contract suite (Hardhat)
+- `npm --prefix backend test`: API behavior (DB persistence/mutes/delegates/event rebroadcast)
+- `npm --prefix frontend test`: unit & integration
+- `npm --prefix frontend run test:e2e`: E2E with local Hardhat + backend + XMTP dev
+- Static checks: `npm --prefix backend run typecheck`, `npm --prefix frontend run typecheck`, and `lint`
