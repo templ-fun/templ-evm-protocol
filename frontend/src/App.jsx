@@ -6,6 +6,7 @@ import {
   deployTempl,
   purchaseAndJoin,
   sendMessage,
+  sendMessageBackend,
   proposeVote,
   voteOnProposal,
   watchProposals,
@@ -51,45 +52,49 @@ function App() {
     const address = await signer.getAddress();
     setWalletAddress(address);
     
-    // Create signer compatible with browser SDK
+    // Use an XMTP-compatible signer wrapper for the browser SDK
+    const xmtpEnv = ['localhost', '127.0.0.1'].includes(window.location.hostname)
+      ? 'dev'
+      : 'production';
     const xmtpSigner = {
       type: 'EOA',
+      getAddress: () => address,
       getIdentifier: () => ({
         identifier: address.toLowerCase(),
-        identifierKind: 'Ethereum'  // Must be string "Ethereum" for browser SDK
+        identifierKind: 'Ethereum'
       }),
       signMessage: async (message) => {
-        // Handle different message types
-        let messageToSign;
+        let toSign;
         if (message instanceof Uint8Array) {
           try {
-            messageToSign = ethers.toUtf8String(message);
+            toSign = ethers.toUtf8String(message);
           } catch {
-            messageToSign = ethers.hexlify(message);
+            toSign = ethers.hexlify(message);
           }
         } else if (typeof message === 'string') {
-          messageToSign = message;
+          toSign = message;
         } else {
-          messageToSign = String(message);
+          toSign = String(message);
         }
-        
-        const signature = await signer.signMessage(messageToSign);
+        const signature = await signer.signMessage(toSign);
         return ethers.getBytes(signature);
       }
     };
-    
-    const client = await Client.create(xmtpSigner, { env: 'production' });
+    const client = await Client.create(xmtpSigner, { env: xmtpEnv });
     setXmtp(client);
+    console.log('[app] XMTP client created', { env: xmtpEnv });
   }
 
   async function handleDeploy() {
-    if (!signer || !xmtp) return;
+    console.log('[app] handleDeploy clicked', { signer: !!signer, xmtp: !!xmtp });
+    if (!signer) return;
     if (!ethers.isAddress(tokenAddress)) return alert('Invalid token address');
     if (!ethers.isAddress(protocolFeeRecipient))
       return alert('Invalid protocol fee recipient address');
     const nums = [entryFee, priestVoteWeight, priestWeightThreshold];
     if (!nums.every((n) => /^\d+$/.test(n))) return alert('Invalid numeric input');
     try {
+      console.log('[app] deploying templ with', { tokenAddress, protocolFeeRecipient, entryFee, priestVoteWeight, priestWeightThreshold });
       const result = await deployTempl({
         ethers,
         xmtp,
@@ -102,10 +107,12 @@ function App() {
         priestWeightThreshold,
         templArtifact
       });
+      console.log('[app] deployTempl returned', result);
       setTemplAddress(result.contractAddress);
       setGroup(result.group);
       setGroupId(result.groupId);
     } catch (err) {
+      console.error('[app] deploy failed', err);
       alert(err.message);
     }
   }
@@ -122,6 +129,7 @@ function App() {
         templAddress,
         templArtifact
       });
+      console.log('[app] purchaseAndJoin returned', result);
       if (result) {
         setGroup(result.group);
         setGroupId(result.groupId);
@@ -146,6 +154,44 @@ function App() {
       cancelled = true;
     };
   }, [group, mutes]);
+
+  // When we know the `groupId`, keep trying to resolve the group locally until found.
+  useEffect(() => {
+    if (!xmtp || !groupId || group) return;
+    let cancelled = false;
+    let attempts = 0;
+    async function poll() {
+      while (!cancelled && attempts < 20 && !group) {
+        attempts++;
+        console.log('[app] finding group', groupId, 'attempt', attempts);
+        try {
+          await xmtp.conversations.sync();
+        } catch {}
+        try {
+          const maybe = await xmtp.conversations.getConversationById(groupId);
+          if (maybe) {
+            console.log('[app] found group by id');
+            setGroup(maybe);
+            break;
+          }
+        } catch {}
+        try {
+          const list = await xmtp.conversations.list();
+          const found = list.find((c) => c.id === groupId);
+          if (found) {
+            console.log('[app] found group by list');
+            setGroup(found);
+            break;
+          }
+        } catch {}
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+    }
+    poll();
+    return () => {
+      cancelled = true;
+    };
+  }, [xmtp, groupId, group]);
 
   useEffect(() => {
     if (!templAddress || !signer) return;
@@ -187,9 +233,19 @@ function App() {
   }, [templAddress]);
 
   async function handleSend() {
-    if (!group || !messageInput) return;
-    await sendMessage({ group, content: messageInput });
-    setMessageInput('');
+    if (!messageInput) return;
+    try {
+      if (group) {
+        await sendMessage({ group, content: messageInput });
+      } else if (groupId && templAddress) {
+        await sendMessageBackend({ contractAddress: templAddress, content: messageInput });
+      } else {
+        return;
+      }
+      setMessageInput('');
+    } catch (err) {
+      console.error('Send failed', err);
+    }
   }
 
   async function handlePropose() {
@@ -331,9 +387,10 @@ function App() {
         </div>
       )}
 
-      {group && (
+      {(groupId) && (
         <div className="chat">
           <h2>Group Chat</h2>
+          {!group && <p>Connecting to group… syncing messages</p>}
           <div className="messages">
             {messages.map((m, i) => (
               <div key={i}>
@@ -345,7 +402,7 @@ function App() {
             value={messageInput}
             onChange={(e) => setMessageInput(e.target.value)}
           />
-          <button onClick={handleSend}>Send</button>
+          <button onClick={handleSend} disabled={!group && !groupId}>Send</button>
 
           <div className="proposal-form">
             <h3>New Proposal</h3>

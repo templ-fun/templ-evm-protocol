@@ -31,13 +31,17 @@ export async function deployTempl({
   const message = `create:${contractAddress.toLowerCase()}`;
   const signature = await signer.signMessage(message);
   
-  // Get the priest's inbox ID from XMTP client
-  const priestInboxId = xmtp.inboxId;
-  console.log('Priest XMTP client:', {
-    inboxId: priestInboxId,
-    address: xmtp.address,
-    env: xmtp.env
-  });
+  // Get the priest's inbox ID from XMTP client if available
+  const priestInboxId = xmtp?.inboxId;
+  if (priestInboxId) {
+    console.log('Priest XMTP client:', {
+      inboxId: priestInboxId,
+      address: xmtp.address,
+      env: xmtp.env
+    });
+  } else {
+    console.log('XMTP not ready at deploy; backend will derive inboxId');
+  }
   
   const res = await fetch(`${backendUrl}/templs`, {
     method: 'POST',
@@ -57,32 +61,30 @@ export async function deployTempl({
   }
   const data = await res.json();
   
+  // If XMTP isn’t ready yet on the client, skip fetching the group for now.
+  if (!xmtp) {
+    return { contractAddress, group: null, groupId: data.groupId };
+  }
+  
   // Multiple sync attempts to ensure we get the group
   console.log('Syncing conversations to find group', data.groupId);
   
   // Try syncing multiple times with a small delay
   let group = null;
   for (let i = 0; i < 3; i++) {
-    // Use sync() - syncAll() doesn't exist in Node SDK
     await xmtp.conversations.sync();
-    
-    // Try to get the conversation by ID
     try {
       group = await xmtp.conversations.getConversationById(data.groupId);
     } catch (err) {
       console.log('getConversationById failed:', err.message);
     }
-    
     if (!group) {
-      // List all conversations including all consent states
       const conversations = await xmtp.conversations.list();
       console.log(`Sync attempt ${i + 1}: Found ${conversations.length} conversations`);
       group = conversations.find(c => c.id === data.groupId);
     }
-    
     if (group) {
       console.log('Found group:', group.id, 'consent state:', group.consentState);
-      // Ensure the group is allowed if the SDK exposes consent controls
       if (
         group.consentState !== 'allowed' &&
         typeof group.updateConsentState === 'function'
@@ -95,22 +97,12 @@ export async function deployTempl({
       }
       break;
     }
-    
-    // Wait a bit before next sync attempt
-    if (i < 2) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
+    if (i < 2) await new Promise((r) => setTimeout(r, 1000));
   }
-  
   if (!group) {
-    // Log available conversations for debugging
-    const conversations = await xmtp.conversations.list();
-    console.error('Available conversations after multiple syncs:', conversations.map(c => ({ id: c.id, name: c.name })));
-    console.error('Looking for group ID:', data.groupId);
-    console.error('Priest inbox ID:', xmtp.inboxId);
-    throw new Error(`Could not find group ${data.groupId} after creation`);
+    console.error('Could not find group after creation; will rely on join step');
+    return { contractAddress, group: null, groupId: data.groupId };
   }
-  
   return { contractAddress, group, groupId: data.groupId };
 }
 
@@ -153,21 +145,25 @@ export async function purchaseAndJoin({
     );
   }
   const data = await res.json();
-  // Use sync to discover the group we just joined
-  await xmtp.conversations.sync();
-  
-  // Try to get the conversation
-  let group = await xmtp.conversations.getConversationById(data.groupId);
-  
-  if (!group) {
-    // Try listing all conversations
-    const conversations = await xmtp.conversations.list();
-    group = conversations.find(c => c.id === data.groupId);
+  // Try multiple sync attempts — joins can be eventually consistent
+  let group = null;
+  for (let i = 0; i < 5; i++) {
+    try {
+      await xmtp.conversations.sync();
+    } catch {}
+    try {
+      group = await xmtp.conversations.getConversationById(data.groupId);
+    } catch {}
+    if (!group) {
+      try {
+        const conversations = await xmtp.conversations.list();
+        group = conversations.find((c) => c.id === data.groupId) || null;
+      } catch {}
+    }
+    if (group) break;
+    await new Promise((r) => setTimeout(r, 1000));
   }
-  
-  if (!group) {
-    throw new Error(`Could not find group ${data.groupId} after joining`);
-  }
+  if (!group) throw new Error(`Could not find group ${data.groupId} after joining`);
   
   // Ensure consent is allowed if possible
   if (
@@ -186,6 +182,16 @@ export async function purchaseAndJoin({
 
 export async function sendMessage({ group, content }) {
   await group.send(content);
+}
+
+export async function sendMessageBackend({ contractAddress, content, backendUrl = 'http://localhost:3001' }) {
+  const res = await fetch(`${backendUrl}/send`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ contractAddress, content })
+  });
+  if (!res.ok) throw new Error('Server send failed');
+  return true;
 }
 
 export async function proposeVote({

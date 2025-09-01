@@ -125,6 +125,13 @@ export function createApp({ xmtp, hasPurchased, connectContract, dbPath, db }) {
           throw err;
         }
       }
+
+      // Proactively nudge message history so new members can discover the group quickly
+      try {
+        await group.send(JSON.stringify({ type: 'templ-created', contract: contractAddress }));
+      } catch (e) {
+        logger.warn({ err: e }, 'Unable to send templ-created message');
+      }
       
       logger.info({ 
         groupId: group.id,
@@ -250,6 +257,15 @@ export function createApp({ xmtp, hasPurchased, connectContract, dbPath, db }) {
       // Ensure the server sees the updated membership before responding
       if (xmtp.conversations.sync) {
         await xmtp.conversations.sync();
+      }
+
+      // Send a lightweight welcome message so the client has fresh activity to sync
+      try {
+        await record.group.send(
+          JSON.stringify({ type: 'member-joined', address: memberAddress })
+        );
+      } catch (e) {
+        logger.warn({ err: e }, 'Unable to send member-joined message');
       }
       res.json({ groupId: record.group.id });
     } catch (err) {
@@ -379,6 +395,23 @@ export function createApp({ xmtp, hasPurchased, connectContract, dbPath, db }) {
     });
   });
 
+  // Minimal endpoint to allow the server to post a message into a group's chat.
+  // Useful as a fallback while a browser client is still discovering the group.
+  app.post('/send', async (req, res) => {
+    const { contractAddress, content } = req.body || {};
+    if (!ethers.isAddress(contractAddress) || typeof content !== 'string') {
+      return res.status(400).json({ error: 'Invalid request' });
+    }
+    const record = groups.get(contractAddress.toLowerCase());
+    if (!record) return res.status(404).json({ error: 'Unknown Templ' });
+    try {
+      await record.group.send(content);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.close = () => {
     store.shutdown();
     database.close();
@@ -440,4 +473,3 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     logger.info({ port }, 'TEMPL backend listening');
   });
 }
-
