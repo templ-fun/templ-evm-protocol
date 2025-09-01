@@ -52,10 +52,10 @@ export default defineConfig({
       timeout: 120 * 1000,
     },
     {
-      command: 'npm run dev',
+      command: 'npm run build && npm run preview -- --port 5173',
       port: 5173,
       reuseExistingServer: !process.env.CI,
-      timeout: 120 * 1000,
+      timeout: 180 * 1000,
     },
   ],
 });

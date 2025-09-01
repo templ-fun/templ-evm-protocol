@@ -19,7 +19,7 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
       TestToken.bytecode,
       wallets.priest
     );
-    const token = await tokenFactory.deploy();
+    const token = await tokenFactory.deploy('Test', 'TEST', 18);
     await token.waitForDeployment();
     const tokenAddress = await token.getAddress();
 
@@ -27,8 +27,9 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
     const testWallet = wallets.priest;
     const testAddress = await testWallet.getAddress();
 
-    // Mint test tokens to the priest wallet
-    const tokenTx = await token.mint(testAddress, ethers.parseEther('1000'));
+    // Mint test tokens to the priest wallet (explicit nonce to avoid race with deploy)
+    const nextNonce = await wallets.priest.getNonce();
+    const tokenTx = await token.mint(testAddress, ethers.parseEther('1000'), { nonce: nextNonce });
     await tokenTx.wait();
 
     // Inject ethereum provider that uses the priest wallet
@@ -102,27 +103,25 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
     // Core Flow 3: Pay-to-join
     console.log('Core Flow 3: Pay-to-join');
     
-    // First approve tokens using ethers directly on the page
-    await page.evaluate(async ({ tokenAddr, templAddr, tokenAbi }) => {
-      const provider = new window.ethers.BrowserProvider(window.ethereum);
-      const signer = await provider.getSigner();
-      const token = new window.ethers.Contract(tokenAddr, tokenAbi, signer);
-      const tx = await token.approve(templAddr, 100);
+    // Approve tokens using Node ethers to avoid relying on window.ethers globals
+    {
+      const tokenForPriest = new ethers.Contract(
+        tokenAddress,
+        ['function approve(address spender, uint256 amount) returns (bool)'],
+        wallets.priest
+      );
+      const tx = await tokenForPriest.approve(templAddress, 100);
       await tx.wait();
       console.log('Tokens approved');
-    }, { 
-      tokenAddr: tokenAddress, 
-      templAddr: templAddress,
-      tokenAbi: ['function approve(address spender, uint256 amount) returns (bool)']
-    });
+    }
     
     // Now join
     await page.fill('input[placeholder*="Contract address"]', templAddress);
     await page.click('button:has-text("Purchase & Join")');
     await page.waitForTimeout(5000);
     
-    // Check if group chat appears
-    const hasGroupChat = await page.locator('h2:has-text("Group Chat")').isVisible({ timeout: 10000 });
+    // Check if group chat appears (allow more time for XMTP sync)
+    const hasGroupChat = await page.locator('h2:has-text("Group Chat")').isVisible({ timeout: 20000 });
     
     if (hasGroupChat) {
       console.log('✅ Successfully joined TEMPL!');
@@ -137,7 +136,10 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
       console.log('Core Flow 5: Proposal Creation');
       await page.fill('input[placeholder*="Title"]', 'Test Proposal');
       await page.fill('input[placeholder*="Description"]', 'Testing');
-      await page.fill('input[placeholder*="Call data"]', '0x');
+      // Provide valid call data for a simple no-op DAO action (pause)
+      const iface = new ethers.Interface(['function setPausedDAO(bool)']);
+      const callData = iface.encodeFunctionData('setPausedDAO', [true]);
+      await page.fill('input[placeholder*="Call data"]', callData);
       await page.click('button:has-text("Propose")');
       await page.waitForTimeout(2000);
       
