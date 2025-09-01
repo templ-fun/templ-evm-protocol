@@ -181,20 +181,26 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
         ['function approve(address,uint256) returns (bool)'],
         member
       );
-      let tx = await token.approve(templAddress, 100);
+      const provider = templMember.runner.provider;
+      const memberAddr = await member.getAddress();
+      let nonceBase = await provider.getTransactionCount(memberAddr);
+      let tx = await token.approve(templAddress, 100, { nonce: nonceBase++ });
       await tx.wait();
-      tx = await templMember.purchaseAccess();
+      tx = await templMember.purchaseAccess({ nonce: nonceBase++ });
       await tx.wait();
       const iface = new ethers.Interface(['function setPausedDAO(bool)']);
       const callData = iface.encodeFunctionData('setPausedDAO', [true]);
-      tx = await templMember.createProposal('Test Proposal', 'Testing', callData, 0);
+      // Explicit nonces after waits to avoid node scheduling edge cases
+      tx = await templMember.createProposal('Test Proposal', 'Testing', callData, 0, { nonce: nonceBase++ });
       await tx.wait();
-      tx = await templMember.vote(0, true);
+      tx = await templMember.vote(0, true, { nonce: nonceBase++ });
       await tx.wait();
       await fetch('http://localhost:8545', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'evm_increaseTime', params: [7 * 24 * 60 * 60] }) });
       await fetch('http://localhost:8545', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'evm_mine', params: [] }) });
       const templPriest = new ethers.Contract(templAddress, templAbi, wallets.priest);
-      tx = await templPriest.executeProposal(0);
+      const priestAddr = await wallets.priest.getAddress();
+      let priestNonce = await provider.getTransactionCount(priestAddr);
+      tx = await templPriest.executeProposal(0, { nonce: priestNonce });
       await tx.wait();
       const templFinal = new ethers.Contract(templAddress, templAbi, wallets.priest);
       expect(await templFinal.paused()).toBe(true);

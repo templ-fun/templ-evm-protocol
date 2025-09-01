@@ -575,7 +575,9 @@ test('broadcasts proposal and vote events to group', async () => {
   emitter.emit('ProposalCreated', 1, addresses.member, 'Test', 123);
   emitter.emit('VoteCast', 1, addresses.member, true, 456);
 
-  assert.deepEqual(messages, [
+  // Ignore warm-up messages the backend may send on group creation or join
+  const filtered = messages.filter(m => m.type !== 'templ-created' && m.type !== 'member-joined');
+  assert.deepEqual(filtered, [
     {
       type: 'proposal',
       id: 1,
@@ -593,4 +595,3 @@ test('broadcasts proposal and vote events to group', async () => {
   ]);
   await app.close();
 });
-

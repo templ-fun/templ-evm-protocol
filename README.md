@@ -46,13 +46,13 @@ In addition, all core workflows are covered by automated tests:
    ```
 2. **Run tests**
    ```bash
-   npm run test:all                      # full sweep: contracts, slither, types, lint, unit, integration, e2e
+   npm run test:all # full sweep: contracts, slither, types, lint, unit, integration, e2e
    npm test # run contract tests
    npm run slither
    npm --prefix backend test
-   npm --prefix frontend test              # unit tests
-   npm --prefix frontend test -- src/core-flows.integration.test.js # integration
-   npm --prefix frontend run test:e2e      # end‑to‑end
+   npm --prefix frontend test # unit tests
+   npm --prefix frontend test -- src/core-flows.integration.test.js # integration tests
+   npm --prefix frontend run test:e2e # end‑to‑end tests
    npm --prefix backend run typecheck && npm --prefix frontend run typecheck
    npm --prefix backend run lint && npm --prefix frontend run lint
    ```
@@ -119,10 +119,3 @@ For auditing guides, continue with the docs linked above.
  - The backend owns the XMTP group. The priest does not control membership directly; actions are mediated via the backend’s bot, which verifies on‑chain purchase. See BACKEND.md for API auth and rate‑limit details.
  - XMTP dev network has a 10‑installation limit per inbox. Tests rotate wallets or reuse local XMTP databases to avoid hitting this limit.
  - For auditors: CONTRACTS.md documents all custom errors, events, invariants, fee splits, and DAO constraints. The Hardhat test suite covers these invariants; Slither reports are part of CI.
-
-## Testing matrix (at a glance)
-- `npm test` (root): contract suite (Hardhat)
-- `npm --prefix backend test`: API behavior (DB persistence/mutes/delegates/event rebroadcast)
-- `npm --prefix frontend test`: unit & integration
-- `npm --prefix frontend run test:e2e`: E2E with local Hardhat + backend + XMTP dev
-- Static checks: `npm --prefix backend run typecheck`, `npm --prefix frontend run typecheck`, and `lint`
