@@ -65,52 +65,57 @@ function App() {
     const xmtpEnv = ['localhost', '127.0.0.1'].includes(window.location.hostname)
       ? 'dev'
       : 'production';
-    async function createXmtpWithRotation() {
-      for (let i = 0; i < 20; i++) {
-        const currentNonce = i + 1;
-        const xmtpSigner = {
-          type: 'EOA',
-          getAddress: () => address,
-          getIdentifier: () => ({
-            identifier: address.toLowerCase(),
-            identifierKind: 'Ethereum',
-            nonce: currentNonce
-          }),
-          signMessage: async (message) => {
-            let toSign;
-            if (message instanceof Uint8Array) {
-              try {
-                toSign = ethers.toUtf8String(message);
-              } catch {
-                toSign = ethers.hexlify(message);
-              }
-            } else if (typeof message === 'string') {
-              toSign = message;
-            } else {
-              toSign = String(message);
-            }
-            const signature = await signer.signMessage(toSign);
-            return ethers.getBytes(signature);
+    async function createXmtpStable() {
+      // Use a stable installation nonce per wallet to avoid exhausting the
+      // XMTP dev network's 10-installation cap and to prevent OPFS handle
+      // conflicts from repeated Client.create() attempts.
+      const storageKey = `xmtp:nonce:${address.toLowerCase()}`;
+      let stableNonce = 1;
+      try {
+        const saved = Number.parseInt(localStorage.getItem(storageKey) || '1', 10);
+        if (Number.isFinite(saved) && saved > 0) stableNonce = saved;
+      } catch {}
+
+      const xmtpSigner = {
+        type: 'EOA',
+        getAddress: () => address,
+        getIdentifier: () => ({
+          identifier: address.toLowerCase(),
+          identifierKind: 'Ethereum',
+          nonce: stableNonce
+        }),
+        signMessage: async (message) => {
+          let toSign;
+          if (message instanceof Uint8Array) {
+            try { toSign = ethers.toUtf8String(message); }
+            catch { toSign = ethers.hexlify(message); }
+          } else if (typeof message === 'string') {
+            toSign = message;
+          } else {
+            toSign = String(message);
           }
-        };
-        try {
-          console.log('[app] Creating XMTP client attempt', currentNonce);
-          const clientAttempt = await Client.create(xmtpSigner, { env: xmtpEnv });
-          return clientAttempt;
-        } catch (err) {
-          const msg = String(err?.message || err);
-          if (msg.includes('already registered 10/10 installations')) {
-            console.warn('[app] XMTP installation limit reached; rotating inbox nonce=', currentNonce);
-            // allow OPFS handles to settle between attempts
-            await new Promise((r) => setTimeout(r, 200));
-            continue;
-          }
-          throw err;
+          const signature = await signer.signMessage(toSign);
+          return ethers.getBytes(signature);
         }
+      };
+
+      try {
+        console.log('[app] Creating XMTP client with stable nonce', stableNonce);
+        const client = await Client.create(xmtpSigner, { env: xmtpEnv });
+        // Persist the nonce we successfully used so future runs reuse the same installation
+        try { localStorage.setItem(storageKey, String(stableNonce)); } catch {}
+        return client;
+      } catch (err) {
+        const msg = String(err?.message || err);
+        // If the identity already has 10/10 installations, do not spin — surface a clear error.
+        // Re-running with the same nonce avoids creating new installations.
+        if (msg.includes('already registered 10/10 installations')) {
+          throw new Error('XMTP installation limit reached for this wallet. Please revoke older installations for dev or switch account.');
+        }
+        throw err;
       }
-      throw new Error('Unable to register XMTP client after rotation');
     }
-    const client = await createXmtpWithRotation();
+    const client = await createXmtpStable();
     setXmtp(client);
     console.log('[app] XMTP client created', { env: xmtpEnv });
     pushStatus('✅ Messaging client ready');
@@ -216,7 +221,7 @@ function App() {
     let cancelled = false;
     let attempts = 0;
     async function poll() {
-      while (!cancelled && attempts < 20 && !group) {
+      while (!cancelled && attempts < 60 && !group) {
         attempts++;
         console.log('[app] finding group', groupId, 'attempt', attempts);
         try {

@@ -210,13 +210,18 @@ export async function sendMessage({ group, content }) {
  * @returns {Promise<boolean>}
  */
 export async function sendMessageBackend({ contractAddress, content, backendUrl = 'http://localhost:3001' }) {
-  const res = await fetch(`${backendUrl}/send`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ contractAddress, content })
-  });
-  if (!res.ok) throw new Error('Server send failed');
-  return true;
+  // Retries to ride out XMTP dev eventual consistency on the backend
+  const maxAttempts = 10;
+  for (let i = 0; i < maxAttempts; i++) {
+    const res = await fetch(`${backendUrl}/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contractAddress, content })
+    });
+    if (res.ok) return true;
+    await new Promise((r) => setTimeout(r, 750));
+  }
+  throw new Error('Server send failed');
 }
 
 export async function proposeVote({

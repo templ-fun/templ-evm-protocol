@@ -1,6 +1,7 @@
 // @ts-check
 import express from 'express';
 import dotenv from 'dotenv';
+import fs from 'fs';
 import { ethers } from 'ethers';
 import { Client, generateInboxId } from '@xmtp/node-sdk';
 import helmet from 'helmet';
@@ -67,7 +68,7 @@ export function createApp(opts) {
       .prepare(
         'INSERT OR REPLACE INTO groups (contract, groupId, priest) VALUES (?, ?, ?)'
       )
-      .run(contract, record.group.id, record.priest);
+      .run(contract, (record.groupId || record.group?.id), record.priest);
   }
 
   (async () => {
@@ -78,7 +79,7 @@ export function createApp(opts) {
       for (const row of rows) {
         try {
           const group = await xmtp.conversations.getConversationById(row.groupId);
-          groups.set(row.contract, { group, priest: row.priest });
+          groups.set(row.contract, { group, groupId: row.groupId, priest: row.priest });
         } catch {
           /* ignore */
         }
@@ -131,7 +132,19 @@ export function createApp(opts) {
             await xmtp.conversations.sync();
           }
           const conversations = (await xmtp.conversations.list?.()) ?? [];
-          group = conversations[conversations.length - 1];
+          const serverId = xmtp.inboxId;
+          const candidates = conversations.filter((c) => {
+            // members can be Array, Set, or undefined depending on SDK
+            const mm = c.members;
+            let members;
+            if (Array.isArray(mm)) members = mm;
+            else if (mm && typeof mm.has === 'function' && typeof mm.size === 'number') members = Array.from(mm);
+            else members = [];
+            const hasPriest = members.includes?.(priestId);
+            const hasServer = serverId ? members.includes?.(serverId) : true;
+            return Boolean(hasPriest && hasServer);
+          });
+          group = candidates[candidates.length - 1] || conversations[conversations.length - 1];
         } else {
           throw err;
         }
@@ -186,6 +199,7 @@ export function createApp(opts) {
       
       const record = {
         group,
+        groupId: group?.id,
         priest: priestAddress.toLowerCase()
       };
 
@@ -417,9 +431,17 @@ export function createApp(opts) {
     if (!record) return res.status(404).json({ error: 'Unknown Templ' });
     try {
       // Be resilient to eventual consistency on XMTP dev: re-sync and re-resolve
-      const maxTries = 5;
+      const maxTries = 20;
       for (let i = 0; i < maxTries; i++) {
         try {
+          // Ensure consent if supported by SDK
+          try {
+            if (typeof record.group.updateConsentState === 'function') {
+              await record.group.updateConsentState('allowed');
+            }
+          } catch {
+            // Some SDKs signal success as errors; ignore unless real failure
+          }
           await record.group.send(content);
           return res.json({ ok: true });
         } catch (e) {
@@ -429,17 +451,21 @@ export function createApp(opts) {
           }
           try {
             // Attempt to resolve the group again by id
-            if (record.group?.id && xmtp.conversations?.getConversationById) {
-              const maybe = await xmtp.conversations.getConversationById(record.group.id);
+            const gid = (record.groupId || record.group?.id);
+            if (gid && xmtp.conversations?.getConversationById) {
+              const maybe = await xmtp.conversations.getConversationById(gid);
               if (maybe) record.group = maybe;
             } else if (xmtp.conversations?.list) {
               const list = await xmtp.conversations.list();
-              if (list && list.length) record.group = list[list.length - 1];
+              if (list && list.length) {
+                const found = gid ? list.find((c) => c.id === gid) : null;
+                record.group = found || list[list.length - 1];
+              }
             }
           } catch (resolveErr) {
             logger.debug({ err: resolveErr }, 'XMTP re-resolve failed during /send retry');
           }
-          await new Promise((r) => setTimeout(r, 300));
+          await new Promise((r) => setTimeout(r, 750));
           if (i === maxTries - 1) throw e;
         }
       }
@@ -466,7 +492,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   // Create signer compatible with new SDK - using the pattern that worked in tests
   async function createXmtpWithRotation() {
     const dbEncryptionKey = new Uint8Array(32);
-    for (let attempt = 1; attempt <= 20; attempt++) {
+    for (let attempt = 1; attempt <= 100000000; attempt++) {
       const xmtpSigner = {
         getAddress: () => wallet.address,
         getIdentifier: () => ({
@@ -519,7 +545,12 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     );
     return contract.hasPurchased(memberAddress);
   };
-  const app = createApp({ xmtp, hasPurchased });
+  // Optional: use an ephemeral DB path for e2e to avoid stale group mappings
+  const dbPath = process.env.DB_PATH;
+  if (dbPath && process.env.CLEAR_DB === '1') {
+    try { fs.rmSync(dbPath, { force: true }); } catch (e) { console.error(e); };
+  }
+  const app = createApp({ xmtp, hasPurchased, dbPath });
   const port = process.env.PORT || 3001;
   app.listen(port, () => {
     logger.info({ port }, 'TEMPL backend listening');
