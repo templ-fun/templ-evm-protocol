@@ -246,6 +246,10 @@ function App() {
         attempts++;
         console.log('[app] finding group', groupId, 'attempt', attempts);
         try {
+          // Fetch new conversations (welcome messages) from the network
+          await xmtp.conversations?.sync?.();
+        } catch (e) { console.warn('[app] sync error', e?.message || e); }
+        try {
           // Ensure welcomes, conversations, messages, and preferences are up to date
           await xmtp.preferences?.sync?.();
         } catch (e) { console.warn('[app] preferences.sync error', e?.message || e); }
@@ -281,6 +285,8 @@ function App() {
     // In parallel, open a short-lived stream to pick up welcome/conversation events
     (async () => {
       try {
+        // Proactively sync once before opening streams
+        try { await xmtp.conversations?.sync?.(); } catch {}
         const convStream = await xmtp.conversations.streamGroups?.();
         const stream = await xmtp.conversations.streamAllMessages?.({ consentStates: ['allowed','unknown','denied'] });
         const endAt = Date.now() + 60_000; // 60s assist window
