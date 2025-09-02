@@ -484,10 +484,12 @@ function App() {
             ))}
           </div>
           <input
+            data-testid="chat-input"
+            placeholder="Type a message"
             value={messageInput}
             onChange={(e) => setMessageInput(e.target.value)}
           />
-          <button onClick={handleSend} disabled={!group && !groupId}>Send</button>
+          <button data-testid="chat-send" onClick={handleSend} disabled={!group && !groupId}>Send</button>
 
           <div className="proposal-form">
             <h3>New Proposal</h3>

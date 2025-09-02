@@ -134,28 +134,24 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
     
     if (hasGroupChat) {
       console.log('✅ Successfully joined TEMPL!');
-      // Ensure on-chain membership (some UIs may render immediately after groupId)
+      // Membership is handled by the UI flow; avoid duplicate purchase.
+      // Optionally assert membership without writing:
       const ensureBuy = new ethers.Contract(templAddress, templAbi, testWallet);
-      if (!(await ensureBuy.hasPurchased(testAddress))) {
-        await page.waitForTimeout(1000);
-        const n = await testWallet.getNonce('pending');
-        const txb = await ensureBuy.purchaseAccess({ nonce: n });
-        await txb.wait();
-      }
+      await expect.poll(async () => await ensureBuy.hasPurchased(testAddress)).toBe(true);
       
       // Core Flow 4: Messaging
       console.log('Core Flow 4: Messaging');
-      const sendBtn = page.locator('button:has-text("Send")');
+      const sendBtn = page.locator('[data-testid="chat-send"]');
       let enabled = false;
       for (let i = 0; i < 30; i++) {
         if (await sendBtn.isEnabled()) { enabled = true; break; }
         await page.waitForTimeout(1000);
       }
       if (enabled) {
-        const messageInput = page.locator('input[value=""]').nth(-2);
+        const messageInput = page.locator('[data-testid="chat-input"]');
         await messageInput.fill('Hello TEMPL!');
         await sendBtn.click();
-        await expect(page.locator('.status')).toContainText('Message sent');
+        await expect(page.locator('.status')).toContainText('Message sent', { timeout: 30000 });
         // Try to observe it in UI, but don’t fail if discovery is still catching up
         try {
           await expect(page.locator('.messages')).toContainText('Hello TEMPL!', { timeout: 15000 });

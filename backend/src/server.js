@@ -416,9 +416,35 @@ export function createApp(opts) {
     const record = groups.get(contractAddress.toLowerCase());
     if (!record) return res.status(404).json({ error: 'Unknown Templ' });
     try {
-      await record.group.send(content);
-      res.json({ ok: true });
+      // Be resilient to eventual consistency on XMTP dev: re-sync and re-resolve
+      const maxTries = 5;
+      for (let i = 0; i < maxTries; i++) {
+        try {
+          await record.group.send(content);
+          return res.json({ ok: true });
+        } catch (e) {
+          if (xmtp.conversations?.sync) {
+            try { await xmtp.conversations.sync(); }
+            catch (syncErr) { logger.debug({ err: syncErr }, 'XMTP sync failed during /send retry'); }
+          }
+          try {
+            // Attempt to resolve the group again by id
+            if (record.group?.id && xmtp.conversations?.getConversationById) {
+              const maybe = await xmtp.conversations.getConversationById(record.group.id);
+              if (maybe) record.group = maybe;
+            } else if (xmtp.conversations?.list) {
+              const list = await xmtp.conversations.list();
+              if (list && list.length) record.group = list[list.length - 1];
+            }
+          } catch (resolveErr) {
+            logger.debug({ err: resolveErr }, 'XMTP re-resolve failed during /send retry');
+          }
+          await new Promise((r) => setTimeout(r, 300));
+          if (i === maxTries - 1) throw e;
+        }
+      }
     } catch (err) {
+      logger.error({ err }, 'Backend /send failed');
       res.status(500).json({ error: err.message });
     }
   });
