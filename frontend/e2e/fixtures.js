@@ -21,20 +21,41 @@ export const test = base.extend({
   },
 
   wallets: async ({ provider }, use) => {
-    // Use accounts that are different from backend's BOT_PRIVATE_KEY (which uses #0)
-    const accounts = [
-      '0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6', // Priest (Account #3)
-      '0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a', // Member (Account #4)
-      '0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba', // Delegate (Account #5)
-    ];
+    const useRandom = process.env.E2E_RANDOM_WALLETS !== '0';
+    if (useRandom) {
+      // Fresh wallets for each test run; fund from Hardhat account #0
+      const funder = new ethers.Wallet(
+        '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80',
+        provider
+      );
+      const priest = ethers.Wallet.createRandom().connect(provider);
+      const member = ethers.Wallet.createRandom().connect(provider);
+      const delegate = ethers.Wallet.createRandom().connect(provider);
 
-    const wallets = {
-      priest: new ethers.Wallet(accounts[0], provider),
-      member: new ethers.Wallet(accounts[1], provider),
-      delegate: new ethers.Wallet(accounts[2], provider)
-    };
-
-    await use(wallets);
+      let nonce = await funder.getNonce();
+      for (const w of [priest, member, delegate]) {
+        const tx = await funder.sendTransaction({
+          to: await w.getAddress(),
+          value: ethers.parseEther('100'),
+          nonce: nonce++
+        });
+        await tx.wait();
+      }
+      await use({ priest, member, delegate });
+    } else {
+      // Use accounts that are different from backend's BOT_PRIVATE_KEY (which uses #0)
+      const accounts = [
+        '0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6', // Priest (Account #3)
+        '0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a', // Member (Account #4)
+        '0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba', // Delegate (Account #5)
+      ];
+      const wallets = {
+        priest: new ethers.Wallet(accounts[0], provider),
+        member: new ethers.Wallet(accounts[1], provider),
+        delegate: new ethers.Wallet(accounts[2], provider)
+      };
+      await use(wallets);
+    }
   }
 });
 

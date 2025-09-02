@@ -117,7 +117,23 @@ function App() {
     }
     const client = await createXmtpStable();
     setXmtp(client);
-    console.log('[app] XMTP client created', { env: xmtpEnv });
+    console.log('[app] XMTP client created', { env: xmtpEnv, inboxId: client.inboxId });
+    try {
+      if (import.meta.env.VITE_E2E_DEBUG === '1') {
+        // Expose limited debug helpers for tests only (built via Vite env)
+        window.__XMTP = client;
+        window.__xmtpList = async () => {
+          try { await client.conversations.sync?.(); } catch {}
+          const list = await client.conversations.list();
+          return list.map(c => c.id);
+        };
+        window.__xmtpGetById = async (id) => {
+          try { await client.conversations.sync?.(); } catch {}
+          try { return Boolean(await client.conversations.getConversationById(id)); }
+          catch { return false; }
+        };
+      }
+    } catch {}
     pushStatus('✅ Messaging client ready');
   }
 
@@ -144,6 +160,7 @@ function App() {
         templArtifact
       });
       console.log('[app] deployTempl returned', result);
+      console.log('[app] deployTempl groupId details', { groupId: result.groupId, has0x: String(result.groupId).startsWith('0x'), len: String(result.groupId).length });
       setTemplAddress(result.contractAddress);
       setGroup(result.group);
       setGroupId(result.groupId);
@@ -173,6 +190,7 @@ function App() {
         templArtifact
       });
       console.log('[app] purchaseAndJoin returned', result);
+      console.log('[app] purchaseAndJoin groupId details', { groupId: result.groupId, has0x: String(result.groupId).startsWith('0x'), len: String(result.groupId).length });
       if (result) {
         setGroup(result.group);
         setGroupId(result.groupId);
@@ -226,7 +244,7 @@ function App() {
         console.log('[app] finding group', groupId, 'attempt', attempts);
         try {
           await xmtp.conversations.sync();
-        } catch {}
+        } catch (e) { console.warn('[app] sync error', e?.message || e); }
         try {
           const maybe = await xmtp.conversations.getConversationById(groupId);
           if (maybe) {
@@ -236,9 +254,10 @@ function App() {
             setGroupConnected(true);
             break;
           }
-        } catch {}
+        } catch (e) { console.warn('[app] getById error', e?.message || e); }
         try {
           const list = await xmtp.conversations.list();
+          console.log('[app] list size=', list?.length, 'firstIds=', (list||[]).slice(0,3).map(c=>c.id));
           const found = list.find((c) => c.id === groupId);
           if (found) {
             console.log('[app] found group by list');
@@ -247,7 +266,7 @@ function App() {
             setGroupConnected(true);
             break;
           }
-        } catch {}
+        } catch (e) { console.warn('[app] list error', e?.message || e); }
         await new Promise((r) => setTimeout(r, 1000));
       }
     }

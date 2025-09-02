@@ -121,6 +121,20 @@ export function createApp(opts) {
         priestId = generateInboxId(priestIdentifier);
       }
 
+      // Wait for the priest inbox to have at least one installation (Browser SDK may need a moment)
+      async function waitForInboxReady(inboxId, tries = 20) {
+        if (!xmtp?.preferences?.inboxStateFromInboxIds) return;
+        for (let i = 0; i < tries; i++) {
+          try {
+            const states = await xmtp.preferences.inboxStateFromInboxIds([inboxId]);
+            const st = states?.[0];
+            if (st && Array.isArray(st.installations) && st.installations.length > 0) return;
+          } catch (e) { console.warn(e); };
+          await new Promise((r) => setTimeout(r, 500));
+        }
+      }
+      try { await waitForInboxReady(priestId, 20); } catch (e) { console.warn(e); };
+
       // The SDK often reports successful syncs as errors, so capture that case.
       let group;
       try {
@@ -158,6 +172,7 @@ export function createApp(opts) {
       }
       
       logger.info({ 
+        contract: contractAddress.toLowerCase(),
         groupId: group.id,
         groupName: group.name,
         memberCount: group.members?.length
@@ -270,6 +285,20 @@ export function createApp(opts) {
         inboxIdToAdd = generateInboxId(memberIdentifier);
       }
       
+      // Ensure the member inbox has a published installation before adding
+      async function waitForInboxReady(inboxId, tries = 20) {
+        if (!xmtp?.preferences?.inboxStateFromInboxIds) return;
+        for (let i = 0; i < tries; i++) {
+          try {
+            const states = await xmtp.preferences.inboxStateFromInboxIds([inboxId]);
+            const st = states?.[0];
+            if (st && Array.isArray(st.installations) && st.installations.length > 0) return;
+          } catch (e) { console.warn(e); };
+          await new Promise((r) => setTimeout(r, 500));
+        }
+      }
+      try { await waitForInboxReady(inboxIdToAdd, 20); } catch (e) { console.warn(e); };
+
       try {
         await record.group.addMembers([inboxIdToAdd]);
       } catch (err) {
@@ -278,6 +307,8 @@ export function createApp(opts) {
         }
         logger.info({ message: err.message }, 'XMTP sync message during member add - ignoring');
       }
+
+      logger.info({ contract: contractAddress.toLowerCase(), groupId: record.group.id, memberInboxId: inboxIdToAdd }, 'Member added to group');
 
       // Ensure the server sees the updated membership before responding
       if (xmtp.conversations.sync) {
@@ -294,6 +325,7 @@ export function createApp(opts) {
       }
       res.json({ groupId: record.group.id });
     } catch (err) {
+      logger.error({ err, contractAddress }, 'Join failed');
       res.status(500).json({ error: err.message });
     }
   });
@@ -324,6 +356,7 @@ export function createApp(opts) {
         .run(contractAddress.toLowerCase(), delegateAddress.toLowerCase());
       res.json({ delegated: true });
     } catch (err) {
+      logger.error({ err, contractAddress }, 'Backend /send failed');
       res.status(500).json({ error: err.message });
     }
   });
@@ -403,6 +436,68 @@ export function createApp(opts) {
       res.status(500).json({ error: err.message });
     }
   });
+
+  // --- Debug endpoints to help E2E diagnostics (test-only) ---
+  if (process.env.ENABLE_DEBUG_ENDPOINTS === '1') {
+  app.get('/debug/group', async (req, res) => {
+    try {
+      const contractAddress = String(req.query.contractAddress || '').toLowerCase();
+      const refresh = String(req.query.refresh || '0') === '1';
+      if (!ethers.isAddress(contractAddress)) {
+        return res.status(400).json({ error: 'Invalid contractAddress' });
+      }
+      const record = groups.get(contractAddress);
+      if (!record) return res.status(404).json({ error: 'Unknown Templ' });
+      const info = {
+        contract: contractAddress,
+        serverInboxId: xmtp?.inboxId || null,
+        storedGroupId: record.groupId || record.group?.id || null,
+        resolvedGroupId: null,
+        membersCount: null,
+        members: null,
+      };
+      if (refresh && xmtp?.conversations?.sync) {
+        try { await xmtp.conversations.sync(); } catch (e) { console.warn(e.message)}
+        try {
+          const gid = record.groupId || record.group?.id;
+          if (gid && xmtp.conversations?.getConversationById) {
+            const maybe = await xmtp.conversations.getConversationById(gid);
+            if (maybe) record.group = maybe;
+          }
+        } catch (e) { console.warn(e.message)}
+      }
+      info.resolvedGroupId = record.group?.id || null;
+      try {
+        if (record.group && Array.isArray(record.group.members)) {
+          info.membersCount = record.group.members.length;
+          info.members = record.group.members;
+        }
+      } catch (e) { console.warn(e.message)}
+      logger.info(info, 'Debug group info');
+      res.json(info);
+    } catch (err) {
+      logger.error({ err }, 'Debug group failed');
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/debug/conversations', async (req, res) => {
+    try {
+      const limit = Number.parseInt(String(req.query.limit || '10'), 10) || 10;
+      if (xmtp?.conversations?.sync) {
+        try { await xmtp.conversations.sync(); } catch (e) { console.warn(e.message)}
+      }
+      const list = xmtp?.conversations?.list ? await xmtp.conversations.list() : [];
+      const ids = (list || []).map(c => c.id);
+      const result = { count: ids.length, firstIds: ids.slice(0, limit) };
+      logger.info(result, 'Debug conversations');
+      res.json(result);
+    } catch (err) {
+      logger.error({ err }, 'Debug conversations failed');
+      res.status(500).json({ error: err.message });
+    }
+  });
+  }
 
   app.get('/mutes', (req, res) => {
     const { contractAddress } = req.query;
@@ -548,7 +643,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   // Optional: use an ephemeral DB path for e2e to avoid stale group mappings
   const dbPath = process.env.DB_PATH;
   if (dbPath && process.env.CLEAR_DB === '1') {
-    try { fs.rmSync(dbPath, { force: true }); } catch (e) { console.error(e); };
+    try { fs.rmSync(dbPath, { force: true }); } catch (e) { console.warn(e); };
   }
   const app = createApp({ xmtp, hasPurchased, dbPath });
   const port = process.env.PORT || 3001;

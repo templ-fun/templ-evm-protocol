@@ -71,28 +71,29 @@ export async function deployTempl({
   if (!data || typeof data.groupId !== 'string' || data.groupId.length === 0) {
     throw new Error('Invalid /templs response: missing groupId');
   }
+  const groupId = data.groupId; // use as-is; Browser SDK lists ids without 0x
   
   // If XMTP isn’t ready yet on the client, skip fetching the group for now.
   if (!xmtp) {
-    return { contractAddress, group: null, groupId: data.groupId };
+    return { contractAddress, group: null, groupId };
   }
   
   // Multiple sync attempts to ensure we get the group
-  console.log('Syncing conversations to find group', data.groupId);
+  console.log('Syncing conversations to find group', groupId);
   
   // Try syncing multiple times with a small delay
   let group = null;
   for (let i = 0; i < 3; i++) {
     await xmtp.conversations.sync();
     try {
-      group = await xmtp.conversations.getConversationById(data.groupId);
+      group = await xmtp.conversations.getConversationById(groupId);
     } catch (err) {
       console.log('getConversationById failed:', err.message);
     }
     if (!group) {
       const conversations = await xmtp.conversations.list();
-      console.log(`Sync attempt ${i + 1}: Found ${conversations.length} conversations`);
-      group = conversations.find(c => c.id === data.groupId);
+      console.log(`Sync attempt ${i + 1}: Found ${conversations.length} conversations; firstIds=`, conversations.slice(0,3).map(c=>c.id));
+      group = conversations.find(c => c.id === groupId);
     }
     if (group) {
       console.log('Found group:', group.id, 'consent state:', group.consentState);
@@ -112,9 +113,9 @@ export async function deployTempl({
   }
   if (!group) {
     console.error('Could not find group after creation; will rely on join step');
-    return { contractAddress, group: null, groupId: data.groupId };
+    return { contractAddress, group: null, groupId };
   }
-  return { contractAddress, group, groupId: data.groupId };
+  return { contractAddress, group, groupId };
 }
 
 /**
@@ -164,19 +165,22 @@ export async function purchaseAndJoin({
   if (!data || typeof data.groupId !== 'string' || data.groupId.length === 0) {
     throw new Error('Invalid /join response: missing groupId');
   }
+  const groupId = data.groupId; // use as-is; Browser SDK expects ids without 0x
+  console.log('purchaseAndJoin: backend returned groupId=', data.groupId);
   // Try multiple sync attempts — joins can be eventually consistent
   let group = null;
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < 40; i++) {
     try {
       await xmtp.conversations.sync();
     } catch {}
     try {
-      group = await xmtp.conversations.getConversationById(data.groupId);
+      group = await xmtp.conversations.getConversationById(groupId);
     } catch {}
     if (!group) {
       try {
         const conversations = await xmtp.conversations.list();
-        group = conversations.find((c) => c.id === data.groupId) || null;
+        console.log(`join sync ${i+1}: list=${conversations.length}; firstIds=`, conversations.slice(0,3).map(c=>c.id));
+        group = conversations.find((c) => c.id === groupId) || null;
       } catch {}
     }
     if (group) break;
@@ -184,7 +188,7 @@ export async function purchaseAndJoin({
   }
   // If group still not visible locally, return the groupId so the UI can
   // continue polling for discovery without failing the join flow.
-  if (!group) return { group: null, groupId: data.groupId };
+  if (!group) return { group: null, groupId };
   
   // Ensure consent is allowed if possible
   if (
@@ -198,7 +202,7 @@ export async function purchaseAndJoin({
     }
   }
   
-  return { group, groupId: data.groupId };
+  return { group, groupId };
 }
 
 export async function sendMessage({ group, content }) {

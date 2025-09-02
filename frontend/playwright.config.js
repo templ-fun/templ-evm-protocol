@@ -53,6 +53,7 @@ export default defineConfig({
         ALLOWED_ORIGINS: 'http://localhost:5179',
         DB_PATH: 'e2e-groups.db',
         CLEAR_DB: '1',
+        ENABLE_DEBUG_ENDPOINTS: '1',
       },
       reuseExistingServer: false,
       timeout: 120 * 1000,
@@ -60,6 +61,9 @@ export default defineConfig({
     {
       command: 'npm run build && npm run preview -- --port 5179',
       port: 5179,
+      env: {
+        VITE_E2E_DEBUG: '1',
+      },
       reuseExistingServer: false,
       timeout: 180 * 1000,
     },
