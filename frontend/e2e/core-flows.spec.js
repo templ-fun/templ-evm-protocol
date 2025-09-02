@@ -40,6 +40,32 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
 
     for (const w of candidates) {
       const addr = await w.getAddress();
+      // Clear OPFS/IndexedDB storage to avoid XMTP OPFS access-handle locks between attempts
+      try {
+        await page.evaluate(async () => {
+          try {
+            if (navigator.storage && 'getDirectory' in navigator.storage) {
+              // @ts-ignore
+              const root = await navigator.storage.getDirectory();
+              const names = [];
+              // @ts-ignore
+              for await (const [name] of root.entries()) names.push(name);
+              for (const name of names) {
+                try { /* @ts-ignore */ await root.removeEntry(name, { recursive: true }); } catch {}
+              }
+            }
+            // Clear IndexedDB as well
+            if (window.indexedDB) {
+              const dbs = await window.indexedDB.databases?.() || [];
+              for (const db of dbs) {
+                try { window.indexedDB.deleteDatabase(db.name); } catch {}
+              }
+            }
+            localStorage.clear?.();
+            sessionStorage.clear?.();
+          } catch {}
+        });
+      } catch {}
       // Inject/override window.ethereum for this candidate on the current page
       await page.evaluate(({ address }) => {
         const TEST_ACCOUNT = address;
@@ -149,9 +175,27 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
       }
       if (enabled) {
         const messageInput = page.locator('[data-testid="chat-input"]');
-        await messageInput.fill('Hello TEMPL!');
-        await sendBtn.click();
-        await expect(page.locator('.status')).toContainText('Message sent', { timeout: 30000 });
+        let sent = false;
+        for (let i = 0; i < 3 && !sent; i++) {
+          const body = `Hello TEMPL!${i ? ` (${i})` : ''}`;
+          await messageInput.fill(body);
+          await expect(messageInput).toHaveValue(body);
+          // Setup parallel waits: UI status or backend /send success
+          const statusPromise = page.locator('.status').filter({ hasText: 'Message sent' }).waitFor({ timeout: 10000 }).catch(() => null);
+          const respPromise = page.waitForResponse(
+            r => r.url().includes(':3001/send') && r.request().method() === 'POST' && r.status() === 200,
+            { timeout: 10000 }
+          ).catch(() => null);
+          await sendBtn.click();
+          const winner = await Promise.race([statusPromise, respPromise]);
+          if (winner) {
+            sent = true;
+          } else {
+            await page.waitForTimeout(1000);
+          }
+        }
+        // Final confirmation by status to keep the video readable
+        await expect(page.locator('.status')).toContainText('Message sent', { timeout: 20000 });
         // Try to observe it in UI, but don’t fail if discovery is still catching up
         try {
           await expect(page.locator('.messages')).toContainText('Hello TEMPL!', { timeout: 15000 });

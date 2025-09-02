@@ -3,6 +3,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
+  // Increase per-test timeout to accommodate full-stack flows on XMTP dev
+  timeout: 120 * 1000,
   testDir: './e2e',
   testMatch: /.*\.pw\.spec\.js/,
   fullyParallel: false,
@@ -49,6 +51,8 @@ export default defineConfig({
         BOT_PRIVATE_KEY: '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80',
         PORT: '3001',
         ALLOWED_ORIGINS: 'http://localhost:5179',
+        DB_PATH: 'e2e-groups.db',
+        CLEAR_DB: '1',
       },
       reuseExistingServer: false,
       timeout: 120 * 1000,
