@@ -84,6 +84,7 @@ export async function deployTempl({
   // Try syncing multiple times with a small delay
   let group = null;
   for (let i = 0; i < 6; i++) {
+    try { await xmtp.conversations?.sync?.(); } catch {}
     try { await xmtp.preferences?.sync?.(); } catch {}
     try { await xmtp.conversations.syncAll?.(['allowed','unknown','denied']); } catch {}
     try {
@@ -171,6 +172,7 @@ export async function purchaseAndJoin({
   // Try multiple sync attempts — joins can be eventually consistent
   let group = null;
   for (let i = 0; i < 120; i++) {
+    try { await xmtp.conversations?.sync?.(); } catch {}
     try { await xmtp.preferences?.sync?.(); } catch {}
     try { await xmtp.conversations.syncAll?.(['allowed','unknown','denied']); } catch {}
     try {
