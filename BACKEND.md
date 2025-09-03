@@ -54,7 +54,7 @@ npm --prefix backend run lint
   - `DELETE /delegates` – revoke a delegate's mute rights.
   - `POST /mute` – priest or delegate records an escalating mute for a member.
   - `GET /mutes` – list active mutes for a contract so the frontend can hide messages.
-  - `POST /send` – convenience endpoint to have the backend post a message into a group's chat (kept for manual debugging).
+  - `POST /send` – disabled by default; enable with `ENABLE_FALLBACK_SEND=1` only for CI/e2e or local debugging. Lets the backend post a message into a group's chat as a temporary fallback while the browser is still discovering the group.
 - **Dependencies** – XMTP JS SDK and an on-chain provider; event watching requires a `connectContract` factory.
 - **Persistence** – group metadata persists to a SQLite database at `backend/groups.db` (or a custom path via `createApp({ dbPath })` in tests). The database is read on startup and updated when groups change; back it up to avoid losing state.
 
@@ -91,6 +91,7 @@ Playwright e2e uses `XMTP_ENV=production` by default and injects a random `BOT_P
   - Request: `{ contractAddress, memberAddress, signature, memberInboxId? }` with `signature = sign("join:<contract>")`.
   - Requires `hasPurchased(contract, member)` to return `true`.
   - If `memberInboxId` is not provided, the server resolves it via XMTP. If the identity is not yet registered, it returns `503` so the client can retry.
+  - Security hardening (optional): you can require signed nonces/expirations for these requests by adding a nonce/exp field to the signed message and enforcing it in the service; this repo keeps compatibility with legacy signatures for tests.
 
 ## Security considerations
 - The service trusts the provided wallet address; production deployments should authenticate requests.

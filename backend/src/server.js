@@ -665,58 +665,63 @@ export function createApp(opts) {
 
   // Minimal endpoint to allow the server to post a message into a group's chat.
   // Useful as a fallback while a browser client is still discovering the group.
-  app.post('/send', async (req, res) => {
-    const { contractAddress, content } = req.body || {};
-    if (!ethers.isAddress(contractAddress) || typeof content !== 'string') {
-      return res.status(400).json({ error: 'Invalid request' });
-    }
-    const record = groups.get(contractAddress.toLowerCase());
-    if (!record) return res.status(404).json({ error: 'Unknown Templ' });
-    try {
-      // Be resilient to eventual consistency on XMTP dev: re-sync and re-resolve
-      const maxTries = 20;
-      for (let i = 0; i < maxTries; i++) {
-        try {
-          // Ensure consent if supported by SDK
-          try {
-            if (typeof record.group.updateConsentState === 'function') {
-              await record.group.updateConsentState('allowed');
-            }
-          } catch {
-            // Some SDKs signal success as errors; ignore unless real failure
-          }
-          await record.group.send(content);
-          return res.json({ ok: true });
-        } catch (e) {
-          if (xmtp.conversations?.sync) {
-            try { await xmtp.conversations.sync(); }
-            catch (syncErr) { logger.debug({ err: syncErr }, 'XMTP sync failed during /send retry'); }
-          }
-          try {
-            // Attempt to resolve the group again by id
-            const gid = (record.groupId || record.group?.id);
-            if (gid && xmtp.conversations?.getConversationById) {
-              const maybe = await xmtp.conversations.getConversationById(gid);
-              if (maybe) record.group = maybe;
-            } else if (xmtp.conversations?.list) {
-              const list = await xmtp.conversations.list();
-              if (list && list.length) {
-                const found = gid ? list.find((c) => c.id === gid) : null;
-                record.group = found || list[list.length - 1];
-              }
-            }
-          } catch (resolveErr) {
-            logger.debug({ err: resolveErr }, 'XMTP re-resolve failed during /send retry');
-          }
-          await new Promise((r) => setTimeout(r, 750));
-          if (i === maxTries - 1) throw e;
-        }
+  // Disabled by default; enable only for CI/E2E or local debugging.
+  if (process.env.ENABLE_FALLBACK_SEND === '1') {
+    app.post('/send', async (req, res) => {
+      const { contractAddress, content } = req.body || {};
+      if (!ethers.isAddress(contractAddress) || typeof content !== 'string') {
+        return res.status(400).json({ error: 'Invalid request' });
       }
-    } catch (err) {
-      logger.error({ err }, 'Backend /send failed');
-      res.status(500).json({ error: err.message });
-    }
-  });
+      const record = groups.get(contractAddress.toLowerCase());
+      if (!record) return res.status(404).json({ error: 'Unknown Templ' });
+      try {
+        // Be resilient to eventual consistency on XMTP dev: re-sync and re-resolve
+        const maxTries = 20;
+        for (let i = 0; i < maxTries; i++) {
+          try {
+            // Ensure consent if supported by SDK
+            try {
+              if (typeof record.group.updateConsentState === 'function') {
+                await record.group.updateConsentState('allowed');
+              }
+            } catch {
+              // Some SDKs signal success as errors; ignore unless real failure
+            }
+            await record.group.send(content);
+            return res.json({ ok: true });
+          } catch (e) {
+            if (xmtp.conversations?.sync) {
+              try { await xmtp.conversations.sync(); }
+              catch (syncErr) { logger.debug({ err: syncErr }, 'XMTP sync failed during /send retry'); }
+            }
+            try {
+              // Attempt to resolve the group again by id
+              const gid = (record.groupId || record.group?.id);
+              if (gid && xmtp.conversations?.getConversationById) {
+                const maybe = await xmtp.conversations.getConversationById(gid);
+                if (maybe) record.group = maybe;
+              } else if (xmtp.conversations?.list) {
+                const list = await xmtp.conversations.list();
+                if (list && list.length) {
+                  const found = gid ? list.find((c) => c.id === gid) : null;
+                  record.group = found || list[list.length - 1];
+                }
+              }
+            } catch (resolveErr) {
+              logger.debug({ err: resolveErr }, 'XMTP re-resolve failed during /send retry');
+            }
+            await new Promise((r) => setTimeout(r, 750));
+            if (i === maxTries - 1) throw e;
+          }
+        }
+      } catch (err) {
+        logger.error({ err }, 'Backend /send failed');
+        res.status(500).json({ error: err.message });
+      }
+    });
+  } else {
+    logger.info('Backend /send endpoint disabled (ENABLE_FALLBACK_SEND != 1)');
+  }
 
   app.close = () => {
     store.shutdown();

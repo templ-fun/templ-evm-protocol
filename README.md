@@ -6,7 +6,7 @@ This repo contains:
 - frontend/ (Vite + React demo app + Playwright e2e)
 
 Key points
-- No XMTP “fallback sends”. The browser must discover groups via welcomes.
+- Fallback sends are disabled in production. A gated backend `/send` exists only for CI/e2e or local debugging and is off by default (enable with `ENABLE_FALLBACK_SEND=1`). The browser is expected to discover groups via welcomes.
 - Backend adds members by real inboxId only (no deterministic fake ids), and waits for inbox readiness on XMTP before inviting (linearized).
 - E2E runs against XMTP production by default. Set `E2E_XMTP_LOCAL=1` to run the local-node repro tests.
 
@@ -76,7 +76,7 @@ In addition, all core workflows are covered by automated tests:
 
 XMTP discovery note
 - After a member is added to a group, the browser explicitly calls `conversations.sync()` to fetch new welcomes, then proceeds with `preferences.sync()` and `conversations.syncAll([...])`, polling `getConversationById` and briefly streaming conversations/messages until the group is found.
-- On production XMTP, this discovery can lag; the app renders the chat as soon as `groupId` is known. For CI/e2e only, it can temporarily use the backend `/send` endpoint so messages still post to the group while the browser syncs. This is gated by `VITE_ENABLE_BACKEND_FALLBACK` and is off in production builds.
+- On production XMTP, this discovery can lag; the app renders the chat as soon as `groupId` is known. For CI/e2e only, a backend `/send` fallback can be enabled to post while the browser syncs. This is gated in the backend by `ENABLE_FALLBACK_SEND=1` and must not be enabled in production.
 
 ## Quick start
 1. **Clone & install**

@@ -8,6 +8,12 @@ export default defineConfig({
     dir: 'test-results/.vitest',
   },
   test: {
+    // Avoid worker teardown issues in constrained sandboxes by using forks pool
+    pool: 'forks',
+    poolOptions: {
+      forks: { singleFork: true },
+    },
+    setupFiles: ['./vitest.setup.js'],
     // Give integration hooks more time; individual tests can override
     hookTimeout: 180_000,
     testTimeout: 180_000,
