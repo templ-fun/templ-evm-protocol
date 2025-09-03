@@ -166,15 +166,14 @@ XMTP discovery note
    escalating durations of 1 hour, 1 day, 1 week, 1 month and finally
    permanent after the fifth strike. Frontends query the backend for active
    mutes and hide messages from muted addresses.
-5. **Proposal creation** – any member drafts a call‑data proposal from the chat UI (or direct on‑chain). The backend rebroadcasts ProposalCreated as JSON to the group.
+5. **Proposal creation** – any member drafts a proposal to call one of the allowlisted DAO actions (pause/unpause, update config, withdraw treasury, sweep remainder). The backend rebroadcasts ProposalCreated as JSON to the group.
 6. **Voting** – members cast yes/no votes and see live tallies as events arrive.
-7. **Proposal execution** – proposals that pass execute the calldata.
+7. **Proposal execution** – proposals that pass execute the allowlisted action atomically.
 
 For auditing guides, continue with the docs linked above.
 
 ## Security considerations
-- Proposals invoking `executeDAO` can call any external contract with ETH.
-  Members should carefully audit these proposals because malicious or misconfigured calls can drain funds or interact with unsafe contracts.
+- Proposal execution is restricted to an allowlist of safe DAO actions; arbitrary external calls are disabled.
  - The backend owns the XMTP group. The priest does not control membership directly; actions are mediated via the backend’s bot, which verifies on‑chain purchase. See BACKEND.md for API auth and rate‑limit details.
  - XMTP dev network has a 10‑installation limit per inbox. Tests rotate wallets or reuse local XMTP databases to avoid hitting this limit.
  - For auditors: CONTRACTS.md documents all custom errors, events, invariants, fee splits, and DAO constraints. The Hardhat test suite covers these invariants; Slither reports are part of CI.

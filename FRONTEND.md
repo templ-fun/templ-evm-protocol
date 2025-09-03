@@ -56,4 +56,4 @@ npm run xmtp:local:down
 - Membership verification happens on-chain; bypassing the backend would require membership proof.
 - The app relies on the backend service for invitations; if the service is down no new members can join.
 - Users must share the contract address and group ID manually; there is no routing.
-- Proposal and vote transactions are signed by the connected wallet; users should verify calldata before approving.
+- Proposal and vote transactions are signed by the connected wallet; proposal actions are restricted to an allowlist (pause/unpause, config, treasury transfers), but users should still review the action and parameters before approving.

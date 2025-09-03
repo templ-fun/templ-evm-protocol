@@ -2,6 +2,9 @@
   "name": "templ-backend",
   "version": "1.0.1",
   "type": "module",
+  "engines": {
+    "node": ">=22.18.0"
+  },
   "scripts": {
     "start": "node src/server.js",
     "test": "DISABLE_XMTP_WAIT=1 node --test",

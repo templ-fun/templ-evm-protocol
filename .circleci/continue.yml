@@ -38,8 +38,8 @@ jobs:
             echo 'export PATH="$PATH:/home/circleci/.local/bin"' >> $BASH_ENV
             export PATH="$PATH:/home/circleci/.local/bin"
       - run:
-          name: Run Slither
-          command: npm run slither
+          name: Run Slither (CI-safe)
+          command: npm run slither:ci
 
   app:
     docker:

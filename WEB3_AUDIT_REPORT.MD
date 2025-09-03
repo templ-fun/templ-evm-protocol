@@ -2,7 +2,7 @@
 
 ## Overview
 - **Repository:** templ-contracts
-- **Scope:** `contracts/TEMPL.sol`, `contracts/ReturnEth.sol`, `contracts/TestToken.sol`
+- **Scope:** `contracts/TEMPL.sol`, `contracts/TestToken.sol`
 - **Tools Used:** Hardhat tests, Slither static analysis
 
 ## Summary
@@ -10,16 +10,16 @@ The contracts implement a DAO-governed membership system with treasury managemen
 
 ## Findings
 ### High
-1. **Arbitrary external call execution** – `executeDAO` enables proposals to call any external contract with ETH, transferring full control to DAO governance. Malicious proposals could drain funds or interact with unsafe contracts if not reviewed carefully.
+1. [Mitigated] Arbitrary external call execution – `executeDAO` has been removed. Proposal execution is now restricted to an allowlist of DAO functions (pause/unpause, config updates, and treasury transfers of the TEMPL-denominated token). This eliminates the broad external call surface.
 
 ### Medium
-1. **Treasury withdrawals depend solely on DAO access control** – `withdrawTreasuryDAO` and `withdrawAllTreasuryDAO` transfer treasury funds without additional safeguards such as reentrancy protection, relying on proposals to call them correctly.
+1. **Treasury withdrawals depend solely on DAO access control** – `withdrawTreasuryDAO` and `withdrawAllTreasuryDAO` transfer treasury funds via proposals; access is constrained by the allowlist. Reentrancy protection is applied at the proposal execution entrypoint.
 
 2. **Timestamp-based logic** – Voting windows and proposal timing rely on `block.timestamp`, which can be slightly manipulated by miners.
 
 ### Low
 1. **Member pool subtraction may revert** – `claimMemberPool` subtracts `memberRewardRemainder` from `memberPoolBalance` before comparing with claimable amounts; inconsistent state could cause underflow reverts. 
-2. **Low-level ETH return** – `ReturnEth.returnToCaller` uses a low-level call to send ETH back to the caller, which may expose reentrancy or failure scenarios if deployed in production.
+2. [Removed] Low-level ETH return helper used in prior tests (`ReturnEth`) is not part of production flows after removal of arbitrary external execution.
 
 ### Informational
 - Entry fee distribution logic divides payments among burn address, treasury, member pool, and protocol fee recipient.

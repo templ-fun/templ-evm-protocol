@@ -1,45 +1,6 @@
 {
   "_format": "hh-sol-cache-2",
   "files": {
-    "/Users/worms/Documents/templ/contracts/ReentrancyHelper.sol": {
-      "lastModificationDate": 1756477498201,
-      "contentHash": "447e0e35880e249d399aad318b0b389c",
-      "sourceName": "contracts/ReentrancyHelper.sol",
-      "solcConfig": {
-        "version": "0.8.23",
-        "settings": {
-          "optimizer": {
-            "enabled": true,
-            "runs": 200
-          },
-          "evmVersion": "paris",
-          "outputSelection": {
-            "*": {
-              "*": [
-                "abi",
-                "evm.bytecode",
-                "evm.deployedBytecode",
-                "evm.methodIdentifiers",
-                "metadata"
-              ],
-              "": [
-                "ast"
-              ]
-            }
-          }
-        }
-      },
-      "imports": [
-        "@openzeppelin/contracts/token/ERC20/IERC20.sol"
-      ],
-      "versionPragmas": [
-        "^0.8.19"
-      ],
-      "artifacts": [
-        "ITEMPL",
-        "ReentrancyHelper"
-      ]
-    },
     "/Users/worms/Documents/templ/node_modules/@openzeppelin/contracts/token/ERC20/IERC20.sol": {
       "lastModificationDate": 1756477518669,
       "contentHash": "9261adf6457863de3e9892f51317ec89",
@@ -263,8 +224,8 @@
       ]
     },
     "/Users/worms/Documents/templ/contracts/TEMPL.sol": {
-      "lastModificationDate": 1756477498201,
-      "contentHash": "f1e3307887c54e77485d84f6777fc9b8",
+      "lastModificationDate": 1756926610825,
+      "contentHash": "12acca5bedd8d51eb4582cdd6a320bfa",
       "sourceName": "contracts/TEMPL.sol",
       "solcConfig": {
         "version": "0.8.23",
@@ -295,7 +256,7 @@
         "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol"
       ],
       "versionPragmas": [
-        "^0.8.19"
+        "^0.8.23"
       ],
       "artifacts": [
         "TEMPL"
@@ -455,8 +416,8 @@
       ]
     },
     "/Users/worms/Documents/templ/contracts/TestToken.sol": {
-      "lastModificationDate": 1756477498201,
-      "contentHash": "e2e6536f442d6c2b2ac35cca6612ce62",
+      "lastModificationDate": 1756926616926,
+      "contentHash": "0539a5fc42f4aae46c8469208cacc0f5",
       "sourceName": "contracts/TestToken.sol",
       "solcConfig": {
         "version": "0.8.23",
@@ -486,15 +447,15 @@
         "@openzeppelin/contracts/token/ERC20/ERC20.sol"
       ],
       "versionPragmas": [
-        "^0.8.19"
+        "^0.8.23"
       ],
       "artifacts": [
         "TestToken"
       ]
     },
     "/Users/worms/Documents/templ/contracts/ReentrantToken.sol": {
-      "lastModificationDate": 1756477498201,
-      "contentHash": "59282041d32e54feea68490d34b1c36a",
+      "lastModificationDate": 1756926622036,
+      "contentHash": "b27e384c13ba7d20cb544de7baf95fe1",
       "sourceName": "contracts/ReentrantToken.sol",
       "solcConfig": {
         "version": "0.8.23",
@@ -524,83 +485,11 @@
         "@openzeppelin/contracts/token/ERC20/ERC20.sol"
       ],
       "versionPragmas": [
-        "^0.8.19"
+        "^0.8.23"
       ],
       "artifacts": [
         "ITempl",
         "ReentrantToken"
-      ]
-    },
-    "/Users/worms/Documents/templ/contracts/ReturnEth.sol": {
-      "lastModificationDate": 1756477498201,
-      "contentHash": "f256d8af38f3fb28582d95e823f6d084",
-      "sourceName": "contracts/ReturnEth.sol",
-      "solcConfig": {
-        "version": "0.8.23",
-        "settings": {
-          "optimizer": {
-            "enabled": true,
-            "runs": 200
-          },
-          "evmVersion": "paris",
-          "outputSelection": {
-            "*": {
-              "*": [
-                "abi",
-                "evm.bytecode",
-                "evm.deployedBytecode",
-                "evm.methodIdentifiers",
-                "metadata"
-              ],
-              "": [
-                "ast"
-              ]
-            }
-          }
-        }
-      },
-      "imports": [],
-      "versionPragmas": [
-        "^0.8.19"
-      ],
-      "artifacts": [
-        "ReturnEth"
-      ]
-    },
-    "/Users/worms/Documents/templ/contracts/Reverter.sol": {
-      "lastModificationDate": 1756477498201,
-      "contentHash": "ea8b7f27b40c1213f6ab369f31f877f5",
-      "sourceName": "contracts/Reverter.sol",
-      "solcConfig": {
-        "version": "0.8.23",
-        "settings": {
-          "optimizer": {
-            "enabled": true,
-            "runs": 200
-          },
-          "evmVersion": "paris",
-          "outputSelection": {
-            "*": {
-              "*": [
-                "abi",
-                "evm.bytecode",
-                "evm.deployedBytecode",
-                "evm.methodIdentifiers",
-                "metadata"
-              ],
-              "": [
-                "ast"
-              ]
-            }
-          }
-        }
-      },
-      "imports": [],
-      "versionPragmas": [
-        "^0.8.19"
-      ],
-      "artifacts": [
-        "Reverter"
       ]
     }
   }

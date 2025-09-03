@@ -67,10 +67,10 @@ describe("Single Active Proposal Restriction", function () {
         });
 
         it("Should prevent creating a second proposal while one is active", async function () {
-            const iface = new ethers.Interface([
+            const iface2 = new ethers.Interface([
                 "function withdrawTreasuryDAO(address,uint256,string)"
             ]);
-            const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
+            const callData = iface2.encodeFunctionData("withdrawTreasuryDAO", [
                 member1.address,
                 ethers.parseUnits("10", 18),
                 "Test"
@@ -251,8 +251,16 @@ describe("Single Active Proposal Restriction", function () {
         });
 
         it("Should properly handle failed execution and maintain active status", async function () {
-            // Create proposal with invalid calldata that will fail
-            const badCallData = "0x12345678"; // Invalid function selector
+            // Create proposal with valid selector but invalid params to trigger revert at execution
+            const iface = new ethers.Interface([
+                "function withdrawTreasuryDAO(address,uint256,string)"
+            ]);
+            const tooMuch = (await templ.treasuryBalance()) + 1n;
+            const badCallData = iface.encodeFunctionData("withdrawTreasuryDAO", [
+                member1.address,
+                tooMuch,
+                "Too much"
+            ]);
 
             await templ.connect(member1).createProposal(
                 "Bad Proposal",
@@ -273,9 +281,9 @@ describe("Single Active Proposal Restriction", function () {
             await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60]);
             await ethers.provider.send("evm_mine");
 
-            // Try to execute - should fail
+            // Try to execute - should fail and keep proposal active
             await expect(templ.executeProposal(0))
-                .to.be.revertedWithCustomError(templ, "ProposalExecutionFailed");
+                .to.be.revertedWithCustomError(templ, "InsufficientTreasuryBalance");
 
             // Check that proposal is still marked as active since execution failed
             expect(await templ.hasActiveProposal(member1.address)).to.be.true;
@@ -290,10 +298,10 @@ describe("Single Active Proposal Restriction", function () {
             await ethers.provider.send("evm_mine");
 
             // Now should be able to create another proposal since the first expired
-            const iface = new ethers.Interface([
+            const iface2 = new ethers.Interface([
                 "function withdrawTreasuryDAO(address,uint256,string)"
             ]);
-            const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
+            const callData = iface2.encodeFunctionData("withdrawTreasuryDAO", [
                 member1.address,
                 ethers.parseUnits("10", 18),
                 "Test"

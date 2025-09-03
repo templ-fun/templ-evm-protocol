@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.23;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -29,8 +29,7 @@ error InvalidRecipient();
 error AmountZero();
 error InsufficientTreasuryBalance();
 error NoTreasuryFunds();
-error InvalidTarget();
-error ExternalCallFailed();
+// Removed with executeDAO elimination
 error EntryFeeTooSmall();
 error InvalidEntryFee();
 error NoRewardsToClaim();
@@ -38,6 +37,7 @@ error InsufficientPoolBalance();
 error LimitOutOfRange();
 error NonZeroBalances();
 error InvalidSender();
+error InvalidCallData();
 
 /**
  * @title TEMPL - Token Entry Management Protocol with DAO Governance
@@ -163,12 +163,7 @@ contract TEMPL {
 
     event ContractPaused(bool isPaused);
 
-    event DAOExecuted(
-        address indexed target,
-        uint256 value,
-        bytes data,
-        bytes result
-    );
+    // event DAOExecuted removed with executeDAO elimination
     
     modifier onlyMember() {
         if (!hasPurchased[msg.sender]) revert NotMember();
@@ -306,6 +301,19 @@ contract TEMPL {
         if (bytes(_description).length == 0) revert DescriptionRequired();
         if (_callData.length == 0) revert CallDataRequired();
         if (_callData.length < 4) revert CallDataTooShort();
+        // Restrict proposals to allowed DAO function selectors
+        bytes4 selector;
+        assembly {
+            selector := mload(add(_callData, 32))
+        }
+        bool allowed = (
+            selector == this.setPausedDAO.selector ||
+            selector == this.updateConfigDAO.selector ||
+            selector == this.withdrawTreasuryDAO.selector ||
+            selector == this.withdrawAllTreasuryDAO.selector ||
+            selector == this.sweepMemberRewardRemainderDAO.selector
+        );
+        if (!allowed) revert InvalidCallData();
         
         if (hasActiveProposal[msg.sender]) {
             uint256 existingId = activeProposalId[msg.sender];
@@ -424,29 +432,30 @@ contract TEMPL {
             selector := mload(add(callData, 32))
         }
 
-        if (selector == this.executeDAO.selector) {
-            bytes memory params = new bytes(callData.length - 4);
-            for (uint256 i = 0; i < params.length; i++) {
-                params[i] = callData[i + 4];
-            }
-            (address target, uint256 value, bytes memory data) = abi.decode(
-                params,
-                (address, uint256, bytes)
-            );
-            return _executeDAO(target, value, data);
-        } else {
-            (bool success, bytes memory returnData) = address(this).call(callData);
-            if (!success) {
-                if (returnData.length > 0) {
-                    assembly {
-                        revert(add(returnData, 32), mload(returnData))
-                    }
-                } else {
-                    revert ProposalExecutionFailed();
-                }
-            }
-            return returnData;
+        // Allow only specific DAO functions to be executed by proposals
+        bool allowed = (
+            selector == this.setPausedDAO.selector ||
+            selector == this.updateConfigDAO.selector ||
+            selector == this.withdrawTreasuryDAO.selector ||
+            selector == this.withdrawAllTreasuryDAO.selector ||
+            selector == this.sweepMemberRewardRemainderDAO.selector
+        );
+
+        if (!allowed) {
+            revert InvalidCallData();
         }
+
+        (bool success, bytes memory returnData) = address(this).call(callData);
+        if (!success) {
+            if (returnData.length > 0) {
+                assembly {
+                    revert(add(returnData, 32), mload(returnData))
+                }
+            } else {
+                revert ProposalExecutionFailed();
+            }
+        }
+        return returnData;
     }
     
     /**
@@ -497,34 +506,7 @@ contract TEMPL {
         IERC20(accessToken).safeTransfer(recipient, amount);
     }
     
-    /**
-     * @notice Execute arbitrary external calls on behalf of DAO
-     * @dev CRITICAL: Can interact with any contract - proposals must be carefully reviewed
-     * @param target Contract address to call
-     * @param value ETH amount to send
-     * @param data Function call data
-     * @return Result data from external call
-     */
-    function executeDAO(address target, uint256 value, bytes memory data)
-        external
-        onlyDAO
-        nonReentrant
-        returns (bytes memory)
-    {
-        return _executeDAO(target, value, data);
-    }
-
-    function _executeDAO(address target, uint256 value, bytes memory data) internal returns (bytes memory) {
-        if (target == address(0) || target == accessToken) revert InvalidTarget();
-
-        // slither-disable-next-line arbitrary-send-eth
-        (bool success, bytes memory result) = target.call{value: value}(data);
-        if (!success) revert ExternalCallFailed();
-
-        emit DAOExecuted(target, value, data, result);
-
-        return result;
-    }
+    // executeDAO and arbitrary external call support removed for security hardening
     
     /**
      * @notice Update contract configuration via DAO proposal

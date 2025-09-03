@@ -129,7 +129,8 @@ describe("TEMPL Contract with DAO Governance", function () {
         it("Should allow members to create proposals", async function () {
             const title = "Test Proposal";
             const description = "This is a test proposal";
-            const callData = "0x12345678"; // Dummy call data
+            const iface = new ethers.Interface(["function setPausedDAO(bool)"]);
+            const callData = iface.encodeFunctionData("setPausedDAO", [false]);
             const votingPeriod = 7 * 24 * 60 * 60; // 7 days
 
             await expect(templ.connect(user1).createProposal(
@@ -148,46 +149,56 @@ describe("TEMPL Contract with DAO Governance", function () {
         });
 
         it("Should prevent non-members from creating proposals", async function () {
+            const iface = new ethers.Interface(["function setPausedDAO(bool)"]);
+            const callData = iface.encodeFunctionData("setPausedDAO", [false]);
             await expect(templ.connect(user2).createProposal(
                 "Test",
                 "Description",
-                "0x12345678",
+                callData,
                 7 * 24 * 60 * 60
             )).to.be.revertedWithCustomError(templ, "NotMember");
         });
 
         it("Should enforce minimum voting period", async function () {
+            const iface2 = new ethers.Interface(["function setPausedDAO(bool)"]);
+            const cd2 = iface2.encodeFunctionData("setPausedDAO", [false]);
             await expect(templ.connect(user1).createProposal(
                 "Test",
                 "Description",
-                "0x12345678",
+                cd2,
                 6 * 24 * 60 * 60 // 6 days (less than minimum 7 days)
             )).to.be.revertedWithCustomError(templ, "VotingPeriodTooShort");
         });
 
         it("Should enforce maximum voting period", async function () {
+            const iface3 = new ethers.Interface(["function setPausedDAO(bool)"]);
+            const cd3 = iface3.encodeFunctionData("setPausedDAO", [false]);
             await expect(templ.connect(user1).createProposal(
                 "Test",
                 "Description",
-                "0x12345678",
+                cd3,
                 31 * 24 * 60 * 60 // 31 days (too long)
             )).to.be.revertedWithCustomError(templ, "VotingPeriodTooLong");
         });
 
         it("Should require non-empty title", async function () {
+            const iface4 = new ethers.Interface(["function setPausedDAO(bool)"]);
+            const cd4 = iface4.encodeFunctionData("setPausedDAO", [false]);
             await expect(templ.connect(user1).createProposal(
                 "",
                 "Description",
-                "0x12345678",
+                cd4,
                 7 * 24 * 60 * 60
             )).to.be.revertedWithCustomError(templ, "TitleRequired");
         });
 
         it("Should require non-empty description", async function () {
+            const iface5 = new ethers.Interface(["function setPausedDAO(bool)"]);
+            const cd5 = iface5.encodeFunctionData("setPausedDAO", [false]);
             await expect(templ.connect(user1).createProposal(
                 "Test",
                 "",
-                "0x12345678",
+                cd5,
                 7 * 24 * 60 * 60
             )).to.be.revertedWithCustomError(templ, "DescriptionRequired");
         });
@@ -444,55 +455,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             expect(await templ.entryFee()).to.equal(newFee);
         });
 
-        it("Should execute arbitrary contract calls via executeDAO", async function () {
-            // Deploy another token that will be sent to the contract
-            const otherToken = await ethers.deployContract("TestToken", ["Other", "OTHER", 18]);
-            await otherToken.mint(await templ.getAddress(), ethers.parseUnits("500", 18));
-
-            // Create proposal to transfer the other token
-            const erc20Interface = new ethers.Interface([
-                "function transfer(address,uint256) returns (bool)"
-            ]);
-            const transferCalldata = erc20Interface.encodeFunctionData("transfer", [
-                treasury.address,
-                ethers.parseUnits("500", 18)
-            ]);
-
-            const iface = new ethers.Interface([
-                "function executeDAO(address,uint256,bytes)"
-            ]);
-            const target = await otherToken.getAddress();
-            const callData = iface.encodeFunctionData("executeDAO", [
-                target,
-                0, // No ETH
-                transferCalldata
-            ]);
-
-            await templ.connect(user1).createProposal(
-                "Transfer Other Token",
-                "Move OTHER tokens to treasury",
-                callData,
-                7 * 24 * 60 * 60
-            );
-
-            // Vote and execute
-            await templ.connect(user1).vote(0, true);
-            await templ.connect(user2).vote(0, true);
-
-            await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
-            await ethers.provider.send("evm_mine");
-
-            const resultData = erc20Interface.encodeFunctionResult("transfer", [true]);
-
-            const balanceBefore = await otherToken.balanceOf(treasury.address);
-            const tx = await templ.executeProposal(0);
-            await expect(tx)
-                .to.emit(templ, "DAOExecuted")
-                .withArgs(target, 0, transferCalldata, resultData);
-            const balanceAfter = await otherToken.balanceOf(treasury.address);
-
-            expect(balanceAfter - balanceBefore).to.equal(ethers.parseUnits("500", 18));
-        });
+        // Removed: executeDAO arbitrary external call tests for security hardening
 
         it("Should execute pause/unpause proposal", async function () {
             const iface = new ethers.Interface([
@@ -587,15 +550,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             ).to.be.revertedWithCustomError(templ, "NotDAO");
         });
 
-        it("Should prevent direct executeDAO calls", async function () {
-            await expect(
-                templ.connect(priest).executeDAO(
-                    priest.address,
-                    0,
-                    "0x"
-                )
-            ).to.be.revertedWithCustomError(templ, "NotDAO");
-        });
+        // Removed: direct executeDAO calls test (function removed)
 
         it("Should only allow treasury withdrawal through passed proposals", async function () {
             const treasuryBalance = await templ.treasuryBalance();
@@ -693,11 +648,13 @@ describe("TEMPL Contract with DAO Governance", function () {
         });
 
         it("Should allow createProposal when paused", async function () {
+            const iface = new ethers.Interface(["function setPausedDAO(bool)"]);
+            const callData = iface.encodeFunctionData("setPausedDAO", [false]);
             await expect(
                 templ.connect(user2).createProposal(
                     "New",
                     "New proposal",
-                    "0x12345678",
+                    callData,
                     7 * 24 * 60 * 60
                 )
             ).to.emit(templ, "ProposalCreated");
@@ -738,17 +695,20 @@ describe("TEMPL Contract with DAO Governance", function () {
 
         it("Should return active proposals correctly", async function () {
             // Create multiple proposals with different users (due to single proposal restriction)
+            const iface = new ethers.Interface(["function setPausedDAO(bool)"]);
+            const cd1 = iface.encodeFunctionData("setPausedDAO", [false]);
+            const cd2 = iface.encodeFunctionData("setPausedDAO", [true]);
             await templ.connect(user1).createProposal(
                 "Active 1",
                 "First active",
-                "0x12345678",
+                cd1,
                 7 * 24 * 60 * 60
             );
 
             await templ.connect(user2).createProposal(
                 "Active 2",
                 "Second active",
-                "0x56781234",
+                cd2,
                 10 * 24 * 60 * 60
             );
 
@@ -759,17 +719,20 @@ describe("TEMPL Contract with DAO Governance", function () {
         });
 
         it("Should exclude expired proposals", async function () {
+            const iface2 = new ethers.Interface(["function setPausedDAO(bool)"]);
+            const cd3 = iface2.encodeFunctionData("setPausedDAO", [false]);
             await templ.connect(user1).createProposal(
                 "Short",
                 "Expires soon",
-                "0x12345678",
+                cd3,
                 7 * 24 * 60 * 60 // 7 days
             );
 
+            const cd4 = iface2.encodeFunctionData("setPausedDAO", [true]);
             await templ.connect(user2).createProposal(
                 "Long",
                 "Active longer",
-                "0x56781234",
+                cd4,
                 14 * 24 * 60 * 60 // 14 days
             );
 
@@ -795,10 +758,12 @@ describe("TEMPL Contract with DAO Governance", function () {
                 7 * 24 * 60 * 60
             );
 
+            const iface3 = new ethers.Interface(["function setPausedDAO(bool)"]);
+            const cd5 = iface3.encodeFunctionData("setPausedDAO", [false]);
             await templ.connect(user2).createProposal(
                 "Still Active",
                 "Not executed",
-                "0x56781234",
+                cd5,
                 14 * 24 * 60 * 60
             );
 
@@ -934,32 +899,21 @@ describe("TEMPL Contract with DAO Governance", function () {
         });
 
 
-        it("Should handle proposal with invalid calldata gracefully", async function () {
+        it("Should reject proposal with invalid calldata at creation", async function () {
             await token.connect(user1).approve(await templ.getAddress(), ENTRY_FEE);
             await templ.connect(user1).purchaseAccess();
 
             // Create proposal with calldata for non-existent function
             const badCallData = "0x12345678"; // Invalid function selector
 
-            await templ.connect(user1).createProposal(
-                "Bad Proposal",
-                "This will fail",
-                badCallData,
-                7 * 24 * 60 * 60
-            );
-
-            await templ.connect(user1).vote(0, true);
-
-            await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
-            await ethers.provider.send("evm_mine");
-
-            // Execution should revert
-            await expect(templ.executeProposal(0))
-                .to.be.revertedWithCustomError(templ, "ProposalExecutionFailed");
-
-            // Proposal should not be marked as executed
-            const proposal = await templ.getProposal(0);
-            expect(proposal.executed).to.be.false;
+            await expect(
+                templ.connect(user1).createProposal(
+                    "Bad Proposal",
+                    "This will fail",
+                    badCallData,
+                    7 * 24 * 60 * 60
+                )
+            ).to.be.revertedWithCustomError(templ, "InvalidCallData");
         });
     });
 
@@ -1002,76 +956,9 @@ describe("TEMPL Contract with DAO Governance", function () {
             expect(await token.balanceOf(treasury.address)).to.equal(treasuryBefore);
         });
 
-        it("Should fail to execute executeDAO with invalid target", async function () {
-            const iface = new ethers.Interface([
-                "function executeDAO(address,uint256,bytes)"
-            ]);
-            const callData = iface.encodeFunctionData("executeDAO", [
-                ethers.ZeroAddress,
-                0,
-                "0x"
-            ]);
+        // Removed: executeDAO invalid target test (function removed)
 
-            await templ.connect(user1).createProposal(
-                "Invalid exec",
-                "Bad target",
-                callData,
-                7 * 24 * 60 * 60
-            );
-
-            await templ.connect(user1).vote(0, true);
-            await templ.connect(user2).vote(0, true);
-
-            await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
-            await ethers.provider.send("evm_mine");
-
-            await expect(templ.executeProposal(0))
-                .to.be.revertedWithCustomError(templ, "InvalidTarget");
-
-            const proposal = await templ.getProposal(0);
-            expect(proposal.executed).to.be.false;
-        });
-
-        it("Should reject executeDAO calls transferring accessToken", async function () {
-            const erc20 = new ethers.Interface([
-                "function transfer(address,uint256) returns (bool)"
-            ]);
-            const transferCalldata = erc20.encodeFunctionData("transfer", [
-                user3.address,
-                ethers.parseUnits("10", 18)
-            ]);
-
-            const iface = new ethers.Interface([
-                "function executeDAO(address,uint256,bytes)"
-            ]);
-            const callData = iface.encodeFunctionData("executeDAO", [
-                await token.getAddress(),
-                0,
-                transferCalldata
-            ]);
-
-            await templ.connect(user1).createProposal(
-                "Transfer Access Token",
-                "Attempt access token transfer",
-                callData,
-                7 * 24 * 60 * 60
-            );
-
-            await templ.connect(user1).vote(0, true);
-            await templ.connect(user2).vote(0, true);
-
-            await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
-            await ethers.provider.send("evm_mine");
-
-            const treasuryBefore = await templ.treasuryBalance();
-            const contractBalanceBefore = await token.balanceOf(await templ.getAddress());
-
-            await expect(templ.executeProposal(0))
-                .to.be.revertedWithCustomError(templ, "InvalidTarget");
-
-            expect(await templ.treasuryBalance()).to.equal(treasuryBefore);
-            expect(await token.balanceOf(await templ.getAddress())).to.equal(contractBalanceBefore);
-        });
+        // Removed: executeDAO transfer accessToken test (function removed)
     });
 
     describe("Comprehensive View Functions", function () {

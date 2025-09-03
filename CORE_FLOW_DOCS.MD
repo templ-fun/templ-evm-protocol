@@ -74,5 +74,6 @@ flowchart LR
 ```mermaid
 flowchart LR
     F[Member] -->|executeProposal| C[Smart Contract]
-    C -->|execute callData| T[Target Contract]
+    C -->|call allowlisted action| C
 ```
+Execution is restricted to an allowlist of contract functions (pause/unpause, config updates, and treasury transfers of the TEMPL‑denominated token). Arbitrary external calls are disabled.

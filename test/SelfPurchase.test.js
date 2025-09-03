@@ -31,27 +31,17 @@ describe("Self Purchase Guard", function () {
     await templ.connect(member).purchaseAccess();
   });
 
-  it("reverts when DAO attempts to purchase access for itself", async function () {
+  it("reverts when DAO attempts to propose self purchase", async function () {
     const iface = new ethers.Interface(["function purchaseAccess()"]);
     const callData = iface.encodeFunctionData("purchaseAccess", []);
 
-    await templ.connect(member).createProposal(
-      "Self Purchase",
-      "DAO tries to buy access",
-      callData,
-      7 * 24 * 60 * 60
-    );
-
-    await templ.connect(member).vote(0, true);
-    await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
-    await ethers.provider.send("evm_mine");
-
-    const balanceBefore = await token.balanceOf(await templ.getAddress());
-
-    await expect(templ.executeProposal(0)).to.be.revertedWithCustomError(templ, "InvalidSender");
-
-    const balanceAfter = await token.balanceOf(await templ.getAddress());
-    expect(balanceAfter).to.equal(balanceBefore);
+    await expect(
+      templ.connect(member).createProposal(
+        "Self Purchase",
+        "DAO tries to buy access",
+        callData,
+        7 * 24 * 60 * 60
+      )
+    ).to.be.revertedWithCustomError(templ, "InvalidCallData");
   });
 });
-

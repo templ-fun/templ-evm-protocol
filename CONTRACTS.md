@@ -23,9 +23,14 @@ updates their snapshot. Unclaimed rewards continue to accumulate until claimed.
 - Each member may have only one active proposal.
 - Voting period: 7–30 days (`0` defaults to 7).
 - Any address can execute a passed proposal; execution is atomic.
-- Internal calls use `_executeCall` and `_executeDAO` to allow nested operations without reentrancy.
-- Proposals invoking `executeDAO` can perform arbitrary external calls with ETH.
-  Members must review such proposals carefully to prevent malicious fund transfers or unsafe interactions.
+- Internal calls use `_executeCall` to invoke an allowlist of DAO functions during proposal execution.
+- Proposals are restricted to the following actions only:
+  - `setPausedDAO(bool)`
+  - `updateConfigDAO(address,uint256)`
+  - `withdrawTreasuryDAO(address,uint256,string)`
+  - `withdrawAllTreasuryDAO(address,string)`
+  - `sweepMemberRewardRemainderDAO(address)`
+  Arbitrary external calls are disabled for security.
 
 ### Anti‑attack checks
 - **Flash loan protection** – `purchaseTimestamp[voter] < proposal.createdAt`.
@@ -105,7 +110,7 @@ Run contract tests and Slither:
 npm test
 npm run slither
 ```
-The Hardhat suite covers: fee‑split invariants, reentrancy protection (including nested paths), voting rules (priest weight/threshold), eligibility by join time, DAO execution (executeDAO, paused states), pagination, integration user journey, and all view functions.
+The Hardhat suite covers: fee‑split invariants, reentrancy protection, voting rules (priest weight/threshold), eligibility by join time, DAO execution of allowlisted functions (pause/config/treasury), pagination, integration user journey, and all view functions.
 
 ## Deployment
 ```bash
