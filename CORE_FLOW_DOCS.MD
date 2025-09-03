@@ -32,6 +32,10 @@ flowchart LR
     M[Member] -->|send message| X[XMTP Group]
 ```
 
+Discovery & fallback
+- After a member joins, browser clients explicitly call `conversations.sync()` to fetch new welcomes, followed by `preferences.sync()` and `conversations.syncAll([...])`, and then poll/stream until the group is found.
+- While discovery is still syncing (especially on production), the UI renders as soon as `groupId` is known and uses the backend `/send` endpoint as a temporary fallback so messages still reach the group.
+
 ## 4. Moderation
 The backend tracks mutes with escalating durations. The priest can delegate
 mute power to other members. Frontends hide messages from muted members.
@@ -54,6 +58,10 @@ flowchart LR
 
 The backend watches on‑chain events and mirrors them into the group as JSON payloads so clients can render proposal and vote updates in real time.
 ```
+
+Notes
+- The backend adds members by inboxId for deterministic invitations across SDK variants.
+- After group creation/join, the backend performs a sync and may send a small warm message to assist discovery.
 
 ## 6. Voting
 ```mermaid

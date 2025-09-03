@@ -54,6 +54,21 @@ npm --prefix backend run lint
 - **Dependencies** – XMTP JS SDK and an on-chain provider; event watching requires a `connectContract` factory.
 - **Persistence** – group metadata persists to a SQLite database at `backend/groups.db` (or a custom path via `createApp({ dbPath })` in tests). The database is read on startup and updated when groups change; back it up to avoid losing state.
 
+### XMTP client details
+- The backend creates its XMTP client with `appVersion` for clearer network diagnostics.
+- Invitations add members by inboxId for determinism:
+  - Resolve via `findInboxIdByIdentifier({ identifier, identifierKind: 0 /* Ethereum */ })`.
+  - Fall back to `generateInboxId(...)` if the identity hasn’t propagated yet.
+  - Add using `group.addMembers([inboxId])` with fallbacks for SDK variants (`addMembersByInboxId`, `addMembersByIdentifiers`).
+- After creation/join, the backend attempts to `conversations.sync()` and sends a small warm message to help client discovery.
+
+### E2E and debug endpoints
+When `ENABLE_DEBUG_ENDPOINTS=1`, additional endpoints assist tests and local debugging:
+- `GET /debug/group?contractAddress=<addr>&refresh=1` – returns server inboxId, stored/resolved groupId, and (if available) members.
+- `GET /debug/conversations` – returns a count and the first few conversation ids seen by the server.
+
+Playwright e2e uses `XMTP_ENV=production` for realistic behavior and injects a random `BOT_PRIVATE_KEY` per run.
+
 ### Endpoint behaviors
 - `/templs`
   - Request: `{ contractAddress, priestAddress, signature, priestInboxId? }` where `signature = sign("create:<contract>")`.

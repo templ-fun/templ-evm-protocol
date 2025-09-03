@@ -33,6 +33,10 @@ In addition, all core workflows are covered by automated tests:
 - Frontend unit + integration tests (Vitest)
 - End‑to‑end tests (Playwright) hitting: local Hardhat, XMTP dev network, backend + SQLite, and the React app
 
+XMTP discovery note
+- After a member is added to a group, the browser explicitly calls `conversations.sync()` to fetch new welcomes, then proceeds with `preferences.sync()` and `conversations.syncAll([...])`, polling `getConversationById` and briefly streaming conversations/messages until the group is found.
+- On production XMTP, this discovery can lag; the app renders the chat as soon as `groupId` is known and temporarily uses the backend `/send` endpoint so messages still post to the group while the browser syncs.
+
 ## Quick start
 1. **Clone & install**
    ```bash
@@ -56,6 +60,7 @@ In addition, all core workflows are covered by automated tests:
    npm --prefix backend run typecheck && npm --prefix frontend run typecheck
    npm --prefix backend run lint && npm --prefix frontend run lint
    ```
+   End‑to‑end details: Playwright spins up Hardhat (8545), the backend bot (3001), and serves the built frontend (5179). The e2e uses XMTP production to mirror real‑world behavior and tests both a Node↔Browser discovery PoC and the full core flows. See also `XMTP-E2E-BROWSER-DISCOVERY-ISSUE.md` for deeper context on discovery.
 3. **Deploy contracts**
    ```bash
    npx hardhat run scripts/deploy.js --network base
