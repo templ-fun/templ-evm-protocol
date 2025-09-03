@@ -1,6 +1,6 @@
 # TEMPL Backend
 
-The TEMPL backend is an Express service that acts as the XMTP group owner. It creates rooms for new TEMPL deployments, verifies on-chain purchases and invites members.
+The TEMPL backend is an Express service that acts as the XMTP group owner. It creates rooms for new TEMPL deployments, verifies on-chain purchases, and invites members.
 
 ## Setup
 Install dependencies:
@@ -16,6 +16,10 @@ RPC_URL=https://mainnet.base.org
 PORT=3001
 BOT_PRIVATE_KEY=0x...
 ALLOWED_ORIGINS=http://localhost:5173
+ENABLE_DEBUG_ENDPOINTS=1
+XMTP_ENV=production # local|dev|production
+# Optional for tests to bypass network checks
+DISABLE_XMTP_WAIT=1
 ```
 
 The API limits cross-origin requests using the [`cors`](https://www.npmjs.com/package/cors) middleware. Allowed origins are configured with the `ALLOWED_ORIGINS` environment variable (comma-separated list). By default only `http://localhost:5173` is permitted.
@@ -50,17 +54,22 @@ npm --prefix backend run lint
   - `DELETE /delegates` – revoke a delegate's mute rights.
   - `POST /mute` – priest or delegate records an escalating mute for a member.
   - `GET /mutes` – list active mutes for a contract so the frontend can hide messages.
-  - `POST /send` – convenience endpoint to have the backend post a message into a group's chat (useful during discovery on dev networks).
+  - `POST /send` – convenience endpoint to have the backend post a message into a group's chat (kept for manual debugging).
 - **Dependencies** – XMTP JS SDK and an on-chain provider; event watching requires a `connectContract` factory.
 - **Persistence** – group metadata persists to a SQLite database at `backend/groups.db` (or a custom path via `createApp({ dbPath })` in tests). The database is read on startup and updated when groups change; back it up to avoid losing state.
 
 ### XMTP client details
 - The backend creates its XMTP client with `appVersion` for clearer network diagnostics.
-- Invitations add members by inboxId for determinism:
-  - Resolve via `findInboxIdByIdentifier({ identifier, identifierKind: 0 /* Ethereum */ })`.
-  - Fall back to `generateInboxId(...)` if the identity hasn’t propagated yet.
-  - Add using `group.addMembers([inboxId])` with fallbacks for SDK variants (`addMembersByInboxId`, `addMembersByIdentifiers`).
-- After creation/join, the backend attempts to `conversations.sync()` and sends a small warm message to help client discovery.
+- Invitations add members by real inboxId only (no deterministic fallbacks). The server resolves ids via `findInboxIdByIdentifier` when needed. Before inviting, it waits for the target inbox to be visible on the XMTP network to avoid “invite-before-ready” races.
+- After creation/join, the backend syncs and records XMTP aggregate stats around operations for diagnostics.
+
+### Debug endpoints
+Enabled with `ENABLE_DEBUG_ENDPOINTS=1`:
+- `GET /debug/group?contractAddress=<addr>&refresh=1` – server view of groupId, members (when available)
+- `GET /debug/conversations` – server conversation ids
+- `GET /debug/membership?contractAddress=<addr>&inboxId=<id>` – whether server group view contains `inboxId`
+- `GET /debug/last-join` – last join metadata
+- `GET /debug/inbox-state?inboxId=<id>&env=<local|dev|production>` – raw XMTP inbox state
 
 #### Running against a local XMTP node
 - Start the local node: `npm run xmtp:local:up` (requires Docker) and watch logs with `(cd xmtp-local-node && docker compose logs -f)`.
@@ -72,17 +81,16 @@ When `ENABLE_DEBUG_ENDPOINTS=1`, additional endpoints assist tests and local deb
 - `GET /debug/group?contractAddress=<addr>&refresh=1` – returns server inboxId, stored/resolved groupId, and (if available) members.
 - `GET /debug/conversations` – returns a count and the first few conversation ids seen by the server.
 
-Playwright e2e uses `XMTP_ENV=production` for realistic behavior and injects a random `BOT_PRIVATE_KEY` per run.
+Playwright e2e uses `XMTP_ENV=production` by default and injects a random `BOT_PRIVATE_KEY` per run. When `E2E_XMTP_LOCAL=1`, it starts `xmtp-local-node` and sets `XMTP_ENV=local`.
 
 ### Endpoint behaviors
 - `/templs`
   - Request: `{ contractAddress, priestAddress, signature, priestInboxId? }` where `signature = sign("create:<contract>")`.
-  - If `priestInboxId` is not provided, the server derives it deterministically from the address.
-  - After group creation the server posts a small warm‑up message so XMTP clients can discover the conversation quickly.
+  - If `priestInboxId` is provided, the server will add the priest by inboxId after creation; else it resolves via XMTP.
 - `/join`
   - Request: `{ contractAddress, memberAddress, signature, memberInboxId? }` with `signature = sign("join:<contract>")`.
   - Requires `hasPurchased(contract, member)` to return `true`.
-  - If `memberInboxId` is not provided, the server derives it from the address and posts a "member‑joined" warm‑up message.
+  - If `memberInboxId` is not provided, the server resolves it via XMTP. If the identity is not yet registered, it returns `503` so the client can retry.
 
 ## Security considerations
 - The service trusts the provided wallet address; production deployments should authenticate requests.

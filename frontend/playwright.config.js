@@ -90,7 +90,7 @@ export default defineConfig({
       env: {
         VITE_E2E_DEBUG: '1',
         VITE_XMTP_ENV: XMTP_ENV,
-        VITE_ENABLE_BACKEND_FALLBACK: USE_LOCAL ? '0' : '1',
+        VITE_ENABLE_BACKEND_FALLBACK: '0',
       },
       reuseExistingServer: false,
       timeout: 180 * 1000,

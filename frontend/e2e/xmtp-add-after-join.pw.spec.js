@@ -3,9 +3,10 @@ import { Client as NodeClient } from '@xmtp/node-sdk';
 import { ethers } from 'ethers';
 
 test('XMTP add-after-join minimal repro (local)', async ({ page, wallets }) => {
-  // Require local env to run this repro deterministically
-  const ENV = process.env.E2E_XMTP_ENV || process.env.XMTP_ENV || 'local';
-  expect(ENV).toBe('local');
+  // Require explicit local flag to run this repro deterministically
+  if (process.env.E2E_XMTP_LOCAL !== '1') {
+    test.skip(true, 'Skipping local XMTP repro; set E2E_XMTP_LOCAL=1 to run');
+  }
 
   // 1) Browser: connect to app so Browser SDK registers
   await page.goto('./');

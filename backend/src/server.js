@@ -3,7 +3,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import { ethers } from 'ethers';
-import { Client, generateInboxId } from '@xmtp/node-sdk';
+import { Client } from '@xmtp/node-sdk';
 import helmet from 'helmet';
 import rateLimit, { MemoryStore } from 'express-rate-limit';
 import cors from 'cors';
@@ -11,6 +11,7 @@ import Database from 'better-sqlite3';
 import pino from 'pino';
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
+const XMTP_ENV = process.env.XMTP_ENV || 'dev';
 
 /**
  * Build an express application for managing TEMPL groups.
@@ -50,6 +51,7 @@ export function createApp(opts) {
   app.use(limiter);
 
   const groups = new Map();
+  const lastJoin = { at: 0, payload: null };
   const database =
     db ??
     new Database(dbPath ?? new URL('../groups.db', import.meta.url).pathname);
@@ -100,8 +102,34 @@ export function createApp(opts) {
     }
   }
 
+  // Linearize: wait until the target inbox is visible on the XMTP network
+  async function waitForInboxReady(inboxId, tries = 60) {
+    const id = String(inboxId || '').replace(/^0x/i, '');
+    if (!id) return false;
+    // Only attempt in known XMTP envs; otherwise, skip
+    if (!['local', 'dev', 'production'].includes(XMTP_ENV)) return true;
+    // In test/mocked environments, don't block on network checks
+    if (process.env.NODE_ENV === 'test' || process.env.DISABLE_XMTP_WAIT === '1') return true;
+    // If the static helper is not available (older SDK or mock), skip waiting
+    if (typeof Client.inboxStateFromInboxIds !== 'function') return true;
+    for (let i = 0; i < tries; i++) {
+      try {
+        if (typeof Client.inboxStateFromInboxIds === 'function') {
+          const envOpt = /** @type {any} */ (['local','dev','production'].includes(XMTP_ENV) ? XMTP_ENV : 'dev');
+          const states = await Client.inboxStateFromInboxIds([id], envOpt);
+          logger.info({ inboxId: id, states }, 'Inbox states (inboxStateFromInboxIds)');
+          if (Array.isArray(states) && states.length > 0) return true;
+        }
+      } catch (e) {
+        logger.debug({ err: String(e?.message || e), inboxId: id }, 'Inbox state check failed');
+      }
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    return false;
+  }
+
   app.post('/templs', async (req, res) => {
-    const { contractAddress, priestAddress, signature } = req.body;
+    const { contractAddress, priestAddress, signature, priestInboxId } = req.body;
     if (!ethers.isAddress(contractAddress) || !ethers.isAddress(priestAddress)) {
       return res.status(400).json({ error: 'Invalid addresses' });
     }
@@ -168,6 +196,48 @@ export function createApp(opts) {
         } else {
           throw err;
         }
+      }
+
+      // Ensure priest is explicitly added by inboxId for deterministic discovery across SDKs
+      try {
+        // Prefer inboxId passed from frontend; else resolve from network
+        let priestInbox = null;
+        if (priestInboxId && typeof priestInboxId === 'string' && priestInboxId.length > 0) {
+          priestInbox = priestInboxId.replace(/^0x/i, '');
+        } else {
+          try {
+            if (typeof xmtp.findInboxIdByIdentifier === 'function') {
+              priestInbox = await xmtp.findInboxIdByIdentifier(priestIdentifierObj);
+            }
+          } catch (e) { void e; }
+        }
+        if (priestInbox && typeof group.addMembers === 'function') {
+          const ready = await waitForInboxReady(priestInbox, 30);
+          logger.info({ priestInboxId: priestInbox, ready }, 'Priest inbox readiness before add');
+          const beforeAgg = xmtp?.debugInformation?.apiAggregateStatistics?.();
+          try {
+            await group.addMembers([priestInbox]);
+            logger.info({ priestInboxId: priestInbox }, 'Added priest by inboxId');
+          } catch (addErr) {
+            const msg = String(addErr?.message || '');
+            // Ignore benign cases like already a member or SDK reporting success as an error
+            if (!msg.includes('already') && !msg.includes('succeeded')) throw addErr;
+          }
+          try {
+            if (xmtp.conversations?.sync) await xmtp.conversations.sync();
+          } catch (e) { logger.warn({ e }, 'Server sync after priest add failed'); }
+          try {
+            const afterAgg = xmtp?.debugInformation?.apiAggregateStatistics?.();
+            logger.info({ beforeAgg, afterAgg }, 'XMTP API stats around priest add');
+          } catch (e) { void e; }
+          try {
+            // Attempt to read members for diagnostics
+            const members = Array.isArray(group.members) ? group.members : [];
+            logger.info({ members }, 'Group members snapshot after priest add');
+          } catch (e) { void e; }
+        }
+      } catch (err) {
+        logger.warn({ err }, 'Unable to explicitly add priest by inboxId');
       }
 
       // Proactively nudge message history so new members can discover the group quickly
@@ -265,7 +335,7 @@ export function createApp(opts) {
   });
 
   app.post('/join', async (req, res) => {
-    const { contractAddress, memberAddress, signature } = req.body;
+    const { contractAddress, memberAddress, signature, memberInboxId } = req.body;
     if (!ethers.isAddress(contractAddress) || !ethers.isAddress(memberAddress)) {
       return res.status(400).json({ error: 'Invalid addresses' });
     }
@@ -297,8 +367,22 @@ export function createApp(opts) {
         }
         return null;
       }
-      const inboxId = (await waitForInboxId(memberIdentifier, 180)) || generateInboxId(memberIdentifier);
-      logger.info({ contract: contractAddress.toLowerCase(), member: memberAddress.toLowerCase(), inboxId }, 'Inviting member by inboxId');
+      // Prefer inboxId provided by client; else wait until identity is visible on the network
+      let inboxId = null;
+      if (memberInboxId && typeof memberInboxId === 'string' && memberInboxId.length > 0) {
+        inboxId = String(memberInboxId).replace(/^0x/i, '');
+      } else {
+        inboxId = await waitForInboxId(memberIdentifier, 180);
+      }
+      if (!inboxId) {
+        return res.status(503).json({ error: 'Member identity not registered yet; retry shortly' });
+      }
+      // Linearize against identity readiness on XMTP infra
+      const ready = await waitForInboxReady(inboxId, 60);
+      logger.info({ inboxId, ready }, 'Member inbox readiness before add');
+      const beforeAgg = xmtp?.debugInformation?.apiAggregateStatistics?.();
+      const joinMeta = { contract: contractAddress.toLowerCase(), member: memberAddress.toLowerCase(), inboxId, serverInboxId: xmtp?.inboxId || null, groupId: record.group?.id || record.groupId || null };
+      logger.info(joinMeta, 'Inviting member by inboxId');
       try {
         if (typeof record.group.addMembers === 'function') {
           await record.group.addMembers([inboxId]);
@@ -318,6 +402,20 @@ export function createApp(opts) {
 
       // Re-sync server view and warm the conversation
       try { if (xmtp.conversations.sync) await xmtp.conversations.sync(); logger.info('Server conversations synced after join'); } catch (err) { logger.warn({ err }, 'Server sync after join failed'); }
+      try {
+        lastJoin.at = Date.now();
+        lastJoin.payload = { joinMeta };
+        try {
+          const afterAgg = xmtp?.debugInformation?.apiAggregateStatistics?.();
+          logger.info({ beforeAgg, afterAgg }, 'XMTP API stats around member add');
+          lastJoin.payload.afterAgg = afterAgg;
+          lastJoin.payload.beforeAgg = beforeAgg;
+        } catch (e) { void e; }
+      } catch (e) { void e; }
+      try {
+        const members = Array.isArray(record.group?.members) ? record.group.members : [];
+        logger.info({ members }, 'Group members snapshot after member add');
+      } catch (e) { void e; }
       try { if (typeof record.group.sync === 'function') await record.group.sync(); } catch (err) { void err; }
       try { await record.group.send(JSON.stringify({ type: 'member-joined', address: memberAddress })); } catch (err) { void err; }
       res.json({ groupId: record.group.id });
@@ -436,6 +534,34 @@ export function createApp(opts) {
 
   // --- Debug endpoints to help E2E diagnostics (test-only) ---
   if (process.env.ENABLE_DEBUG_ENDPOINTS === '1') {
+  app.get('/debug/membership', async (req, res) => {
+    try {
+      const contractAddress = String(req.query.contractAddress || '').toLowerCase();
+      const who = String(req.query.inboxId || '').replace(/^0x/i, '');
+      if (!ethers.isAddress(contractAddress)) {
+        return res.status(400).json({ error: 'Invalid contractAddress' });
+      }
+      const record = groups.get(contractAddress);
+      if (!record) return res.status(404).json({ error: 'Unknown Templ' });
+      const info = {
+        contract: contractAddress,
+        serverInboxId: xmtp?.inboxId || null,
+        groupId: record.group?.id || record.groupId || null,
+        members: null,
+        contains: null,
+      };
+      try {
+        if (xmtp?.conversations?.sync) await xmtp.conversations.sync();
+        const members = Array.isArray(record.group?.members) ? record.group.members : [];
+        info.members = members;
+        info.contains = who ? members.includes(who) : null;
+      } catch (e) { logger.warn({ e }, 'membership debug failed'); }
+      res.json(info);
+    } catch (err) {
+      logger.error({ err }, 'Debug membership failed');
+      res.status(500).json({ error: err.message });
+    }
+  });
   app.get('/debug/group', async (req, res) => {
     try {
       const contractAddress = String(req.query.contractAddress || '').toLowerCase();
@@ -491,6 +617,31 @@ export function createApp(opts) {
       res.json(result);
     } catch (err) {
       logger.error({ err }, 'Debug conversations failed');
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.get('/debug/last-join', (req, res) => {
+    res.json(lastJoin);
+  });
+  app.get('/debug/inbox-state', async (req, res) => {
+    try {
+      const inboxId = String(req.query.inboxId || '').replace(/^0x/i, '');
+      const env = String(req.query.env || XMTP_ENV);
+      if (!inboxId) return res.status(400).json({ error: 'Missing inboxId' });
+      let states = null;
+      try {
+        if (typeof Client.inboxStateFromInboxIds === 'function') {
+          const envOpt = /** @type {any} */ (['local','dev','production'].includes(env) ? env : 'dev');
+          states = await Client.inboxStateFromInboxIds([inboxId], envOpt);
+        }
+      } catch (e) {
+        return res.status(500).json({ error: String(e?.message || e) });
+      }
+      // BigInt-safe serialization
+      const safe = JSON.parse(JSON.stringify({ env, inboxId, states }, (_, v) => typeof v === 'bigint' ? v.toString() : v));
+      res.json(safe);
+    } catch (err) {
+      logger.error({ err }, 'Debug inbox-state failed');
       res.status(500).json({ error: err.message });
     }
   });

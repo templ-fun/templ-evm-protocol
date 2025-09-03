@@ -135,13 +135,57 @@ export async function purchaseAndJoin({
   backendUrl = 'http://localhost:3001',
   txOptions = {}
 }) {
-  // Ensure the browser identity is registered and visible on the network
+  // Ensure the browser identity is registered and key package published
   try {
     await xmtp?.preferences?.inboxState?.(true);
+    for (let i = 0; i < 10; i++) {
+      try {
+        const agg = await xmtp?.debugInformation?.apiAggregateStatistics?.();
+        if (typeof agg === 'string' && /UploadKeyPackage\s+([0-9]+)/.test(agg)) {
+          const m = agg.match(/UploadKeyPackage\s+(\d+)/);
+          const uploads = m ? Number(m[1]) : 0;
+          if (uploads >= 1) break;
+        }
+      } catch {}
+      await new Promise((r) => setTimeout(r, 300));
+    }
   } catch {}
   const contract = new ethers.Contract(templAddress, templArtifact.abi, signer);
   const purchased = await contract.hasPurchased(walletAddress);
   if (!purchased) {
+    // Auto-approve entry fee if allowance is insufficient
+    let tokenAddress;
+    let entryFee;
+    try {
+      // Prefer a single call if available
+      if (typeof contract.getConfig === 'function') {
+        const cfg = await contract.getConfig();
+        tokenAddress = cfg[0];
+        entryFee = BigInt(cfg[1]);
+      } else {
+        tokenAddress = await contract.accessToken();
+        entryFee = BigInt(await contract.entryFee());
+      }
+    } catch {
+      // Fallback to explicit reads if getConfig unavailable
+      tokenAddress = await contract.accessToken();
+      entryFee = BigInt(await contract.entryFee());
+    }
+    const erc20 = new ethers.Contract(
+      tokenAddress,
+      [
+        'function allowance(address owner, address spender) view returns (uint256)',
+        'function approve(address spender, uint256 value) returns (bool)'
+      ],
+      signer
+    );
+    try {
+      const current = BigInt(await erc20.allowance(walletAddress, templAddress));
+      if (current < entryFee) {
+        const atx = await erc20.approve(templAddress, entryFee);
+        await atx.wait();
+      }
+    } catch {}
     const tx = await contract.purchaseAccess(txOptions);
     await tx.wait();
   }
@@ -161,11 +205,33 @@ export async function purchaseAndJoin({
       signature
     })
   });
+  // If identity not yet registered, poll until backend accepts the invite
+  if (res.status === 503) {
+    for (let i = 0; i < 60; i++) {
+      await new Promise((r) => setTimeout(r, 1000));
+      const again = await fetch(`${backendUrl}/join`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contractAddress: templAddress,
+          memberAddress: walletAddress,
+          ...(memberInboxId ? { memberInboxId } : {}),
+          signature
+        })
+      });
+      if (again.ok) {
+        const data = await again.json();
+        if (data && typeof data.groupId === 'string') {
+          return await finalizeJoin({ xmtp, groupId: String(data.groupId).replace(/^0x/i, '') });
+        }
+      }
+    }
+    throw new Error('Join failed: identity not registered');
+  }
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    throw new Error(
-      `Join failed: ${res.status} ${res.statusText} ${body}`.trim()
-    );
+    console.error('purchaseAndJoin: /join failed', { status: res.status, statusText: res.statusText, body });
+    throw new Error(`Join failed: ${res.status} ${res.statusText} ${body}`.trim());
   }
   const data = await res.json();
   if (!data || typeof data.groupId !== 'string' || data.groupId.length === 0) {
@@ -173,9 +239,22 @@ export async function purchaseAndJoin({
   }
   const groupId = String(data.groupId).replace(/^0x/i, '');
   console.log('purchaseAndJoin: backend returned groupId=', data.groupId);
+  // Optional diagnostics: verify membership server-side when debug endpoints are enabled
+  try {
+    const dbg = await fetch(`${backendUrl}/debug/membership?contractAddress=${templAddress}&inboxId=${memberInboxId || ''}`).then(r => r.json());
+    console.log('purchaseAndJoin: server membership snapshot', dbg);
+  } catch {}
+  return await finalizeJoin({ xmtp, groupId });
+}
+
+export async function sendMessage({ group, content }) {
+  await group.send(content);
+}
+
+async function finalizeJoin({ xmtp, groupId }) {
   // Try multiple sync attempts — joins can be eventually consistent
   let group = null;
-  for (let i = 0; i < 120; i++) {
+  for (let i = 0; i < 60; i++) {
     try { await xmtp.conversations?.sync?.(); } catch {}
     try { await xmtp.preferences?.sync?.(); } catch {}
     try { await xmtp.conversations.syncAll?.(['allowed','unknown','denied']); } catch {}
@@ -185,34 +264,20 @@ export async function purchaseAndJoin({
     if (!group) {
       try {
         const conversations = await xmtp.conversations.list?.({ consentStates: ['allowed','unknown','denied'] }) || [];
-        console.log(`join sync ${i+1}: list=${conversations.length}; firstIds=`, conversations.slice(0,3).map(c=>c.id));
         group = conversations.find((c) => c.id === groupId) || null;
       } catch {}
     }
     if (group) break;
     await new Promise((r) => setTimeout(r, 1000));
   }
-  // If group still not visible locally, return the groupId so the UI can
-  // continue polling for discovery without failing the join flow.
   if (!group) return { group: null, groupId };
-  
-  // Ensure consent is allowed if possible
   if (
     group.consentState !== 'allowed' &&
     typeof group.updateConsentState === 'function'
   ) {
-    try {
-      await group.updateConsentState('allowed');
-    } catch (err) {
-      console.log('updateConsentState failed:', err.message);
-    }
+    try { await group.updateConsentState('allowed'); } catch {}
   }
-  
   return { group, groupId };
-}
-
-export async function sendMessage({ group, content }) {
-  await group.send(content);
 }
 
 /**

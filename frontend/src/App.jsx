@@ -6,7 +6,6 @@ import {
   deployTempl,
   purchaseAndJoin,
   sendMessage,
-  sendMessageBackend,
   proposeVote,
   voteOnProposal,
   watchProposals,
@@ -187,6 +186,7 @@ function App() {
     if (!signer || !xmtp || !templAddress) return;
     if (!ethers.isAddress(templAddress)) return alert('Invalid contract address');
     try {
+      console.log('[app] starting purchaseAndJoin', { inboxId: xmtp?.inboxId, address: walletAddress, templAddress });
       const result = await purchaseAndJoin({
         ethers,
         xmtp,
@@ -259,7 +259,7 @@ function App() {
     async function poll() {
       while (!cancelled && attempts < 120 && !group) {
         attempts++;
-        console.log('[app] finding group', groupId, 'attempt', attempts);
+        console.log('[app] finding group', { groupId, wanted, attempt: attempts, inboxId: xmtp?.inboxId });
         try {
           // Fetch new conversations (welcome messages) from the network
           if (import.meta.env.VITE_E2E_DEBUG === '1') {
@@ -319,6 +319,7 @@ function App() {
           if (cancelled || group) return;
           const cid = norm(conv?.id || '');
           if (cid && cid === wanted) {
+            console.log('[app] streamGroups observed conversation id=', cid);
             const maybe = await xmtp.conversations.getConversationById(wanted);
             if (maybe) {
               setGroup(maybe);
@@ -334,6 +335,7 @@ function App() {
           try {
             const cid = norm(evt?.conversationId || '');
             if (cid && cid === wanted) {
+              console.log('[app] streamAllMessages observed event in conversation id=', cid);
               const maybe = await xmtp.conversations.getConversationById(wanted);
               if (maybe) {
                 setGroup(maybe);
@@ -408,10 +410,6 @@ function App() {
     try {
       if (group) {
         await sendMessage({ group, content: messageInput });
-      } else if (
-        groupId && templAddress && import.meta.env.VITE_ENABLE_BACKEND_FALLBACK === '1'
-      ) {
-        await sendMessageBackend({ contractAddress: templAddress, content: messageInput });
       } else {
         return;
       }

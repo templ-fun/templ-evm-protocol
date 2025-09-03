@@ -62,7 +62,8 @@ test('reloads groups from disk on restart', async () => {
     .send({
       contractAddress: addresses.contract,
       memberAddress: addresses.member,
-      signature: joinSig
+      signature: joinSig,
+      memberInboxId: 'test-inbox-id'
     })
     .expect(200, { groupId: fakeGroup.id });
   await app.close();

@@ -1,5 +1,46 @@
 # TEMPL
 
+This repo contains:
+- contracts/ (Hardhat + Solidity 0.8.23)
+- backend/ (Node service for group management)
+- frontend/ (Vite + React demo app + Playwright e2e)
+
+Key points
+- No XMTP “fallback sends”. The browser must discover groups via welcomes.
+- Backend adds members by real inboxId only (no deterministic fake ids), and waits for inbox readiness on XMTP before inviting (linearized).
+- E2E runs against XMTP production by default. Set `E2E_XMTP_LOCAL=1` to run the local-node repro tests.
+
+Quick start
+- Node 22.18.0
+- Enable hooks: `npm run prepare`
+- Contracts
+  - `npm run compile`, `npm test`, `npm run node`, `npm run deploy:local`
+- Backend
+  - Dev: `RPC_URL=http://127.0.0.1:8545 BOT_PRIVATE_KEY=<hardhat-0> ALLOWED_ORIGINS=http://localhost:5173 ENABLE_DEBUG_ENDPOINTS=1 XMTP_ENV=production npm --prefix backend start`
+- Frontend
+  - Dev: `VITE_XMTP_ENV=production VITE_E2E_DEBUG=1 npm --prefix frontend run dev`
+  - E2E (production): `npm --prefix frontend run test:e2e -- --project=tech-demo`
+  - E2E (local XMTP): `E2E_XMTP_LOCAL=1 npm --prefix frontend run test:e2e -- --project=tech-demo`
+
+E2E environments
+- Default: XMTP production
+  - Playwright sets `XMTP_ENV=production` for backend, `VITE_XMTP_ENV=production` for frontend
+- Local XMTP: set `E2E_XMTP_LOCAL=1`
+  - Playwright starts `xmtp-local-node`, sets `XMTP_ENV=local` and `VITE_XMTP_ENV=local`
+  - Local-only repro tests are enabled
+
+Debug endpoints (backend)
+- `GET /debug/group?contractAddress=<addr>&refresh=1`
+- `GET /debug/conversations`
+- `GET /debug/membership?contractAddress=<addr>&inboxId=<id>`
+- `GET /debug/last-join`
+- `GET /debug/inbox-state?inboxId=<id>&env=production`
+
+Troubleshooting test:all
+- If backend tests appear to “hang”, ensure network gating isn’t blocking. The backend skips XMTP readiness checks in test mode by default. You can also set `DISABLE_XMTP_WAIT=1` for the backend during tests.
+- For e2e, ensure ports 8545/3001/5179 are free.
+
+
 <p align="center">
 <img width="300" alt="templ logo" src="https://github.com/user-attachments/assets/fa3513b4-75e4-4dbf-a1fb-73e9e27d766f" />
 </p>

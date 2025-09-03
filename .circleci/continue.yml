@@ -55,7 +55,14 @@ jobs:
       - run: npm --prefix frontend ci
       - run: npm --prefix backend run typecheck
       - run: npm --prefix frontend run typecheck
-      - run: npm --prefix frontend exec playwright install --with-deps
+      - run:
+          name: Install Playwright system dependencies
+          command: |
+            cd frontend
+            sudo npx playwright install-deps
+      - run:
+          name: Install Playwright browsers
+          command: npm --prefix frontend exec playwright install
       - run: npm --prefix backend test
       - run: npm --prefix backend run lint
       - run: npm --prefix frontend test -- --reporter verbose

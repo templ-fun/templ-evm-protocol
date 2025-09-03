@@ -78,11 +78,20 @@ describe('templ flows', () => {
   });
 
   it('purchaseAndJoin purchases access and joins group', async () => {
-    const contract = {
+    const templContract = {
       hasPurchased: vi.fn().mockResolvedValue(false),
-      purchaseAccess: vi.fn().mockResolvedValue({ wait: vi.fn() })
+      purchaseAccess: vi.fn().mockResolvedValue({ wait: vi.fn() }),
+      getConfig: vi.fn().mockResolvedValue(['0xToken', 100n, false, 0n, 0n, 0n])
     };
-    const ethers = { Contract: vi.fn().mockReturnValue(contract) };
+    const erc20 = {
+      allowance: vi.fn().mockResolvedValue(0n),
+      approve: vi.fn().mockResolvedValue({ wait: vi.fn() })
+    };
+    const Contract = vi.fn().mockImplementation((address, abi) => {
+      if (Array.isArray(abi) && abi.some(s => String(s).includes('allowance'))) return erc20;
+      return templContract;
+    });
+    const ethers = { Contract };
     globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ groupId: 'group-2' }) });
     const xmtp = {
       inboxId: 'inbox-2',
@@ -103,7 +112,7 @@ describe('templ flows', () => {
       templArtifact
     });
 
-    expect(contract.purchaseAccess).toHaveBeenCalled();
+    expect(templContract.purchaseAccess).toHaveBeenCalled();
     expect(signer.signMessage).toHaveBeenCalledWith('join:0xtempl');
     expect(result).toEqual({ group: { id: 'group-2', consentState: 'allowed' }, groupId: 'group-2' });
   });

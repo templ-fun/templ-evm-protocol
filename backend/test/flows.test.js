@@ -203,22 +203,24 @@ test('join requires on-chain purchase', async () => {
 
   purchased.add(addresses.member.toLowerCase());
   sig = await wallets.member.signMessage(`join:${addresses.contract}`);
-  await request(app)
-    .post('/join')
-    .send({
-      contractAddress: addresses.contract,
-      memberAddress: addresses.member,
-      signature: sig
-    })
-    .expect(200, { groupId: fakeGroup.id });
-
-  // Now we add inbox IDs instead of addresses
+  // Compute expected inboxId and pass through to backend to avoid relying on on-chain lookup
   const { generateInboxId } = await import('@xmtp/node-sdk');
   const memberIdentifier = {
     identifier: addresses.member.toLowerCase(),
     identifierKind: 0
   };
   const expectedInboxId = generateInboxId(memberIdentifier);
+  await request(app)
+    .post('/join')
+    .send({
+      contractAddress: addresses.contract,
+      memberAddress: addresses.member,
+      signature: sig,
+      memberInboxId: expectedInboxId
+    })
+    .expect(200, { groupId: fakeGroup.id });
+
+  // Now we add inbox IDs instead of addresses
   assert.deepEqual(added, [expectedInboxId]);
   await app.close();
 });

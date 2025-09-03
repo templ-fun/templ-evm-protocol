@@ -265,49 +265,98 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
       // Reconnect as member
       await page.click('button:has-text("Connect Wallet")');
       await expect(page.locator('.status')).toContainText('Messaging client ready', { timeout: 15000 });
+      // Ensure browser installation is visible on XMTP infra before join (linearize readiness)
+      try {
+        const inboxId = await page.evaluate(() => window.__XMTP?.inboxId || null);
+        console.log('DEBUG member browser inboxId before join:', inboxId);
+        for (let i = 0; i < 30; i++) {
+          try {
+            const resp = await fetch(`http://localhost:3001/debug/inbox-state?inboxId=${inboxId}&env=production`).then(r => r.json());
+            console.log('DEBUG /debug/inbox-state:', resp);
+            if (resp && Array.isArray(resp.states) && resp.states.length > 0) break;
+          } catch {}
+          await page.waitForTimeout(1000);
+        }
+      } catch {}
+      // Pre-purchase on Node for the member to avoid UI tx nonces and let UI go straight to /join
+      {
+        const member = wallets.member;
+        const templMember = new ethers.Contract(templAddress, templAbi, member);
+        const tokenMember = new ethers.Contract(
+          tokenAddress,
+          ['function approve(address,uint256) returns (bool)'],
+          member
+        );
+        const provider = templMember.runner.provider;
+        const memberAddr = await member.getAddress();
+        let nonceBase = await provider.getTransactionCount(memberAddr);
+        let tx = await tokenMember.approve(templAddress, 100, { nonce: nonceBase++ });
+        await tx.wait();
+        tx = await templMember.purchaseAccess({ nonce: nonceBase++ });
+        await tx.wait();
+      }
       // Join existing templ
       await page.fill('input[placeholder*="Contract address"]', templAddress);
       await page.click('button:has-text("Purchase & Join")');
     }
-    // Confirm join by presence of Group ID (discovery may lag on XMTP dev)
-    const gidEl = page.locator('text=Group ID:').first();
-    await expect(gidEl).toBeVisible({ timeout: 30000 });
-    const gidText = (await gidEl.textContent()) || '';
-    const groupId = gidText.split(':').pop().trim();
+    // Resolve groupId robustly from backend debug if UI hasn't populated yet
+    let groupId = '';
+    for (let i = 0; i < 60 && !groupId; i++) {
+      try {
+        const dbgJoin = await fetch(`http://localhost:3001/debug/group?contractAddress=${templAddress}&refresh=1`).then(r => r.json());
+        console.log('DEBUG after join (pre-UI):', dbgJoin);
+        groupId = dbgJoin.resolvedGroupId || dbgJoin.storedGroupId || '';
+        if (groupId && groupId.startsWith('0x')) groupId = groupId.slice(2);
+      } catch {}
+      if (!groupId) await new Promise(r => setTimeout(r, 1000));
+    }
+    // Also try reading from UI if available
+    if (!groupId) {
+      const gidEl = page.locator('.deploy-info >> text=Group ID:').first();
+      await expect(gidEl).toBeVisible({ timeout: 60000 });
+      const gidText = (await gidEl.textContent()) || '';
+      groupId = gidText.split(':').pop().trim();
+    }
+    expect(groupId && groupId.length > 0).toBe(true);
+    console.log('Resolved groupId for discovery:', groupId);
     // Debug server-side view of group and conversations after join
     try {
-      const dbg1 = await fetch(`http://localhost:3001/debug/group?contractAddress=${templAddress}&refresh=1`).then(r => r.json());
+      const dbg1 = await fetch(`http://localhost:3001/debug/group?contractAddress=${templAddress}`).then(r => r.json());
       console.log('DEBUG /debug/group after join:', dbg1);
     } catch {}
     try {
       const dbg2 = await fetch('http://localhost:3001/debug/conversations').then(r => r.json());
       console.log('DEBUG /debug/conversations after join:', dbg2);
     } catch {}
+    try {
+      const inboxId = await page.evaluate(() => window.__XMTP?.inboxId || null);
+      const dbg3 = await fetch(`http://localhost:3001/debug/membership?contractAddress=${templAddress}&inboxId=${inboxId}`).then(r => r.json());
+      console.log('DEBUG /debug/membership after join:', dbg3);
+      // Wait until backend records a successful join (last-join payload) to linearize addMembers completion
+      let dbg4;
+      for (let i = 0; i < 60; i++) {
+        try {
+          dbg4 = await fetch('http://localhost:3001/debug/last-join').then(r => r.json());
+          console.log('DEBUG /debug/last-join:', dbg4);
+          if (dbg4 && dbg4.payload && dbg4.payload.joinMeta && dbg4.payload.joinMeta.groupId) break;
+        } catch {}
+        await new Promise(r => setTimeout(r, 1000));
+      }
+      console.log('DEBUG /debug/last-join final:', dbg4);
+    } catch {}
     
     // Require actual discovery in the browser: either UI shows connected or the
-    // debug helper resolves the conversation by id.
-    const isLocal = process.env.E2E_XMTP_LOCAL === '1';
+    // debug helper resolves the conversation by id, for BOTH local and production.
     let discovered = false;
     try {
       await expect(page.locator('text=Group connected')).toBeVisible({ timeout: 60000 });
       discovered = true;
     } catch {}
     if (!discovered) {
-      // On local XMTP, discovery must succeed quickly; fail hard to catch regressions
-      if (isLocal) {
-        try {
-          const agg = await page.evaluate(async () => {
-            if (!window.__XMTP?.debugInformation?.apiAggregateStatistics) return null;
-            return await window.__XMTP.debugInformation.apiAggregateStatistics();
-          });
-          if (agg) console.log('LOCAL XMTP aggregate stats before failure:\n' + agg);
-        } catch {}
-        throw new Error('Browser did not discover group conversation on local XMTP');
-      }
       try {
         discovered = await page.evaluate(async (gid) => {
           if (!window.__xmtpGetById) return false;
-          for (let i = 0; i < 60; i++) {
+          for (let i = 0; i < 120; i++) {
             try { const c = await window.__xmtpGetById(gid); if (c) return true; } catch {}
             await new Promise(r => setTimeout(r, 1000));
           }
@@ -315,28 +364,33 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
         }, groupId);
       } catch { discovered = false; }
     }
-
     if (!discovered) {
-      console.log('⚠️ Browser did not discover group — proceeding with protocol flows and backend-send fallback');
-    } else {
-      console.log('✅ Browser discovered group conversation');
-      // Extra diagnostics right before messaging
-      try {
-        const dbg3 = await fetch(`http://localhost:3001/debug/group?contractAddress=${templAddress}`).then(r => r.json());
-        console.log('DEBUG /debug/group before messaging:', dbg3);
-      } catch {}
-      try {
-        const dbg4 = await fetch('http://localhost:3001/debug/conversations').then(r => r.json());
-        console.log('DEBUG /debug/conversations before messaging:', dbg4);
-      } catch {}
       try {
         const agg = await page.evaluate(async () => {
           if (!window.__XMTP?.debugInformation?.apiAggregateStatistics) return null;
           return await window.__XMTP.debugInformation.apiAggregateStatistics();
         });
-        if (agg) console.log('Browser XMTP aggregate stats post-discovery:\n' + agg);
+        if (agg) console.log('XMTP aggregate stats before failure:\n' + agg);
       } catch {}
+      throw new Error('Browser did not discover group conversation');
     }
+    console.log('✅ Browser discovered group conversation');
+    // Extra diagnostics right before messaging
+    try {
+      const dbg3 = await fetch(`http://localhost:3001/debug/group?contractAddress=${templAddress}`).then(r => r.json());
+      console.log('DEBUG /debug/group before messaging:', dbg3);
+    } catch {}
+    try {
+      const dbg4 = await fetch('http://localhost:3001/debug/conversations').then(r => r.json());
+      console.log('DEBUG /debug/conversations before messaging:', dbg4);
+    } catch {}
+    try {
+      const agg = await page.evaluate(async () => {
+        if (!window.__XMTP?.debugInformation?.apiAggregateStatistics) return null;
+        return await window.__XMTP.debugInformation.apiAggregateStatistics();
+      });
+      if (agg) console.log('Browser XMTP aggregate stats post-discovery:\n' + agg);
+    } catch {}
 
     // Membership is handled by the UI flow; avoid duplicate purchase.
     // Optionally assert membership without writing:
@@ -358,14 +412,13 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
       await messageInput.fill(body);
       await expect(messageInput).toHaveValue(body);
       await sendBtn.click();
-      console.log('Sent via UI (best-effort)');
-      // Try to observe it in UI, but don’t fail if discovery is still catching up
+      console.log('Sent via UI');
+      // Try to observe in UI (best-effort, but no backend fallback)
       try {
         await expect(page.locator('.messages')).toContainText('Hello TEMPL!', { timeout: 15000 });
       } catch {}
     } else {
-      console.log('Send disabled; using backend POST fallback');
-      try { await fetch('http://localhost:3001/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contractAddress: templAddress, content: 'Hello from backend' }) }); } catch {}
+      console.log('Send disabled; skipping backend fallback (enforced)');
     }
 
     // Core Flow 5–7: Proposal create, vote, execute (protocol-level)
@@ -374,22 +427,14 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
       console.log('Core Flow 5–7: Proposal lifecycle (protocol)');
       const member = wallets.member;
       const templMember = new ethers.Contract(templAddress, templAbi, member);
-      const tokenMember = new ethers.Contract(
-        tokenAddress,
-        ['function approve(address,uint256) returns (bool)'],
-        member
-      );
       const provider = templMember.runner.provider;
       const memberAddr = await member.getAddress();
       let nonceBase = await provider.getTransactionCount(memberAddr);
-      let tx = await tokenMember.approve(templAddress, 100, { nonce: nonceBase++ });
-      await tx.wait();
-      tx = await templMember.purchaseAccess({ nonce: nonceBase++ });
-      await tx.wait();
+      // Membership already purchased earlier for the member; skip approve/purchase here
       const iface = new ethers.Interface(['function setPausedDAO(bool)']);
       const callData = iface.encodeFunctionData('setPausedDAO', [true]);
       // Explicit nonces after waits to avoid node scheduling edge cases
-      tx = await templMember.createProposal('Test Proposal', 'Testing', callData, 0, { nonce: nonceBase++ });
+      let tx = await templMember.createProposal('Test Proposal', 'Testing', callData, 0, { nonce: nonceBase++ });
       await tx.wait();
       tx = await templMember.vote(0, true, { nonce: nonceBase++ });
       await tx.wait();
