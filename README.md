@@ -36,20 +36,7 @@ Use the docs below to dive into each component:
 - `backend/` – Node service that owns the XMTP group and exposes an HTTP API
 - `frontend/` – Vite + React demo app with Playwright e2e
 
-## Quick start
-
-- Node 22.18.0
-- Enable hooks: `npm run prepare`
-- Contracts
-  - `npm run compile`, `npm test`, `npm run node`, `npm run deploy:local`
-- Backend
-  - Dev: `RPC_URL=http://127.0.0.1:8545 BOT_PRIVATE_KEY=<hardhat-0> ALLOWED_ORIGINS=http://localhost:5173 ENABLE_DEBUG_ENDPOINTS=1 XMTP_ENV=production npm --prefix backend start`
-- Frontend
-  - Dev: `VITE_XMTP_ENV=production VITE_E2E_DEBUG=1 npm --prefix frontend run dev`
-  - E2E (production): `npm --prefix frontend run test:e2e -- --project=tech-demo`
-  - E2E (local XMTP): `E2E_XMTP_LOCAL=1 npm --prefix frontend run test:e2e -- --project=tech-demo`
-
-## Quick start
+## Quick Start
 1. **Clone & install**
    ```bash
    git clone <repo>
@@ -72,6 +59,10 @@ Use the docs below to dive into each component:
    npm --prefix backend run typecheck && npm --prefix frontend run typecheck
    npm --prefix backend run lint && npm --prefix frontend run lint
    ```
+   Common dev commands:
+   - Contracts: `npm run compile`, `npm test`, `npm run node`, `npm run deploy:local`
+   - Backend (dev): `RPC_URL=http://127.0.0.1:8545 BOT_PRIVATE_KEY=<hardhat-0> ALLOWED_ORIGINS=http://localhost:5173 ENABLE_DEBUG_ENDPOINTS=1 XMTP_ENV=dev npm --prefix backend start`
+   - Frontend (dev): `VITE_XMTP_ENV=production VITE_E2E_DEBUG=1 npm --prefix frontend run dev`
    To run e2e against a local XMTP node:
    ```bash
    git clone https://github.com/xmtp/xmtp-local-node.git
@@ -159,6 +150,7 @@ For auditing guides, continue with the docs linked above.
   - Local-only repro tests are enabled
 
 ## Debug Endpoints (backend)
+- Requires `ENABLE_DEBUG_ENDPOINTS=1` on the backend.
 - `GET /debug/group?contractAddress=<addr>&refresh=1`
 - `GET /debug/conversations`
 - `GET /debug/membership?contractAddress=<addr>&inboxId=<id>`

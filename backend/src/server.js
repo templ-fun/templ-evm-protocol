@@ -580,14 +580,14 @@ export function createApp(opts) {
         members: null,
       };
       if (refresh && xmtp?.conversations?.sync) {
-        try { await xmtp.conversations.sync(); } catch (e) { console.warn(e.message)}
+        try { await xmtp.conversations.sync(); } catch (e) { logger.warn({ err: e?.message || e }) }
         try {
           const gid = record.groupId || record.group?.id;
           if (gid && xmtp.conversations?.getConversationById) {
             const maybe = await xmtp.conversations.getConversationById(gid);
             if (maybe) record.group = maybe;
           }
-        } catch (e) { console.warn(e.message)}
+        } catch (e) { logger.warn({ err: e?.message || e }) }
       }
       info.resolvedGroupId = record.group?.id || null;
       try {
@@ -595,7 +595,7 @@ export function createApp(opts) {
           info.membersCount = record.group.members.length;
           info.members = record.group.members;
         }
-      } catch (e) { console.warn(e.message)}
+      } catch (e) { logger.warn({ err: e?.message || e }) }
       logger.info(info, 'Debug group info');
       res.json(info);
     } catch (err) {
@@ -608,7 +608,7 @@ export function createApp(opts) {
     try {
       const limit = Number.parseInt(String(req.query.limit || '10'), 10) || 10;
       if (xmtp?.conversations?.sync) {
-        try { await xmtp.conversations.sync(); } catch (e) { console.warn(e.message)}
+        try { await xmtp.conversations.sync(); } catch (e) { logger.warn({ err: e?.message || e }) }
       }
       const list = xmtp?.conversations?.list ? await xmtp.conversations.list() : [];
       const ids = (list || []).map(c => c.id);
@@ -800,7 +800,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   // Optional: use an ephemeral DB path for e2e to avoid stale group mappings
   const dbPath = process.env.DB_PATH;
   if (dbPath && process.env.CLEAR_DB === '1') {
-    try { fs.rmSync(dbPath, { force: true }); } catch (e) { console.warn(e); };
+    try { fs.rmSync(dbPath, { force: true }); } catch (e) { logger.warn({ err: e?.message || e }); };
   }
   const app = createApp({ xmtp, hasPurchased, dbPath });
   const port = process.env.PORT || 3001;

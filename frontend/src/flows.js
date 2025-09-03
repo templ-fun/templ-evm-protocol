@@ -1,3 +1,17 @@
+// Minimal debug logger usable in both browser and Node tests
+const __isDebug = (() => {
+  // Node tests: opt-in via DEBUG_TEMPL=1
+  try { if (globalThis?.process?.env?.DEBUG_TEMPL === '1') return true; } catch {}
+  // Browser (Vite): import.meta.env.VITE_E2E_DEBUG — typed loosely to appease TS in JS files
+  try {
+    // @ts-ignore - vite injects env on import.meta at build time
+    const env = import.meta?.env;
+    if (env?.VITE_E2E_DEBUG === '1') return true;
+  } catch {}
+  return false;
+})();
+const dlog = (...args) => { if (__isDebug) { try { console.log(...args); } catch {} } };
+
 /**
  * Deploy a new TEMPL contract and register a group with the backend.
  * @param {import('./flows.types').DeployRequest} params
@@ -42,13 +56,13 @@ export async function deployTempl({
   // Get the priest's inbox ID from XMTP client if available
   const priestInboxId = xmtp?.inboxId;
   if (priestInboxId) {
-    console.log('Priest XMTP client:', {
+    dlog('Priest XMTP client:', {
       inboxId: priestInboxId,
       address: xmtp.address,
       env: xmtp.env
     });
   } else {
-    console.log('XMTP not ready at deploy; backend will resolve inboxId from network');
+    dlog('XMTP not ready at deploy; backend will resolve inboxId from network');
   }
   
   const res = await fetch(`${backendUrl}/templs`, {
@@ -79,7 +93,7 @@ export async function deployTempl({
   }
   
   // Multiple sync attempts to ensure we get the group
-  console.log('Syncing conversations to find group', groupId);
+  dlog('Syncing conversations to find group', groupId);
   
   // Try syncing multiple times with a small delay
   let group = null;
@@ -90,15 +104,15 @@ export async function deployTempl({
     try {
       group = await xmtp.conversations.getConversationById(groupId);
     } catch (err) {
-      console.log('getConversationById failed:', err.message);
+      dlog('getConversationById failed:', err?.message || String(err));
     }
     if (!group) {
       const conversations = await xmtp.conversations.list?.({ consentStates: ['allowed','unknown','denied'] }) || [];
-      console.log(`Sync attempt ${i + 1}: Found ${conversations.length} conversations; firstIds=`, conversations.slice(0,3).map(c=>c.id));
+      dlog(`Sync attempt ${i + 1}: Found ${conversations.length} conversations; firstIds=`, conversations.slice(0,3).map(c=>c.id));
       group = conversations.find(c => c.id === groupId);
     }
     if (group) {
-      console.log('Found group:', group.id, 'consent state:', group.consentState);
+      dlog('Found group:', group.id, 'consent state:', group.consentState);
       if (
         group.consentState !== 'allowed' &&
         typeof group.updateConsentState === 'function'
@@ -106,7 +120,7 @@ export async function deployTempl({
         try {
           await group.updateConsentState('allowed');
         } catch (err) {
-          console.log('updateConsentState failed:', err.message);
+          dlog('updateConsentState failed:', err?.message || String(err));
         }
       }
       break;
@@ -238,11 +252,11 @@ export async function purchaseAndJoin({
     throw new Error('Invalid /join response: missing groupId');
   }
   const groupId = String(data.groupId).replace(/^0x/i, '');
-  console.log('purchaseAndJoin: backend returned groupId=', data.groupId);
+  dlog('purchaseAndJoin: backend returned groupId=', data.groupId);
   // Optional diagnostics: verify membership server-side when debug endpoints are enabled
   try {
     const dbg = await fetch(`${backendUrl}/debug/membership?contractAddress=${templAddress}&inboxId=${memberInboxId || ''}`).then(r => r.json());
-    console.log('purchaseAndJoin: server membership snapshot', dbg);
+    dlog('purchaseAndJoin: server membership snapshot', dbg);
   } catch {}
   return await finalizeJoin({ xmtp, groupId });
 }
