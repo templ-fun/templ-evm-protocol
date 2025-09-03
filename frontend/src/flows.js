@@ -71,7 +71,7 @@ export async function deployTempl({
   if (!data || typeof data.groupId !== 'string' || data.groupId.length === 0) {
     throw new Error('Invalid /templs response: missing groupId');
   }
-  const groupId = String(data.groupId).replace(/^0x/i, '').toLowerCase();
+  const groupId = String(data.groupId).replace(/^0x/i, '');
   
   // If XMTP isn’t ready yet on the client, skip fetching the group for now.
   if (!xmtp) {
@@ -135,6 +135,10 @@ export async function purchaseAndJoin({
   backendUrl = 'http://localhost:3001',
   txOptions = {}
 }) {
+  // Ensure the browser identity is registered and visible on the network
+  try {
+    await xmtp?.preferences?.inboxState?.(true);
+  } catch {}
   const contract = new ethers.Contract(templAddress, templArtifact.abi, signer);
   const purchased = await contract.hasPurchased(walletAddress);
   if (!purchased) {
@@ -167,7 +171,7 @@ export async function purchaseAndJoin({
   if (!data || typeof data.groupId !== 'string' || data.groupId.length === 0) {
     throw new Error('Invalid /join response: missing groupId');
   }
-  const groupId = String(data.groupId).replace(/^0x/i, '').toLowerCase();
+  const groupId = String(data.groupId).replace(/^0x/i, '');
   console.log('purchaseAndJoin: backend returned groupId=', data.groupId);
   // Try multiple sync attempts — joins can be eventually consistent
   let group = null;

@@ -117,6 +117,13 @@ function App() {
     const client = await createXmtpStable();
     setXmtp(client);
     console.log('[app] XMTP client created', { env: xmtpEnv, inboxId: client.inboxId });
+    // Optional: emit aggregate network stats in e2e/local runs to aid debugging
+    try {
+      if (import.meta.env.VITE_E2E_DEBUG === '1' || xmtpEnv === 'local') {
+        const agg = await client.debugInformation?.apiAggregateStatistics?.();
+        if (agg) console.log('[app] XMTP aggregate stats at init:\n' + agg);
+      }
+    } catch {}
     try {
       if (import.meta.env.VITE_E2E_DEBUG === '1') {
         // Expose limited debug helpers for tests only (built via Vite env)
@@ -239,20 +246,37 @@ function App() {
     if (!xmtp || !groupId || group) return;
     let cancelled = false;
     let attempts = 0;
-    const norm = (id) => (id || '').replace(/^0x/i, '').toLowerCase();
+    const norm = (id) => (id || '').replace(/^0x/i, '');
     const wanted = norm(groupId);
+    async function logAgg(label) {
+      try {
+        if (import.meta.env.VITE_E2E_DEBUG === '1') {
+          const agg = await xmtp.debugInformation?.apiAggregateStatistics?.();
+          if (agg) console.log('[app] XMTP stats ' + label + '\n' + agg);
+        }
+      } catch {}
+    }
     async function poll() {
       while (!cancelled && attempts < 120 && !group) {
         attempts++;
         console.log('[app] finding group', groupId, 'attempt', attempts);
         try {
           // Fetch new conversations (welcome messages) from the network
+          if (import.meta.env.VITE_E2E_DEBUG === '1') {
+            try { await xmtp.debugInformation?.clearAllStatistics?.(); } catch {}
+          }
           await xmtp.conversations?.sync?.();
+          await logAgg('after conversations.sync #' + attempts);
         } catch (e) { console.warn('[app] sync error', e?.message || e); }
         try {
           // Ensure welcomes, conversations, messages, and preferences are up to date
           await xmtp.preferences?.sync?.();
         } catch (e) { console.warn('[app] preferences.sync error', e?.message || e); }
+        try {
+          // Force inbox state refresh from network
+          await xmtp.preferences?.inboxState?.(true);
+        } catch (e) { console.warn('[app] preferences.inboxState error', e?.message || e); }
+        await logAgg('after syncs #' + attempts);
         try {
           await xmtp.conversations.syncAll?.(['allowed','unknown','denied']);
         } catch (e) { console.warn('[app] syncAll error', e?.message || e); }
@@ -275,6 +299,7 @@ function App() {
             setGroup(found);
             pushStatus('✅ Group discovered');
             setGroupConnected(true);
+            await logAgg('post-discovery');
             break;
           }
         } catch (e) { console.warn('[app] list error', e?.message || e); }
@@ -383,7 +408,9 @@ function App() {
     try {
       if (group) {
         await sendMessage({ group, content: messageInput });
-      } else if (groupId && templAddress) {
+      } else if (
+        groupId && templAddress && import.meta.env.VITE_ENABLE_BACKEND_FALLBACK === '1'
+      ) {
         await sendMessageBackend({ contractAddress: templAddress, content: messageInput });
       } else {
         return;

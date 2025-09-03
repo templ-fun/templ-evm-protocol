@@ -298,13 +298,17 @@ export function createApp(opts) {
         return null;
       }
       const inboxId = (await waitForInboxId(memberIdentifier, 180)) || generateInboxId(memberIdentifier);
+      logger.info({ contract: contractAddress.toLowerCase(), member: memberAddress.toLowerCase(), inboxId }, 'Inviting member by inboxId');
       try {
         if (typeof record.group.addMembers === 'function') {
           await record.group.addMembers([inboxId]);
+          logger.info({ inboxId }, 'addMembers([inboxId]) succeeded');
         } else if (typeof record.group.addMembersByInboxId === 'function') {
           await record.group.addMembersByInboxId([inboxId]);
+          logger.info({ inboxId }, 'addMembersByInboxId([inboxId]) succeeded');
         } else if (typeof record.group.addMembersByIdentifiers === 'function') {
           await record.group.addMembersByIdentifiers([memberIdentifier]);
+          logger.info({ member: memberAddress.toLowerCase() }, 'addMembersByIdentifiers([identifier]) succeeded');
         } else {
           throw new Error('XMTP group does not support adding members');
         }
@@ -313,7 +317,7 @@ export function createApp(opts) {
       }
 
       // Re-sync server view and warm the conversation
-      try { if (xmtp.conversations.sync) await xmtp.conversations.sync(); } catch (err) { void err; }
+      try { if (xmtp.conversations.sync) await xmtp.conversations.sync(); logger.info('Server conversations synced after join'); } catch (err) { logger.warn({ err }, 'Server sync after join failed'); }
       try { if (typeof record.group.sync === 'function') await record.group.sync(); } catch (err) { void err; }
       try { await record.group.send(JSON.stringify({ type: 'member-joined', address: memberAddress })); } catch (err) { void err; }
       res.json({ groupId: record.group.id });

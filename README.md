@@ -35,7 +35,7 @@ In addition, all core workflows are covered by automated tests:
 
 XMTP discovery note
 - After a member is added to a group, the browser explicitly calls `conversations.sync()` to fetch new welcomes, then proceeds with `preferences.sync()` and `conversations.syncAll([...])`, polling `getConversationById` and briefly streaming conversations/messages until the group is found.
-- On production XMTP, this discovery can lag; the app renders the chat as soon as `groupId` is known and temporarily uses the backend `/send` endpoint so messages still post to the group while the browser syncs.
+- On production XMTP, this discovery can lag; the app renders the chat as soon as `groupId` is known. For CI/e2e only, it can temporarily use the backend `/send` endpoint so messages still post to the group while the browser syncs. This is gated by `VITE_ENABLE_BACKEND_FALLBACK` and is off in production builds.
 
 ## Quick start
 1. **Clone & install**
@@ -59,6 +59,19 @@ XMTP discovery note
    npm --prefix frontend run test:e2e # end‑to‑end tests
    npm --prefix backend run typecheck && npm --prefix frontend run typecheck
    npm --prefix backend run lint && npm --prefix frontend run lint
+   ```
+   To run e2e against a local XMTP node:
+   ```bash
+   git clone https://github.com/xmtp/xmtp-local-node.git
+   # requires Docker; this brings up ports 5555 (API) and 5558 (history)
+   npm run xmtp:local:up
+   E2E_XMTP_LOCAL=1 npm --prefix frontend run test:e2e -- --project=tech-demo
+   # tear down when done
+   npm run xmtp:local:down
+   ```
+   Check node logs with:
+   ```bash
+   (cd xmtp-local-node && docker compose logs -f)
    ```
    End‑to‑end details: Playwright spins up Hardhat (8545), the backend bot (3001), and serves the built frontend (5179). The e2e uses XMTP production to mirror real‑world behavior and tests both a Node↔Browser discovery PoC and the full core flows. See also `XMTP-E2E-BROWSER-DISCOVERY-ISSUE.md` for deeper context on discovery.
 3. **Deploy contracts**

@@ -62,6 +62,11 @@ npm --prefix backend run lint
   - Add using `group.addMembers([inboxId])` with fallbacks for SDK variants (`addMembersByInboxId`, `addMembersByIdentifiers`).
 - After creation/join, the backend attempts to `conversations.sync()` and sends a small warm message to help client discovery.
 
+#### Running against a local XMTP node
+- Start the local node: `npm run xmtp:local:up` (requires Docker) and watch logs with `(cd xmtp-local-node && docker compose logs -f)`.
+- Set `XMTP_ENV=local` on the backend (Playwright config does this automatically when `E2E_XMTP_LOCAL=1`).
+- Default local endpoints: API `http://localhost:5555`, History `http://localhost:5558`.
+
 ### E2E and debug endpoints
 When `ENABLE_DEBUG_ENDPOINTS=1`, additional endpoints assist tests and local debugging:
 - `GET /debug/group?contractAddress=<addr>&refresh=1` – returns server inboxId, stored/resolved groupId, and (if available) members.

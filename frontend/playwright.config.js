@@ -3,6 +3,9 @@
 import { randomBytes } from 'crypto';
 import { defineConfig, devices } from '@playwright/test';
 
+const USE_LOCAL = process.env.E2E_XMTP_LOCAL === '1';
+const XMTP_ENV = USE_LOCAL ? 'local' : 'production';
+
 // Generate a fresh secp256k1 private key per run to avoid XMTP installation limits
 const N = BigInt('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141');
 function randomPrivKeyHex() {
@@ -47,6 +50,16 @@ export default defineConfig({
   ],
 
   webServer: [
+    // Optional: start XMTP local node via docker-compose if requested
+    ...(USE_LOCAL
+      ? [{
+          command: './up',
+          cwd: '../xmtp-local-node',
+          port: 5555,
+          reuseExistingServer: true,
+          timeout: 180 * 1000,
+        }]
+      : []),
     {
       command: 'npx hardhat node',
       port: 8545,
@@ -66,7 +79,7 @@ export default defineConfig({
         DB_PATH: 'e2e-groups.db',
         CLEAR_DB: '1',
         ENABLE_DEBUG_ENDPOINTS: '1',
-        XMTP_ENV: 'production',
+        XMTP_ENV,
       },
       reuseExistingServer: false,
       timeout: 120 * 1000,
@@ -76,7 +89,8 @@ export default defineConfig({
       port: 5179,
       env: {
         VITE_E2E_DEBUG: '1',
-        VITE_XMTP_ENV: 'production',
+        VITE_XMTP_ENV: XMTP_ENV,
+        VITE_ENABLE_BACKEND_FALLBACK: USE_LOCAL ? '0' : '1',
       },
       reuseExistingServer: false,
       timeout: 180 * 1000,
