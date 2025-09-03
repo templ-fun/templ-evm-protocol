@@ -13,7 +13,9 @@
     "deploy:local": "npx hardhat run scripts/deploy.js --network localhost",
     "node": "npx hardhat node",
     "prepare": "husky",
-    "test:all": "npm test && npm run slither && npm --prefix backend run typecheck && npm --prefix frontend run typecheck && npm --prefix backend test && npm --prefix backend run lint && npm --prefix frontend test && npm --prefix frontend run lint && npm --prefix frontend run build && npm --prefix frontend run test:e2e"
+    "test:all": "npm test && npm run slither && npm --prefix backend run typecheck && npm --prefix frontend run typecheck && npm --prefix backend test && npm --prefix backend run lint && npm --prefix frontend test && npm --prefix frontend run lint && npm --prefix frontend run build && npm --prefix frontend run test:e2e",
+    "xmtp:local:up": "bash -lc 'cd xmtp-local-node && ./up'",
+    "xmtp:local:down": "bash -lc 'cd xmtp-local-node && ./down'"
   },
   "keywords": [
     "solidity",

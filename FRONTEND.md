@@ -27,6 +27,13 @@ npm --prefix frontend run build
 npm --prefix frontend test -- src/core-flows.integration.test.js # integration (local Hardhat + backend + XMTP dev)
 npm --prefix frontend run test:e2e                          # end‑to‑end (Playwright)
 ```
+To run e2e against a local XMTP node for logs/instrumentation:
+```bash
+git clone https://github.com/xmtp/xmtp-local-node.git
+npm run xmtp:local:up
+E2E_XMTP_LOCAL=1 npm --prefix frontend run test:e2e -- --project=tech-demo
+npm run xmtp:local:down
+```
 ## Architecture
 
 - **Wallet connection** via `ethers` and `window.ethereum`.
@@ -41,7 +48,6 @@ npm --prefix frontend run test:e2e                          # end‑to‑end (Pl
 
 ## Notes
 - XMTP environment: dev on localhost, production in deployment. Inbox installations on XMTP dev are limited to 10 per inbox; tests rotate wallets or reuse local XMTP databases to avoid hitting this limit.
-- Group discovery: after join, the app explicitly calls `conversations.sync()` to fetch welcomes, then `preferences.sync()` and `conversations.syncAll([...])`, followed by `getConversationById`, `list`, and short windows of `streamGroups()` & `streamAllMessages()`. The chat renders as soon as a `groupId` is known and keeps syncing until the conversation is found. The backend also sends a warm message to speed discovery on dev.
 - E2E debug helpers: when `VITE_E2E_DEBUG=1`, the browser exposes `window.__XMTP`, `window.__xmtpList()` and `window.__xmtpGetById(id)` for e2e diagnostics.
 - Client options: the Browser SDK is constructed with `appVersion` for better debugability (see `src/App.jsx`).
 - Typed flows: `src/flows.js` is documented with JSDoc and backed by `src/flows.types.d.ts`, and runtime validation ensures backend responses have the expected shape.

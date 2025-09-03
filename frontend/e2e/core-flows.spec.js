@@ -286,12 +286,24 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
     
     // Require actual discovery in the browser: either UI shows connected or the
     // debug helper resolves the conversation by id.
+    const isLocal = process.env.E2E_XMTP_LOCAL === '1';
     let discovered = false;
     try {
       await expect(page.locator('text=Group connected')).toBeVisible({ timeout: 60000 });
       discovered = true;
     } catch {}
     if (!discovered) {
+      // On local XMTP, discovery must succeed quickly; fail hard to catch regressions
+      if (isLocal) {
+        try {
+          const agg = await page.evaluate(async () => {
+            if (!window.__XMTP?.debugInformation?.apiAggregateStatistics) return null;
+            return await window.__XMTP.debugInformation.apiAggregateStatistics();
+          });
+          if (agg) console.log('LOCAL XMTP aggregate stats before failure:\n' + agg);
+        } catch {}
+        throw new Error('Browser did not discover group conversation on local XMTP');
+      }
       try {
         discovered = await page.evaluate(async (gid) => {
           if (!window.__xmtpGetById) return false;
@@ -316,6 +328,13 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
       try {
         const dbg4 = await fetch('http://localhost:3001/debug/conversations').then(r => r.json());
         console.log('DEBUG /debug/conversations before messaging:', dbg4);
+      } catch {}
+      try {
+        const agg = await page.evaluate(async () => {
+          if (!window.__XMTP?.debugInformation?.apiAggregateStatistics) return null;
+          return await window.__XMTP.debugInformation.apiAggregateStatistics();
+        });
+        if (agg) console.log('Browser XMTP aggregate stats post-discovery:\n' + agg);
       } catch {}
     }
 
