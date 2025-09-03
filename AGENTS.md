@@ -36,17 +36,17 @@
 - Verify target networks in `hardhat.config.js` before deploying.
 
 ## E2E & XMTP Notes
-- Test scope: `frontend/src/core-flows.integration.test.js` compiles + spawns Hardhat (`:8545`), launches backend in-process on `:3001`, connects to XMTP `env=dev`, deploys contracts locally, and exercises join/mute/vote flows end-to-end.
-- Network: allow outbound network to XMTP dev and localhost ports `8545` and `3001`.
-- XMTP installations: dev network enforces 10 installations per inbox. Avoid reusing the same private key across many runs. The test uses random wallets for XMTP to bypass this. If you pin keys, reuse the local XMTP DB (files like `xmtp-dev-*.db3`) or revoke old installations before reruns.
+- Integration scope: `frontend/src/core-flows.integration.test.js` compiles + spawns Hardhat (`:8545`), launches backend in-process on `:3001`, connects to XMTP `env=dev`, deploys contracts locally, and exercises join/mute/vote flows end-to-end.
+- Network: allow outbound network to XMTP dev and localhost ports `8545` and `3001` for integration. Playwright e2e uses XMTP production by default (set `E2E_XMTP_LOCAL=1` to use local XMTP).
+- XMTP installations: dev network enforces 10 installations per inbox. Avoid reusing the same private key across many runs. Tests rotate wallets or reuse local XMTP DBs as needed.
 - Vitest caching: use `frontend/vitest.config.js` (cacheDir `test-results/.vite`) to prevent writes to `node_modules`. Timeouts are increased for long setup.
 - Backend CORS: set `ALLOWED_ORIGINS` (comma-separated) to your frontend origin(s) when running the standalone backend. The integration test injects the backend app directly and does not require `.env`.
 - Consent warnings: benign `updateConsentState` errors from the XMTP SDK can occur; they do not affect functionality in dev.
 
 ## Playwright E2E
 - Command: `npm --prefix frontend run test:e2e -- --project=tech-demo`.
-- Servers: Playwright starts Hardhat (`:8545`), the backend (`:3001`), and serves the frontend via `vite build && vite preview` on `:5173`.
+- Servers: Playwright starts Hardhat (`:8545`), the backend (`:3001`), and serves the frontend via `vite build && vite preview` on `:5179`.
 - Real ERC‑20: e2e deploys the actual `TestToken` artifact and calls ERC‑20 `approve` + `TEMPL#purchaseAccess` on Hardhat.
 - Group discovery: the app renders chat as soon as `groupId` is known and keeps syncing to find the XMTP group; the backend also sends a welcome message to “warm” the conversation.
-- Messaging fallback: if the browser hasn’t resolved the group yet, `Send` posts via backend `/send` so XMTP still carries the message.
-- Accounts: backend bot uses Hardhat account #0; e2e wallets use #3–#5 to avoid nonce collisions.
+- Messaging fallback: e2e does NOT enable backend `/send`. Messaging requires browser discovery. You may enable `/send` manually for local debugging by starting the backend with `ENABLE_FALLBACK_SEND=1`.
+- Accounts: backend bot uses a random bot key; e2e wallets rotate to avoid nonce/installation collisions.

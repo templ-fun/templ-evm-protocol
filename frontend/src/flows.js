@@ -48,7 +48,7 @@ export async function deployTempl({
       env: xmtp.env
     });
   } else {
-    console.log('XMTP not ready at deploy; backend will derive inboxId');
+    console.log('XMTP not ready at deploy; backend will resolve inboxId from network');
   }
   
   const res = await fetch(`${backendUrl}/templs`, {

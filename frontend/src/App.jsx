@@ -9,7 +9,9 @@ import {
   proposeVote,
   voteOnProposal,
   watchProposals,
-  fetchActiveMutes
+  fetchActiveMutes,
+  delegateMute,
+  muteMember
 } from './flows.js';
 import './App.css';
 
@@ -452,10 +454,13 @@ function App() {
   async function handleMute() {
     if (!templAddress || !signer || !muteAddress) return;
     try {
-      const contract = new ethers.Contract(templAddress, templArtifact.abi, signer);
-      const tx = await contract.muteAddress(muteAddress);
-      await tx.wait();
-      alert(`Muted ${muteAddress}`);
+      const mutedUntil = await muteMember({
+        signer,
+        contractAddress: templAddress,
+        moderatorAddress: walletAddress,
+        targetAddress: muteAddress
+      });
+      alert(`Muted ${muteAddress} until ${mutedUntil || 'indefinite'}`);
       setMuteAddress('');
       // Refresh mutes
       const data = await fetchActiveMutes({ contractAddress: templAddress });
@@ -468,10 +473,13 @@ function App() {
   async function handleDelegate() {
     if (!templAddress || !signer || !delegateAddress) return;
     try {
-      const contract = new ethers.Contract(templAddress, templArtifact.abi, signer);
-      const tx = await contract.delegateMute(delegateAddress);
-      await tx.wait();
-      alert(`Delegated muting power to ${delegateAddress}`);
+      const delegated = await delegateMute({
+        signer,
+        contractAddress: templAddress,
+        priestAddress: walletAddress,
+        delegateAddress
+      });
+      alert(delegated ? `Delegated muting power to ${delegateAddress}` : 'Delegation removed');
       setDelegateAddress('');
     } catch (err) {
       alert('Delegate failed: ' + err.message);
@@ -497,8 +505,8 @@ function App() {
       if (!templAddress || !walletAddress || !signer) return;
       try {
         const contract = new ethers.Contract(templAddress, templArtifact.abi, signer);
-        const config = await contract.getConfig();
-        setIsPriest(config.priest?.toLowerCase() === walletAddress.toLowerCase());
+        const priestAddr = await contract.priest();
+        setIsPriest(priestAddr?.toLowerCase() === walletAddress.toLowerCase());
       } catch (err) {
         console.error('Error checking priest status:', err);
       }

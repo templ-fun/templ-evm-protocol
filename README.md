@@ -6,7 +6,7 @@ This repo contains:
 - frontend/ (Vite + React demo app + Playwright e2e)
 
 Key points
-- Fallback sends are disabled in production. A gated backend `/send` exists only for CI/e2e or local debugging and is off by default (enable with `ENABLE_FALLBACK_SEND=1`). The browser is expected to discover groups via welcomes.
+- Fallback sends are disabled in production. A gated backend `/send` exists for local debugging (and may be enabled for CI runs if explicitly desired) and is off by default (enable with `ENABLE_FALLBACK_SEND=1`). The browser is expected to discover groups via welcomes.
 - Backend adds members by real inboxId only (no deterministic fake ids), and waits for inbox readiness on XMTP before inviting (linearized).
 - E2E runs against XMTP production by default. Set `E2E_XMTP_LOCAL=1` to run the local-node repro tests.
 
@@ -175,5 +175,5 @@ For auditing guides, continue with the docs linked above.
 ## Security considerations
 - Proposal execution is restricted to an allowlist of safe DAO actions; arbitrary external calls are disabled.
  - The backend owns the XMTP group. The priest does not control membership directly; actions are mediated via the backend’s bot, which verifies on‑chain purchase. See BACKEND.md for API auth and rate‑limit details.
- - XMTP dev network has a 10‑installation limit per inbox. Tests rotate wallets or reuse local XMTP databases to avoid hitting this limit.
+ - XMTP dev network has a 10‑installation limit per inbox and 256 total actions limit per inbox (install and revoke each count as 1 action). Tests rotate wallets or reuse local XMTP databases to avoid hitting this limit.
  - For auditors: CONTRACTS.md documents all custom errors, events, invariants, fee splits, and DAO constraints. The Hardhat test suite covers these invariants; Slither reports are part of CI.
