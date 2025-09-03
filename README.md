@@ -1,14 +1,11 @@
 # TEMPL
 
-This repo contains:
-- contracts/ (Hardhat + Solidity 0.8.23)
-- backend/ (Node service for group management)
-- frontend/ (Vite + React demo app + Playwright e2e)
+TEMPL is a DAO‑governed, token‑gated group with on‑chain treasury management and off‑chain messaging via XMTP.
 
-Key points
-- Fallback sends are disabled in production. A gated backend `/send` exists for local debugging (and may be enabled for CI runs if explicitly desired) and is off by default (enable with `ENABLE_FALLBACK_SEND=1`). The browser is expected to discover groups via welcomes.
-- Backend adds members by real inboxId only (no deterministic fake ids), and waits for inbox readiness on XMTP before inviting (linearized).
-- E2E runs against XMTP production by default. Set `E2E_XMTP_LOCAL=1` to run the local-node repro tests.
+## Monorepo Structure
+- `contracts/` – Hardhat + Solidity 0.8.23
+- `backend/` – Node service that owns the XMTP group and exposes an HTTP API
+- `frontend/` – Vite + React demo app with Playwright e2e
 
 Quick start
 - Node 22.18.0
@@ -22,21 +19,21 @@ Quick start
   - E2E (production): `npm --prefix frontend run test:e2e -- --project=tech-demo`
   - E2E (local XMTP): `E2E_XMTP_LOCAL=1 npm --prefix frontend run test:e2e -- --project=tech-demo`
 
-E2E environments
+## E2E Environments
 - Default: XMTP production
   - Playwright sets `XMTP_ENV=production` for backend, `VITE_XMTP_ENV=production` for frontend
 - Local XMTP: set `E2E_XMTP_LOCAL=1`
   - Playwright starts `xmtp-local-node`, sets `XMTP_ENV=local` and `VITE_XMTP_ENV=local`
   - Local-only repro tests are enabled
 
-Debug endpoints (backend)
+## Debug Endpoints (backend)
 - `GET /debug/group?contractAddress=<addr>&refresh=1`
 - `GET /debug/conversations`
 - `GET /debug/membership?contractAddress=<addr>&inboxId=<id>`
 - `GET /debug/last-join`
 - `GET /debug/inbox-state?inboxId=<id>&env=production`
 
-Troubleshooting test:all
+## Troubleshooting test:all
 - If backend tests appear to “hang”, ensure network gating isn’t blocking. The backend skips XMTP readiness checks in test mode by default. You can also set `DISABLE_XMTP_WAIT=1` for the backend during tests.
 - For e2e, ensure ports 8545/3001/5179 are free.
 
@@ -67,6 +64,8 @@ Use the docs below to dive into each component:
 - [BACKEND.md](./BACKEND.md) – XMTP bot and API
 - [FRONTEND.md](./FRONTEND.md) – React client
 - [CORE_FLOW_DOCS.MD](./CORE_FLOW_DOCS.MD) – core flow service diagrams
+ - [PERSISTENCE.md](./PERSISTENCE.md) – data storage and XMTP DBs
+ - [WEB3_AUDIT_REPORT.MD](./WEB3_AUDIT_REPORT.MD) – web3 audit summary
   
 In addition, all core workflows are covered by automated tests:
 - Contract unit tests (Hardhat + Chai)
@@ -74,9 +73,9 @@ In addition, all core workflows are covered by automated tests:
 - Frontend unit + integration tests (Vitest)
 - End‑to‑end tests (Playwright) hitting: local Hardhat, XMTP dev network, backend + SQLite, and the React app
 
-XMTP discovery note
-- After a member is added to a group, the browser explicitly calls `conversations.sync()` to fetch new welcomes, then proceeds with `preferences.sync()` and `conversations.syncAll([...])`, polling `getConversationById` and briefly streaming conversations/messages until the group is found.
-- On production XMTP, this discovery can lag; the app renders the chat as soon as `groupId` is known. For CI/e2e only, a backend `/send` fallback can be enabled to post while the browser syncs. This is gated in the backend by `ENABLE_FALLBACK_SEND=1` and must not be enabled in production.
+## XMTP Discovery
+- After a member is added to a group, the browser explicitly calls `conversations.sync()` to fetch welcomes, then `preferences.sync()` and `conversations.syncAll([...])`, polling `getConversationById` and briefly streaming conversations/messages until the group is found.
+- On production XMTP, discovery can lag; the app renders the chat as soon as `groupId` is known.
 
 ## Quick start
 1. **Clone & install**
@@ -114,7 +113,7 @@ XMTP discovery note
    ```bash
    (cd xmtp-local-node && docker compose logs -f)
    ```
-   End‑to‑end details: Playwright spins up Hardhat (8545), the backend bot (3001), and serves the built frontend (5179). The e2e uses XMTP production to mirror real‑world behavior and tests both a Node↔Browser discovery PoC and the full core flows. See also `XMTP-E2E-BROWSER-DISCOVERY-ISSUE.md` for deeper context on discovery.
+   End‑to‑end details: Playwright spins up Hardhat (8545), the backend bot (3001), and serves the built frontend (5179). The e2e uses XMTP production to mirror real‑world behavior and exercises discovery and the full core flows.
 3. **Deploy contracts**
    ```bash
    npx hardhat run scripts/deploy.js --network base
