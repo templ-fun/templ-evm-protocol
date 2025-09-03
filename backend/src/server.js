@@ -117,7 +117,7 @@ export function createApp(opts) {
         const beforeList = (await xmtp.conversations?.list?.()) ?? [];
         beforeIds = beforeList.map((c) => c.id);
       } catch (err) { void err; }
-      // Prefer identity-based membership (Ethereum = 0) to avoid coupling to a specific installation
+      // Prefer identity-based membership (Ethereum = 0) when supported
       const priestIdentifierObj = { identifier: priestAddress.toLowerCase(), identifierKind: 0 };
       // Ensure the priest identity is registered before creating a group
       async function waitForIdentityReady(identifier, tries = 60) {
@@ -136,7 +136,14 @@ export function createApp(opts) {
       // The SDK often reports successful syncs as errors, so capture that case.
       let group;
       try {
-        group = await xmtp.conversations.newGroupWithIdentifiers([priestIdentifierObj]);
+        if (typeof xmtp.conversations.newGroupWithIdentifiers === 'function') {
+          group = await xmtp.conversations.newGroupWithIdentifiers([priestIdentifierObj]);
+        } else if (typeof xmtp.conversations.newGroup === 'function') {
+          // Fallback for test/mocked clients
+          group = await xmtp.conversations.newGroup();
+        } else {
+          throw new Error('XMTP client does not support group creation');
+        }
       } catch (err) {
         if (err.message && err.message.includes('succeeded')) {
           logger.info({ message: err.message }, 'XMTP sync message during group creation - attempting deterministic resolve');
@@ -277,28 +284,29 @@ export function createApp(opts) {
     }
     if (!purchased) return res.status(403).json({ error: 'Access not purchased' });
     try {
-      // Add the member by identity to the existing group to avoid coupling to a specific installation
+      // Resolve member inboxId and add explicitly by inboxId for maximum compatibility
       const memberIdentifier = { identifier: memberAddress.toLowerCase(), identifierKind: 0 };
-      // Ensure the member identity is registered before adding
-      async function waitForIdentityReady(identifier, tries = 180) {
-        if (!xmtp?.findInboxIdByIdentifier) return;
+      async function waitForInboxId(identifier, tries = 180) {
+        if (!xmtp?.findInboxIdByIdentifier) return null;
         for (let i = 0; i < tries; i++) {
           try {
             const found = await xmtp.findInboxIdByIdentifier(identifier);
             if (found) return found;
-          } catch (err) { void err; }
+          } catch (e) { void e; }
           await new Promise((r) => setTimeout(r, 1000));
         }
         return null;
       }
-      await waitForIdentityReady(memberIdentifier, 180);
+      const inboxId = (await waitForInboxId(memberIdentifier, 180)) || generateInboxId(memberIdentifier);
       try {
-        if (typeof record.group.addMembersByIdentifiers === 'function') {
-          await record.group.addMembersByIdentifiers([memberIdentifier]);
-        } else if (typeof record.group.addMembers === 'function') {
-          // Fallback to inboxId-based add if identity add is not available
-          const inboxId = generateInboxId(memberIdentifier);
+        if (typeof record.group.addMembers === 'function') {
           await record.group.addMembers([inboxId]);
+        } else if (typeof record.group.addMembersByInboxId === 'function') {
+          await record.group.addMembersByInboxId([inboxId]);
+        } else if (typeof record.group.addMembersByIdentifiers === 'function') {
+          await record.group.addMembersByIdentifiers([memberIdentifier]);
+        } else {
+          throw new Error('XMTP group does not support adding members');
         }
       } catch (err) {
         if (!String(err?.message || '').includes('succeeded')) throw err;
@@ -306,6 +314,7 @@ export function createApp(opts) {
 
       // Re-sync server view and warm the conversation
       try { if (xmtp.conversations.sync) await xmtp.conversations.sync(); } catch (err) { void err; }
+      try { if (typeof record.group.sync === 'function') await record.group.sync(); } catch (err) { void err; }
       try { await record.group.send(JSON.stringify({ type: 'member-joined', address: memberAddress })); } catch (err) { void err; }
       res.json({ groupId: record.group.id });
     } catch (err) {
@@ -598,12 +607,14 @@ if (import.meta.url === `file://${process.argv[1]}`) {
         }
       };
       try {
-        // @ts-ignore - Node SDK accepts EOA-like signers
+        // @ts-ignore - Node SDK accepts EOA-like signers; our JS object matches at runtime
         const env = process.env.XMTP_ENV || 'dev';
+        // @ts-ignore - TS cannot discriminate the 'EOA' literal on JS object; safe at runtime
         return await Client.create(xmtpSigner, {
           dbEncryptionKey,
           env,
-          loggingLevel: 'off'
+          loggingLevel: 'off',
+          appVersion: 'templ/0.1.0'
         });
       } catch (err) {
         const msg = String(err?.message || err);

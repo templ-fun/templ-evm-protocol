@@ -100,7 +100,7 @@ function App() {
 
       try {
         console.log('[app] Creating XMTP client with stable nonce', stableNonce);
-        const client = await Client.create(xmtpSigner, { env: xmtpEnv });
+        const client = await Client.create(xmtpSigner, { env: xmtpEnv, appVersion: 'templ/0.1.0' });
         // Persist the nonce we successfully used so future runs reuse the same installation
         try { localStorage.setItem(storageKey, String(stableNonce)); } catch {}
         return client;
