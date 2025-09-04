@@ -37,14 +37,17 @@ npm run xmtp:local:down
 ## Architecture
 
 - **Wallet connection** via `ethers` and `window.ethereum`.
-- **Contract deployment** and group creation handled in `deployTempl` (token address, protocol fee recipient, entry fee, and vote weights).
-- The backend currently ignores the `protocolFeeRecipient` field. In production a contract factory will set this to the protocol treasury address automatically.
 - **Default configuration** – priest vote weight and priest weight threshold default to 10.
-- **Pay‑to‑join flow** in `purchaseAndJoin` verifies membership and requests an invite from the backend (defaults to `http://localhost:3001`). If already purchased, it skips on‑chain transactions and goes straight to `/join`.
-- **Chat UI** streams XMTP messages and sends new ones using the group inbox ID via `group.send` directly.
-- **Moderation** – priests sign `delegate:<contract>:<delegate>` and use `delegateMute` to call `POST /delegates` or `DELETE /delegates` through the UI, granting or revoking mute rights. Priests or delegates sign `mute:<contract>:<target>` and submit it via `muteMember` (`POST /mute`). The client polls `GET /mutes` and filters out messages from muted addresses before rendering.
-- **Governance** – members create proposals and vote from the chat; `watchProposals` updates the UI when events fire.
-  The backend mirrors on‑chain events into the group as JSON so clients see real‑time updates.
+- **Governance** – members create proposals and vote from the chat; `watchProposals` updates the UI when events fire. The backend mirrors on‑chain events into the group as JSON so clients see real‑time updates.
+
+### User flows
+
+```mermaid
+flowchart LR
+    A[Deploy\ndeployTempl] --> B[Join\npurchaseAndJoin]
+    B --> C[Chat\ngroup.send]
+    C --> D[Moderate\ndelegateMute/muteMember]
+```
 
 ## Notes
 - XMTP environment: defaults to `dev` on `localhost`/`127.0.0.1` and `production` elsewhere. Set `VITE_XMTP_ENV` to override (e.g. `local` for a local node); Playwright switches to `local` automatically when `E2E_XMTP_LOCAL=1`.

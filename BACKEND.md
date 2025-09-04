@@ -63,6 +63,40 @@ npm --prefix backend run lint
 - **Dependencies** – XMTP JS SDK and an on-chain provider; event watching requires a `connectContract` factory.
 - **Persistence** – group metadata persists to a SQLite database at `backend/groups.db` (or a custom path via `createApp({ dbPath })` in tests). The database is read on startup and updated when groups change; back it up to avoid losing state.
 
+### Endpoint flows
+
+#### Group creation (`/templs`)
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant B as Backend
+    participant CHAIN as Blockchain
+    participant X as XMTP
+
+    C->>B: POST /templs
+    B->>CHAIN: verify contract
+    B->>X: create group
+    X-->>B: groupId
+    B-->>C: groupId
+```
+
+#### Member join (`/join`)
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant B as Backend
+    participant CHAIN as Blockchain
+    participant X as XMTP
+
+    C->>B: POST /join
+    B->>CHAIN: hasPurchased?
+    CHAIN-->>B: true
+    B->>X: invite member
+    B-->>C: 200 OK
+```
+
 ### XMTP client details
 - The backend creates its XMTP client with `appVersion` for clearer network diagnostics.
 - Invitations add members by real inboxId only (no deterministic fallbacks). The server resolves ids via `findInboxIdByIdentifier` when needed. Before inviting, it waits for the target inbox to be visible on the XMTP network to avoid “invite-before-ready” races.
@@ -87,16 +121,6 @@ When `ENABLE_DEBUG_ENDPOINTS=1`, additional endpoints assist tests and local deb
 - `GET /debug/conversations` – returns a count and the first few conversation ids seen by the server.
 
 Playwright e2e uses `XMTP_ENV=production` by default and injects a random `BOT_PRIVATE_KEY` per run. When `E2E_XMTP_LOCAL=1`, it starts `xmtp-local-node` and sets `XMTP_ENV=local`.
-
-### Endpoint behaviors
-- `/templs`
-  - Request: `{ contractAddress, priestAddress, signature, priestInboxId? }` where `signature = sign("create:<contract>")`.
-  - If `priestInboxId` is provided, the server will add the priest by inboxId after creation; else it resolves via XMTP.
-- `/join`
-  - Request: `{ contractAddress, memberAddress, signature, memberInboxId? }` with `signature = sign("join:<contract>")`.
-  - Requires `hasPurchased(contract, member)` to return `true`.
-  - If `memberInboxId` is not provided, the server resolves it via XMTP. If the identity is not yet registered, it returns `503` so the client can retry.
-  - Security hardening (optional): you can require signed nonces/expirations for these requests by adding a nonce/exp field to the signed message and enforcing it in the service; this repo keeps compatibility with legacy signatures for tests.
 
 ## Security considerations
 - The service trusts the provided wallet address; production deployments should authenticate requests.
