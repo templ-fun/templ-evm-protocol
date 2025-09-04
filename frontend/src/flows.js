@@ -169,7 +169,7 @@ export async function purchaseAndJoin({
     }
   } catch {}
   const contract = new ethers.Contract(templAddress, templArtifact.abi, signer);
-  const purchased = await contract.hasPurchased(walletAddress);
+  const purchased = await contract.hasAccess(walletAddress);
   if (!purchased) {
     // Auto-approve entry fee if allowance is insufficient
     let tokenAddress;

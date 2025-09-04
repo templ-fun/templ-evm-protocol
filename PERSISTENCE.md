@@ -64,7 +64,7 @@ flowchart TD
   - Persists `{ contract, groupId, priest }` to SQLite and to the in-memory `groups` cache.
 - POST `/join` (purchase check + add member to XMTP group)
   - Verifies `join:<contract>` signature.
-  - Validates `hasPurchased` against the contract (on-chain read via ethers).
+  - Validates `hasAccess` against the contract (on-chain read via ethers).
   - Adds the member’s inboxId to the group. If `memberInboxId` is provided, it is used directly; otherwise the server resolves via `findInboxIdByIdentifier` and waits for identity readiness before inviting.
   - Re-syncs and sends a `member-joined` message to give the UI fresh content to discover.
   - Returns `groupId` but does NOT persist membership to our DB (membership is managed by XMTP/the group itself).

@@ -100,16 +100,19 @@ contract TEMPL {
     uint256 public immutable priestVoteWeight;
     uint256 public immutable priestWeightThreshold;
     
-    mapping(address => bool) public hasPurchased;
-    mapping(address => uint256) public purchaseTimestamp;
-    mapping(address => uint256) public purchaseBlock;
-    
-    address[] public members;
+    struct Member {
+        bool purchased;
+        uint256 timestamp;
+        uint256 block;
+        uint256 rewardSnapshot;
+    }
+
+    mapping(address => Member) public members;
+    address[] public memberList;
     mapping(address => uint256) public memberIndex;
     mapping(address => uint256) public memberPoolClaims;
     uint256 public cumulativeMemberRewards;
     uint256 public memberRewardRemainder;
-    mapping(address => uint256) public memberRewardSnapshot;
     
     struct Proposal {
         uint256 id;
@@ -198,7 +201,7 @@ contract TEMPL {
     // event DAOExecuted removed with executeDAO elimination
     
     modifier onlyMember() {
-        if (!hasPurchased[msg.sender]) revert NotMember();
+        if (!members[msg.sender].purchased) revert NotMember();
         _;
     }
 
@@ -261,28 +264,29 @@ contract TEMPL {
      * @dev Executes 4 transfers: burn (30%), treasury (30%), member pool (30%), protocol (10%)
      */
     function purchaseAccess() external whenNotPaused notSelf nonReentrant {
-        if (hasPurchased[msg.sender]) revert AlreadyPurchased();
-        
+        Member storage m = members[msg.sender];
+        if (m.purchased) revert AlreadyPurchased();
+
         uint256 thirtyPercent = (entryFee * 30) / 100;
         uint256 tenPercent = (entryFee * 10) / 100;
 
         if (IERC20(accessToken).balanceOf(msg.sender) < entryFee) revert InsufficientBalance();
 
-        hasPurchased[msg.sender] = true;
-        purchaseTimestamp[msg.sender] = block.timestamp;
-        purchaseBlock[msg.sender] = block.number;
-        memberIndex[msg.sender] = members.length;
-        members.push(msg.sender);
+        m.purchased = true;
+        m.timestamp = block.timestamp;
+        m.block = block.number;
+        memberIndex[msg.sender] = memberList.length;
+        memberList.push(msg.sender);
         totalPurchases++;
 
-        if (members.length > 1) {
+        if (memberList.length > 1) {
             uint256 totalRewards = thirtyPercent + memberRewardRemainder;
-            uint256 rewardPerMember = totalRewards / (members.length - 1);
-            memberRewardRemainder = totalRewards % (members.length - 1);
+            uint256 rewardPerMember = totalRewards / (memberList.length - 1);
+            memberRewardRemainder = totalRewards % (memberList.length - 1);
             cumulativeMemberRewards += rewardPerMember;
         }
 
-        memberRewardSnapshot[msg.sender] = cumulativeMemberRewards;
+        m.rewardSnapshot = cumulativeMemberRewards;
 
         treasuryBalance += thirtyPercent;
         memberPoolBalance += thirtyPercent;
@@ -377,7 +381,7 @@ contract TEMPL {
         proposal.callData = _callData;
         proposal.endTime = block.timestamp + period;
         proposal.createdAt = block.timestamp;
-        proposal.eligibleVoters = members.length;
+        proposal.eligibleVoters = memberList.length;
         proposal.executed = false;
         proposal.yesVotes = 0;
         proposal.noVotes = 0;
@@ -403,14 +407,14 @@ contract TEMPL {
         if (block.timestamp >= proposal.endTime) revert VotingEnded();
         if (proposal.hasVoted[msg.sender]) revert AlreadyVoted();
 
-        if (purchaseTimestamp[msg.sender] >= proposal.createdAt)
+        if (members[msg.sender].timestamp >= proposal.createdAt)
             revert JoinedAfterProposal();
         
         proposal.hasVoted[msg.sender] = true;
         proposal.voteChoice[msg.sender] = _support;
         
         uint256 voteWeight = 1;
-        if (msg.sender == priest && members.length < priestWeightThreshold) {
+        if (msg.sender == priest && memberList.length < priestWeightThreshold) {
             voteWeight = priestVoteWeight;
         }
         
@@ -631,12 +635,12 @@ contract TEMPL {
      * @return Claimable token amount from member pool
      */
     function getClaimablePoolAmount(address member) public view returns (uint256) {
-        if (!hasPurchased[member]) {
+        if (!members[member].purchased) {
             return 0;
         }
-        
+
         uint256 accrued = cumulativeMemberRewards;
-        uint256 snapshot = memberRewardSnapshot[member];
+        uint256 snapshot = members[member].rewardSnapshot;
         return accrued > snapshot ? accrued - snapshot : 0;
     }
     
@@ -649,7 +653,7 @@ contract TEMPL {
         uint256 distributable = memberPoolBalance - memberRewardRemainder;
         if (distributable < claimable) revert InsufficientPoolBalance();
 
-        memberRewardSnapshot[msg.sender] = cumulativeMemberRewards;
+        members[msg.sender].rewardSnapshot = cumulativeMemberRewards;
         memberPoolClaims[msg.sender] += claimable;
         memberPoolBalance -= claimable;
 
@@ -801,7 +805,7 @@ contract TEMPL {
      * @return True if user has purchased access
      */
     function hasAccess(address user) external view returns (bool) {
-        return hasPurchased[user];
+        return members[user].purchased;
     }
     
     /**
@@ -816,11 +820,8 @@ contract TEMPL {
         uint256 timestamp,
         uint256 blockNum
     ) {
-        return (
-            hasPurchased[user],
-            purchaseTimestamp[user],
-            purchaseBlock[user]
-        );
+        Member storage m = members[user];
+        return (m.purchased, m.timestamp, m.block);
     }
     
     /**
@@ -875,7 +876,7 @@ contract TEMPL {
      * @return Current member count
      */
     function getMemberCount() external view returns (uint256) {
-        return members.length;
+        return memberList.length;
     }
     
     /**
@@ -884,10 +885,10 @@ contract TEMPL {
      * @return Current voting power (0, 1, or priestVoteWeight)
      */
     function getVoteWeight(address voter) external view returns (uint256) {
-        if (!hasPurchased[voter]) {
+        if (!members[voter].purchased) {
             return 0;
         }
-        if (voter == priest && members.length < priestWeightThreshold) {
+        if (voter == priest && memberList.length < priestWeightThreshold) {
             return priestVoteWeight;
         }
         return 1;

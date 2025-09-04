@@ -150,7 +150,7 @@ describe('templ flows', () => {
 
   it('purchaseAndJoin purchases access and joins group', async () => {
     const templContract = {
-      hasPurchased: vi.fn().mockResolvedValue(false),
+      hasAccess: vi.fn().mockResolvedValue(false),
       purchaseAccess: vi.fn().mockResolvedValue({ wait: vi.fn() }),
       getConfig: vi.fn().mockResolvedValue(['0xToken', 100n, false, 0n, 0n, 0n])
     };
@@ -192,7 +192,7 @@ describe('templ flows', () => {
   });
 
   it('purchaseAndJoin rejects on backend failure', async () => {
-    const templContract = { hasPurchased: vi.fn().mockResolvedValue(true) };
+    const templContract = { hasAccess: vi.fn().mockResolvedValue(true) };
     const ethers = { Contract: vi.fn().mockReturnValue(templContract) };
     const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({
@@ -214,7 +214,7 @@ describe('templ flows', () => {
   });
 
   it('purchaseAndJoin errors when access not purchased', async () => {
-    const templContract = { hasPurchased: vi.fn().mockResolvedValue(true) };
+    const templContract = { hasAccess: vi.fn().mockResolvedValue(true) };
     const ethers = { Contract: vi.fn().mockReturnValue(templContract) };
     const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({

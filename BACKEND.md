@@ -73,7 +73,7 @@ npm --prefix backend run lint
 - **Ownership** – The bot wallet owns each XMTP group; no human has admin rights.
 - **Endpoints**
   - `POST /templs` – create a group for a deployed contract; if a `connectContract` factory is supplied the backend also watches governance events.
-  - `POST /join` – verify `hasPurchased` on-chain and invite the wallet.
+  - `POST /join` – verify `hasAccess` on-chain and invite the wallet.
   - `POST /delegates` – priest assigns mute rights to a member.
   - `DELETE /delegates` – revoke a delegate's mute rights.
   - `POST /mute` – priest or delegate records an escalating mute for a member.
@@ -109,7 +109,7 @@ sequenceDiagram
     participant X as XMTP
 
     C->>B: POST /join
-    B->>CHAIN: hasPurchased?
+    B->>CHAIN: hasAccess?
     CHAIN-->>B: true
     B->>X: invite member
     B-->>C: 200 OK
