@@ -2,6 +2,10 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
 const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
+const {
+    encodeWithdrawTreasuryDAO,
+    encodeSetPausedDAO,
+} = require("./utils/callDataBuilders");
 
 describe("Voting Eligibility Based on Join Time", function () {
     let templ;
@@ -35,14 +39,11 @@ describe("Voting Eligibility Based on Join Time", function () {
             await ethers.provider.send("evm_mine");
 
             // Member 1 creates proposal
-            const iface = new ethers.Interface([
-                "function withdrawTreasuryDAO(address,uint256,string)"
-            ]);
-            const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
+            const callData = encodeWithdrawTreasuryDAO(
                 member1.address,
                 ethers.parseUnits("10", 18),
                 "Test"
-            ]);
+            );
 
             await templ.connect(member1).createProposal(
                 "Test Proposal",
@@ -84,14 +85,11 @@ describe("Voting Eligibility Based on Join Time", function () {
             await ethers.provider.send("evm_mine");
 
             // Create proposal
-            const iface = new ethers.Interface([
-                "function withdrawTreasuryDAO(address,uint256,string)"
-            ]);
-            const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
+            const callData = encodeWithdrawTreasuryDAO(
                 member1.address,
                 ethers.parseUnits("10", 18),
                 "Test"
-            ]);
+            );
 
             await templ.connect(member1).createProposal(
                 "Early Proposal",
@@ -138,10 +136,7 @@ describe("Voting Eligibility Based on Join Time", function () {
             await ethers.provider.send("evm_mine");
 
             // Create proposal - should have 3 eligible voters
-            const iface = new ethers.Interface([
-                "function setPausedDAO(bool)"
-            ]);
-            const callData = iface.encodeFunctionData("setPausedDAO", [true]);
+            const callData = encodeSetPausedDAO(true);
 
             await templ.connect(member1).createProposal(
                 "Pause Proposal",
@@ -195,14 +190,11 @@ describe("Voting Eligibility Based on Join Time", function () {
             await ethers.provider.send("evm_mine");
 
             // Create contentious proposal where member2 would vote no
-            const iface = new ethers.Interface([
-                "function withdrawTreasuryDAO(address,uint256,string)"
-            ]);
-            const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
+            const callData = encodeWithdrawTreasuryDAO(
                 member1.address, // Only benefits member1
                 ethers.parseUnits("50", 18),
                 "Selfish withdrawal"
-            ]);
+            );
 
             await templ.connect(member1).createProposal(
                 "Contentious Proposal",
@@ -260,14 +252,10 @@ describe("Voting Eligibility Based on Join Time", function () {
             await ethers.provider.send("evm_mine");
 
             // First proposal - 2 eligible voters
-            const iface = new ethers.Interface([
-                "function setPausedDAO(bool)"
-            ]);
-            
             await templ.connect(member1).createProposal(
                 "Proposal 1",
                 "With 2 members",
-                iface.encodeFunctionData("setPausedDAO", [true]),
+                encodeSetPausedDAO(true),
                 7 * 24 * 60 * 60
             );
 
@@ -283,7 +271,7 @@ describe("Voting Eligibility Based on Join Time", function () {
             await templ.connect(member2).createProposal(
                 "Proposal 2",
                 "With 3 members",
-                iface.encodeFunctionData("setPausedDAO", [false]),
+                encodeSetPausedDAO(false),
                 7 * 24 * 60 * 60
             );
 
@@ -323,14 +311,10 @@ describe("Voting Eligibility Based on Join Time", function () {
             await templ.connect(member2).purchaseAccess();
             
             // Create proposal immediately
-            const iface = new ethers.Interface([
-                "function setPausedDAO(bool)"
-            ]);
-            
             await templ.connect(member1).createProposal(
                 "Quick Proposal",
                 "Same block test",
-                iface.encodeFunctionData("setPausedDAO", [true]),
+                encodeSetPausedDAO(true),
                 7 * 24 * 60 * 60
             );
 

@@ -2,6 +2,7 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
 const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
+const { encodePurchaseAccess } = require("./utils/callDataBuilders");
 
 describe("Self Purchase Guard", function () {
   const ENTRY_FEE = ethers.parseUnits("100", 18);
@@ -18,8 +19,7 @@ describe("Self Purchase Guard", function () {
   });
 
   it("reverts when DAO attempts to propose self purchase", async function () {
-    const iface = new ethers.Interface(["function purchaseAccess()"]);
-    const callData = iface.encodeFunctionData("purchaseAccess", []);
+    const callData = encodePurchaseAccess();
 
     await expect(
       templ.connect(member).createProposal(
