@@ -2,6 +2,8 @@
 
 // XMTP utility helpers shared across frontend, backend, and tests
 
+import { waitFor } from './xmtp-wait.js';
+
 // Minimal debug logger usable in both browser and Node environments
 const __isDebug = (() => {
   try { if (globalThis?.process?.env?.DEBUG_TEMPL === '1') return true; } catch {}
@@ -45,35 +47,41 @@ export async function syncXMTP(xmtp, retries = 1, delayMs = 1000) {
  * @returns {Promise<any|null>} Conversation if found, else null
  */
 export async function waitForConversation({ xmtp, groupId, retries = 60, delayMs = 1000 }) {
-  let group = null;
-  for (let i = 0; i < retries; i++) {
-    await syncXMTP(xmtp);
-    try {
-      group = await xmtp?.conversations?.getConversationById?.(groupId);
-    } catch (err) {
-      dlog('getConversationById failed:', err?.message || String(err));
-    }
-    if (!group) {
+  const norm = (id) => (id || '').replace(/^0x/i, '');
+  const wanted = norm(groupId);
+  const group = await waitFor({
+    tries: retries,
+    delayMs,
+    check: async () => {
+      await syncXMTP(xmtp);
+      let conv = null;
       try {
-        const conversations = await xmtp?.conversations?.list?.({ consentStates: ['allowed','unknown','denied'] }) || [];
-        dlog(`Sync attempt ${i + 1}: Found ${conversations.length} conversations; firstIds=`, conversations.slice(0,3).map(c => c.id));
-        group = conversations.find(c => c.id === groupId) || null;
+        conv = await xmtp?.conversations?.getConversationById?.(wanted);
       } catch (err) {
-        dlog('list conversations failed:', err?.message || String(err));
+        dlog('getConversationById failed:', err?.message || String(err));
       }
-    }
-    if (group) {
-      dlog('Found group:', group.id, 'consent state:', group.consentState);
-      if (group.consentState !== 'allowed' && typeof group.updateConsentState === 'function') {
+      if (!conv) {
         try {
-          await group.updateConsentState('allowed');
+          const conversations = await xmtp?.conversations?.list?.({ consentStates: ['allowed','unknown','denied'] }) || [];
+          dlog(`Sync attempt: Found ${conversations.length} conversations; firstIds=`, conversations.slice(0,3).map(c => c.id));
+          conv = conversations.find(c => c.id === wanted) || null;
         } catch (err) {
-          dlog('updateConsentState failed:', err?.message || String(err));
+          dlog('list conversations failed:', err?.message || String(err));
         }
       }
-      break;
+      if (conv) {
+        dlog('Found group:', conv.id, 'consent state:', conv.consentState);
+        if (conv.consentState !== 'allowed' && typeof conv.updateConsentState === 'function') {
+          try {
+            await conv.updateConsentState('allowed');
+          } catch (err) {
+            dlog('updateConsentState failed:', err?.message || String(err));
+          }
+        }
+        return conv;
+      }
+      return null;
     }
-    if (i < retries - 1) await new Promise(r => setTimeout(r, delayMs));
-  }
+  });
   return group;
 }

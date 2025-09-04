@@ -6,7 +6,9 @@ async function deployTempl({ entryFee = ethers.parseUnits("100", 18), priestVote
     const accounts = await ethers.getSigners();
     const [owner, priest] = accounts;
 
-    const Token = await ethers.getContractFactory("TestToken");
+    const Token = await ethers.getContractFactory(
+      "contracts/mocks/TestToken.sol:TestToken"
+    );
     const token = await Token.deploy("Test Token", "TEST", 18);
     await token.waitForDeployment();
 
