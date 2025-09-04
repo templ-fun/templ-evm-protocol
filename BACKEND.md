@@ -30,23 +30,13 @@ npm --prefix backend install
 | `XMTP_MAX_ATTEMPTS` | Limit XMTP client rotation attempts | unlimited |
 
 See [README.md#environment-variables](./README.md#environment-variables) for minimal setup variables.
-
-The server will throw an error on startup if `RPC_URL` or `BOT_PRIVATE_KEY` are missing.
-
-Use `XMTP_ENV=dev` for local development and integration tests. Set `XMTP_ENV=production` when connecting to the public XMTP network, such as during Playwright e2e runs or production deployments.
-
-The API limits cross-origin requests using the [`cors`](https://www.npmjs.com/package/cors) middleware. Allowed origins are configured with the `ALLOWED_ORIGINS` environment variable (comma-separated list). By default only `http://localhost:5173` is permitted.
+Startup fails without `RPC_URL` or `BOT_PRIVATE_KEY`.
+`XMTP_ENV` selects the network (`dev`, `production`, `local`).
+`ALLOWED_ORIGINS` configures CORS (default `http://localhost:5173`).
 
 ### Rate limiting
 
-The API applies request rate limiting. By default, a local `MemoryStore` tracks requests, which is suitable for single-instance deployments. For distributed deployments, use a shared store such as Redis:
-
-```bash
-npm --prefix backend install redis rate-limit-redis
-RATE_LIMIT_STORE=redis REDIS_URL=redis://localhost:6379 npm --prefix backend start
-```
-
-The store can also be supplied programmatically via `createApp({ rateLimitStore })`.
+The API rate-limits requests. Use the default in-memory store or install `redis`/`rate-limit-redis` and set `RATE_LIMIT_STORE=redis` with `REDIS_URL`.
 
 ## Development
 Start the API service:
@@ -56,11 +46,7 @@ npm --prefix backend start
 ```
 
 ### Logging
-Structured logging is provided by [Pino](https://github.com/pinojs/pino). Logs are emitted in JSON format to `stdout` and the verbosity is controlled with the `LOG_LEVEL` environment variable. In development you may pipe the output through `pino-pretty` for human-readable logs. For production deployments, pipe the process output to a file and rotate it with a tool such as `logrotate`:
-
-```bash
-node src/server.js | pino >> /var/log/templ/backend.log
-```
+Logging uses [Pino](https://github.com/pinojs/pino) (JSON to `stdout`; set `LOG_LEVEL`). Pipe through `pino-pretty` in dev or redirect to a file in production.
 
 ## Tests & Lint
 
@@ -116,9 +102,9 @@ sequenceDiagram
 ```
 
 ### XMTP client details
-- The backend creates its XMTP client with `appVersion` for clearer network diagnostics.
-- Invitations add members by real inboxId only (no deterministic fallbacks). The server resolves ids via `findInboxIdByIdentifier` when needed. Before inviting, it waits for the target inbox to be visible on the XMTP network to avoid “invite-before-ready” races.
-- After creation/join, the backend syncs and records XMTP aggregate stats around operations for diagnostics.
+- Client uses `appVersion` for diagnostics.
+- Invitations require real inboxIds; the server resolves them and waits for visibility before inviting.
+- After creation or join it syncs and records XMTP stats.
 
 ### Debug endpoints
 When `ENABLE_DEBUG_ENDPOINTS=1`, these endpoints assist tests and local debugging:

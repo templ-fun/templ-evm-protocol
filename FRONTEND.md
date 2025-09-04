@@ -1,6 +1,6 @@
 # TEMPL Frontend
 
-See the [README](./README.md#architecture) for how the frontend fits into TEMPL; this document covers local development and testing.
+See the [README](./README.md#architecture) for how the frontend fits into TEMPL; this doc covers local development and testing.
 
 ## Prerequisites
 
@@ -40,13 +40,7 @@ npm --prefix frontend run build
 npm --prefix frontend test -- src/core-flows.integration.test.js # integration (local Hardhat + backend + XMTP dev)
 npm --prefix frontend run test:e2e                          # end‑to‑end (Playwright)
 ```
-To run e2e against a local XMTP node for logs/instrumentation:
-```bash
-git clone https://github.com/xmtp/xmtp-local-node.git
-npm run xmtp:local:up
-E2E_XMTP_LOCAL=1 npm --prefix frontend run test:e2e -- --project=tech-demo
-npm run xmtp:local:down
-```
+To run e2e against a local XMTP node: clone `xmtp-local-node`, run `npm run xmtp:local:up`, execute tests with `E2E_XMTP_LOCAL=1`, then `npm run xmtp:local:down`.
 ## Architecture
 
 - **Wallet connection** via `ethers` and `window.ethereum`.
@@ -63,10 +57,9 @@ flowchart LR
 ```
 
 ## Notes
-- XMTP environment: defaults to `dev` on `localhost`/`127.0.0.1` and `production` elsewhere. Set `VITE_XMTP_ENV` to override (e.g. `local` for a local node); Playwright switches to `local` automatically when `E2E_XMTP_LOCAL=1`.
-- E2E debug helpers: when `VITE_E2E_DEBUG=1`, the browser exposes `window.__XMTP`, `window.__xmtpList()` and `window.__xmtpGetById(id)` for diagnostics.
-- Client options: the Browser SDK is constructed with `appVersion` for better diagnostics (see `src/App.jsx`).
-- Typed flows: `src/flows.js` is documented with JSDoc and backed by `src/flows.types.d.ts`.
+- `VITE_XMTP_ENV` defaults to `dev` on localhost and `production` elsewhere; override for `local` nodes.
+- `VITE_E2E_DEBUG=1` exposes `window.__XMTP` helpers for diagnostics.
+- The Browser SDK sets `appVersion` for diagnostics and `src/flows.js` is typed via JSDoc.
 
 ## Security considerations
 - Membership verification happens on-chain; bypassing the backend would require membership proof.
