@@ -1,6 +1,6 @@
 # Core Flow Service Diagrams
 
-This document illustrates the components, endpoints, and message flows that power TEMPL’s core protocol functions. It includes visual diagrams and concrete request/response formats so auditors and implementers can understand every moving part.
+This document illustrates the components and message flows powering TEMPL's core protocol.
 
 ## Actors & Legend
 - Frontend: Browser app (XMTP Browser SDK) where users deploy, join, chat, and govern.
@@ -12,6 +12,7 @@ This document illustrates the components, endpoints, and message flows that powe
 Legend in diagrams: F = Frontend, B = Backend, C = Smart Contract, X = XMTP, D = SQLite.
 
 ## 1. Templ creation
+The backend bot creates and owns the XMTP group when a TEMPL is deployed.
 ```mermaid
 flowchart LR
     F[Frontend] -->|deploy contract| C[Smart Contract]
@@ -19,13 +20,12 @@ flowchart LR
     B -->|newGroup| X[XMTP]
 ```
 
-During Templ creation the backend's bot wallet creates and owns the XMTP group:
-
 - The frontend sends the deployed contract address and the priest's inbox ID to the backend via `POST /templs`. If the inbox ID isn't provided, the backend resolves it on the XMTP network via `findInboxIdByIdentifier` and waits for the identity to be visible before inviting. No deterministic/fake inbox IDs are used.
 - The backend calls `newGroup` on XMTP, adds the priest as a member, and records the resulting group ID.
 - Group ownership remains with the backend service; the priest does not control the group.
 
 ## 2. Pay-to-join
+Members sign a join message, and the backend verifies purchase before inviting them.
 ```mermaid
 flowchart LR
     F[Frontend] -->|purchaseAccess| C[Smart Contract]
@@ -33,9 +33,10 @@ flowchart LR
     B -->|addMembers| X[XMTP]
 ```
 
-The frontend signs `join:<contractAddress>` and the backend verifies purchase on‑chain before adding the member. The backend may send a small "member-joined" message to help clients discover the group.
+- The backend may send a small "member-joined" message to help clients discover the group.
 
 Sequence detail:
+The contract purchase and backend invite flow proceeds as follows.
 ```mermaid
 sequenceDiagram
     participant F as Frontend
@@ -53,6 +54,7 @@ sequenceDiagram
 ```
 
 ## 3. Messaging
+Members send messages directly to the XMTP group.
 ```mermaid
 flowchart LR
     M[Member] -->|send message| X[XMTP Group]
@@ -62,9 +64,7 @@ Discovery
 - After a member joins, browser clients explicitly call `conversations.sync()` to fetch new welcomes, followed by `preferences.sync()` and `conversations.syncAll([...])`, and then poll/stream until the group is found. The UI requires discovery.
 
 ## 4. Moderation
-The backend tracks mutes with escalating durations. The priest can delegate
-mute power to other members. Frontends hide messages from muted members.
-
+The backend enforces escalating mutes and allows delegated moderation.
 ```mermaid
 flowchart LR
     P[Priest] -->|POST /delegates| B[Backend]
@@ -74,7 +74,12 @@ flowchart LR
     B -->|store| D[(SQLite)]
 ```
 
+- Mutes escalate in duration.
+- The priest can delegate mute power to other members.
+- Frontends hide messages from muted members.
+
 Sequence detail:
+The moderation process from delegation to mute proceeds as follows.
 ```mermaid
 sequenceDiagram
     participant P as Priest
@@ -90,6 +95,7 @@ sequenceDiagram
 ```
 
 ## 5. Proposal creation
+The backend mirrors on-chain proposal events into the XMTP group.
 ```mermaid
 flowchart LR
     F[Member] -->|createProposal| C[Smart Contract]
@@ -97,13 +103,12 @@ flowchart LR
     B -->|send proposal JSON| X[XMTP Group]
 ```
 
-The backend watches on‑chain events and mirrors them into the group as JSON payloads so clients can render proposal and vote updates in real time.
-
 Notes
 - The backend adds members by inboxId only and linearizes invites by waiting for inbox readiness on XMTP before adding.
 - After group creation/join, the backend syncs and records network stats. A small warm message may be sent.
 
 ## 6. Voting
+Members vote on proposals and the backend broadcasts vote events.
 ```mermaid
 flowchart LR
     F[Member] -->|vote| C[Smart Contract]
@@ -112,14 +117,18 @@ flowchart LR
 ```
 
 ## 7. Proposal execution
+Execution is limited to an allowlisted set of contract functions.
 ```mermaid
 flowchart LR
     F[Member] -->|executeProposal| C[Smart Contract]
     C -->|call allowlisted action| C
 ```
-Execution is restricted to an allowlist of contract functions (pause/unpause, config updates, and treasury transfers of the TEMPL‑denominated token). Arbitrary external calls are disabled.
+
+- Only pause/unpause, config updates, and treasury transfers are permitted.
+- Arbitrary external calls are disabled.
 
 End-to-end proposal lifecycle (sequence):
+This sequence shows proposal creation, voting, and execution across the system.
 ```mermaid
 sequenceDiagram
     participant M as Member
@@ -159,6 +168,7 @@ sequenceDiagram
 ```
 
 ## Purchase Distribution (On-Chain)
+Entry fees distribute among burn, treasury, member pool, and protocol.
 ```mermaid
 sequenceDiagram
     participant U as User
