@@ -36,9 +36,9 @@ export function createApp(opts) {
   const { xmtp, hasPurchased, connectContract, dbPath, db } = opts || {};
   const app = express();
   const allowedOrigins =
-    process.env.ALLOWED_ORIGINS?.split(',').filter(Boolean) ?? [
-      'http://localhost:5173'
-    ];
+    process.env.ALLOWED_ORIGINS?.split(',')
+      .map((o) => o.trim())
+      .filter(Boolean) ?? ['http://localhost:5173'];
   app.use(cors({ origin: allowedOrigins }));
   app.use(express.json());
   app.use(helmet());
