@@ -1,6 +1,6 @@
 # TEMPL Frontend
 
-The TEMPL frontend is a React + Vite application that lets members deploy contracts, verify purchases, and chat.
+See the [README](./README.md#architecture) for how the frontend fits into TEMPL; this document covers local development and testing.
 
 ## Prerequisites
 
