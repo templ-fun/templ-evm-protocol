@@ -32,7 +32,7 @@ describe("Reentrancy protection", function () {
       await token.setTempl(await templ.getAddress());
     });
 
-    it("reverts with ReentrantCall when purchaseAccess is reentered", async function () {
+    it("reverts when purchaseAccess is reentered", async function () {
       const attacker = accounts[2];
 
       await token.mint(attacker.address, ENTRY_FEE);
@@ -44,7 +44,7 @@ describe("Reentrancy protection", function () {
 
       await expect(
         templ.connect(attacker).purchaseAccess()
-      ).to.be.revertedWithCustomError(templ, "ReentrantCall");
+      ).to.be.revertedWithCustomError(templ, "ReentrancyGuardReentrantCall");
     });
   });
 
@@ -78,7 +78,7 @@ describe("Reentrancy protection", function () {
       await token.joinTempl(ENTRY_FEE);
     });
 
-    it("reverts with ReentrantCall when claimMemberPool is reentered", async function () {
+    it("reverts when claimMemberPool is reentered", async function () {
       const [, member1, member2] = accounts;
 
       await mintToUsers(token, [member1, member2], ENTRY_FEE);
@@ -89,7 +89,7 @@ describe("Reentrancy protection", function () {
 
       await expect(
         templ.connect(member1).claimMemberPool()
-      ).to.be.revertedWithCustomError(templ, "ReentrantCall");
+      ).to.be.revertedWithCustomError(templ, "ReentrancyGuardReentrantCall");
     });
   });
 });

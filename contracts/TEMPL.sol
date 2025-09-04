@@ -3,6 +3,7 @@ pragma solidity ^0.8.23;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {TemplErrors} from "./TemplErrors.sol";
 
 /**
@@ -10,19 +11,9 @@ import {TemplErrors} from "./TemplErrors.sol";
  * @notice Decentralized membership system with autonomous treasury management
  * @dev Fee distribution: 30% burn, 30% DAO treasury, 30% member pool, 10% protocol
  */
-contract TEMPL {
+contract TEMPL is ReentrancyGuard {
     using SafeERC20 for IERC20;
     using TemplErrors for *;
-    uint256 private constant _NOT_ENTERED = 1;
-    uint256 private constant _ENTERED = 2;
-    uint256 private _status;
-    
-    modifier nonReentrant() {
-        if (_status == _ENTERED) revert TemplErrors.ReentrantCall();
-        _status = _ENTERED;
-        _;
-        _status = _NOT_ENTERED;
-    }
 
     address public immutable priest;
     address public immutable protocolFeeRecipient;
@@ -188,7 +179,6 @@ contract TEMPL {
         priestVoteWeight = _priestVoteWeight;
         priestWeightThreshold = _priestWeightThreshold;
         paused = false;
-        _status = _NOT_ENTERED;
     }
 
     /// @notice Allow contract to receive ETH
