@@ -269,6 +269,69 @@ test('responds with 500 when purchase check fails', async () => {
   await app.close();
 });
 
+test('join returns 503 when member identity is missing', async () => {
+  const fakeGroup = { id: 'group-missing', addMembers: async () => {}, removeMembers: async () => {} };
+  const fakeXmtp = {
+    inboxId: 'test-inbox-id',
+    conversations: { newGroup: async () => fakeGroup },
+    findInboxIdByIdentifier: async () => null
+  };
+  const hasPurchased = async () => true;
+
+  const app = makeApp({ xmtp: fakeXmtp, hasPurchased });
+
+  const templSig = await wallets.priest.signMessage(`create:${addresses.contract}`);
+  await request(app)
+    .post('/templs')
+    .send({
+      contractAddress: addresses.contract,
+      priestAddress: addresses.priest,
+      signature: templSig
+    })
+    .expect(200);
+
+  const joinSig = await wallets.member.signMessage(`join:${addresses.contract}`);
+  const originalSetTimeout = setTimeout;
+  try {
+    // Collapse retries to avoid long waits
+    global.setTimeout = (fn, ms, ...args) => originalSetTimeout(fn, 0, ...args);
+    await request(app)
+      .post('/join')
+      .send({
+        contractAddress: addresses.contract,
+        memberAddress: addresses.member,
+        signature: joinSig
+      })
+      .expect(503);
+  } finally {
+    global.setTimeout = originalSetTimeout;
+  }
+  await app.close();
+});
+
+test('rate limits after 100 requests', async () => {
+  const app = makeApp({ xmtp: { conversations: {} }, hasPurchased: async () => true });
+  for (let i = 0; i < 100; i++) {
+    await request(app)
+      .post('/join')
+      .send({
+        contractAddress: 'not-an-address',
+        memberAddress: 'also-bad',
+        signature: '0x'
+      })
+      .expect(400);
+  }
+  await request(app)
+    .post('/join')
+    .send({
+      contractAddress: 'not-an-address',
+      memberAddress: 'also-bad',
+      signature: '0x'
+    })
+    .expect(429);
+  await app.close();
+});
+
 test('only authorized addresses can mute members', async () => {
   const fakeGroup = {
     id: 'group-2',
