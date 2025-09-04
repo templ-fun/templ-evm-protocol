@@ -9,7 +9,7 @@ Install dependencies:
 npm --prefix backend install
 ```
 
-Environment variables:
+Environment variables (see [Environment Variables](./README.md#environment-variables) for descriptions):
 
 ```env
 RPC_URL=https://mainnet.base.org
