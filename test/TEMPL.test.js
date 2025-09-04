@@ -259,6 +259,11 @@ describe("TEMPL Contract with DAO Governance", function () {
                 )
             ).to.be.revertedWithCustomError(templ, "CallDataTooShort");
         });
+
+        it("Should revert when retrieving a non-existent proposal", async function () {
+            await expect(templ.getProposal(0))
+                .to.be.revertedWithCustomError(templ, "InvalidProposal");
+        });
     });
 
     describe("DAO Voting", function () {
