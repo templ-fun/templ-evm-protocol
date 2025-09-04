@@ -1,6 +1,6 @@
 # TEMPL Backend
 
-The TEMPL backend is an Express service that acts as the XMTP group owner. It creates rooms for new TEMPL deployments, verifies on-chain purchases, and invites members.
+See the [README](./README.md#architecture) for how the backend fits into TEMPL; this document covers setup, configuration, and operations.
 
 ## Setup
 Install dependencies:
