@@ -22,3 +22,4 @@ flags:
   frontend:
     paths:
       - frontend/coverage
+      - frontend/coverage-e2e
