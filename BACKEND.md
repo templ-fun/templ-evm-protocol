@@ -28,8 +28,10 @@ npm --prefix backend install
 | `REDIS_URL` | Redis URL when `RATE_LIMIT_STORE=redis` | — |
 | `DISABLE_XMTP_WAIT` | Skip XMTP readiness checks in tests | `0` |
 | `XMTP_MAX_ATTEMPTS` | Limit XMTP client rotation attempts | unlimited |
+| `DB_PATH` | Custom SQLite path for group metadata | `backend/groups.db` |
+| `CLEAR_DB` | Wipe database on startup | `0` |
 
-See [README.md#environment-variables](./README.md#environment-variables) for minimal setup variables.
+See [README.md#environment-variables](./README.md#environment-variables) for minimal setup variables and [PERSISTENCE.md](./PERSISTENCE.md) for database details.
 Startup fails without `RPC_URL` or `BOT_PRIVATE_KEY`.
 `XMTP_ENV` selects the network (`dev`, `production`, `local`).
 `ALLOWED_ORIGINS` configures CORS (default `http://localhost:5173`).
