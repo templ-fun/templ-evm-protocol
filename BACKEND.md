@@ -18,6 +18,10 @@ BOT_PRIVATE_KEY=0x...
 ALLOWED_ORIGINS=http://localhost:5173
 ENABLE_DEBUG_ENDPOINTS=1
 XMTP_ENV=dev # XMTP network: dev|production|local (default: dev)
+# Optional rate limit store ('redis' uses Redis)
+RATE_LIMIT_STORE=redis
+# When using Redis store
+REDIS_URL=redis://localhost:6379
 # Optional for tests to bypass network checks
 DISABLE_XMTP_WAIT=1
 # Optional cap on XMTP client rotation attempts
@@ -29,6 +33,17 @@ The server will throw an error on startup if `RPC_URL` or `BOT_PRIVATE_KEY` are 
 Use `XMTP_ENV=dev` for local development and integration tests. Set `XMTP_ENV=production` when connecting to the public XMTP network, such as during Playwright e2e runs or production deployments.
 
 The API limits cross-origin requests using the [`cors`](https://www.npmjs.com/package/cors) middleware. Allowed origins are configured with the `ALLOWED_ORIGINS` environment variable (comma-separated list). By default only `http://localhost:5173` is permitted.
+
+### Rate limiting
+
+The API applies request rate limiting. By default, a local `MemoryStore` tracks requests, which is suitable for single-instance deployments. For distributed deployments, use a shared store such as Redis:
+
+```bash
+npm --prefix backend install redis rate-limit-redis
+RATE_LIMIT_STORE=redis REDIS_URL=redis://localhost:6379 npm --prefix backend start
+```
+
+The store can also be supplied programmatically via `createApp({ rateLimitStore })`.
 
 ## Development
 Start the API service:
