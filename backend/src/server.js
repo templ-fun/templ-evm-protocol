@@ -451,7 +451,7 @@ export function createApp(opts) {
         .run(contractAddress.toLowerCase(), delegateAddress.toLowerCase());
       res.json({ delegated: true });
     } catch (err) {
-      logger.error({ err, contractAddress }, 'Backend /send failed');
+      logger.error({ err, contractAddress }, 'Backend /delegates failed');
       res.status(500).json({ error: err.message });
     }
   });
