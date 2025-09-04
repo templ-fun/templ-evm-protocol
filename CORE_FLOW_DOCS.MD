@@ -14,7 +14,7 @@ Components and message flows powering TEMPL's core protocol.
 ## Actors & Legend
 - Frontend: Browser app where users deploy, join, chat, and govern.
 - Backend: Node service that owns the group, verifies chain state, and moderates.
-- Smart Contract: TEMPL logic (treasury, member pool, voting).
+- Contract: TEMPL logic (treasury, member pool, voting).
 - XMTP: Messaging network.
 - SQLite: Backend DB for groups, delegates, and mutes.
 
@@ -24,7 +24,7 @@ Legend: F=Frontend, B=Backend, C=Contract, X=XMTP, D=SQLite, M=Member, P=Priest.
 The backend bot creates and owns the XMTP group when a TEMPL is deployed.
 ```mermaid
 flowchart LR
-    F[Frontend] -->|deploy contract| C[Smart Contract]
+    F[Frontend] -->|deploy contract| C[Contract]
     F -->|POST /templs| B[Backend]
     B -->|newGroup| X[XMTP]
 ```
@@ -36,7 +36,7 @@ Members sign a join message, and the backend verifies purchase before inviting t
 See [CONTRACTS.md#economic-model](CONTRACTS.md#economic-model) for membership fee split details.
 ```mermaid
 flowchart LR
-    F[Frontend] -->|purchaseAccess| C[Smart Contract]
+    F[Frontend] -->|purchaseAccess| C[Contract]
     F -->|POST /join| B[Backend]
     B -->|addMembers| X[XMTP]
 ```
@@ -48,7 +48,7 @@ The contract purchase and backend invite flow proceeds as follows.
 ```mermaid
 sequenceDiagram
     participant F as Frontend
-    participant C as Contract (TEMPL)
+    participant C as Contract
     participant B as Backend
     participant X as XMTP
     F->>C: approve(ERC20) + purchaseAccess()
@@ -65,7 +65,7 @@ sequenceDiagram
 Members send messages directly to the XMTP group.
 ```mermaid
 flowchart LR
-    M[Member] -->|send message| X[XMTP Group]
+    M[Member] -->|send message| X[XMTP]
 ```
 
 Discovery
@@ -106,9 +106,9 @@ sequenceDiagram
 The backend mirrors on-chain proposal events into the XMTP group.
 ```mermaid
 flowchart LR
-    M[Member] -->|createProposal| C[Smart Contract]
+    M[Member] -->|createProposal| C[Contract]
     C -->|ProposalCreated event| B[Backend]
-    B -->|send proposal JSON| X[XMTP Group]
+    B -->|send proposal JSON| X[XMTP]
 ```
 
 Notes
@@ -119,16 +119,16 @@ Notes
 Members vote on proposals and the backend broadcasts vote events.
 ```mermaid
 flowchart LR
-    M[Member] -->|vote| C[Smart Contract]
+    M[Member] -->|vote| C[Contract]
     C -->|VoteCast event| B[Backend]
-    B -->|send vote JSON| X[XMTP Group]
+    B -->|send vote JSON| X[XMTP]
 ```
 
 ## 7. Proposal execution
 Execution is limited to an allowlisted set of contract functions.
 ```mermaid
 flowchart LR
-    M[Member] -->|executeProposal| C[Smart Contract]
+    M[Member] -->|executeProposal| C[Contract]
     C -->|call allowlisted action| C
 ```
 
@@ -140,7 +140,7 @@ This sequence shows proposal creation, voting, and execution across the system.
 ```mermaid
 sequenceDiagram
     participant M as Member
-    participant C as Contract (TEMPL)
+    participant C as Contract
     participant B as Backend
     participant X as XMTP
     M->>C: createProposal(title, description, callData, period)
@@ -158,7 +158,7 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant M as Member
-    participant C as Contract (TEMPL)
+    participant C as Contract
     participant B as Backend
     participant X as XMTP
     participant T as Treasury
