@@ -6,7 +6,6 @@ import { setTimeout as wait } from 'timers/promises';
 import { ethers } from 'ethers';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
-import { Client } from '@xmtp/node-sdk';
 import {
   deployTempl,
   purchaseAndJoin,
@@ -18,7 +17,7 @@ import {
   voteOnProposal,
   executeProposal
 } from './flows.js';
-import { createApp } from '../../backend/src/server.js';
+import { createApp, createXmtpWithRotation } from '../../backend/src/server.js';
 
 let templArtifact;
 let tokenArtifact;
@@ -90,41 +89,9 @@ describe('core flows e2e', () => {
       await tx.wait();
     }
 
-    const dbEncryptionKey = new Uint8Array(32);
-
-    const createXmtpClient = async (wallet) => {
-      let nonce = 0;
-      while (nonce < 20) {
-        try {
-          console.log('[setup] creating XMTP client', wallet.address, 'attempt', nonce + 1);
-          return await Client.create(
-            {
-              type: 'EOA',
-              getIdentifier: () => ({
-                identifier: wallet.address.toLowerCase(),
-                identifierKind: 0,
-                nonce: ++nonce
-              }),
-              signMessage: async (message) => {
-                const signature = await wallet.signMessage(message);
-                return ethers.getBytes(signature);
-              }
-            },
-            { dbEncryptionKey, env: 'dev', loggingLevel: 'off' }
-          );
-        } catch (err) {
-          console.log('[setup] XMTP create failed:', err?.message ?? String(err));
-          if (!String(err.message).includes('already registered 10/10 installations')) {
-            throw err;
-          }
-        }
-      }
-      throw new Error('Unable to register XMTP client');
-    };
-
-    xmtpServer = await createXmtpClient(delegateSigner);
-    xmtpPriest = await createXmtpClient(priestSigner);
-    xmtpMember = await createXmtpClient(memberSigner);
+    xmtpServer = await createXmtpWithRotation(delegateSigner, 20);
+    xmtpPriest = await createXmtpWithRotation(priestSigner, 20);
+    xmtpMember = await createXmtpWithRotation(memberSigner, 20);
 
     console.log('XMTP clients created:', {
       server: xmtpServer.inboxId,

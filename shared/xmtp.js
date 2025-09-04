@@ -1,6 +1,8 @@
 // @ts-check
 
-// Minimal debug logger usable in both browser and Node tests
+// XMTP utility helpers shared across frontend, backend, and tests
+
+// Minimal debug logger usable in both browser and Node environments
 const __isDebug = (() => {
   try { if (globalThis?.process?.env?.DEBUG_TEMPL === '1') return true; } catch {}
   try {
@@ -75,4 +77,3 @@ export async function waitForConversation({ xmtp, groupId, retries = 60, delayMs
   }
   return group;
 }
-

@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-vi.mock('./xmtpHelpers.js', () => ({
+vi.mock('../../shared/xmtp.js', () => ({
   waitForConversation: vi.fn(),
   syncXMTP: vi.fn()
 }));
-import { waitForConversation } from './xmtpHelpers.js';
+import { waitForConversation } from '../../shared/xmtp.js';
 import {
   deployTempl,
   purchaseAndJoin,

@@ -15,6 +15,7 @@ import {
   delegateMute,
   muteMember
 } from './flows.js';
+import { syncXMTP } from '../../shared/xmtp.js';
 import './App.css';
 
 function App() {
@@ -141,12 +142,12 @@ function App() {
         // Expose limited debug helpers for tests only (built via Vite env)
         window.__XMTP = client;
         window.__xmtpList = async () => {
-          try { await client.conversations.sync?.(); } catch {}
+          try { await syncXMTP(client); } catch {}
           const list = await client.conversations.list();
           return list.map(c => c.id);
         };
         window.__xmtpGetById = async (id) => {
-          try { await client.conversations.sync?.(); } catch {}
+          try { await syncXMTP(client); } catch {}
           try { return Boolean(await client.conversations.getConversationById(id)); }
           catch { return false; }
         };
@@ -278,21 +279,13 @@ function App() {
           if (import.meta.env.VITE_E2E_DEBUG === '1') {
             try { await xmtp.debugInformation?.clearAllStatistics?.(); } catch {}
           }
-          await xmtp.conversations?.sync?.();
-          await logAgg('after conversations.sync #' + attempts);
+          await syncXMTP(xmtp);
+          await logAgg('after syncXMTP #' + attempts);
         } catch (e) { console.warn('[app] sync error', e?.message || e); }
-        try {
-          // Ensure welcomes, conversations, messages, and preferences are up to date
-          await xmtp.preferences?.sync?.();
-        } catch (e) { console.warn('[app] preferences.sync error', e?.message || e); }
         try {
           // Force inbox state refresh from network
           await xmtp.preferences?.inboxState?.(true);
         } catch (e) { console.warn('[app] preferences.inboxState error', e?.message || e); }
-        await logAgg('after syncs #' + attempts);
-        try {
-          await xmtp.conversations.syncAll?.(['allowed','unknown','denied']);
-        } catch (e) { console.warn('[app] syncAll error', e?.message || e); }
         try {
           const maybe = await xmtp.conversations.getConversationById(wanted);
           if (maybe) {
@@ -324,7 +317,7 @@ function App() {
     (async () => {
       try {
         // Proactively sync once before opening streams
-        try { await xmtp.conversations?.sync?.(); } catch {}
+        try { await syncXMTP(xmtp); } catch {}
         const convStream = await xmtp.conversations.streamGroups?.();
         const stream = await xmtp.conversations.streamAllMessages?.({ consentStates: ['allowed','unknown','denied'] });
         const endAt = Date.now() + 60_000; // 60s assist window

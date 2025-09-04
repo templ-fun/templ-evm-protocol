@@ -1,7 +1,7 @@
 // @ts-check
 import { BACKEND_URL } from './config.js';
 import { buildDelegateMessage, buildMuteMessage } from '../../shared/signing.js';
-import { waitForConversation } from './xmtpHelpers.js';
+import { waitForConversation } from '../../shared/xmtp.js';
 
 // Minimal debug logger usable in both browser and Node tests
 const __isDebug = (() => {

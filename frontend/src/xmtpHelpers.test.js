@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { syncXMTP, waitForConversation } from './xmtpHelpers.js';
+import { syncXMTP, waitForConversation } from '../../shared/xmtp.js';
 
 describe('xmtpHelpers', () => {
   it('syncXMTP calls sync methods', async () => {
