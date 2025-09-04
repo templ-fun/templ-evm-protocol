@@ -4,8 +4,6 @@ pragma solidity ^0.8.23;
 /// @title TemplErrors
 /// @notice Shared custom errors for TEMPL contracts
 library TemplErrors {
-    /// @notice Thrown when a reentrant call is detected.
-    error ReentrantCall();
     /// @notice Thrown when the caller has not purchased membership.
     error NotMember();
     /// @notice Thrown when a function restricted to the DAO is called externally.

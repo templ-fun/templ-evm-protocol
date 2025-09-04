@@ -1,8 +1,121 @@
 {
   "_format": "hh-sol-cache-2",
   "files": {
+    "/workspace/templ/node_modules/@openzeppelin/contracts/interfaces/IERC20.sol": {
+      "lastModificationDate": 1757007890470,
+      "contentHash": "68620db2da7583d9a4919096ac77f577",
+      "sourceName": "@openzeppelin/contracts/interfaces/IERC20.sol",
+      "solcConfig": {
+        "version": "0.8.23",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [
+        "../token/ERC20/IERC20.sol"
+      ],
+      "versionPragmas": [
+        ">=0.4.16"
+      ],
+      "artifacts": []
+    },
+    "/workspace/templ/node_modules/@openzeppelin/contracts/interfaces/IERC165.sol": {
+      "lastModificationDate": 1757007890458,
+      "contentHash": "947853028399b7de34bcc3704ee06e99",
+      "sourceName": "@openzeppelin/contracts/interfaces/IERC165.sol",
+      "solcConfig": {
+        "version": "0.8.23",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [
+        "../utils/introspection/IERC165.sol"
+      ],
+      "versionPragmas": [
+        ">=0.4.16"
+      ],
+      "artifacts": []
+    },
+    "/workspace/templ/contracts/TEMPL.sol": {
+      "lastModificationDate": 1757009149606,
+      "contentHash": "2042f3ca9398778be3db962cd12d26dd",
+      "sourceName": "contracts/TEMPL.sol",
+      "solcConfig": {
+        "version": "0.8.23",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [
+        "@openzeppelin/contracts/token/ERC20/IERC20.sol",
+        "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol",
+        "@openzeppelin/contracts/utils/ReentrancyGuard.sol",
+        "./TemplErrors.sol"
+      ],
+      "versionPragmas": [
+        "^0.8.23"
+      ],
+      "artifacts": [
+        "TEMPL"
+      ]
+    },
     "/workspace/templ/contracts/PurchaseCaller.sol": {
-      "lastModificationDate": 1756954353654,
+      "lastModificationDate": 1757007868043,
       "contentHash": "9d80ab5184536b98fc0b17c42814724f",
       "sourceName": "contracts/PurchaseCaller.sol",
       "solcConfig": {
@@ -38,10 +151,10 @@
         "PurchaseCaller"
       ]
     },
-    "/workspace/templ/contracts/ReentrantClaimToken.sol": {
-      "lastModificationDate": 1756954353654,
-      "contentHash": "40e0bdb45f6d2a4b9f24355b153cfcf6",
-      "sourceName": "contracts/ReentrantClaimToken.sol",
+    "/workspace/templ/contracts/ReentrantToken.sol": {
+      "lastModificationDate": 1757007868043,
+      "contentHash": "1304676b176c31269e29e3d6c02a3203",
+      "sourceName": "contracts/ReentrantToken.sol",
       "solcConfig": {
         "version": "0.8.23",
         "settings": {
@@ -74,11 +187,11 @@
       ],
       "artifacts": [
         "ITempl",
-        "ReentrantClaimToken"
+        "ReentrantToken"
       ]
     },
     "/workspace/templ/node_modules/@openzeppelin/contracts/token/ERC20/ERC20.sol": {
-      "lastModificationDate": 1756954367858,
+      "lastModificationDate": 1757007890122,
       "contentHash": "59dfce11284f2636db261df9b6a18f81",
       "sourceName": "@openzeppelin/contracts/token/ERC20/ERC20.sol",
       "solcConfig": {
@@ -119,7 +232,7 @@
       ]
     },
     "/workspace/templ/node_modules/@openzeppelin/contracts/token/ERC20/IERC20.sol": {
-      "lastModificationDate": 1756954368122,
+      "lastModificationDate": 1757007890470,
       "contentHash": "9261adf6457863de3e9892f51317ec89",
       "sourceName": "@openzeppelin/contracts/token/ERC20/IERC20.sol",
       "solcConfig": {
@@ -155,7 +268,7 @@
       ]
     },
     "/workspace/templ/node_modules/@openzeppelin/contracts/utils/Context.sol": {
-      "lastModificationDate": 1756954367570,
+      "lastModificationDate": 1757007889758,
       "contentHash": "67bfbc07588eb8683b3fd8f6f909563e",
       "sourceName": "@openzeppelin/contracts/utils/Context.sol",
       "solcConfig": {
@@ -191,7 +304,7 @@
       ]
     },
     "/workspace/templ/node_modules/@openzeppelin/contracts/interfaces/draft-IERC6093.sol": {
-      "lastModificationDate": 1756954367718,
+      "lastModificationDate": 1757007889942,
       "contentHash": "5041977bbe908de2e6ed0270447f79ad",
       "sourceName": "@openzeppelin/contracts/interfaces/draft-IERC6093.sol",
       "solcConfig": {
@@ -229,7 +342,7 @@
       ]
     },
     "/workspace/templ/node_modules/@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol": {
-      "lastModificationDate": 1756954368126,
+      "lastModificationDate": 1757007890474,
       "contentHash": "513778b30d2750f5d2b9b19bbcf748a5",
       "sourceName": "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol",
       "solcConfig": {
@@ -266,44 +379,8 @@
         "IERC20Metadata"
       ]
     },
-    "/workspace/templ/node_modules/@openzeppelin/contracts/interfaces/IERC20.sol": {
-      "lastModificationDate": 1756954368118,
-      "contentHash": "68620db2da7583d9a4919096ac77f577",
-      "sourceName": "@openzeppelin/contracts/interfaces/IERC20.sol",
-      "solcConfig": {
-        "version": "0.8.23",
-        "settings": {
-          "optimizer": {
-            "enabled": true,
-            "runs": 200
-          },
-          "evmVersion": "paris",
-          "outputSelection": {
-            "*": {
-              "*": [
-                "abi",
-                "evm.bytecode",
-                "evm.deployedBytecode",
-                "evm.methodIdentifiers",
-                "metadata"
-              ],
-              "": [
-                "ast"
-              ]
-            }
-          }
-        }
-      },
-      "imports": [
-        "../token/ERC20/IERC20.sol"
-      ],
-      "versionPragmas": [
-        ">=0.4.16"
-      ],
-      "artifacts": []
-    },
     "/workspace/templ/node_modules/@openzeppelin/contracts/interfaces/IERC1363.sol": {
-      "lastModificationDate": 1756954368106,
+      "lastModificationDate": 1757007890450,
       "contentHash": "a7fd0f05e36b0d0a21c75340c9c639ec",
       "sourceName": "@openzeppelin/contracts/interfaces/IERC1363.sol",
       "solcConfig": {
@@ -341,44 +418,8 @@
         "IERC1363"
       ]
     },
-    "/workspace/templ/node_modules/@openzeppelin/contracts/interfaces/IERC165.sol": {
-      "lastModificationDate": 1756954368110,
-      "contentHash": "947853028399b7de34bcc3704ee06e99",
-      "sourceName": "@openzeppelin/contracts/interfaces/IERC165.sol",
-      "solcConfig": {
-        "version": "0.8.23",
-        "settings": {
-          "optimizer": {
-            "enabled": true,
-            "runs": 200
-          },
-          "evmVersion": "paris",
-          "outputSelection": {
-            "*": {
-              "*": [
-                "abi",
-                "evm.bytecode",
-                "evm.deployedBytecode",
-                "evm.methodIdentifiers",
-                "metadata"
-              ],
-              "": [
-                "ast"
-              ]
-            }
-          }
-        }
-      },
-      "imports": [
-        "../utils/introspection/IERC165.sol"
-      ],
-      "versionPragmas": [
-        ">=0.4.16"
-      ],
-      "artifacts": []
-    },
     "/workspace/templ/node_modules/@openzeppelin/contracts/utils/introspection/IERC165.sol": {
-      "lastModificationDate": 1756954368114,
+      "lastModificationDate": 1757007890462,
       "contentHash": "7074c93b1ea0a122063f26ddd1db1032",
       "sourceName": "@openzeppelin/contracts/utils/introspection/IERC165.sol",
       "solcConfig": {
@@ -414,7 +455,7 @@
       ]
     },
     "/workspace/templ/node_modules/@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol": {
-      "lastModificationDate": 1756954368318,
+      "lastModificationDate": 1757007890706,
       "contentHash": "1fb9edee1d763745a62d0b1954998792",
       "sourceName": "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol",
       "solcConfig": {
@@ -452,10 +493,10 @@
         "SafeERC20"
       ]
     },
-    "/workspace/templ/contracts/TEMPL.sol": {
-      "lastModificationDate": 1756954518553,
-      "contentHash": "8793ef17e27b6633d3bbf646137632e9",
-      "sourceName": "contracts/TEMPL.sol",
+    "/workspace/templ/contracts/TemplErrors.sol": {
+      "lastModificationDate": 1757009088898,
+      "contentHash": "a733a9093bbe6ba1f49a7f290d3bb0a8",
+      "sourceName": "contracts/TemplErrors.sol",
       "solcConfig": {
         "version": "0.8.23",
         "settings": {
@@ -480,19 +521,52 @@
           }
         }
       },
-      "imports": [
-        "@openzeppelin/contracts/token/ERC20/IERC20.sol",
-        "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol"
-      ],
+      "imports": [],
       "versionPragmas": [
         "^0.8.23"
       ],
       "artifacts": [
-        "TEMPL"
+        "TemplErrors"
+      ]
+    },
+    "/workspace/templ/node_modules/@openzeppelin/contracts/utils/ReentrancyGuard.sol": {
+      "lastModificationDate": 1757007890658,
+      "contentHash": "190613e556d509d9e9a0ea43dc5d891d",
+      "sourceName": "@openzeppelin/contracts/utils/ReentrancyGuard.sol",
+      "solcConfig": {
+        "version": "0.8.23",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "ReentrancyGuard"
       ]
     },
     "/workspace/templ/contracts/TestToken.sol": {
-      "lastModificationDate": 1756954353654,
+      "lastModificationDate": 1757007868043,
       "contentHash": "0539a5fc42f4aae46c8469208cacc0f5",
       "sourceName": "contracts/TestToken.sol",
       "solcConfig": {
@@ -527,45 +601,6 @@
       ],
       "artifacts": [
         "TestToken"
-      ]
-    },
-    "/workspace/templ/contracts/ReentrantToken.sol": {
-      "lastModificationDate": 1756954353654,
-      "contentHash": "b27e384c13ba7d20cb544de7baf95fe1",
-      "sourceName": "contracts/ReentrantToken.sol",
-      "solcConfig": {
-        "version": "0.8.23",
-        "settings": {
-          "optimizer": {
-            "enabled": true,
-            "runs": 200
-          },
-          "evmVersion": "paris",
-          "outputSelection": {
-            "*": {
-              "*": [
-                "abi",
-                "evm.bytecode",
-                "evm.deployedBytecode",
-                "evm.methodIdentifiers",
-                "metadata"
-              ],
-              "": [
-                "ast"
-              ]
-            }
-          }
-        }
-      },
-      "imports": [
-        "@openzeppelin/contracts/token/ERC20/ERC20.sol"
-      ],
-      "versionPragmas": [
-        "^0.8.23"
-      ],
-      "artifacts": [
-        "ITempl",
-        "ReentrantToken"
       ]
     }
   }
