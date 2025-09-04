@@ -4,6 +4,7 @@ setup: true
 
 orbs:
   path-filtering: circleci/path-filtering@0.1.4
+  continuation: circleci/continuation@2.0.1
 
 parameters:
   run_manual_tests:
@@ -12,6 +13,8 @@ parameters:
 
 workflows:
   filter:
+    when:
+      not: << pipeline.parameters.run_manual_tests >>
     jobs:
       - path-filtering/filter:
           name: check-paths
@@ -22,4 +25,9 @@ workflows:
             test/.* run_contracts true
             backend/.* run_app true
             frontend/.* run_app true
-            .* run_manual_tests << pipeline.parameters.run_manual_tests >>
+  manual_tests:
+    when: << pipeline.parameters.run_manual_tests >>
+    jobs:
+      - continuation/continue:
+          configuration_path: .circleci/continue.yml
+          parameters: '{"run_manual_tests": true}'
