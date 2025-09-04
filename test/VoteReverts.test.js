@@ -2,6 +2,7 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
 const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
+const { encodeWithdrawTreasuryDAO } = require("./utils/callDataBuilders");
 
 describe("Vote reverts", function () {
     let templ;
@@ -25,14 +26,11 @@ describe("Vote reverts", function () {
     });
 
     it("reverts when voting after endTime", async function () {
-        const iface = new ethers.Interface([
-            "function withdrawTreasuryDAO(address,uint256,string)"
-        ]);
-        const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
+        const callData = encodeWithdrawTreasuryDAO(
             member1.address,
             ethers.parseUnits("10", 18),
             "Test"
-        ]);
+        );
 
         await templ.connect(member1).createProposal(
             "Test Proposal",
