@@ -1,6 +1,7 @@
 // @ts-check
 import { BACKEND_URL } from './config.js';
 import { buildDelegateMessage, buildMuteMessage } from '../../shared/signing.js';
+import { waitForConversation } from './xmtpHelpers.js';
 
 // Minimal debug logger usable in both browser and Node tests
 const __isDebug = (() => {
@@ -96,41 +97,8 @@ export async function deployTempl({
     return { contractAddress, group: null, groupId };
   }
   
-  // Multiple sync attempts to ensure we get the group
   dlog('Syncing conversations to find group', groupId);
-  
-  // Try syncing multiple times with a small delay
-  let group = null;
-  for (let i = 0; i < 6; i++) {
-    try { await xmtp.conversations?.sync?.(); } catch {}
-    try { await xmtp.preferences?.sync?.(); } catch {}
-    try { await xmtp.conversations.syncAll?.(['allowed','unknown','denied']); } catch {}
-    try {
-      group = await xmtp.conversations.getConversationById(groupId);
-    } catch (err) {
-      dlog('getConversationById failed:', err?.message || String(err));
-    }
-    if (!group) {
-      const conversations = await xmtp.conversations.list?.({ consentStates: ['allowed','unknown','denied'] }) || [];
-      dlog(`Sync attempt ${i + 1}: Found ${conversations.length} conversations; firstIds=`, conversations.slice(0,3).map(c=>c.id));
-      group = conversations.find(c => c.id === groupId);
-    }
-    if (group) {
-      dlog('Found group:', group.id, 'consent state:', group.consentState);
-      if (
-        group.consentState !== 'allowed' &&
-        typeof group.updateConsentState === 'function'
-      ) {
-        try {
-          await group.updateConsentState('allowed');
-        } catch (err) {
-          dlog('updateConsentState failed:', err?.message || String(err));
-        }
-      }
-      break;
-    }
-    if (i < 2) await new Promise((r) => setTimeout(r, 1000));
-  }
+  const group = await waitForConversation({ xmtp, groupId, retries: 6, delayMs: 1000 });
   if (!group) {
     console.error('Could not find group after creation; will rely on join step');
     return { contractAddress, group: null, groupId };
@@ -270,31 +238,7 @@ export async function sendMessage({ group, content }) {
 }
 
 async function finalizeJoin({ xmtp, groupId }) {
-  // Try multiple sync attempts — joins can be eventually consistent
-  let group = null;
-  for (let i = 0; i < 60; i++) {
-    try { await xmtp.conversations?.sync?.(); } catch {}
-    try { await xmtp.preferences?.sync?.(); } catch {}
-    try { await xmtp.conversations.syncAll?.(['allowed','unknown','denied']); } catch {}
-    try {
-      group = await xmtp.conversations.getConversationById(groupId);
-    } catch {}
-    if (!group) {
-      try {
-        const conversations = await xmtp.conversations.list?.({ consentStates: ['allowed','unknown','denied'] }) || [];
-        group = conversations.find((c) => c.id === groupId) || null;
-      } catch {}
-    }
-    if (group) break;
-    await new Promise((r) => setTimeout(r, 1000));
-  }
-  if (!group) return { group: null, groupId };
-  if (
-    group.consentState !== 'allowed' &&
-    typeof group.updateConsentState === 'function'
-  ) {
-    try { await group.updateConsentState('allowed'); } catch {}
-  }
+  const group = await waitForConversation({ xmtp, groupId });
   return { group, groupId };
 }
 export async function proposeVote({
