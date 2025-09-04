@@ -21,6 +21,18 @@ The frontend calls the contract to purchase membership, then asks the backend to
 the wallet into the group. The backend can also watch contract events and forward
 proposal or vote updates to the chat.
 
+```mermaid
+sequenceDiagram
+    participant Frontend
+    participant Backend
+    participant Contracts
+
+    Frontend->>Contracts: purchaseAccess()
+    Frontend->>Backend: requestInvite()
+    Contracts-->>Backend: Purchase event
+    Backend-->>Frontend: Invite & updates
+```
+
 ## Documentation
 Use the docs below to dive into each component:
 
