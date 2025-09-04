@@ -2,6 +2,7 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
 const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
+const { encodeSweepMemberRewardRemainderDAO } = require("./utils/callDataBuilders");
 
 describe("Member Pool Distribution - Exhaustive Tests", function () {
     let templ;
@@ -433,9 +434,8 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
             expect(claimable).to.be.gt(0);
 
             // DAO sweeps remaining pool balance
-            const callData = templ.interface.encodeFunctionData(
-                "sweepMemberRewardRemainderDAO",
-                [priest.address]
+            const callData = encodeSweepMemberRewardRemainderDAO(
+                priest.address
             );
             await templ.connect(member1).createProposal(
                 "Sweep Pool",

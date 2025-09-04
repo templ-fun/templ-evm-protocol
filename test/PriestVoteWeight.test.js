@@ -2,6 +2,10 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
 const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
+const {
+    encodeSetPausedDAO,
+    encodeWithdrawTreasuryDAO,
+} = require("./utils/callDataBuilders");
 
 describe("Priest Vote Weight Feature", function () {
     let templ;
@@ -129,10 +133,7 @@ describe("Priest Vote Weight Feature", function () {
             await templ.connect(member1).purchaseAccess();
 
             // Create proposal
-            const iface = new ethers.Interface([
-                "function setPausedDAO(bool)"
-            ]);
-            const callData = iface.encodeFunctionData("setPausedDAO", [true]);
+            const callData = encodeSetPausedDAO(true);
 
             await templ.connect(priest).createProposal(
                 "Test Proposal",
@@ -176,10 +177,7 @@ describe("Priest Vote Weight Feature", function () {
             expect(await templ.getMemberCount()).to.equal(10);
 
             // Create proposal
-            const iface = new ethers.Interface([
-                "function setPausedDAO(bool)"
-            ]);
-            const callData = iface.encodeFunctionData("setPausedDAO", [true]);
+            const callData = encodeSetPausedDAO(true);
 
             await templ.connect(priest).createProposal(
                 "Test Proposal",
@@ -216,14 +214,11 @@ describe("Priest Vote Weight Feature", function () {
             }
 
             // Create proposal
-            const iface = new ethers.Interface([
-                "function withdrawTreasuryDAO(address,uint256,string)"
-            ]);
-            const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
+            const callData = encodeWithdrawTreasuryDAO(
                 priest.address,
                 ethers.parseUnits("10", 18),
                 "Priest withdrawal"
-            ]);
+            );
 
             await templ.connect(priest).createProposal(
                 "Priest Withdrawal",
