@@ -2,11 +2,15 @@
 
 This document explains every place we persist state across the TEMPL stack, how XMTP client storage works in Node versus the browser, what OPFS is, and why this matters for end-to-end (E2E) versus integration tests. If you understand the smart contract but not how XMTP storage is wired, start here.
 
+| Storage | Location | Encryption | Usage |
+| --- | --- | --- | --- |
+| Backend DB | `backend/groups.db` (override with `DB_PATH`) | none | Maps contracts to XMTP `groupId` and moderation data |
+| XMTP Node DB | `xmtp-<env>-<inboxId>.db3` in process CWD | SQLCipher via `dbEncryptionKey` | Client identity, installations, and conversation metadata |
+| XMTP Browser DB | OPFS `xmtp-<env>-<inboxId>.db3` per origin | none | Browser client identity and metadata; handle limits |
+
 ## Backend DB
 
-The backend service uses a SQLite database to map TEMPL contracts to their XMTP group IDs and to track moderation. A lightweight in-memory cache mirrors the groups table so the server can restore state on boot. During E2E runs the database path can be overridden or cleared.
-
-- File: `backend/groups.db` by default. In E2E we override with `DB_PATH=e2e-groups.db` and clear it when `CLEAR_DB=1`.
+The backend service uses a SQLite database (`backend/groups.db` by default) to map TEMPL contracts to their XMTP group IDs and to track moderation. A lightweight in-memory cache mirrors the groups table so the server can restore state on boot. During E2E runs the path can be overridden with `DB_PATH` or cleared with `CLEAR_DB=1`.
 - Tables and meaning:
   - `groups(contract TEXT PRIMARY KEY, groupId TEXT, priest TEXT)`
     - Maps on-chain TEMPL contract address to the XMTP group conversation ID and the priest’s EOA address.
@@ -19,24 +23,18 @@ The backend service uses a SQLite database to map TEMPL contracts to their XMTP 
 
 ## XMTP Node DB
 
-The XMTP Node SDK persists client identity and message metadata in SQLCipher databases stored in the process's working directory. Each inboxId uses one database that can be reused across runs, and the database is encrypted when provided a 32‑byte key. Both the backend service and integration tests rely on this storage.
+The XMTP Node SDK persists client identity and message metadata in SQLCipher databases named `xmtp-<env>-<inboxId>.db3` in the process's working directory. Each inboxId reuses its database across runs when opened with the same `dbEncryptionKey`. Both the backend service and integration tests rely on this storage.
 
-- Files: `xmtp-<env>-<inboxId>.db3` (+ `-wal`/`-shm`) in the process CWD. You'll see these at repo root during dev (e.g., `xmtp-dev-<hash>.db3`).
-- Encryption: SQLCipher when a `dbEncryptionKey` is provided. The Browser SDK does NOT encrypt.
-- Purpose: stores the client’s identity state, installations, and conversation/message metadata. It is not our schema; it's managed by the XMTP SDK.
-- Identity model:
+### Identity model
   - `inboxId`: stable per “user” on XMTP, derived from the identity ledger for an EOA/SCW.
   - Installations: each inbox can have multiple installations (devices/agents). On the dev network, installs are limited (10 installations per inbox).
   - When creating an XMTP client, the Node SDK locates/creates a local DB for the inboxId and reuses it.
 
 ## XMTP Browser DB
 
-The Browser SDK stores its SQLite database inside the Origin Private File System (OPFS), a per-origin sandbox not visible on the host OS. OPFS uses exclusive access handles, so creating multiple clients or rapidly opening and closing handles can trigger `NoModificationAllowedError`. The browser implementation cannot encrypt the database even when a key is supplied.
+The Browser SDK stores its SQLite database inside the Origin Private File System (OPFS), a per-origin sandbox not visible on the host OS. The SDK still names the file `xmtp-dev-<inboxId>.db3`, but it lives inside OPFS rather than on disk and cannot be encrypted even when a key is supplied. OPFS uses exclusive access handles, so creating multiple clients or rapidly opening and closing handles can trigger `NoModificationAllowedError`.
 
-- Storage: OPFS via the browser’s Storage Foundation API.
-- Path: the SDK still names the DB like `xmtp-dev-<inboxId>.db3` but it lives inside OPFS, not on disk.
-- Encryption: none (Browser SDK cannot use `dbEncryptionKey` for actual encryption).
-- Important behavior:
+### Important behavior
   - OPFS uses “synchronous access handles” that are exclusive. If two handles or a writable stream are opened for the same file, further attempts can fail with `NoModificationAllowedError: createSyncAccessHandle` until the handle is released.
   - Don’t spin up multiple XMTP clients for the same inboxId concurrently in the browser.
   - Avoid repeatedly creating and tearing down clients in quick succession, which increases the chance of handle contention.
