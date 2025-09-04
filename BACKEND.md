@@ -20,6 +20,8 @@ ENABLE_DEBUG_ENDPOINTS=1
 XMTP_ENV=dev # XMTP network: dev|production|local (default: dev)
 # Optional for tests to bypass network checks
 DISABLE_XMTP_WAIT=1
+# Optional cap on XMTP client rotation attempts
+XMTP_MAX_ATTEMPTS=5
 ```
 
 The server will throw an error on startup if `RPC_URL` or `BOT_PRIVATE_KEY` are missing.

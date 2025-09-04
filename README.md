@@ -122,6 +122,7 @@ Use the docs below to dive into each component:
 | `ENABLE_DEBUG_ENDPOINTS` | Enable backend debug endpoints | `backend/.env` |
 | `PORT` | Backend HTTP server port | `backend/.env` |
 | `DISABLE_XMTP_WAIT` | Skip XMTP readiness checks in tests | `backend/.env` |
+| `XMTP_MAX_ATTEMPTS` | Max XMTP client rotation attempts | `backend/.env` |
 
 ## Deploying to production
 See [Environment Variables](#environment-variables) for descriptions of required configuration.
