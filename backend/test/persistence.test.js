@@ -1,15 +1,9 @@
 import test from 'node:test';
 import request from 'supertest';
-import { Wallet } from 'ethers';
 import { mkdtemp } from 'fs/promises';
 import path from 'path';
 import os from 'os';
-import { createApp } from '../src/server.js';
-
-const wallets = {
-  priest: new Wallet('0x' + '2'.repeat(64)),
-  member: new Wallet('0x' + '3'.repeat(64))
-};
+import { makeApp, wallets } from './helpers.js';
 
 const addresses = {
   contract: '0x0000000000000000000000000000000000000001',
@@ -33,7 +27,7 @@ test('reloads groups from disk on restart', async () => {
   };
   const hasPurchased = async () => true;
 
-  let app = createApp({ xmtp: xmtp1, hasPurchased, dbPath });
+  let app = makeApp({ xmtp: xmtp1, hasPurchased, dbPath });
   const createSig = await wallets.priest.signMessage(
     `create:${addresses.contract}`
   );
@@ -51,7 +45,7 @@ test('reloads groups from disk on restart', async () => {
     inboxId: 'test-inbox-id',
     conversations: { getConversationById: async () => fakeGroup } 
   };
-  app = createApp({ xmtp: xmtp2, hasPurchased, dbPath });
+  app = makeApp({ xmtp: xmtp2, hasPurchased, dbPath });
   await new Promise((r) => setTimeout(r, 10));
 
   const joinSig = await wallets.member.signMessage(
@@ -91,7 +85,7 @@ test('returns 500 when persistence fails', async () => {
     close() {}
   };
 
-  const app = createApp({ xmtp, hasPurchased, db: failingDb });
+  const app = makeApp({ xmtp, hasPurchased, db: failingDb });
 
   const sig = await wallets.priest.signMessage(`create:${addresses.contract}`);
   await request(app)

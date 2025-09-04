@@ -2,18 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import { EventEmitter } from 'node:events';
-import { Wallet } from 'ethers';
-import { createApp } from '../src/server.js';
+import { makeApp, wallets } from './helpers.js';
 import { buildDelegateMessage, buildMuteMessage } from '../../shared/signing.js';
-
-const makeApp = (opts) => createApp({ dbPath: ':memory:', ...opts });
-
-const wallets = {
-  priest: new Wallet('0x' + '2'.repeat(64)),
-  member: new Wallet('0x' + '3'.repeat(64)),
-  stranger: new Wallet('0x' + '4'.repeat(64)),
-  delegate: new Wallet('0x' + '5'.repeat(64))
-};
 
 const addresses = {
   contract: '0x0000000000000000000000000000000000000001',

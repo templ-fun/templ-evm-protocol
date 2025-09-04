@@ -2,12 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import { Client } from '@xmtp/node-sdk';
-import { createApp } from '../src/server.js';
+import { makeApp } from './helpers.js';
 
 // Enable debug endpoints so /debug/inbox-state is available during tests
 process.env.ENABLE_DEBUG_ENDPOINTS = '1';
-
-const makeApp = (opts = {}) => createApp({ dbPath: ':memory:', ...opts });
 
 const basePath = '/debug/inbox-state';
 
