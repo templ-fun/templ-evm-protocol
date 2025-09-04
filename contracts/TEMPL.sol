@@ -3,73 +3,7 @@ pragma solidity ^0.8.23;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-
-/// @notice Thrown when a reentrant call is detected.
-error ReentrantCall();
-/// @notice Thrown when the caller has not purchased membership.
-error NotMember();
-/// @notice Thrown when a function restricted to the DAO is called externally.
-error NotDAO();
-/// @notice Thrown when an action is attempted while the contract is paused.
-error ContractPausedError();
-/// @notice Thrown when attempting to purchase access more than once.
-error AlreadyPurchased();
-/// @notice Thrown when an account lacks sufficient token balance.
-error InsufficientBalance();
-/// @notice Thrown when a proposal is created without a title.
-error TitleRequired();
-/// @notice Thrown when a proposal is created without a description.
-error DescriptionRequired();
-/// @notice Thrown when a proposal is created without call data.
-error CallDataRequired();
-/// @notice Thrown when provided call data is too short.
-error CallDataTooShort();
-/// @notice Thrown when an address already has an active proposal.
-error ActiveProposalExists();
-/// @notice Thrown when a voting period is shorter than allowed.
-error VotingPeriodTooShort();
-/// @notice Thrown when a voting period exceeds the maximum allowed.
-error VotingPeriodTooLong();
-/// @notice Thrown when referencing a proposal that does not exist.
-error InvalidProposal();
-/// @notice Thrown when attempting to vote after a proposal's voting period has ended.
-error VotingEnded();
-/// @notice Thrown when a voter attempts to vote more than once.
-error AlreadyVoted();
-/// @notice Thrown when a voter joined after the proposal was created.
-error JoinedAfterProposal();
-/// @notice Thrown when trying to execute logic before voting has ended.
-error VotingNotEnded();
-/// @notice Thrown when attempting to execute a proposal that has already been executed.
-error AlreadyExecuted();
-/// @notice Thrown when attempting to execute a proposal that did not pass.
-error ProposalNotPassed();
-/// @notice Thrown when a low-level call in proposal execution fails.
-error ProposalExecutionFailed();
-/// @notice Thrown when the recipient address is the zero address.
-error InvalidRecipient();
-/// @notice Thrown when a required amount parameter is zero.
-error AmountZero();
-/// @notice Thrown when the treasury has insufficient balance.
-error InsufficientTreasuryBalance();
-/// @notice Thrown when the treasury has no funds available.
-error NoTreasuryFunds();
-/// @notice Thrown when the entry fee is below the minimum threshold.
-error EntryFeeTooSmall();
-/// @notice Thrown when the entry fee is not a multiple of ten.
-error InvalidEntryFee();
-/// @notice Thrown when there are no rewards available to claim.
-error NoRewardsToClaim();
-/// @notice Thrown when the member pool lacks sufficient funds.
-error InsufficientPoolBalance();
-/// @notice Thrown when a limit is zero or exceeds the maximum allowed.
-error LimitOutOfRange();
-/// @notice Thrown when non-zero balances remain during a transfer.
-error NonZeroBalances();
-/// @notice Thrown when the caller is the contract itself.
-error InvalidSender();
-/// @notice Thrown when provided call data does not match an allowed function signature.
-error InvalidCallData();
+import {TemplErrors} from "./TemplErrors.sol";
 
 /**
  * @title TEMPL - Token Entry Management Protocol with DAO Governance
@@ -78,12 +12,13 @@ error InvalidCallData();
  */
 contract TEMPL {
     using SafeERC20 for IERC20;
+    using TemplErrors for *;
     uint256 private constant _NOT_ENTERED = 1;
     uint256 private constant _ENTERED = 2;
     uint256 private _status;
     
     modifier nonReentrant() {
-        if (_status == _ENTERED) revert ReentrantCall();
+        if (_status == _ENTERED) revert TemplErrors.ReentrantCall();
         _status = _ENTERED;
         _;
         _status = _NOT_ENTERED;
@@ -201,22 +136,22 @@ contract TEMPL {
     // event DAOExecuted removed with executeDAO elimination
     
     modifier onlyMember() {
-        if (!members[msg.sender].purchased) revert NotMember();
+        if (!members[msg.sender].purchased) revert TemplErrors.NotMember();
         _;
     }
 
     modifier onlyDAO() {
-        if (msg.sender != address(this)) revert NotDAO();
+        if (msg.sender != address(this)) revert TemplErrors.NotDAO();
         _;
     }
 
     modifier notSelf() {
-        if (msg.sender == address(this)) revert InvalidSender();
+        if (msg.sender == address(this)) revert TemplErrors.InvalidSender();
         _;
     }
 
     modifier whenNotPaused() {
-        if (paused) revert ContractPausedError();
+        if (paused) revert TemplErrors.ContractPausedError();
         _;
     }
     
@@ -238,13 +173,13 @@ contract TEMPL {
         uint256 _priestWeightThreshold
     ) {
         if (_priest == address(0) || _protocolFeeRecipient == address(0) || _token == address(0)) {
-            revert InvalidRecipient();
+            revert TemplErrors.InvalidRecipient();
         }
-        if (_entryFee == 0) revert AmountZero();
-        if (_entryFee < 10) revert EntryFeeTooSmall();
-        if (_entryFee % 10 != 0) revert InvalidEntryFee();
-        if (_priestVoteWeight == 0) revert AmountZero();
-        if (_priestWeightThreshold == 0) revert AmountZero();
+        if (_entryFee == 0 || _priestVoteWeight == 0 || _priestWeightThreshold == 0) {
+            revert TemplErrors.AmountZero();
+        }
+        if (_entryFee < 10) revert TemplErrors.EntryFeeTooSmall();
+        if (_entryFee % 10 != 0) revert TemplErrors.InvalidEntryFee();
         
         priest = _priest;
         protocolFeeRecipient = _protocolFeeRecipient;
@@ -265,12 +200,12 @@ contract TEMPL {
      */
     function purchaseAccess() external whenNotPaused notSelf nonReentrant {
         Member storage m = members[msg.sender];
-        if (m.purchased) revert AlreadyPurchased();
+        if (m.purchased) revert TemplErrors.AlreadyPurchased();
 
         uint256 thirtyPercent = (entryFee * 30) / 100;
         uint256 tenPercent = (entryFee * 10) / 100;
 
-        if (IERC20(accessToken).balanceOf(msg.sender) < entryFee) revert InsufficientBalance();
+        if (IERC20(accessToken).balanceOf(msg.sender) < entryFee) revert TemplErrors.InsufficientBalance();
 
         m.purchased = true;
         m.timestamp = block.timestamp;
@@ -333,10 +268,10 @@ contract TEMPL {
         bytes memory _callData,
         uint256 _votingPeriod
     ) external onlyMember returns (uint256) {
-        if (bytes(_title).length == 0) revert TitleRequired();
-        if (bytes(_description).length == 0) revert DescriptionRequired();
-        if (_callData.length == 0) revert CallDataRequired();
-        if (_callData.length < 4) revert CallDataTooShort();
+        if (bytes(_title).length == 0) revert TemplErrors.TitleRequired();
+        if (bytes(_description).length == 0) revert TemplErrors.DescriptionRequired();
+        if (_callData.length == 0) revert TemplErrors.CallDataRequired();
+        if (_callData.length < 4) revert TemplErrors.CallDataTooShort();
         // Restrict proposals to allowed DAO function selectors
         bytes4 selector;
         assembly {
@@ -351,13 +286,13 @@ contract TEMPL {
             selector == this.withdrawETHDAO.selector ||
             selector == this.sweepMemberRewardRemainderDAO.selector
         );
-        if (!allowed) revert InvalidCallData();
+        if (!allowed) revert TemplErrors.InvalidCallData();
         
         if (hasActiveProposal[msg.sender]) {
             uint256 existingId = activeProposalId[msg.sender];
             Proposal storage existingProposal = proposals[existingId];
             if (!existingProposal.executed && block.timestamp < existingProposal.endTime) {
-                revert ActiveProposalExists();
+                revert TemplErrors.ActiveProposalExists();
             } else {
                 hasActiveProposal[msg.sender] = false;
                 activeProposalId[msg.sender] = 0;
@@ -368,8 +303,8 @@ contract TEMPL {
         if (period == 0) {
             period = DEFAULT_VOTING_PERIOD;
         }
-        if (period < MIN_VOTING_PERIOD) revert VotingPeriodTooShort();
-        if (period > MAX_VOTING_PERIOD) revert VotingPeriodTooLong();
+        if (period < MIN_VOTING_PERIOD) revert TemplErrors.VotingPeriodTooShort();
+        if (period > MAX_VOTING_PERIOD) revert TemplErrors.VotingPeriodTooLong();
         
         uint256 proposalId = proposalCount++;
         Proposal storage proposal = proposals[proposalId];
@@ -401,14 +336,14 @@ contract TEMPL {
      * @param _support Vote choice (true = yes, false = no)
      */
     function vote(uint256 _proposalId, bool _support) external onlyMember {
-        if (_proposalId >= proposalCount) revert InvalidProposal();
+        if (_proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
         Proposal storage proposal = proposals[_proposalId];
 
-        if (block.timestamp >= proposal.endTime) revert VotingEnded();
-        if (proposal.hasVoted[msg.sender]) revert AlreadyVoted();
+        if (block.timestamp >= proposal.endTime) revert TemplErrors.VotingEnded();
+        if (proposal.hasVoted[msg.sender]) revert TemplErrors.AlreadyVoted();
 
         if (members[msg.sender].timestamp >= proposal.createdAt)
-            revert JoinedAfterProposal();
+            revert TemplErrors.JoinedAfterProposal();
         
         proposal.hasVoted[msg.sender] = true;
         proposal.voteChoice[msg.sender] = _support;
@@ -433,13 +368,13 @@ contract TEMPL {
      * @param _proposalId Proposal to execute
      */
     function executeProposal(uint256 _proposalId) external nonReentrant {
-        if (_proposalId >= proposalCount) revert InvalidProposal();
+        if (_proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
         Proposal storage proposal = proposals[_proposalId];
 
-        if (block.timestamp < proposal.endTime) revert VotingNotEnded();
-        if (proposal.executed) revert AlreadyExecuted();
+        if (block.timestamp < proposal.endTime) revert TemplErrors.VotingNotEnded();
+        if (proposal.executed) revert TemplErrors.AlreadyExecuted();
 
-        if (proposal.yesVotes <= proposal.noVotes) revert ProposalNotPassed();
+        if (proposal.yesVotes <= proposal.noVotes) revert TemplErrors.ProposalNotPassed();
 
         proposal.executed = true;
 
@@ -482,7 +417,7 @@ contract TEMPL {
         );
 
         if (!allowed) {
-            revert InvalidCallData();
+            revert TemplErrors.InvalidCallData();
         }
 
         (bool success, bytes memory returnData) = address(this).call(callData);
@@ -492,7 +427,7 @@ contract TEMPL {
                     revert(add(returnData, 32), mload(returnData))
                 }
             } else {
-                revert ProposalExecutionFailed();
+                revert TemplErrors.ProposalExecutionFailed();
             }
         }
         return returnData;
@@ -509,12 +444,12 @@ contract TEMPL {
         uint256 amount,
         string memory reason
     ) external onlyDAO {
-        if (recipient == address(0)) revert InvalidRecipient();
-        if (amount == 0) revert AmountZero();
-        if (amount > treasuryBalance) revert InsufficientTreasuryBalance();
+        if (recipient == address(0)) revert TemplErrors.InvalidRecipient();
+        if (amount == 0) revert TemplErrors.AmountZero();
+        if (amount > treasuryBalance) revert TemplErrors.InsufficientTreasuryBalance();
 
         uint256 proposalId = executingProposalId;
-        if (proposalId >= proposalCount) revert InvalidProposal();
+        if (proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
 
         treasuryBalance -= amount;
 
@@ -532,11 +467,11 @@ contract TEMPL {
         address recipient,
         string memory reason
     ) external onlyDAO {
-        if (recipient == address(0)) revert InvalidRecipient();
-        if (treasuryBalance == 0) revert NoTreasuryFunds();
+        if (recipient == address(0)) revert TemplErrors.InvalidRecipient();
+        if (treasuryBalance == 0) revert TemplErrors.NoTreasuryFunds();
 
         uint256 proposalId = executingProposalId;
-        if (proposalId >= proposalCount) revert InvalidProposal();
+        if (proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
 
         uint256 amount = treasuryBalance;
         treasuryBalance = 0;
@@ -559,12 +494,12 @@ contract TEMPL {
         uint256 amount,
         string memory reason
     ) external onlyDAO {
-        if (token == address(0) || recipient == address(0)) revert InvalidRecipient();
-        if (amount == 0) revert AmountZero();
-        if (IERC20(token).balanceOf(address(this)) < amount) revert InsufficientBalance();
+        if (token == address(0) || recipient == address(0)) revert TemplErrors.InvalidRecipient();
+        if (amount == 0) revert TemplErrors.AmountZero();
+        if (IERC20(token).balanceOf(address(this)) < amount) revert TemplErrors.InsufficientBalance();
 
         uint256 proposalId = executingProposalId;
-        if (proposalId >= proposalCount) revert InvalidProposal();
+        if (proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
 
         emit TreasuryAction(proposalId, recipient, amount, reason);
 
@@ -582,17 +517,17 @@ contract TEMPL {
         uint256 amount,
         string memory reason
     ) external onlyDAO {
-        if (recipient == address(0)) revert InvalidRecipient();
-        if (amount == 0) revert AmountZero();
-        if (address(this).balance < amount) revert InsufficientBalance();
+        if (recipient == address(0)) revert TemplErrors.InvalidRecipient();
+        if (amount == 0) revert TemplErrors.AmountZero();
+        if (address(this).balance < amount) revert TemplErrors.InsufficientBalance();
 
         uint256 proposalId = executingProposalId;
-        if (proposalId >= proposalCount) revert InvalidProposal();
+        if (proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
 
         emit TreasuryAction(proposalId, recipient, amount, reason);
 
         (bool success, ) = payable(recipient).call{value: amount}("");
-        if (!success) revert ProposalExecutionFailed();
+        if (!success) revert TemplErrors.ProposalExecutionFailed();
     }
 
     // executeDAO and arbitrary external call support removed for security hardening
@@ -606,14 +541,14 @@ contract TEMPL {
         if (_token != address(0)) {
             if (_token != accessToken) {
                 if (treasuryBalance > 0 || memberPoolBalance > 0) {
-                    revert NonZeroBalances();
+                    revert TemplErrors.NonZeroBalances();
                 }
                 accessToken = _token;
             }
         }
         if (_entryFee > 0) {
-            if (_entryFee < 10) revert EntryFeeTooSmall();
-            if (_entryFee % 10 != 0) revert InvalidEntryFee();
+            if (_entryFee < 10) revert TemplErrors.EntryFeeTooSmall();
+            if (_entryFee % 10 != 0) revert TemplErrors.InvalidEntryFee();
             entryFee = _entryFee;
         }
         
@@ -649,9 +584,9 @@ contract TEMPL {
      */
     function claimMemberPool() external onlyMember nonReentrant {
         uint256 claimable = getClaimablePoolAmount(msg.sender);
-        if (claimable == 0) revert NoRewardsToClaim();
+        if (claimable == 0) revert TemplErrors.NoRewardsToClaim();
         uint256 distributable = memberPoolBalance - memberRewardRemainder;
-        if (distributable < claimable) revert InsufficientPoolBalance();
+        if (distributable < claimable) revert TemplErrors.InsufficientPoolBalance();
 
         members[msg.sender].rewardSnapshot = cumulativeMemberRewards;
         memberPoolClaims[msg.sender] += claimable;
@@ -667,9 +602,9 @@ contract TEMPL {
      * @param recipient Address to receive the swept remainder
      */
     function sweepMemberRewardRemainderDAO(address recipient) external onlyDAO {
-        if (recipient == address(0)) revert InvalidRecipient();
+        if (recipient == address(0)) revert TemplErrors.InvalidRecipient();
         uint256 amount = memberPoolBalance;
-        if (amount == 0) revert AmountZero();
+        if (amount == 0) revert TemplErrors.AmountZero();
         memberPoolBalance = 0;
         memberRewardRemainder = 0;
         IERC20(accessToken).safeTransfer(recipient, amount);
@@ -697,7 +632,7 @@ contract TEMPL {
         bool executed,
         bool passed
     ) {
-        if (_proposalId >= proposalCount) revert InvalidProposal();
+        if (_proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
         Proposal storage proposal = proposals[_proposalId];
         passed = block.timestamp >= proposal.endTime && proposal.yesVotes > proposal.noVotes;
 
@@ -721,7 +656,7 @@ contract TEMPL {
      * @return support Vote choice (true = yes, false = no)
      */
     function hasVoted(uint256 _proposalId, address _voter) external view returns (bool voted, bool support) {
-        if (_proposalId >= proposalCount) revert InvalidProposal();
+        if (_proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
         Proposal storage proposal = proposals[_proposalId];
         
         return (proposal.hasVoted[_voter], proposal.voteChoice[_voter]);
@@ -766,7 +701,7 @@ contract TEMPL {
         uint256[] memory proposalIds,
         bool hasMore
     ) {
-        if (limit == 0 || limit > 100) revert LimitOutOfRange();
+        if (limit == 0 || limit > 100) revert TemplErrors.LimitOutOfRange();
         if (offset >= proposalCount) {
             return (new uint256[](0), false);
         }
