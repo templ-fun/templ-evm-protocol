@@ -141,6 +141,8 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
       // Attempt connect
       console.log('Core Flow 1: Connect Wallet');
       await page.click('button:has-text("Connect Wallet")');
+      // Navigate to /create in the new routed UI
+      await page.click('button:has-text("Create")');
       try {
         await expect(page.locator('h2:has-text("Create Templ")')).toBeVisible();
         await expect(page.locator('.status')).toContainText('Wallet connected');
@@ -262,8 +264,9 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
           removeListener: () => {}
         };
       }, { address: addr });
-      // Reconnect as member
+      // Reconnect as member and navigate to Join route
       await page.click('button:has-text("Connect Wallet")');
+      await page.click('button:has-text("Join")');
       await expect(page.locator('.status')).toContainText('Messaging client ready', { timeout: 15000 });
       // Ensure browser installation is visible on XMTP infra before join (linearize readiness)
       try {
@@ -375,6 +378,11 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
       throw new Error('Browser did not discover group conversation');
     }
     console.log('✅ Browser discovered group conversation');
+    // Landing page should list created templs
+    await page.click('button:has-text("Home")');
+    await expect(page.locator('[data-testid="templ-list"]')).toBeVisible();
+    const templAddressLower = templAddress.toLowerCase();
+    await expect(page.locator(`[data-testid="templ-list"] [data-address="${templAddressLower}"]`)).toBeVisible();
     // Muting controls should not be visible for non-priests
     await expect(page.locator('.muting-controls')).toBeHidden();
     // Extra diagnostics right before messaging
@@ -399,29 +407,19 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
     const ensureBuy = new ethers.Contract(templAddress, templAbi, testWallet);
     await expect.poll(async () => await ensureBuy.hasAccess(testAddress), { timeout: 20000 }).toBe(true);
 
-    // Core Flow 4: Messaging (best-effort)
+    // Core Flow 4: Messaging — wait until connected, send, and assert render
     console.log('Core Flow 4: Messaging');
+    await page.click('button:has-text("Chat")');
+    await expect(page.locator('[data-testid="group-connected"]')).toBeVisible({ timeout: 60000 });
     const sendBtn = page.locator('[data-testid="chat-send"]');
-    let enabled = false;
-    for (let i = 0; i < 5; i++) {
-      try { if (await sendBtn.isEnabled({ timeout: 1000 })) { enabled = true; break; } }
-      catch {}
-      await page.waitForTimeout(1000);
-    }
-    if (enabled) {
-      const messageInput = page.locator('[data-testid="chat-input"]');
-      const body = 'Hello TEMPL!';
-      await messageInput.fill(body);
-      await expect(messageInput).toHaveValue(body);
-      await sendBtn.click();
-      console.log('Sent via UI');
-      // Try to observe in UI (best-effort)
-      try {
-        await expect(page.locator('.messages')).toContainText('Hello TEMPL!', { timeout: 15000 });
-      } catch {}
-    } else {
-      console.log('Send disabled (enforced)');
-    }
+    await expect(sendBtn).toBeEnabled({ timeout: 15000 });
+    const messageInput = page.locator('[data-testid="chat-input"]');
+    const body = 'Hello TEMPL! ' + Date.now();
+    await messageInput.fill(body);
+    await expect(messageInput).toHaveValue(body);
+    await sendBtn.click();
+    console.log('Sent via UI');
+    await expect(page.locator('.messages')).toContainText(body, { timeout: 30000 });
 
     // Core Flow 5–7: Proposal create, vote, execute (protocol-level)
     console.log('Core Flow 5–7: Proposal lifecycle via protocol');

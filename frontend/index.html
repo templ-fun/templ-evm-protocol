@@ -4,9 +4,23 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite + React</title>
+    <title>TEMPL</title>
+    <!-- TailwindCSS via CDN for now; can be replaced with local build later -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      window.tailwind = window.tailwind || {};
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              primary: '#facc15' // yellow-400
+            }
+          }
+        }
+      };
+    </script>
   </head>
-  <body>
+  <body class="bg-white text-black">
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

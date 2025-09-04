@@ -47,6 +47,19 @@ export default defineConfig({
         }
       },
     },
+    {
+      name: 'tech-demo-mobile',
+      use: {
+        ...devices['iPhone 13'],
+        viewport: { width: 390, height: 844 },
+        isMobile: true,
+        hasTouch: true,
+        video: {
+          mode: 'on',
+          size: { width: 390, height: 844 }
+        }
+      }
+    }
   ],
 
   webServer: [

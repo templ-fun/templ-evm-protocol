@@ -4,8 +4,39 @@ import { requireAddresses, verifySignature } from '../middleware/validate.js';
 import { waitForInboxReady } from '../xmtp/index.js';
 import { logger } from '../logger.js';
 
-export default function templsRouter({ xmtp, groups, persist, connectContract }) {
+export default function templsRouter({ xmtp, groups, persist, connectContract, database }) {
   const router = express.Router();
+
+  // List known templs from persistence
+  router.get('/templs', (req, res) => {
+    try {
+      // If a DB is available, read from it; otherwise enumerate the in-memory map
+      /** @type {{ contract: string, groupId: string|null, priest: string|null }[]} */
+      let rows = [];
+      try {
+        if (database?.prepare) {
+          rows = database
+            .prepare('SELECT contract, groupId, priest FROM groups ORDER BY contract')
+            .all()
+            .map((r) => ({ contract: r.contract, groupId: r.groupId || null, priest: r.priest || null }));
+        }
+      } catch {
+        rows = [];
+      }
+      // Merge with any runtime-only groups not yet persisted
+      try {
+        for (const [contract, rec] of groups.entries()) {
+          const key = String(contract).toLowerCase();
+          if (!rows.find((r) => r.contract.toLowerCase() === key)) {
+            rows.push({ contract: key, groupId: rec.groupId || rec.group?.id || null, priest: rec.priest || null });
+          }
+        }
+      } catch (e) { void e; }
+      res.json({ templs: rows });
+    } catch (err) {
+      res.status(500).json({ error: err?.message || String(err) });
+    }
+  });
 
   router.post(
     '/templs',
