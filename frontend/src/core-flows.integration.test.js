@@ -58,7 +58,7 @@ describe('core flows e2e', () => {
     );
     tokenArtifact = JSON.parse(
       readFileSync(
-        new URL('../../artifacts/contracts/TestToken.sol/TestToken.json', import.meta.url)
+        new URL('../../artifacts/contracts/mocks/TestToken.sol/TestToken.json', import.meta.url)
       )
     );
 
