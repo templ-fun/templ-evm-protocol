@@ -28,7 +28,10 @@ describe('templ flows', () => {
     const ethers = {
       ContractFactory: vi.fn().mockImplementation(() => factory)
     };
-    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ groupId: 'group-1' }) });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ groupId: 'group-1' })
+    });
     const xmtp = {
       inboxId: 'inbox-1',
       conversations: {
@@ -86,7 +89,7 @@ describe('templ flows', () => {
     const ethers = {
       ContractFactory: vi.fn().mockImplementation(() => factory)
     };
-    globalThis.fetch = vi.fn().mockResolvedValue({
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: false,
       status: 500,
       statusText: 'Server Error',
@@ -116,7 +119,7 @@ describe('templ flows', () => {
     const ethers = {
       ContractFactory: vi.fn().mockImplementation(() => factory)
     };
-    globalThis.fetch = vi.fn().mockResolvedValue({
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({})
     });
@@ -150,7 +153,10 @@ describe('templ flows', () => {
       return templContract;
     });
     const ethers = { Contract };
-    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ groupId: 'group-2' }) });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ groupId: 'group-2' })
+    });
     const xmtp = {
       inboxId: 'inbox-2',
       conversations: {
@@ -242,8 +248,8 @@ describe('templ flows', () => {
 
   it('delegateMute posts delegation to backend', async () => {
     const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
-    globalThis.fetch = vi
-      .fn()
+    vi
+      .spyOn(globalThis, 'fetch')
       .mockResolvedValue({ ok: true, json: () => Promise.resolve({ delegated: true }) });
     const result = await delegateMute({
       signer,
@@ -270,7 +276,7 @@ describe('templ flows', () => {
 
   it('delegateMute returns false on non-200', async () => {
     const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
-    globalThis.fetch = vi.fn().mockResolvedValue({ ok: false });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: false });
     const result = await delegateMute({
       signer,
       contractAddress: '0xTempl',
@@ -282,7 +288,7 @@ describe('templ flows', () => {
 
   it('delegateMute throws on invalid JSON response', async () => {
     const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
-    globalThis.fetch = vi.fn().mockResolvedValue({
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({})
     });
@@ -298,8 +304,8 @@ describe('templ flows', () => {
 
   it('muteMember posts mute to backend', async () => {
     const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
-    globalThis.fetch = vi
-      .fn()
+    vi
+      .spyOn(globalThis, 'fetch')
       .mockResolvedValue({ ok: true, json: () => Promise.resolve({ mutedUntil: 123 }) });
     const result = await muteMember({
       signer,
@@ -326,7 +332,7 @@ describe('templ flows', () => {
 
   it('muteMember returns 0 on non-200', async () => {
     const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
-    globalThis.fetch = vi.fn().mockResolvedValue({ ok: false });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: false });
     const result = await muteMember({
       signer,
       contractAddress: '0xTempl',
@@ -338,7 +344,7 @@ describe('templ flows', () => {
 
   it('muteMember throws on invalid JSON response', async () => {
     const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
-    globalThis.fetch = vi.fn().mockResolvedValue({
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({})
     });
@@ -353,8 +359,8 @@ describe('templ flows', () => {
   });
 
   it('fetchActiveMutes queries backend for mutes', async () => {
-    globalThis.fetch = vi
-      .fn()
+    vi
+      .spyOn(globalThis, 'fetch')
       .mockResolvedValue({
         ok: true,
         json: () =>
