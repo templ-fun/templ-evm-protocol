@@ -33,6 +33,7 @@ flowchart LR
 
 ## 2. Pay-to-join
 Members sign a join message, and the backend verifies purchase before inviting them.
+See [CONTRACTS.md#economic-model](CONTRACTS.md#economic-model) for membership fee split details.
 ```mermaid
 flowchart LR
     F[Frontend] -->|purchaseAccess| C[Contract]
@@ -172,24 +173,6 @@ sequenceDiagram
     C->>T: withdrawTreasury(amount)
     T->>R: transfer(amount)
     C-->>M: ProposalExecuted(id, success)
-```
-
-## Purchase Distribution (On-Chain)
-Entry fees distribute among burn, treasury, member pool, and protocol.
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant C as Contract
-    participant Burn as Burn (0xdead)
-    participant T as Treasury
-    participant Pool as Member Pool
-    participant R as Protocol
-    U->>C: purchaseAccess()
-    C->>Burn: 30% burn
-    C->>T: 30% treasury
-    C->>Pool: 30% pool
-    C->>R: 10% protocol
-    C-->>U: membership recorded
 ```
 
 ## Backend Endpoints & Signatures
