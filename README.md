@@ -3,10 +3,10 @@
 DAO‑governed token‑gated private groups with onchain treasury management and XMTP messaging
 
 <p align="center">
-<img width="300" alt="templ logo" src="https://github.com/user-attachments/assets/fa3513b4-75e4-4dbf-a1fb-73e9e27d766f" />
+<img width="300" alt="TEMPL logo" src="https://github.com/user-attachments/assets/fa3513b4-75e4-4dbf-a1fb-73e9e27d766f" />
 </p>
 <p align="center">
-<a href="https://templ.fun">templ.fun</a> 
+<a href="https://templ.fun">TEMPL.fun</a>
 </p>
 
 ## Architecture
@@ -145,17 +145,7 @@ See [Environment Variables](#environment-variables) for descriptions of required
 5. Build the frontend (`npm --prefix frontend run build`) and serve the static files.
 
 ## Core flows
-1. **Templ creation** – deploy contract and create a private XMTP group with the priest added at creation time.
-2. **Pay‑to‑join** – wallet calls `purchaseAccess` and backend invites it into the group.
-3. **Messaging** – members send and receive XMTP messages in the group chat.
-4. **Priest muting** – priest can silence members or delegate that power to
-   other moderators via the backend. Each mute is recorded in SQLite with
-   escalating durations of 1 hour, 1 day, 1 week, 1 month and finally
-   permanent after the fifth strike. Frontends query the backend for active
-   mutes and hide messages from muted addresses.
-5. **Proposal creation** – any member drafts a proposal to call one of the allowlisted DAO actions (pause/unpause, update config, withdraw treasury, sweep remainder). The backend rebroadcasts ProposalCreated as JSON to the group.
-6. **Voting** – members cast yes/no votes and see live tallies as events arrive.
-7. **Proposal execution** – proposals that pass execute the allowlisted action atomically.
+Core flows cover **TEMPL creation** with contract deployment and a private XMTP group, pay‑to‑join onboarding where `purchaseAccess` triggers an invitation, ongoing group messaging, priest‑controlled muting with escalating durations, proposal drafting for allowlisted actions with backend rebroadcasts, live yes/no voting, and atomic execution of passing proposals. Full diagrams are in [CORE_FLOW_DOCS.MD](./CORE_FLOW_DOCS.MD).
 
 For auditing guides, continue with the docs linked above.
 
