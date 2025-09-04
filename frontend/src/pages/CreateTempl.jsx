@@ -3,10 +3,11 @@ import { ethers } from 'ethers';
 import templArtifact from '../contracts/TEMPL.json';
 import { deployTempl } from '../flows.js';
 
-export default function CreateTempl({ walletAddress, signer, xmtp, onCreated }) {
-  const [name, setName] = useState('');
+export default function CreateTempl({ walletAddress, signer, xmtp, onCreated, setStatus }) {
   const [tokenAddress, setTokenAddress] = useState('');
+  const [protocolFeeRecipient, setProtocolFeeRecipient] = useState(walletAddress || '');
   const [entryFee, setEntryFee] = useState('');
+  const [deployInfo, setDeployInfo] = useState(null);
 
   async function handleCreate() {
     if (!signer || !walletAddress) return;
@@ -17,11 +18,13 @@ export default function CreateTempl({ walletAddress, signer, xmtp, onCreated }) 
         signer,
         walletAddress,
         tokenAddress,
-        protocolFeeRecipient: walletAddress,
+        protocolFeeRecipient,
         entryFee,
         templArtifact,
       });
-      onCreated({ templAddress: res.contractAddress, groupId: res.groupId, name });
+      setDeployInfo(res);
+      setStatus((s) => [...s, 'Templ deployed']);
+      onCreated({ templAddress: res.contractAddress, groupId: res.groupId });
     } catch (err) {
       console.error(err);
     }
@@ -29,23 +32,30 @@ export default function CreateTempl({ walletAddress, signer, xmtp, onCreated }) 
 
   return (
     <div>
-      <h1>Hello Creator!</h1>
+      <h2>Create Templ</h2>
       <input
-        placeholder="What's your temple name?"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-      />
-      <input
-        placeholder="What's the ERC20 used for buying keys?"
+        placeholder="Token address"
         value={tokenAddress}
         onChange={(e) => setTokenAddress(e.target.value)}
       />
       <input
-        placeholder="What's the cost to join?"
+        placeholder="Protocol fee recipient"
+        value={protocolFeeRecipient}
+        onChange={(e) => setProtocolFeeRecipient(e.target.value)}
+      />
+      <input
+        placeholder="Entry fee"
         value={entryFee}
         onChange={(e) => setEntryFee(e.target.value)}
       />
-      <button onClick={handleCreate}>connect wallet and create</button>
+      <button onClick={handleCreate}>Deploy</button>
+      {deployInfo && (
+        <div className="deploy-info">
+          Contract: {deployInfo.contractAddress}
+          <br />
+          Group ID: {deployInfo.groupId}
+        </div>
+      )}
     </div>
   );
 }

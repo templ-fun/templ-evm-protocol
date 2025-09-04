@@ -9,7 +9,7 @@ import {
   watchProposals,
 } from '../flows.js';
 
-export default function Chat({ walletAddress, signer, xmtp, session }) {
+export default function Chat({ walletAddress, signer, xmtp, session, setStatus }) {
   const [group, setGroup] = useState(null);
   const [messages, setMessages] = useState([]);
   const [messageInput, setMessageInput] = useState('');
@@ -50,6 +50,7 @@ export default function Chat({ walletAddress, signer, xmtp, session }) {
             ]);
           }
         })();
+        setStatus((s) => [...s, 'Group connected']);
       } catch (err) {
         console.error(err);
       }
@@ -59,7 +60,7 @@ export default function Chat({ walletAddress, signer, xmtp, session }) {
       cancelled = true;
       stream?.return?.();
     };
-  }, [xmtp, session]);
+    }, [xmtp, session, setStatus]);
 
   // Load on-chain stats and proposals
   useEffect(() => {

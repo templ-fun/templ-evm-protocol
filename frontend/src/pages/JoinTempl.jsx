@@ -3,7 +3,7 @@ import { ethers } from 'ethers';
 import templArtifact from '../contracts/TEMPL.json';
 import { purchaseAndJoin } from '../flows.js';
 
-export default function JoinTempl({ walletAddress, signer, xmtp, onJoined }) {
+export default function JoinTempl({ walletAddress, signer, xmtp, onJoined, setStatus }) {
   const [templAddress, setTemplAddress] = useState('');
 
   async function handleJoin() {
@@ -17,6 +17,7 @@ export default function JoinTempl({ walletAddress, signer, xmtp, onJoined }) {
         templAddress,
         templArtifact,
       });
+      setStatus((s) => [...s, 'Joined templ']);
       onJoined({ templAddress, groupId: res.groupId });
     } catch (err) {
       console.error(err);
@@ -25,13 +26,13 @@ export default function JoinTempl({ walletAddress, signer, xmtp, onJoined }) {
 
   return (
     <div>
-      <h1>Hello Participant!</h1>
+      <h2>Join Templ</h2>
       <input
-        placeholder="What's your temple address?"
+        placeholder="Contract address"
         value={templAddress}
         onChange={(e) => setTemplAddress(e.target.value)}
       />
-      <button onClick={handleJoin}>connect wallet and pay to join</button>
+      <button onClick={handleJoin}>Purchase & Join</button>
     </div>
   );
 }

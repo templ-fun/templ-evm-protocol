@@ -13,6 +13,7 @@ function App() {
   const [sessions, setSessions] = useState([]);
   const [currentSession, setCurrentSession] = useState(null);
   const [view, setView] = useState('create');
+  const [status, setStatus] = useState([]);
 
   async function connectWallet() {
     if (!window.ethereum) return;
@@ -22,6 +23,7 @@ function App() {
     setSigner(signer);
     const address = await signer.getAddress();
     setWalletAddress(address);
+    setStatus(['Wallet connected']);
 
     const forcedEnv = import.meta.env.VITE_XMTP_ENV?.trim();
     const xmtpEnv =
@@ -70,6 +72,7 @@ function App() {
       localStorage.setItem(storageKey, String(stableNonce));
     } catch {}
     setXmtp(client);
+    setStatus((s) => [...s, 'Messaging client ready']);
   }
 
   function handleCreated(session) {
@@ -91,6 +94,7 @@ function App() {
       {!walletAddress && (
         <button onClick={connectWallet}>Connect Wallet</button>
       )}
+      <div className="status">{status.join(' ')}</div>
       <nav>
         <button onClick={() => setView('create')}>Create</button>
         <button onClick={() => setView('join')}>Join</button>
@@ -104,6 +108,7 @@ function App() {
           signer={signer}
           xmtp={xmtp}
           onCreated={handleCreated}
+          setStatus={setStatus}
         />
       )}
       {view === 'join' && (
@@ -112,6 +117,7 @@ function App() {
           signer={signer}
           xmtp={xmtp}
           onJoined={handleJoined}
+          setStatus={setStatus}
         />
       )}
       {view === 'chat' && currentSession && (
@@ -138,6 +144,7 @@ function App() {
             signer={signer}
             xmtp={xmtp}
             session={currentSession}
+            setStatus={setStatus}
           />
         </div>
       )}
