@@ -1,33 +1,19 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { deployTempl } = require("./utils/deploy");
 
 describe("Self Purchase Guard", function () {
   const ENTRY_FEE = ethers.parseUnits("100", 18);
   let templ, token;
   let owner, priest, member;
+  let accounts;
 
   beforeEach(async function () {
-    [owner, priest, member] = await ethers.getSigners();
+    ({ templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE }));
+    [owner, priest, member] = accounts;
 
-    const Token = await ethers.getContractFactory("TestToken");
-    token = await Token.deploy("Test Token", "TEST", 18);
-    await token.waitForDeployment();
-
-    const TEMPL = await ethers.getContractFactory("TEMPL");
-    templ = await TEMPL.deploy(
-      priest.address,
-      priest.address,
-      await token.getAddress(),
-      ENTRY_FEE,
-      10,
-      10
-    );
-    await templ.waitForDeployment();
-
-    // Mint tokens to member and approve
     await token.mint(member.address, ethers.parseUnits("1000", 18));
     await token.connect(member).approve(await templ.getAddress(), ENTRY_FEE);
-    // Member purchase to seed treasury
     await templ.connect(member).purchaseAccess();
   });
 

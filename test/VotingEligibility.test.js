@@ -1,34 +1,19 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { deployTempl } = require("./utils/deploy");
 
 describe("Voting Eligibility Based on Join Time", function () {
     let templ;
     let token;
     let owner, priest, member1, member2, member3, member4, lateMember;
+    let accounts;
     const ENTRY_FEE = ethers.parseUnits("100", 18);
     const TOKEN_SUPPLY = ethers.parseUnits("10000", 18);
 
     beforeEach(async function () {
-        [owner, priest, member1, member2, member3, member4, lateMember] = await ethers.getSigners();
+        ({ templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE }));
+        [owner, priest, member1, member2, member3, member4, lateMember] = accounts;
 
-        // Deploy test token
-        const Token = await ethers.getContractFactory("TestToken");
-        token = await Token.deploy("Test Token", "TEST", 18);
-        await token.waitForDeployment();
-
-        // Deploy TEMPL contract
-        const TEMPL = await ethers.getContractFactory("TEMPL");
-        templ = await TEMPL.deploy(
-            priest.address,
-            priest.address, // protocolFeeRecipient (same as priest for testing)
-            await token.getAddress(),
-            ENTRY_FEE,
-            10, // priestVoteWeight
-            10  // priestWeightThreshold
-        );
-        await templ.waitForDeployment();
-
-        // Mint tokens to all potential members
         await token.mint(member1.address, TOKEN_SUPPLY);
         await token.mint(member2.address, TOKEN_SUPPLY);
         await token.mint(member3.address, TOKEN_SUPPLY);

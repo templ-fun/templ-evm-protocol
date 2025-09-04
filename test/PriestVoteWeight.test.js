@@ -1,36 +1,25 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { deployTempl } = require("./utils/deploy");
 
 describe("Priest Vote Weight Feature", function () {
     let templ;
     let token;
     let owner, priest, member1, member2, member3, member4, member5, member6, member7, member8, member9, member10;
+    let accounts;
     const ENTRY_FEE = ethers.parseUnits("100", 18);
     const TOKEN_SUPPLY = ethers.parseUnits("10000", 18);
     const PRIEST_VOTE_WEIGHT = 10;
     const PRIEST_WEIGHT_THRESHOLD = 10;
 
     beforeEach(async function () {
-        [owner, priest, member1, member2, member3, member4, member5, member6, member7, member8, member9, member10] = await ethers.getSigners();
+        ({ templ, token, accounts } = await deployTempl({
+            entryFee: ENTRY_FEE,
+            priestVoteWeight: PRIEST_VOTE_WEIGHT,
+            priestWeightThreshold: PRIEST_WEIGHT_THRESHOLD,
+        }));
+        [owner, priest, member1, member2, member3, member4, member5, member6, member7, member8, member9, member10] = accounts;
 
-        // Deploy test token
-        const Token = await ethers.getContractFactory("TestToken");
-        token = await Token.deploy("Test Token", "TEST", 18);
-        await token.waitForDeployment();
-
-        // Deploy TEMPL contract with priest voting weight config
-        const TEMPL = await ethers.getContractFactory("TEMPL");
-        templ = await TEMPL.deploy(
-            priest.address,
-            priest.address, // protocolFeeRecipient (same as priest for testing)
-            await token.getAddress(),
-            ENTRY_FEE,
-            PRIEST_VOTE_WEIGHT,
-            PRIEST_WEIGHT_THRESHOLD
-        );
-        await templ.waitForDeployment();
-
-        // Mint tokens to priest and members
         await token.mint(priest.address, TOKEN_SUPPLY);
         await token.mint(member1.address, TOKEN_SUPPLY);
         await token.mint(member2.address, TOKEN_SUPPLY);

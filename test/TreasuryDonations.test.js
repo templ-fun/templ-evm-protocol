@@ -1,20 +1,19 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { deployTempl } = require("./utils/deploy");
 
 describe("Donation withdrawal functions", function () {
   let templ;
   let token;
   let donationToken;
   let owner, priest, user1, user2, user3, recipient;
+  let accounts;
   const ENTRY_FEE = ethers.parseUnits("100", 18);
   const TOKEN_SUPPLY = ethers.parseUnits("10000", 18);
 
   beforeEach(async function () {
-    [owner, priest, user1, user2, user3, recipient] = await ethers.getSigners();
-
-    const Token = await ethers.getContractFactory("TestToken");
-    token = await Token.deploy("Test Token", "TEST", 18);
-    await token.waitForDeployment();
+    ({ templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE }));
+    [owner, priest, user1, user2, user3, recipient] = accounts;
 
     const DonationToken = await ethers.getContractFactory("TestToken");
     donationToken = await DonationToken.deploy("Donation Token", "DON", 18);
@@ -24,17 +23,6 @@ describe("Donation withdrawal functions", function () {
     await token.mint(user2.address, TOKEN_SUPPLY);
     await token.mint(user3.address, TOKEN_SUPPLY);
     await donationToken.mint(owner.address, TOKEN_SUPPLY);
-
-    const TEMPL = await ethers.getContractFactory("TEMPL");
-    templ = await TEMPL.deploy(
-      priest.address,
-      priest.address,
-      await token.getAddress(),
-      ENTRY_FEE,
-      10,
-      10
-    );
-    await templ.waitForDeployment();
 
     await token.connect(user1).approve(await templ.getAddress(), ENTRY_FEE);
     await templ.connect(user1).purchaseAccess();

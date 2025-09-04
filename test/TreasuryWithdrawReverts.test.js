@@ -1,32 +1,19 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { deployTempl } = require("./utils/deploy");
 
 describe("Treasury Withdrawal Reverts", function () {
     let templ;
     let token;
     let owner, priest, user1, user2, treasuryRecipient;
+    let accounts;
     const ENTRY_FEE = ethers.parseUnits("100", 18);
     const TOKEN_SUPPLY = ethers.parseUnits("10000", 18);
 
     beforeEach(async function () {
-        [owner, priest, user1, user2, treasuryRecipient] = await ethers.getSigners();
+        ({ templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE }));
+        [owner, priest, user1, user2, treasuryRecipient] = accounts;
 
-        const Token = await ethers.getContractFactory("TestToken");
-        token = await Token.deploy("Test Token", "TEST", 18);
-        await token.waitForDeployment();
-
-        const TEMPL = await ethers.getContractFactory("TEMPL");
-        templ = await TEMPL.deploy(
-            priest.address,
-            priest.address,
-            await token.getAddress(),
-            ENTRY_FEE,
-            10,
-            10
-        );
-        await templ.waitForDeployment();
-
-        // Mint tokens and add two members
         await token.mint(user1.address, TOKEN_SUPPLY);
         await token.mint(user2.address, TOKEN_SUPPLY);
 

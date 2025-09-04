@@ -1,45 +1,29 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { deployTempl } = require("./utils/deploy");
 
 describe("Single Active Proposal Restriction", function () {
     let templ;
     let token;
     let owner, priest, member1, member2, member3;
+    let accounts;
     const ENTRY_FEE = ethers.parseUnits("100", 18);
     const TOKEN_SUPPLY = ethers.parseUnits("10000", 18);
 
     beforeEach(async function () {
-        [owner, priest, member1, member2, member3] = await ethers.getSigners();
+        ({ templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE }));
+        [owner, priest, member1, member2, member3] = accounts;
 
-        // Deploy test token
-        const Token = await ethers.getContractFactory("TestToken");
-        token = await Token.deploy("Test Token", "TEST", 18);
-        await token.waitForDeployment();
-
-        // Deploy TEMPL contract
-        const TEMPL = await ethers.getContractFactory("TEMPL");
-        templ = await TEMPL.deploy(
-            priest.address,
-            priest.address, // protocolFeeRecipient (same as priest for testing)
-            await token.getAddress(),
-            ENTRY_FEE,
-            10, // priestVoteWeight
-            10  // priestWeightThreshold
-        );
-        await templ.waitForDeployment();
-
-        // Mint tokens and setup members
         await token.mint(member1.address, TOKEN_SUPPLY);
         await token.mint(member2.address, TOKEN_SUPPLY);
         await token.mint(member3.address, TOKEN_SUPPLY);
 
-        // Members join
         await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
         await templ.connect(member1).purchaseAccess();
-        
+
         await token.connect(member2).approve(await templ.getAddress(), ENTRY_FEE);
         await templ.connect(member2).purchaseAccess();
-        
+
         await token.connect(member3).approve(await templ.getAddress(), ENTRY_FEE);
         await templ.connect(member3).purchaseAccess();
     });

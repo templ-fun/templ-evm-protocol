@@ -1,34 +1,23 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { deployTempl } = require("./utils/deploy");
 
 describe("TEMPL - Proposal Pagination", function () {
   let templ, token;
-  let owner, priest, protocolFeeRecipient, user1, user2, user3, user4, user5;
+  let owner, priest, user1, user2, user3, user4, user5;
+  let accounts;
   const ENTRY_FEE = ethers.parseEther("100");
   const PRIEST_VOTE_WEIGHT = 10;
   const PRIEST_WEIGHT_THRESHOLD = 10;
 
   beforeEach(async function () {
-    [owner, priest, protocolFeeRecipient, user1, user2, user3, user4, user5] = await ethers.getSigners();
-    
-    // Deploy test token
-    const TestToken = await ethers.getContractFactory("TestToken");
-    token = await TestToken.deploy("Test Token", "TEST", 18);
-    await token.waitForDeployment();
-    
-    // Deploy TEMPL contract
-    const TEMPL = await ethers.getContractFactory("TEMPL");
-    templ = await TEMPL.deploy(
-      priest.address,
-      protocolFeeRecipient.address,
-      await token.getAddress(),
-      ENTRY_FEE,
-      PRIEST_VOTE_WEIGHT,
-      PRIEST_WEIGHT_THRESHOLD
-    );
-    await templ.waitForDeployment();
-    
-    // Setup: priest and users purchase access
+    ({ templ, token, accounts } = await deployTempl({
+      entryFee: ENTRY_FEE,
+      priestVoteWeight: PRIEST_VOTE_WEIGHT,
+      priestWeightThreshold: PRIEST_WEIGHT_THRESHOLD,
+    }));
+    [owner, priest, user1, user2, user3, user4, user5] = accounts;
+
     const users = [priest, user1, user2, user3, user4, user5];
     for (const user of users) {
       await token.mint(user.address, ENTRY_FEE * 2n);

@@ -1,5 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { deployTempl } = require("./utils/deploy");
 
 // Invariant: totalBurned + totalToTreasury + totalToMemberPool + totalToProtocol
 //           == entryFee * totalPurchases
@@ -12,24 +13,11 @@ describe("Fee Distribution Invariant", function () {
     let token;
     let owner, priest;
     let members;
+    let accounts;
 
     beforeEach(async function () {
-        [owner, priest, ...members] = await ethers.getSigners();
-
-        const Token = await ethers.getContractFactory("TestToken");
-        token = await Token.deploy("Test Token", "TEST", 18);
-        await token.waitForDeployment();
-
-        const TEMPL = await ethers.getContractFactory("TEMPL");
-        templ = await TEMPL.deploy(
-            priest.address,
-            priest.address,
-            await token.getAddress(),
-            ENTRY_FEE,
-            10,
-            10
-        );
-        await templ.waitForDeployment();
+        ({ templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE }));
+        [owner, priest, ...members] = accounts;
 
         for (const member of members) {
             await token.mint(member.address, TOKEN_SUPPLY);
