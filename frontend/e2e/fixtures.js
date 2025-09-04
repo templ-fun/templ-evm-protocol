@@ -8,7 +8,7 @@ import { fileURLToPath } from 'url';
 const repoRoot = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const tokenArtifactPath = path.join(
   repoRoot,
-  'artifacts/contracts/TestToken.sol/TestToken.json'
+  'artifacts/contracts/mocks/TestToken.sol/TestToken.json'
 );
 const TestToken = JSON.parse(readFileSync(tokenArtifactPath, 'utf8'));
 export { TestToken };

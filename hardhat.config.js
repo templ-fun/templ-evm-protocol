@@ -2,6 +2,24 @@ require("@nomicfoundation/hardhat-toolbox");
 require("solidity-coverage");
 require("dotenv").config();
 
+const { subtask } = require("hardhat/config");
+const {
+  TASK_COMPILE_SOLIDITY_GET_SOURCE_PATHS,
+} = require("hardhat/builtin-tasks/task-names");
+const path = require("path");
+
+// Allow excluding mock contracts from production builds by setting SKIP_MOCKS=true
+if (process.env.SKIP_MOCKS === "true") {
+  subtask(TASK_COMPILE_SOLIDITY_GET_SOURCE_PATHS).setAction(
+    async (_, __, runSuper) => {
+      const paths = await runSuper();
+      return paths.filter(
+        (p) => !p.includes(path.join("contracts", "mocks"))
+      );
+    }
+  );
+}
+
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
   solidity: {

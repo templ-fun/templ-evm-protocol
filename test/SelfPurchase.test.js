@@ -32,7 +32,9 @@ describe("Self Purchase Guard", function () {
   });
 
   it("reverts when DAO invokes helper calling purchaseAccess", async function () {
-    const Caller = await ethers.getContractFactory("PurchaseCaller");
+    const Caller = await ethers.getContractFactory(
+      "contracts/mocks/PurchaseCaller.sol:PurchaseCaller"
+    );
     const caller = await Caller.deploy(await templ.getAddress());
     await caller.waitForDeployment();
 
