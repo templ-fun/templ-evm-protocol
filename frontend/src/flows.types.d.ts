@@ -41,7 +41,6 @@ export interface JoinResponse {
 export function deployTempl(req: DeployRequest): Promise<DeployResponse>
 export function purchaseAndJoin(req: JoinRequest): Promise<JoinResponse>
 export function sendMessage(args: { group: any; content: string }): Promise<void>
-export function sendMessageBackend(args: { contractAddress: Address; content: string; backendUrl?: string }): Promise<boolean>
 export function proposeVote(args: { ethers: any; signer: any; templAddress: Address; templArtifact: any; title: string; description: string; callData: string; votingPeriod?: number; txOptions?: any }): Promise<void>
 export function voteOnProposal(args: { ethers: any; signer: any; templAddress: Address; templArtifact: any; proposalId: number; support: boolean; txOptions?: any }): Promise<void>
 export function executeProposal(args: { ethers: any; signer: any; templAddress: Address; templArtifact: any; proposalId: number; txOptions?: any }): Promise<void>

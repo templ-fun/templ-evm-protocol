@@ -59,7 +59,7 @@ flowchart LR
 ```
 
 Discovery
-- After a member joins, browser clients explicitly call `conversations.sync()` to fetch new welcomes, followed by `preferences.sync()` and `conversations.syncAll([...])`, and then poll/stream until the group is found. The UI requires discovery (no backend send fallback).
+- After a member joins, browser clients explicitly call `conversations.sync()` to fetch new welcomes, followed by `preferences.sync()` and `conversations.syncAll([...])`, and then poll/stream until the group is found. The UI requires discovery.
 
 ## 4. Moderation
 The backend tracks mutes with escalating durations. The priest can delegate
@@ -101,7 +101,7 @@ The backend watches on‑chain events and mirrors them into the group as JSON pa
 
 Notes
 - The backend adds members by inboxId only and linearizes invites by waiting for inbox readiness on XMTP before adding.
-- After group creation/join, the backend syncs and records network stats. A small warm message may be sent; it is not used as a fallback in the UI.
+- After group creation/join, the backend syncs and records network stats. A small warm message may be sent.
 
 ## 6. Voting
 ```mermaid
@@ -199,5 +199,4 @@ Backend resolves inboxIds from the XMTP network via `findInboxIdByIdentifier` an
 
 ## Errors, Retries & Discovery
 - `/join` may return HTTP 503 until the member identity is visible on XMTP; the frontend should retry.
-- Browsers discover the group by calling `conversations.sync()`, `preferences.sync()`, `conversations.syncAll([...])` and polling/streaming for the conversation id. No backend send fallback is required.
-- Backend `/send` is disabled by default; enable only for local debugging (`ENABLE_FALLBACK_SEND=1`). Never enable in production.
+- Browsers discover the group by calling `conversations.sync()`, `preferences.sync()`, `conversations.syncAll([...])` and polling/streaming for the conversation id.
