@@ -276,6 +276,22 @@ describe('templ flows', () => {
     expect(contract.executeProposal).toHaveBeenCalledWith(2, {});
   });
 
+  it('executeProposal rejects with contract error', async () => {
+    const contract = {
+      executeProposal: vi.fn().mockRejectedValue({ reason: 'nope' })
+    };
+    const ethers = { Contract: vi.fn().mockReturnValue(contract) };
+    await expect(
+      executeProposal({
+        ethers,
+        signer: {},
+        templAddress: '0xtempl',
+        templArtifact,
+        proposalId: 3
+      })
+    ).rejects.toThrow('nope');
+  });
+
   it('watchProposals registers event listeners', () => {
     const on = vi.fn();
     const contract = { on };
