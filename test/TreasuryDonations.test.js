@@ -1,6 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
+const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
 
 describe("Donation withdrawal functions", function () {
   let templ;
@@ -19,17 +20,9 @@ describe("Donation withdrawal functions", function () {
     donationToken = await DonationToken.deploy("Donation Token", "DON", 18);
     await donationToken.waitForDeployment();
 
-    await token.mint(user1.address, TOKEN_SUPPLY);
-    await token.mint(user2.address, TOKEN_SUPPLY);
-    await token.mint(user3.address, TOKEN_SUPPLY);
+    await mintToUsers(token, [user1, user2, user3], TOKEN_SUPPLY);
     await donationToken.mint(owner.address, TOKEN_SUPPLY);
-
-    await token.connect(user1).approve(await templ.getAddress(), ENTRY_FEE);
-    await templ.connect(user1).purchaseAccess();
-    await token.connect(user2).approve(await templ.getAddress(), ENTRY_FEE);
-    await templ.connect(user2).purchaseAccess();
-    await token.connect(user3).approve(await templ.getAddress(), ENTRY_FEE);
-    await templ.connect(user3).purchaseAccess();
+    await purchaseAccess(templ, token, [user1, user2, user3]);
   });
 
   describe("withdrawTokenDAO", function () {

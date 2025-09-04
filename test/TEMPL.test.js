@@ -1,6 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
+const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
 
 describe("TEMPL Contract with DAO Governance", function () {
     let templ;
@@ -14,10 +15,7 @@ describe("TEMPL Contract with DAO Governance", function () {
         ({ templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE }));
         [owner, priest, user1, user2, user3, user4, treasury] = accounts;
 
-        await token.mint(user1.address, TOKEN_SUPPLY);
-        await token.mint(user2.address, TOKEN_SUPPLY);
-        await token.mint(user3.address, TOKEN_SUPPLY);
-        await token.mint(user4.address, TOKEN_SUPPLY);
+        await mintToUsers(token, [user1, user2, user3, user4], TOKEN_SUPPLY);
     });
 
     describe("Deployment", function () {
@@ -53,12 +51,11 @@ describe("TEMPL Contract with DAO Governance", function () {
 
     describe("Access Purchase with 30/30/30/10 Split", function () {
         it("Should correctly split payments: 30% burn, 30% treasury, 30% pool, 10% protocol", async function () {
-            await token.connect(user1).approve(await templ.getAddress(), ENTRY_FEE);
             
             const priestBalanceBefore = await token.balanceOf(priest.address);
             const deadBalanceBefore = await token.balanceOf("0x000000000000000000000000000000000000dEaD");
             
-            await templ.connect(user1).purchaseAccess();
+            await purchaseAccess(templ, token, [user1]);
             
             const thirtyPercent = (ENTRY_FEE * 30n) / 100n;
             const tenPercent = (ENTRY_FEE * 10n) / 100n;
@@ -82,16 +79,14 @@ describe("TEMPL Contract with DAO Governance", function () {
         });
 
         it("Should mark user as having purchased", async function () {
-            await token.connect(user1).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(user1).purchaseAccess();
+            await purchaseAccess(templ, token, [user1]);
             
             expect(await templ.hasPurchased(user1.address)).to.be.true;
             expect(await templ.getMemberCount()).to.equal(1);
         });
 
         it("Should prevent double purchase", async function () {
-            await token.connect(user1).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(user1).purchaseAccess();
+            await purchaseAccess(templ, token, [user1]);
 
             await token.connect(user1).approve(await templ.getAddress(), ENTRY_FEE);
             await expect(templ.connect(user1).purchaseAccess())
@@ -107,8 +102,7 @@ describe("TEMPL Contract with DAO Governance", function () {
     describe("DAO Proposal Creation", function () {
         beforeEach(async function () {
             // User1 becomes a member
-            await token.connect(user1).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(user1).purchaseAccess();
+            await purchaseAccess(templ, token, [user1]);
         });
 
         it("Should allow members to create proposals", async function () {
@@ -254,14 +248,11 @@ describe("TEMPL Contract with DAO Governance", function () {
     describe("DAO Voting", function () {
         beforeEach(async function () {
             // Multiple users become members
-            await token.connect(user1).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(user1).purchaseAccess();
+            await purchaseAccess(templ, token, [user1]);
             
-            await token.connect(user2).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(user2).purchaseAccess();
+            await purchaseAccess(templ, token, [user2]);
             
-            await token.connect(user3).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(user3).purchaseAccess();
+            await purchaseAccess(templ, token, [user3]);
 
             // Create a proposal
             const iface = new ethers.Interface([
@@ -343,14 +334,11 @@ describe("TEMPL Contract with DAO Governance", function () {
     describe("DAO Proposal Execution", function () {
         beforeEach(async function () {
             // Setup members
-            await token.connect(user1).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(user1).purchaseAccess();
+            await purchaseAccess(templ, token, [user1]);
             
-            await token.connect(user2).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(user2).purchaseAccess();
+            await purchaseAccess(templ, token, [user2]);
             
-            await token.connect(user3).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(user3).purchaseAccess();
+            await purchaseAccess(templ, token, [user3]);
         });
 
         it("Should execute passed treasury withdrawal proposal", async function () {
@@ -544,11 +532,9 @@ describe("TEMPL Contract with DAO Governance", function () {
     describe("DAO Treasury Security", function () {
         beforeEach(async function () {
             // Setup members and treasury
-            await token.connect(user1).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(user1).purchaseAccess();
+            await purchaseAccess(templ, token, [user1]);
             
-            await token.connect(user2).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(user2).purchaseAccess();
+            await purchaseAccess(templ, token, [user2]);
         });
 
         it("Should prevent direct treasury withdrawal by priest", async function () {
@@ -628,11 +614,9 @@ describe("TEMPL Contract with DAO Governance", function () {
     describe("Paused contract behavior", function () {
         beforeEach(async function () {
             // user1 and user2 become members
-            await token.connect(user1).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(user1).purchaseAccess();
+            await purchaseAccess(templ, token, [user1]);
 
-            await token.connect(user2).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(user2).purchaseAccess();
+            await purchaseAccess(templ, token, [user2]);
 
             // interface for pause/unpause proposals
             const iface = new ethers.Interface([
@@ -712,12 +696,10 @@ describe("TEMPL Contract with DAO Governance", function () {
     describe("Active Proposals Query", function () {
         beforeEach(async function () {
             // Setup members
-            await token.connect(user1).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(user1).purchaseAccess();
+            await purchaseAccess(templ, token, [user1]);
             
             // Add user2 as member too (needed for multiple proposal tests)
-            await token.connect(user2).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(user2).purchaseAccess();
+            await purchaseAccess(templ, token, [user2]);
         });
 
         it("Should return active proposals correctly", async function () {
@@ -815,15 +797,13 @@ describe("TEMPL Contract with DAO Governance", function () {
     describe("Member Pool Distribution", function () {
         it("Should distribute rewards correctly to existing members", async function () {
             // First member joins
-            await token.connect(user1).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(user1).purchaseAccess();
+            await purchaseAccess(templ, token, [user1]);
 
             // Check first member has no claimable (no one joined after them yet)
             expect(await templ.getClaimablePoolAmount(user1.address)).to.equal(0);
 
             // Second member joins
-            await token.connect(user2).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(user2).purchaseAccess();
+            await purchaseAccess(templ, token, [user2]);
 
             // First member should now have claimable rewards (30% of entry fee)
             const thirtyPercent = (ENTRY_FEE * 30n) / 100n;
@@ -833,8 +813,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             expect(await templ.getClaimablePoolAmount(user2.address)).to.equal(0);
 
             // Third member joins
-            await token.connect(user3).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(user3).purchaseAccess();
+            await purchaseAccess(templ, token, [user3]);
 
             // Both user1 and user2 should get half of the new member's pool contribution
             const halfShare = thirtyPercent / 2n;
@@ -844,14 +823,11 @@ describe("TEMPL Contract with DAO Governance", function () {
 
         it("Should allow members to claim their pool rewards", async function () {
             // Setup: 3 members join
-            await token.connect(user1).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(user1).purchaseAccess();
+            await purchaseAccess(templ, token, [user1]);
 
-            await token.connect(user2).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(user2).purchaseAccess();
+            await purchaseAccess(templ, token, [user2]);
 
-            await token.connect(user3).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(user3).purchaseAccess();
+            await purchaseAccess(templ, token, [user3]);
 
             const claimable = await templ.getClaimablePoolAmount(user1.address);
             const balanceBefore = await token.balanceOf(user1.address);
@@ -864,8 +840,7 @@ describe("TEMPL Contract with DAO Governance", function () {
         });
 
         it("Should prevent claiming when no rewards available", async function () {
-            await token.connect(user1).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(user1).purchaseAccess();
+            await purchaseAccess(templ, token, [user1]);
 
             await expect(templ.connect(user1).claimMemberPool())
                 .to.be.revertedWithCustomError(templ, "NoRewardsToClaim");
@@ -873,18 +848,15 @@ describe("TEMPL Contract with DAO Governance", function () {
 
         it("Should track claimed amounts correctly", async function () {
             // Setup members
-            await token.connect(user1).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(user1).purchaseAccess();
+            await purchaseAccess(templ, token, [user1]);
 
-            await token.connect(user2).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(user2).purchaseAccess();
+            await purchaseAccess(templ, token, [user2]);
 
             // Claim once
             await templ.connect(user1).claimMemberPool();
 
             // Third member joins
-            await token.connect(user3).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(user3).purchaseAccess();
+            await purchaseAccess(templ, token, [user3]);
 
             // User1 should only be able to claim new rewards
             const thirtyPercent = (ENTRY_FEE * 30n) / 100n;
@@ -927,8 +899,7 @@ describe("TEMPL Contract with DAO Governance", function () {
 
 
         it("Should reject proposal with invalid calldata at creation", async function () {
-            await token.connect(user1).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(user1).purchaseAccess();
+            await purchaseAccess(templ, token, [user1]);
 
             // Create proposal with calldata for non-existent function
             const badCallData = "0x12345678"; // Invalid function selector
@@ -947,11 +918,9 @@ describe("TEMPL Contract with DAO Governance", function () {
     describe("Additional DAO Functions", function () {
         beforeEach(async function () {
             // Setup members
-            await token.connect(user1).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(user1).purchaseAccess();
+            await purchaseAccess(templ, token, [user1]);
             
-            await token.connect(user2).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(user2).purchaseAccess();
+            await purchaseAccess(templ, token, [user2]);
         });
 
         it("Should execute withdrawAllTreasuryDAO through proposal", async function () {
@@ -990,8 +959,7 @@ describe("TEMPL Contract with DAO Governance", function () {
 
     describe("Comprehensive View Functions", function () {
         beforeEach(async function () {
-            await token.connect(user1).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(user1).purchaseAccess();
+            await purchaseAccess(templ, token, [user1]);
         });
 
         it("Should return correct hasAccess status", async function () {
@@ -1056,13 +1024,11 @@ describe("TEMPL Contract with DAO Governance", function () {
     describe("Integration Tests", function () {
         it("Should handle complete user journey", async function () {
             // User 1 joins
-            await token.connect(user1).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(user1).purchaseAccess();
+            await purchaseAccess(templ, token, [user1]);
             expect(await templ.getMemberCount()).to.equal(1);
 
             // User 2 joins
-            await token.connect(user2).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(user2).purchaseAccess();
+            await purchaseAccess(templ, token, [user2]);
             expect(await templ.getMemberCount()).to.equal(2);
 
             // User 1 claims rewards

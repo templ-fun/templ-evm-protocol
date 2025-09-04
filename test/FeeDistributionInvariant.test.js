@@ -1,6 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
+const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
 
 // Invariant: totalBurned + totalToTreasury + totalToMemberPool + totalToProtocol
 //           == entryFee * totalPurchases
@@ -19,18 +20,13 @@ describe("Fee Distribution Invariant", function () {
         ({ templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE }));
         [owner, priest, ...members] = accounts;
 
-        for (const member of members) {
-            await token.mint(member.address, TOKEN_SUPPLY);
-        }
+        await mintToUsers(token, members, TOKEN_SUPPLY);
     });
 
     it("tracks fees correctly across varying member counts", async function () {
-        const templAddress = await templ.getAddress();
-
         for (let i = 0; i < members.length; i++) {
             const member = members[i];
-            await token.connect(member).approve(templAddress, ENTRY_FEE);
-            await templ.connect(member).purchaseAccess();
+            await purchaseAccess(templ, token, [member]);
 
             const burned = await templ.totalBurned();
             const treasury = await templ.totalToTreasury();

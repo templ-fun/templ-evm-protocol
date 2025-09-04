@@ -1,6 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
+const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
 
 describe("executeProposal reverts", function () {
   let templ;
@@ -23,11 +24,8 @@ describe("executeProposal reverts", function () {
   });
 
   it("reverts when proposal call data execution fails", async function () {
-    await token.mint(owner.address, ENTRY_FEE);
-    await token
-      .connect(owner)
-      .approve(await templ.getAddress(), ENTRY_FEE);
-    await templ.connect(owner).purchaseAccess();
+    await mintToUsers(token, [owner], ENTRY_FEE);
+    await purchaseAccess(templ, token, [owner]);
 
     const selector = templ.interface.getFunction(
       "withdrawTreasuryDAO"

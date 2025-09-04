@@ -1,6 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
+const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
 
 describe("Self Purchase Guard", function () {
   const ENTRY_FEE = ethers.parseUnits("100", 18);
@@ -12,9 +13,8 @@ describe("Self Purchase Guard", function () {
     ({ templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE }));
     [owner, priest, member] = accounts;
 
-    await token.mint(member.address, ethers.parseUnits("1000", 18));
-    await token.connect(member).approve(await templ.getAddress(), ENTRY_FEE);
-    await templ.connect(member).purchaseAccess();
+    await mintToUsers(token, [member], ethers.parseUnits("1000", 18));
+    await purchaseAccess(templ, token, [member]);
   });
 
   it("reverts when DAO attempts to propose self purchase", async function () {

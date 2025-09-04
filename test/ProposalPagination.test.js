@@ -1,6 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
+const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
 
 describe("TEMPL - Proposal Pagination", function () {
   let templ, token;
@@ -19,11 +20,8 @@ describe("TEMPL - Proposal Pagination", function () {
     [owner, priest, user1, user2, user3, user4, user5] = accounts;
 
     const users = [priest, user1, user2, user3, user4, user5];
-    for (const user of users) {
-      await token.mint(user.address, ENTRY_FEE * 2n);
-      await token.connect(user).approve(await templ.getAddress(), ENTRY_FEE * 2n);
-      await templ.connect(user).purchaseAccess();
-    }
+    await mintToUsers(token, users, ENTRY_FEE * 2n);
+    await purchaseAccess(templ, token, users, ENTRY_FEE * 2n);
   });
 
   describe("getActiveProposalsPaginated", function () {
