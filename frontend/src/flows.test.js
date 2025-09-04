@@ -290,6 +290,22 @@ describe('templ flows', () => {
     ).rejects.toThrow('nope');
   });
 
+  it('executeProposal rejects when voting not ended', async () => {
+    const contract = {
+      executeProposal: vi.fn().mockRejectedValue({ reason: 'VotingNotEnded' })
+    };
+    const ethers = { Contract: vi.fn().mockReturnValue(contract) };
+    await expect(
+      executeProposal({
+        ethers,
+        signer: {},
+        templAddress: '0xtempl',
+        templArtifact,
+        proposalId: 4
+      })
+    ).rejects.toThrow('VotingNotEnded');
+  });
+
   it('watchProposals registers event listeners', () => {
     const on = vi.fn();
     const contract = { on };

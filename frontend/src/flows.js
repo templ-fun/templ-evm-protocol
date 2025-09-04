@@ -293,7 +293,16 @@ export async function executeProposal({
     const tx = await contract.executeProposal(proposalId, txOptions);
     return await tx.wait();
   } catch (err) {
-    throw new Error(err?.reason || err?.message || String(err));
+    let reason = err?.reason || err?.message || String(err);
+    try {
+      const iface = new ethers.Interface(templArtifact.abi);
+      const data = err?.data || err?.error?.data;
+      if (typeof data === 'string') {
+        const parsed = iface.parseError(data);
+        if (parsed?.name) reason = parsed.name;
+      }
+    } catch {}
+    throw new Error(reason);
   }
 }
 
