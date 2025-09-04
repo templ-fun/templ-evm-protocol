@@ -310,6 +310,8 @@ contract TEMPL {
             selector == this.updateConfigDAO.selector ||
             selector == this.withdrawTreasuryDAO.selector ||
             selector == this.withdrawAllTreasuryDAO.selector ||
+            selector == this.withdrawTokenDAO.selector ||
+            selector == this.withdrawETHDAO.selector ||
             selector == this.sweepMemberRewardRemainderDAO.selector
         );
         if (!allowed) revert InvalidCallData();
@@ -437,6 +439,8 @@ contract TEMPL {
             selector == this.updateConfigDAO.selector ||
             selector == this.withdrawTreasuryDAO.selector ||
             selector == this.withdrawAllTreasuryDAO.selector ||
+            selector == this.withdrawTokenDAO.selector ||
+            selector == this.withdrawETHDAO.selector ||
             selector == this.sweepMemberRewardRemainderDAO.selector
         );
 
@@ -504,7 +508,56 @@ contract TEMPL {
 
         IERC20(accessToken).safeTransfer(recipient, amount);
     }
-    
+
+    /**
+     * @notice Withdraw arbitrary ERC20 tokens sent to the contract (proposal required)
+     * @param token ERC20 token address to withdraw
+     * @param recipient Address to receive tokens
+     * @param amount Token amount to withdraw
+     * @param reason Withdrawal explanation
+     */
+    function withdrawTokenDAO(
+        address token,
+        address recipient,
+        uint256 amount,
+        string memory reason
+    ) external onlyDAO {
+        if (token == address(0) || recipient == address(0)) revert InvalidRecipient();
+        if (amount == 0) revert AmountZero();
+        if (IERC20(token).balanceOf(address(this)) < amount) revert InsufficientBalance();
+
+        uint256 proposalId = executingProposalId;
+        if (proposalId >= proposalCount) revert InvalidProposal();
+
+        emit TreasuryAction(proposalId, recipient, amount, reason);
+
+        IERC20(token).safeTransfer(recipient, amount);
+    }
+
+    /**
+     * @notice Withdraw ETH sent directly to the contract (proposal required)
+     * @param recipient Address to receive ETH
+     * @param amount ETH amount to withdraw
+     * @param reason Withdrawal explanation
+     */
+    function withdrawETHDAO(
+        address recipient,
+        uint256 amount,
+        string memory reason
+    ) external onlyDAO {
+        if (recipient == address(0)) revert InvalidRecipient();
+        if (amount == 0) revert AmountZero();
+        if (address(this).balance < amount) revert InsufficientBalance();
+
+        uint256 proposalId = executingProposalId;
+        if (proposalId >= proposalCount) revert InvalidProposal();
+
+        emit TreasuryAction(proposalId, recipient, amount, reason);
+
+        (bool success, ) = payable(recipient).call{value: amount}("");
+        if (!success) revert ProposalExecutionFailed();
+    }
+
     // executeDAO and arbitrary external call support removed for security hardening
     
     /**
