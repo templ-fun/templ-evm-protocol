@@ -160,6 +160,48 @@ test('rejects join for unknown templ', async () => {
   await app.close();
 });
 
+test('responds with 403 when access not purchased', async () => {
+  const fakeGroup = {
+    id: 'group-deny',
+    addMembers: async () => {},
+    removeMembers: async () => {}
+  };
+  const fakeXmtp = {
+    inboxId: 'test-inbox-id',
+    conversations: {
+      newGroup: async () => fakeGroup
+    }
+  };
+  const hasPurchased = async () => false;
+
+  const app = makeApp({ xmtp: fakeXmtp, hasPurchased });
+
+  const templSig = await wallets.priest.signMessage(
+    `create:${addresses.contract}`
+  );
+  await request(app)
+    .post('/templs')
+    .send({
+      contractAddress: addresses.contract,
+      priestAddress: addresses.priest,
+      signature: templSig
+    })
+    .expect(200);
+
+  const joinSig = await wallets.member.signMessage(
+    `join:${addresses.contract}`
+  );
+  await request(app)
+    .post('/join')
+    .send({
+      contractAddress: addresses.contract,
+      memberAddress: addresses.member,
+      signature: joinSig
+    })
+    .expect(403, { error: 'Access not purchased' });
+  await app.close();
+});
+
 test('join requires on-chain purchase', async () => {
   const added = [];
   const fakeGroup = {
@@ -225,7 +267,7 @@ test('join requires on-chain purchase', async () => {
   await app.close();
 });
 
-test('responds with 500 when purchase check fails', async () => {
+test('responds with 500 when hasPurchased throws', async () => {
   const fakeGroup = {
     id: 'group-err',
     addMembers: async () => {},
