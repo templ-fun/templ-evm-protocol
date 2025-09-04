@@ -375,6 +375,8 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
       throw new Error('Browser did not discover group conversation');
     }
     console.log('✅ Browser discovered group conversation');
+    // Muting controls should not be visible for non-priests
+    await expect(page.locator('.muting-controls')).toBeHidden();
     // Extra diagnostics right before messaging
     try {
       const dbg3 = await fetch(`http://localhost:3001/debug/group?contractAddress=${templAddress}`).then(r => r.json());
