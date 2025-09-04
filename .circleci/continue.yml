@@ -7,6 +7,9 @@ parameters:
   run_app:
     type: boolean
     default: false
+  run_manual_tests:
+    type: boolean
+    default: false
 
 jobs:
   contracts:
@@ -90,6 +93,7 @@ workflows:
             branches:
               ignore: main
   manual_tests:
+    when: << pipeline.parameters.run_manual_tests >>
     jobs:
       - run_all_tests:
           type: approval
