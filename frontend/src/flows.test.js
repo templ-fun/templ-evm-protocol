@@ -18,6 +18,12 @@ import {
 } from './flows.js';
 import { BACKEND_URL } from './config.js';
 import { buildDelegateMessage, buildMuteMessage } from '../../shared/signing.js';
+import {
+  mockFetchSuccess,
+  mockFetchFailure,
+  mockFetchError
+} from '../test-utils/mockFetch.js';
+import { createSignerMock, createXMTPMock } from '../test-utils/mocks.js';
 
 const templArtifact = { abi: [], bytecode: '0x' };
 const originalFetch = globalThis.fetch;
@@ -47,19 +53,9 @@ describe('templ flows', () => {
     const ethers = {
       ContractFactory: vi.fn().mockImplementation(() => factory)
     };
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ groupId: 'group-1' })
-    });
-    const xmtp = {
-      inboxId: 'inbox-1',
-      conversations: {
-        getConversationById: vi.fn(),
-        sync: vi.fn().mockResolvedValue(undefined),
-        list: vi.fn().mockResolvedValue([])
-      }
-    };
-    const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
+    mockFetchSuccess({ groupId: 'group-1' });
+    const xmtp = createXMTPMock();
+    const signer = createSignerMock();
     waitForConversation.mockResolvedValueOnce({ id: 'group-1', consentState: 'allowed' });
 
     const result = await deployTempl({
@@ -109,13 +105,12 @@ describe('templ flows', () => {
     const ethers = {
       ContractFactory: vi.fn().mockImplementation(() => factory)
     };
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: false,
+    mockFetchFailure({
       status: 500,
       statusText: 'Server Error',
-      text: () => Promise.resolve('fail')
+      response: 'fail'
     });
-    const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
+    const signer = createSignerMock();
     await expect(
       deployTempl({
         ethers,
@@ -139,11 +134,8 @@ describe('templ flows', () => {
     const ethers = {
       ContractFactory: vi.fn().mockImplementation(() => factory)
     };
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({})
-    });
-    const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
+    mockFetchSuccess({});
+    const signer = createSignerMock();
     await expect(
       deployTempl({
         ethers,
@@ -173,19 +165,9 @@ describe('templ flows', () => {
       return templContract;
     });
     const ethers = { Contract };
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ groupId: 'group-2' })
-    });
-    const xmtp = {
-      inboxId: 'inbox-2',
-      conversations: {
-        getConversationById: vi.fn(),
-        sync: vi.fn().mockResolvedValue(undefined),
-        list: vi.fn().mockResolvedValue([])
-      }
-    };
-    const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
+    mockFetchSuccess({ groupId: 'group-2' });
+    const xmtp = createXMTPMock({ inboxId: 'inbox-2' });
+    const signer = createSignerMock();
     waitForConversation.mockResolvedValueOnce({ id: 'group-2', consentState: 'allowed' });
 
     const result = await purchaseAndJoin({
@@ -205,12 +187,11 @@ describe('templ flows', () => {
   it('purchaseAndJoin rejects on backend failure', async () => {
     const templContract = { hasAccess: vi.fn().mockResolvedValue(true) };
     const ethers = { Contract: vi.fn().mockReturnValue(templContract) };
-    const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: false,
+    const signer = createSignerMock();
+    mockFetchFailure({
       status: 500,
       statusText: 'Server Error',
-      text: () => Promise.resolve('fail')
+      response: 'fail'
     });
     await expect(
       purchaseAndJoin({
@@ -227,12 +208,11 @@ describe('templ flows', () => {
   it('purchaseAndJoin errors when access not purchased', async () => {
     const templContract = { hasAccess: vi.fn().mockResolvedValue(true) };
     const ethers = { Contract: vi.fn().mockReturnValue(templContract) };
-    const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: false,
+    const signer = createSignerMock();
+    mockFetchFailure({
       status: 403,
       statusText: 'Forbidden',
-      text: () => Promise.resolve('Access not purchased')
+      response: 'Access not purchased'
     });
     await expect(
       purchaseAndJoin({
@@ -348,10 +328,8 @@ describe('templ flows', () => {
   });
 
   it('delegateMute posts delegation to backend', async () => {
-    const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
-    vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue({ ok: true, json: () => Promise.resolve({ delegated: true }) });
+    const signer = createSignerMock();
+    mockFetchSuccess({ delegated: true });
     const result = await delegateMute({
       signer,
       contractAddress: '0xTempl',
@@ -378,8 +356,8 @@ describe('templ flows', () => {
   });
 
   it('delegateMute returns false on non-200', async () => {
-    const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: false });
+    const signer = createSignerMock();
+    mockFetchFailure();
     const result = await delegateMute({
       signer,
       contractAddress: '0xTempl',
@@ -390,8 +368,8 @@ describe('templ flows', () => {
   });
 
   it('delegateMute rejects on fetch error', async () => {
-    const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
-    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('fail'));
+    const signer = createSignerMock();
+    mockFetchError(new Error('fail'));
     await expect(
       delegateMute({
         signer,
@@ -403,11 +381,8 @@ describe('templ flows', () => {
   });
 
   it('delegateMute throws on invalid JSON response', async () => {
-    const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({})
-    });
+    const signer = createSignerMock();
+    mockFetchSuccess({});
     await expect(
       delegateMute({
         signer,
@@ -419,10 +394,8 @@ describe('templ flows', () => {
   });
 
   it('muteMember posts mute to backend', async () => {
-    const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
-    vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue({ ok: true, json: () => Promise.resolve({ mutedUntil: 123 }) });
+    const signer = createSignerMock();
+    mockFetchSuccess({ mutedUntil: 123 });
     const result = await muteMember({
       signer,
       contractAddress: '0xTempl',
@@ -449,8 +422,8 @@ describe('templ flows', () => {
   });
 
   it('muteMember returns 0 on non-200', async () => {
-    const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: false });
+    const signer = createSignerMock();
+    mockFetchFailure();
     const result = await muteMember({
       signer,
       contractAddress: '0xTempl',
@@ -461,8 +434,8 @@ describe('templ flows', () => {
   });
 
   it('muteMember rejects on fetch error', async () => {
-    const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
-    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('fail'));
+    const signer = createSignerMock();
+    mockFetchError(new Error('fail'));
     await expect(
       muteMember({
         signer,
@@ -474,11 +447,8 @@ describe('templ flows', () => {
   });
 
   it('muteMember throws on invalid JSON response', async () => {
-    const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({})
-    });
+    const signer = createSignerMock();
+    mockFetchSuccess({});
     await expect(
       muteMember({
         signer,
@@ -490,13 +460,7 @@ describe('templ flows', () => {
   });
 
   it('fetchActiveMutes queries backend for mutes', async () => {
-    vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue({
-        ok: true,
-        json: () =>
-          Promise.resolve({ mutes: [{ address: '0xabc', count: 1, until: 0 }] })
-      });
+    mockFetchSuccess({ mutes: [{ address: '0xabc', count: 1, until: 0 }] });
     const result = await fetchActiveMutes({ contractAddress: '0xTempl' });
     expect(globalThis.fetch).toHaveBeenCalledWith(
       `${BACKEND_URL}/mutes?contractAddress=0xTempl`
@@ -505,16 +469,13 @@ describe('templ flows', () => {
   });
 
   it('fetchActiveMutes returns empty array on non-200', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: false });
+    mockFetchFailure();
     const result = await fetchActiveMutes({ contractAddress: '0xTempl' });
     expect(result).toEqual([]);
   });
 
   it('fetchActiveMutes throws on invalid JSON response', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({})
-    });
+    mockFetchSuccess({});
     await expect(
       fetchActiveMutes({ contractAddress: '0xTempl' })
     ).rejects.toThrow('Invalid /mutes response');
