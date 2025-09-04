@@ -516,6 +516,88 @@ test('priest can delegate mute power', async () => {
   await app.close();
 });
 
+test('rejects delegate addition with non-priest signature', async () => {
+  const fakeGroup = { id: 'group-deleg-bad', addMembers: async () => {}, removeMembers: async () => {} };
+  const fakeXmtp = {
+    inboxId: 'test-inbox-id',
+    conversations: { newGroup: async () => fakeGroup }
+  };
+  const hasPurchased = async () => true;
+
+  const app = makeApp({ xmtp: fakeXmtp, hasPurchased });
+
+  const templSig = await wallets.priest.signMessage(`create:${addresses.contract}`);
+  await request(app)
+    .post('/templs')
+    .send({
+      contractAddress: addresses.contract,
+      priestAddress: addresses.priest,
+      signature: templSig
+    })
+    .expect(200);
+
+  const badSig = await wallets.stranger.signMessage(
+    `delegate:${addresses.contract}:${addresses.delegate.toLowerCase()}`
+  );
+  await request(app)
+    .post('/delegates')
+    .send({
+      contractAddress: addresses.contract,
+      priestAddress: addresses.priest,
+      delegateAddress: addresses.delegate,
+      signature: badSig
+    })
+    .expect(403, { error: 'Only priest can delegate' });
+
+  await app.close();
+});
+
+test('rejects delegate removal with malformed signature', async () => {
+  const fakeGroup = { id: 'group-deleg-missing', addMembers: async () => {}, removeMembers: async () => {} };
+  const fakeXmtp = {
+    inboxId: 'test-inbox-id',
+    conversations: { newGroup: async () => fakeGroup }
+  };
+  const hasPurchased = async () => true;
+
+  const app = makeApp({ xmtp: fakeXmtp, hasPurchased });
+
+  const templSig = await wallets.priest.signMessage(`create:${addresses.contract}`);
+  await request(app)
+    .post('/templs')
+    .send({
+      contractAddress: addresses.contract,
+      priestAddress: addresses.priest,
+      signature: templSig
+    })
+    .expect(200);
+
+  const delSig = await wallets.priest.signMessage(
+    `delegate:${addresses.contract}:${addresses.delegate.toLowerCase()}`
+  );
+  await request(app)
+    .post('/delegates')
+    .send({
+      contractAddress: addresses.contract,
+      priestAddress: addresses.priest,
+      delegateAddress: addresses.delegate,
+      signature: delSig
+    })
+    .expect(200);
+
+  await request(app)
+    .delete('/delegates')
+    .send({
+      contractAddress: addresses.contract,
+      priestAddress: addresses.priest,
+      delegateAddress: addresses.delegate,
+      signature: '0x'
+    })
+    .expect(403, { error: 'Only priest can delegate' });
+
+  await app.close();
+});
+
 test('mute durations escalate', async () => {
   const fakeGroup = { id: 'group-2b', addMembers: async () => {}, removeMembers: async () => {} };
   const fakeXmtp = { 
