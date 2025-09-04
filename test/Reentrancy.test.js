@@ -39,7 +39,7 @@ describe("Reentrancy protection", function () {
         .connect(attacker)
         .approve(await templ.getAddress(), ENTRY_FEE);
 
-      await token.setAttack(true);
+      await token.setCallback(1);
 
       await expect(
         templ.connect(attacker).purchaseAccess()
@@ -56,13 +56,10 @@ describe("Reentrancy protection", function () {
       accounts = await ethers.getSigners();
       const [owner, priest] = accounts;
 
-      const ReentrantClaimToken = await ethers.getContractFactory(
-        "ReentrantClaimToken"
+      const ReentrantToken = await ethers.getContractFactory(
+        "ReentrantToken"
       );
-      token = await ReentrantClaimToken.deploy(
-        "Reentrant Claim Token",
-        "RCT"
-      );
+      token = await ReentrantToken.deploy("Reentrant Token", "RNT");
       await token.waitForDeployment();
 
       const TEMPL = await ethers.getContractFactory("TEMPL");
@@ -96,7 +93,7 @@ describe("Reentrancy protection", function () {
         .approve(await templ.getAddress(), ENTRY_FEE);
       await templ.connect(member2).purchaseAccess();
 
-      await token.setAttack(true);
+      await token.setCallback(2);
 
       await expect(
         templ.connect(member1).claimMemberPool()
