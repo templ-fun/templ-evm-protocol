@@ -461,6 +461,45 @@ test('mute durations escalate', async () => {
   await app.close();
 });
 
+test('permanently mutes after repeated escalations', async () => {
+  const fakeGroup = { id: 'group-2c', addMembers: async () => {}, removeMembers: async () => {} };
+  const fakeXmtp = {
+    inboxId: 'test-inbox-id',
+    conversations: { newGroup: async () => fakeGroup }
+  };
+  const hasPurchased = async () => true;
+  const app = makeApp({ xmtp: fakeXmtp, hasPurchased });
+
+  const templSig = await wallets.priest.signMessage(`create:${addresses.contract}`);
+  await request(app)
+    .post('/templs')
+    .send({
+      contractAddress: addresses.contract,
+      priestAddress: addresses.priest,
+      signature: templSig
+    })
+    .expect(200);
+
+  let resp;
+  for (let i = 0; i < 5; i++) {
+    const muteSig = await wallets.priest.signMessage(
+      `mute:${addresses.contract}:${addresses.member.toLowerCase()}`
+    );
+    resp = await request(app)
+      .post('/mute')
+      .send({
+        contractAddress: addresses.contract,
+        moderatorAddress: addresses.priest,
+        targetAddress: addresses.member,
+        signature: muteSig
+      })
+      .expect(200);
+  }
+
+  assert.deepEqual(resp.body, { mutedUntil: 0 });
+  await app.close();
+});
+
 test('rejects mute with bad signature', async () => {
   const fakeGroup = { id: 'group-3a', addMembers: async () => {}, removeMembers: async () => {} };
   const fakeXmtp = { 
