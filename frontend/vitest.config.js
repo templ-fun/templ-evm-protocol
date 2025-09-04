@@ -25,6 +25,10 @@ export default defineConfig({
       'playwright*.config.*',
       'playwright-*.config.*',
     ],
+    include: [
+      'src/**/*.{test,spec}.?(c|m)[jt]s?(x)',
+      '../shared/**/*.test.js'
+    ],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],
