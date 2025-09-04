@@ -18,6 +18,19 @@ share of each new membership, tracked per address. To withdraw these rewards, a
 member calls `claimMemberPool`, which transfers their unclaimed balance and
 updates their snapshot. Unclaimed rewards continue to accumulate until claimed.
 
+See the sequence diagram below for deposit, snapshot, and claim.
+
+```mermaid
+sequenceDiagram
+    participant NewMember
+    participant TEMPL
+    participant ExistingMember
+    NewMember->>TEMPL: deposit entry fee
+    TEMPL-->>ExistingMember: snapshot reward
+    ExistingMember->>TEMPL: claimMemberPool
+    TEMPL-->>ExistingMember: transfer reward
+```
+
 ## DAO governance
 - One member, one vote. The priest has `PRIEST_VOTE_WEIGHT` until membership exceeds `PRIEST_WEIGHT_THRESHOLD`.
 - Each member may have only one active proposal.
