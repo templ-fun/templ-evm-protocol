@@ -14,6 +14,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "preview": "vite preview",
     "test": "vitest run",
+    "coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug",
@@ -38,6 +39,7 @@
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^16.3.0",
     "vite": "^7.1.2",
-    "vitest": "^2.1.1"
+    "vitest": "^2.1.1",
+    "@vitest/coverage-v8": "^2.1.1"
   }
 }

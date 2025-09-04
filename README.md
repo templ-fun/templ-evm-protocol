@@ -1,7 +1,11 @@
 # TEMPL
 
-[![CircleCI](https://dl.circleci.com/status-badge/img/gh/MarcoWorms/templ/tree/main.svg?style=svg&circle-token=CCIPRJ_MhZ5NbNKhpfEAwFSEGDkUH_61036d1e9e936102be414dfd8d86a9318181746a)](https://dl.circleci.com/status-badge/redirect/gh/MarcoWorms/templ/tree/main)
-[![codecov](https://codecov.io/github/MarcoWorms/templ/graph/badge.svg?token=M8SPKQX6UD)](https://codecov.io/github/MarcoWorms/templ)
+[![CircleCI](https://dl.circleci.com/status-badge/img/gh/MarcoWorms/templ/tree/main.svg?style=svg&circle-token=CCIPRJ_MhZ5NbNKhpfEAwFSEGDkUH_61036d1e9e936102be414dfd8d86a9318181746a)](https://dl.circleci.com/status-badge/redirect/gh/MarcoWorms/templ/tree/main)  
+
+[![contracts coverage](https://codecov.io/github/MarcoWorms/templ/graph/badge.svg?token=M8SPKQX6UD&flag=contracts)](https://codecov.io/github/MarcoWorms/templ?flag=contracts)
+[![backend coverage](https://codecov.io/github/MarcoWorms/templ/graph/badge.svg?token=M8SPKQX6UD&flag=backend)](https://codecov.io/github/MarcoWorms/templ?flag=backend)
+[![frontend coverage](https://codecov.io/github/MarcoWorms/templ/graph/badge.svg?token=M8SPKQX6UD&flag=frontend)](https://codecov.io/github/MarcoWorms/templ?flag=frontend)
+
 
 DAO‑governed token‑gated private groups with onchain treasury management and XMTP messaging
 
@@ -55,8 +59,9 @@ Use the docs below to dive into each component:
 
 ## Quick Start
 1. **Install**
+   Install all dependencies; running `npm install` in the repo root pulls in contract packages:
    ```bash
-   npm --prefix contracts install
+   npm install
    npm --prefix backend install
    npm --prefix frontend install
    ```
@@ -69,8 +74,13 @@ Use the docs below to dive into each component:
 
    See component docs for individual commands.
 
-3. **Run**  
-   Start the backend and frontend services. Deployment and runtime details are available in [CONTRACTS.md](./CONTRACTS.md), [BACKEND.md](./BACKEND.md), and [FRONTEND.md](./FRONTEND.md).
+3. **Run**
+   Start the backend and frontend services:
+   ```bash
+   npm --prefix backend start
+   npm --prefix frontend run dev
+   ```
+   The backend expects environment variables like `BOT_PRIVATE_KEY`, `RPC_URL`, and `ALLOWED_ORIGINS` in `backend/.env`. See [BACKEND.md](./BACKEND.md) and [FRONTEND.md](./FRONTEND.md) for details.
 
 ## Environment Variables
 

@@ -24,15 +24,19 @@ npm --prefix backend install
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
+| `LOG_LEVEL` | Pino log level (`info`, `debug`, etc.) | `info` |
 | `RATE_LIMIT_STORE` | Rate limit store (`memory` or `redis`) | `memory` |
 | `REDIS_URL` | Redis URL when `RATE_LIMIT_STORE=redis` | — |
 | `DISABLE_XMTP_WAIT` | Skip XMTP readiness checks in tests | `0` |
 | `XMTP_MAX_ATTEMPTS` | Limit XMTP client rotation attempts | unlimited |
+| `DB_PATH` | Custom SQLite path for group metadata | `backend/groups.db` |
+| `CLEAR_DB` | Wipe database on startup | `0` |
 
-See [README.md#environment-variables](./README.md#environment-variables) for minimal setup variables.
+See [README.md#environment-variables](./README.md#environment-variables) for minimal setup variables and [PERSISTENCE.md](./PERSISTENCE.md) for database details.
 Startup fails without `RPC_URL` or `BOT_PRIVATE_KEY`.
 `XMTP_ENV` selects the network (`dev`, `production`, `local`).
 `ALLOWED_ORIGINS` configures CORS (default `http://localhost:5173`).
+`LOG_LEVEL` controls Pino verbosity (default `info`).
 
 ### Rate limiting
 
@@ -46,7 +50,7 @@ npm --prefix backend start
 ```
 
 ### Logging
-Logging uses [Pino](https://github.com/pinojs/pino) (JSON to `stdout`; set `LOG_LEVEL`). Pipe through `pino-pretty` in dev or redirect to a file in production.
+Logging uses [Pino](https://github.com/pinojs/pino) (JSON to `stdout`; `LOG_LEVEL` controls verbosity and defaults to `info`). Pipe through `pino-pretty` in dev or redirect to a file in production.
 
 ## Tests & Lint
 
@@ -115,11 +119,7 @@ When `ENABLE_DEBUG_ENDPOINTS=1`, these endpoints assist tests and local debuggin
 - `GET /debug/inbox-state?inboxId=<id>&env=<local|dev|production>` – raw XMTP inbox state.
 
 #### Running against a local XMTP node
-- Start the local node: `npm run xmtp:local:up` (requires Docker) and watch logs with `(cd xmtp-local-node && docker compose logs -f)`.
-- Set `XMTP_ENV=local` on the backend (Playwright config does this automatically when `E2E_XMTP_LOCAL=1`).
-- Default local endpoints: API `http://localhost:5555`, History `http://localhost:5558`.
-
-Playwright e2e uses `XMTP_ENV=production` by default and injects a random `BOT_PRIVATE_KEY` per run. When `E2E_XMTP_LOCAL=1`, it starts `xmtp-local-node` and sets `XMTP_ENV=local`.
+See the [E2E Environments](./README.md#E2E-Environments) section of the README for full setup details. In short, setting `E2E_XMTP_LOCAL=1` starts `xmtp-local-node` and sets `XMTP_ENV=local`; otherwise Playwright runs against XMTP production with a random `BOT_PRIVATE_KEY`.
 
 ## Security considerations
 - The service trusts the provided wallet address; production deployments should authenticate requests.
