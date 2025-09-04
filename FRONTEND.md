@@ -5,7 +5,7 @@ The TEMPL frontend is a React + Vite application that lets members deploy contra
 ## Prerequisites
 
 - Node.js `22.18.0` and the repo-wide setup steps from the [root README](./README.md#quick-start).
-- Environment variables like `VITE_XMTP_ENV`, `VITE_E2E_DEBUG`, and `E2E_XMTP_LOCAL` configure the frontend. See the [README](./README.md#environment-variables) for details.
+- Environment variables like `VITE_XMTP_ENV`, `VITE_E2E_DEBUG`, and `E2E_XMTP_LOCAL` configure the frontend. See [Environment variables](#environment-variables) for details.
 
 ## Setup
 
@@ -14,6 +14,14 @@ Install dependencies:
 ```bash
 npm --prefix frontend install
 ```
+
+## Environment variables
+
+| Name | Description | Default |
+| --- | --- | --- |
+| `VITE_XMTP_ENV` | XMTP environment for the Browser SDK (`local`, `dev`, `production`). Defaults to `dev` on `localhost`/`127.0.0.1` and `production` elsewhere. | `dev` (localhost) / `production` |
+| `VITE_E2E_DEBUG` | Enables debug helpers (`window.__XMTP`, etc.) during E2E runs. | `0` |
+| `E2E_XMTP_LOCAL` | When `1`, Playwright E2E tests connect to a local XMTP node instead of production. | `0` |
 
 ## Development
 
