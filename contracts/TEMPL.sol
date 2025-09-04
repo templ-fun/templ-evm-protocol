@@ -29,7 +29,6 @@ error InvalidRecipient();
 error AmountZero();
 error InsufficientTreasuryBalance();
 error NoTreasuryFunds();
-// Entry, rewards, and validation errors
 error EntryFeeTooSmall();
 error InvalidEntryFee();
 error NoRewardsToClaim();
