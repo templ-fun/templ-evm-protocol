@@ -55,8 +55,12 @@ Use the docs below to dive into each component:
 - `cache/` – Hardhat compilation cache
 
 ## Quick Start
-1. **Install**  
-   Install dependencies for contracts, the backend, and the frontend. See [CONTRACTS.md](./CONTRACTS.md), [BACKEND.md](./BACKEND.md), and [FRONTEND.md](./FRONTEND.md) for detailed commands.
+1. **Install**
+   ```bash
+   npm --prefix contracts install
+   npm --prefix backend install
+   npm --prefix frontend install
+   ```
 
 2. **Test**  
    Run the full suite:
