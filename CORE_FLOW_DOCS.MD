@@ -1,6 +1,6 @@
 # Core Flow Service Diagrams
 
-This document illustrates the components and message flows powering TEMPL's core protocol.
+Components and message flows powering TEMPL's core protocol.
 
 ## Flow overview
 - [1. Templ creation](#1-templ-creation)
@@ -12,13 +12,13 @@ This document illustrates the components and message flows powering TEMPL's core
 - [7. Proposal execution](#7-proposal-execution)
 
 ## Actors & Legend
-- Frontend: Browser app (XMTP Browser SDK) where users deploy, join, chat, and govern.
-- Backend: Node service (XMTP Node SDK) that owns the group, verifies on-chain state, and manages moderation.
-- Smart Contract: TEMPL on-chain logic (treasury, member pool, voting, execution allowlist).
-- XMTP: Messaging network (env: local|dev|production).
-- SQLite: Backend persistence for groups, delegates, and mutes.
+- Frontend: Browser app where users deploy, join, chat, and govern.
+- Backend: Node service that owns the group, verifies chain state, and moderates.
+- Smart Contract: TEMPL logic (treasury, member pool, voting).
+- XMTP: Messaging network.
+- SQLite: Backend DB for groups, delegates, and mutes.
 
-Legend in diagrams: F = Frontend, B = Backend, C = Smart Contract, X = XMTP, D = SQLite, M = Member (delegates), P = Priest.
+Legend: F=Frontend, B=Backend, C=Contract, X=XMTP, D=SQLite, M=Member, P=Priest.
 
 ## 1. Templ creation
 The backend bot creates and owns the XMTP group when a TEMPL is deployed.
@@ -29,9 +29,7 @@ flowchart LR
     B -->|newGroup| X[XMTP]
 ```
 
-- The frontend sends the deployed contract address and the priest's inbox ID to the backend via `POST /templs`. If the inbox ID isn't provided, the backend resolves it on the XMTP network via `findInboxIdByIdentifier` and waits for the identity to be visible before inviting. No deterministic/fake inbox IDs are used.
-- The backend calls `newGroup` on XMTP, adds the priest as a member, and records the resulting group ID.
-- Group ownership remains with the backend service; the priest does not control the group.
+- Frontend posts `{contract, priestInboxId?}`; backend resolves inbox if needed, creates the group, adds the priest, and stores the `groupId`.
 
 ## 2. Pay-to-join
 Members sign a join message, and the backend verifies purchase before inviting them.
@@ -42,7 +40,7 @@ flowchart LR
     B -->|addMembers| X[XMTP]
 ```
 
-- The backend may send a small "member-joined" message to help clients discover the group.
+- Backend may send a small "member-joined" message to aid discovery.
 
 Sequence detail:
 The contract purchase and backend invite flow proceeds as follows.
@@ -70,7 +68,7 @@ flowchart LR
 ```
 
 Discovery
-- After a member joins, browser clients explicitly call `conversations.sync()` to fetch new welcomes, followed by `preferences.sync()` and `conversations.syncAll([...])`, and then poll/stream until the group is found. The UI requires discovery.
+- After joining, browser clients sync conversations and preferences until the group is found.
 
 ## 4. Moderation
 The backend enforces escalating mutes and allows delegated moderation.
