@@ -47,7 +47,7 @@ npm run xmtp:local:down
   The backend mirrors on‑chain events into the group as JSON so clients see real‑time updates.
 
 ## Notes
-- XMTP environment: production by default. Set `VITE_XMTP_ENV=local` for local node during manual runs; Playwright switches to `local` automatically when `E2E_XMTP_LOCAL=1`.
+- XMTP environment: defaults to `dev` on `localhost`/`127.0.0.1` and `production` elsewhere. Set `VITE_XMTP_ENV` to override (e.g. `local` for a local node); Playwright switches to `local` automatically when `E2E_XMTP_LOCAL=1`.
 - E2E debug helpers: when `VITE_E2E_DEBUG=1`, the browser exposes `window.__XMTP`, `window.__xmtpList()` and `window.__xmtpGetById(id)` for diagnostics.
 - Client options: the Browser SDK is constructed with `appVersion` for better diagnostics (see `src/App.jsx`).
 - Typed flows: `src/flows.js` is documented with JSDoc and backed by `src/flows.types.d.ts`.
