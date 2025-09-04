@@ -9,6 +9,7 @@ import {
   sendMessage,
   proposeVote,
   voteOnProposal,
+  executeProposal,
   watchProposals,
   fetchActiveMutes,
   delegateMute,
@@ -499,9 +500,13 @@ function App() {
   async function handleExecuteProposal(proposalId) {
     if (!templAddress || !signer) return;
     try {
-      const contract = new ethers.Contract(templAddress, templArtifact.abi, signer);
-      const tx = await contract.executeProposal(proposalId);
-      await tx.wait();
+      await executeProposal({
+        ethers,
+        signer,
+        templAddress,
+        templArtifact,
+        proposalId
+      });
       alert(`Executed proposal ${proposalId}`);
       pushStatus(`✅ Proposal ${proposalId} executed`);
     } catch (err) {
