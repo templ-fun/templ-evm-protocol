@@ -24,6 +24,7 @@ npm --prefix backend install
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
+| `LOG_LEVEL` | Pino log level (`info`, `debug`, etc.) | `info` |
 | `RATE_LIMIT_STORE` | Rate limit store (`memory` or `redis`) | `memory` |
 | `REDIS_URL` | Redis URL when `RATE_LIMIT_STORE=redis` | — |
 | `DISABLE_XMTP_WAIT` | Skip XMTP readiness checks in tests | `0` |
@@ -33,6 +34,7 @@ See [README.md#environment-variables](./README.md#environment-variables) for min
 Startup fails without `RPC_URL` or `BOT_PRIVATE_KEY`.
 `XMTP_ENV` selects the network (`dev`, `production`, `local`).
 `ALLOWED_ORIGINS` configures CORS (default `http://localhost:5173`).
+`LOG_LEVEL` controls Pino verbosity (default `info`).
 
 ### Rate limiting
 
@@ -46,7 +48,7 @@ npm --prefix backend start
 ```
 
 ### Logging
-Logging uses [Pino](https://github.com/pinojs/pino) (JSON to `stdout`; set `LOG_LEVEL`). Pipe through `pino-pretty` in dev or redirect to a file in production.
+Logging uses [Pino](https://github.com/pinojs/pino) (JSON to `stdout`; `LOG_LEVEL` controls verbosity and defaults to `info`). Pipe through `pino-pretty` in dev or redirect to a file in production.
 
 ## Tests & Lint
 
