@@ -27,7 +27,7 @@ export async function waitForInboxReady(inboxId, tries = 60) {
   for (let i = 0; i < tries; i++) {
     try {
       if (typeof Client.inboxStateFromInboxIds === 'function') {
-        const envOpt = /** @type {any} */ (
+        const envOpt = /** @type {'local' | 'dev' | 'production'} */ (
           ['local', 'dev', 'production'].includes(XMTP_ENV) ? XMTP_ENV : 'dev'
         );
         const states = await Client.inboxStateFromInboxIds([id], envOpt);
@@ -49,13 +49,13 @@ export async function waitForInboxReady(inboxId, tries = 60) {
  * @param {object} opts Options used to configure the server.
  * @param {object} opts.xmtp XMTP client instance
  * @param {(contract: string, member: string) => Promise<boolean>} opts.hasPurchased
- * @param {(address: string) => { on: Function }} [opts.connectContract] Optional
+ * @param {(address: string) => import('ethers').Contract} [opts.connectContract] Optional
  *        factory returning a contract instance used to watch on-chain events.
  * @param {string} [opts.dbPath] Optional database path
- * @param {any} [opts.db] Optional database instance
+ * @param {import('better-sqlite3').Database} [opts.db] Optional database instance
  */
 export function createApp(opts) {
-  /** @type {{xmtp:any, hasPurchased:(contract:string,member:string)=>Promise<boolean>, connectContract?: (address:string)=>{on:Function}, dbPath?: string, db?: any}} */
+  /** @type {{xmtp: object, hasPurchased:(contract:string,member:string)=>Promise<boolean>, connectContract?: (address:string)=>import('ethers').Contract, dbPath?: string, db?: import('better-sqlite3').Database}} */
   // @ts-ignore - runtime validation below
   const { xmtp, hasPurchased, connectContract, dbPath, db } = opts || {};
   const app = express();
@@ -629,7 +629,9 @@ export function createApp(opts) {
       let states = null;
       try {
         if (typeof Client.inboxStateFromInboxIds === 'function') {
-          const envOpt = /** @type {any} */ (['local','dev','production'].includes(env) ? env : 'dev');
+          const envOpt = /** @type {'local' | 'dev' | 'production'} */ (
+            ['local', 'dev', 'production'].includes(env) ? env : 'dev'
+          );
           states = await Client.inboxStateFromInboxIds([inboxId], envOpt);
         }
       } catch (e) {

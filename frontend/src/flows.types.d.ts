@@ -1,51 +1,130 @@
-// Minimal type declarations for flows.js consumers
-export type Address = string
+import type { Signer, InterfaceAbi, TransactionRequest, Provider } from 'ethers';
+import type {
+  ProposalData,
+  VoteRecord,
+  MuteRecord
+} from '../../shared/types';
+
+export type Address = string;
+export type Ethers = typeof import('ethers');
+export interface XMTPConversation {
+  id: string;
+  consentState?: string;
+  updateConsentState?: (state: string) => Promise<void>;
+  send?: (content: string) => Promise<void>;
+}
+
+export interface XMTPClient {
+  inboxId?: string;
+  address?: string;
+  env?: string;
+  conversations: {
+    getConversationById(id: string): Promise<XMTPConversation>;
+    list?: (opts?: { consentStates?: string[] }) => Promise<XMTPConversation[]>;
+    sync?: () => Promise<void>;
+    syncAll?: (states: string[]) => Promise<void>;
+  };
+  preferences?: {
+    sync?: () => Promise<void>;
+    inboxState?: (force?: boolean) => Promise<unknown>;
+  };
+  findInboxIdByIdentifier?: (identifier: unknown) => Promise<string | null>;
+  debugInformation?: { apiAggregateStatistics?: () => Promise<string | undefined> };
+}
 
 export interface DeployRequest {
-  ethers: any
-  xmtp?: any
-  signer: any
-  walletAddress: Address
-  tokenAddress: Address
-  protocolFeeRecipient: Address
-  entryFee: number | string | bigint
-  priestVoteWeight?: number | string | bigint
-  priestWeightThreshold?: number | string | bigint
-  templArtifact: { abi: any; bytecode: string }
-  backendUrl?: string
-  txOptions?: Record<string, any>
+  ethers: Ethers;
+  xmtp?: XMTPClient;
+  signer: Signer;
+  walletAddress: Address;
+  tokenAddress: Address;
+  protocolFeeRecipient: Address;
+  entryFee: number | string | bigint;
+  priestVoteWeight?: number | string | bigint;
+  priestWeightThreshold?: number | string | bigint;
+  templArtifact: { abi: InterfaceAbi; bytecode: string };
+  backendUrl?: string;
+  txOptions?: TransactionRequest;
 }
 
 export interface DeployResponse {
-  contractAddress: Address
-  groupId: string
-  group: any | null
+  contractAddress: Address;
+  groupId: string;
+  group: XMTPConversation | null;
 }
 
 export interface JoinRequest {
-  ethers: any
-  xmtp: any
-  signer: any
-  walletAddress: Address
-  templAddress: Address
-  templArtifact: { abi: any }
-  backendUrl?: string
-  txOptions?: Record<string, any>
+  ethers: Ethers;
+  xmtp: XMTPClient;
+  signer: Signer;
+  walletAddress: Address;
+  templAddress: Address;
+  templArtifact: { abi: InterfaceAbi };
+  backendUrl?: string;
+  txOptions?: TransactionRequest;
 }
 
 export interface JoinResponse {
-  groupId: string
-  group: any | null
+  groupId: string;
+  group: XMTPConversation | null;
 }
 
-export function deployTempl(req: DeployRequest): Promise<DeployResponse>
-export function purchaseAndJoin(req: JoinRequest): Promise<JoinResponse>
-export function sendMessage(args: { group: any; content: string }): Promise<void>
-export function proposeVote(args: { ethers: any; signer: any; templAddress: Address; templArtifact: any; title: string; description: string; callData: string; votingPeriod?: number; txOptions?: any }): Promise<void>
-export function voteOnProposal(args: { ethers: any; signer: any; templAddress: Address; templArtifact: any; proposalId: number; support: boolean; txOptions?: any }): Promise<void>
-export function executeProposal(args: { ethers: any; signer: any; templAddress: Address; templArtifact: any; proposalId: number; txOptions?: any }): Promise<void>
-export function watchProposals(args: { ethers: any; provider: any; templAddress: Address; templArtifact: any; onProposal: Function; onVote: Function }): () => void
-export function delegateMute(args: { signer: any; contractAddress: Address; priestAddress: Address; delegateAddress: Address; backendUrl?: string }): Promise<boolean>
-export function muteMember(args: { signer: any; contractAddress: Address; moderatorAddress: Address; targetAddress: Address; backendUrl?: string }): Promise<number>
-export function fetchActiveMutes(args: { contractAddress: Address; backendUrl?: string }): Promise<Array<{ address: Address; count: number; until: number }>>
+export function deployTempl(req: DeployRequest): Promise<DeployResponse>;
+export function purchaseAndJoin(req: JoinRequest): Promise<JoinResponse>;
+export function sendMessage(args: { group: XMTPConversation; content: string }): Promise<void>;
+export function proposeVote(args: {
+  ethers: Ethers;
+  signer: Signer;
+  templAddress: Address;
+  templArtifact: { abi: InterfaceAbi };
+  title: string;
+  description: string;
+  callData: string;
+  votingPeriod?: number;
+  txOptions?: TransactionRequest;
+}): Promise<void>;
+export function voteOnProposal(args: {
+  ethers: Ethers;
+  signer: Signer;
+  templAddress: Address;
+  templArtifact: { abi: InterfaceAbi };
+  proposalId: number;
+  support: boolean;
+  txOptions?: TransactionRequest;
+}): Promise<void>;
+export function executeProposal(args: {
+  ethers: Ethers;
+  signer: Signer;
+  templAddress: Address;
+  templArtifact: { abi: InterfaceAbi };
+  proposalId: number;
+  txOptions?: TransactionRequest;
+}): Promise<void>;
+export function watchProposals(args: {
+  ethers: Ethers;
+  provider: Provider;
+  templAddress: Address;
+  templArtifact: { abi: InterfaceAbi };
+  onProposal: (p: ProposalData) => void;
+  onVote: (v: VoteRecord) => void;
+}): () => void;
+export function delegateMute(args: {
+  signer: Signer;
+  contractAddress: Address;
+  priestAddress: Address;
+  delegateAddress: Address;
+  backendUrl?: string;
+}): Promise<boolean>;
+export function muteMember(args: {
+  signer: Signer;
+  contractAddress: Address;
+  moderatorAddress: Address;
+  targetAddress: Address;
+  backendUrl?: string;
+}): Promise<number>;
+export function fetchActiveMutes(args: {
+  contractAddress: Address;
+  backendUrl?: string;
+}): Promise<MuteRecord[]>;
 
+export type { ProposalData, VoteRecord, MuteRecord };
