@@ -119,11 +119,7 @@ When `ENABLE_DEBUG_ENDPOINTS=1`, these endpoints assist tests and local debuggin
 - `GET /debug/inbox-state?inboxId=<id>&env=<local|dev|production>` – raw XMTP inbox state.
 
 #### Running against a local XMTP node
-- Start the local node: `npm run xmtp:local:up` (requires Docker) and watch logs with `(cd xmtp-local-node && docker compose logs -f)`.
-- Set `XMTP_ENV=local` on the backend (Playwright config does this automatically when `E2E_XMTP_LOCAL=1`).
-- Default local endpoints: API `http://localhost:5555`, History `http://localhost:5558`.
-
-Playwright e2e uses `XMTP_ENV=production` by default and injects a random `BOT_PRIVATE_KEY` per run. When `E2E_XMTP_LOCAL=1`, it starts `xmtp-local-node` and sets `XMTP_ENV=local`.
+See the [E2E Environments](./README.md#E2E-Environments) section of the README for full setup details. In short, setting `E2E_XMTP_LOCAL=1` starts `xmtp-local-node` and sets `XMTP_ENV=local`; otherwise Playwright runs against XMTP production with a random `BOT_PRIVATE_KEY`.
 
 ## Security considerations
 - The service trusts the provided wallet address; production deployments should authenticate requests.
