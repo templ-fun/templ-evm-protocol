@@ -22,6 +22,8 @@ XMTP_ENV=dev # XMTP network: dev|production|local (default: dev)
 DISABLE_XMTP_WAIT=1
 ```
 
+The server will throw an error on startup if `RPC_URL` or `BOT_PRIVATE_KEY` are missing.
+
 Use `XMTP_ENV=dev` for local development and integration tests. Set `XMTP_ENV=production` when connecting to the public XMTP network, such as during Playwright e2e runs or production deployments.
 
 The API limits cross-origin requests using the [`cors`](https://www.npmjs.com/package/cors) middleware. Allowed origins are configured with the `ALLOWED_ORIGINS` environment variable (comma-separated list). By default only `http://localhost:5173` is permitted.
