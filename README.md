@@ -38,6 +38,10 @@ Use the docs below to dive into each component:
 
 ## Quick Start
 1. **Clone & install**
+   - Requires Node.js `>=22.18.0`; mismatched versions may break scripts or tests.
+     ```bash
+     nvm install 22.18.0 && nvm use 22.18.0
+     ```
    ```bash
    git clone <repo>
    cd templ
