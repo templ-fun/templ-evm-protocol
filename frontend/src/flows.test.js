@@ -19,6 +19,12 @@ beforeEach(() => {
 });
 
 describe('templ flows', () => {
+  it('deployTempl rejects when required params missing', async () => {
+    await expect(deployTempl({})).rejects.toThrow(
+      'Missing required deployTempl parameters'
+    );
+  });
+
   it('deployTempl deploys contract and registers group', async () => {
     const fakeContract = {
       waitForDeployment: vi.fn(),
@@ -179,6 +185,28 @@ describe('templ flows', () => {
     expect(templContract.purchaseAccess).toHaveBeenCalled();
     expect(signer.signMessage).toHaveBeenCalledWith('join:0xtempl');
     expect(result).toEqual({ group: { id: 'group-2', consentState: 'allowed' }, groupId: 'group-2' });
+  });
+
+  it('purchaseAndJoin rejects on backend failure', async () => {
+    const templContract = { hasPurchased: vi.fn().mockResolvedValue(true) };
+    const ethers = { Contract: vi.fn().mockReturnValue(templContract) };
+    const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 500,
+      statusText: 'Server Error',
+      text: () => Promise.resolve('fail')
+    });
+    await expect(
+      purchaseAndJoin({
+        ethers,
+        xmtp: undefined,
+        signer,
+        walletAddress: '0xabc',
+        templAddress: '0xTempl',
+        templArtifact
+      })
+    ).rejects.toThrow(/Join failed: 500/);
   });
 
   it('sendMessage forwards content to group', async () => {
@@ -371,5 +399,21 @@ describe('templ flows', () => {
       'http://localhost:3001/mutes?contractAddress=0xTempl'
     );
     expect(result).toEqual([{ address: '0xabc', count: 1, until: 0 }]);
+  });
+
+  it('fetchActiveMutes returns empty array on non-200', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: false });
+    const result = await fetchActiveMutes({ contractAddress: '0xTempl' });
+    expect(result).toEqual([]);
+  });
+
+  it('fetchActiveMutes throws on invalid JSON response', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({})
+    });
+    await expect(
+      fetchActiveMutes({ contractAddress: '0xTempl' })
+    ).rejects.toThrow('Invalid /mutes response');
   });
 });
