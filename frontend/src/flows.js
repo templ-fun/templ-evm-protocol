@@ -1,4 +1,6 @@
 // @ts-check
+import { BACKEND_URL } from './config.js';
+
 // Minimal debug logger usable in both browser and Node tests
 const __isDebug = (() => {
   // Node tests: opt-in via DEBUG_TEMPL=1
@@ -29,7 +31,7 @@ export async function deployTempl({
   priestVoteWeight = 10,
   priestWeightThreshold = 10,
   templArtifact,
-  backendUrl = 'http://localhost:3001',
+  backendUrl = BACKEND_URL,
   txOptions = {}
 }) {
   if (!ethers || !signer || !walletAddress || !tokenAddress || !protocolFeeRecipient || !templArtifact) {
@@ -147,7 +149,7 @@ export async function purchaseAndJoin({
   walletAddress,
   templAddress,
   templArtifact,
-  backendUrl = 'http://localhost:3001',
+  backendUrl = BACKEND_URL,
   txOptions = {}
 }) {
   // Ensure the browser identity is registered and key package published
@@ -376,7 +378,7 @@ export async function delegateMute({
   contractAddress,
   priestAddress,
   delegateAddress,
-  backendUrl = 'http://localhost:3001'
+  backendUrl = BACKEND_URL
 }) {
   const message = `delegate:${contractAddress.toLowerCase()}:${delegateAddress.toLowerCase()}`;
   const signature = await signer.signMessage(message);
@@ -403,7 +405,7 @@ export async function muteMember({
   contractAddress,
   moderatorAddress,
   targetAddress,
-  backendUrl = 'http://localhost:3001'
+  backendUrl = BACKEND_URL
 }) {
   const message = `mute:${contractAddress.toLowerCase()}:${targetAddress.toLowerCase()}`;
   const signature = await signer.signMessage(message);
@@ -427,7 +429,7 @@ export async function muteMember({
 
 export async function fetchActiveMutes({
   contractAddress,
-  backendUrl = 'http://localhost:3001'
+  backendUrl = BACKEND_URL
 }) {
   const res = await fetch(
     `${backendUrl}/mutes?contractAddress=${contractAddress}`

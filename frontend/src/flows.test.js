@@ -11,6 +11,7 @@ import {
   muteMember,
   fetchActiveMutes
 } from './flows.js';
+import { BACKEND_URL } from './config.js';
 
 const templArtifact = { abi: [], bytecode: '0x' };
 const originalFetch = globalThis.fetch;
@@ -73,7 +74,7 @@ describe('templ flows', () => {
     );
     expect(signer.signMessage).toHaveBeenCalledWith('create:0xdead');
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      'http://localhost:3001/templs',
+      `${BACKEND_URL}/templs`,
       expect.objectContaining({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -325,7 +326,7 @@ describe('templ flows', () => {
     });
     expect(signer.signMessage).toHaveBeenCalledWith('delegate:0xtempl:0xdel');
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      'http://localhost:3001/delegates',
+      `${BACKEND_URL}/delegates`,
       expect.objectContaining({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -394,7 +395,7 @@ describe('templ flows', () => {
     });
     expect(signer.signMessage).toHaveBeenCalledWith('mute:0xtempl:0xtar');
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      'http://localhost:3001/mute',
+      `${BACKEND_URL}/mute`,
       expect.objectContaining({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -460,7 +461,7 @@ describe('templ flows', () => {
       });
     const result = await fetchActiveMutes({ contractAddress: '0xTempl' });
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      'http://localhost:3001/mutes?contractAddress=0xTempl'
+      `${BACKEND_URL}/mutes?contractAddress=0xTempl`
     );
     expect(result).toEqual([{ address: '0xabc', count: 1, until: 0 }]);
   });
