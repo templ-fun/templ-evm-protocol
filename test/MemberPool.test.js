@@ -37,117 +37,44 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
     });
 
     describe("Pool Distribution Formula Validation", function () {
-        it("SCENARIO 1: First member joins - should get 0% (no one before them)", async function () {
-            // Member 1 joins
-            await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member1).purchaseAccess();
+        const thirtyPercent = (ENTRY_FEE * 30n) / 100n;
+        const fifteenPercent = thirtyPercent / 2n;
+        const tenPercent = thirtyPercent / 3n;
 
-            // Member 1 should have 0 claimable (they were first)
-            const claimable1 = await templ.getClaimablePoolAmount(member1.address);
-            expect(claimable1).to.equal(0);
-            
-            console.log("✅ Member 1 claimable after joining: 0 (correct - first member)");
-        });
+        const scenarios = [
+            {
+                joiners: [() => member1],
+                expectedShares: [0n],
+            },
+            {
+                joiners: [() => member1, () => member2],
+                expectedShares: [thirtyPercent, 0n],
+            },
+            {
+                joiners: [() => member1, () => member2, () => member3],
+                expectedShares: [thirtyPercent + fifteenPercent, fifteenPercent, 0n],
+            },
+            {
+                joiners: [() => member1, () => member2, () => member3, () => member4],
+                expectedShares: [thirtyPercent + fifteenPercent + tenPercent, fifteenPercent + tenPercent, tenPercent, 0n],
+            },
+        ];
 
-        it("SCENARIO 2: Second member joins - first member should get 30%", async function () {
-            // Member 1 joins
-            await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member1).purchaseAccess();
+        for (const { joiners, expectedShares } of scenarios) {
+            it(`distributes rewards correctly with ${joiners.length} joiner(s)`, async function () {
+                for (const getMember of joiners) {
+                    const member = getMember();
+                    await token.connect(member).approve(await templ.getAddress(), ENTRY_FEE);
+                    await templ.connect(member).purchaseAccess();
+                }
 
-            // Member 2 joins
-            await token.connect(member2).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member2).purchaseAccess();
+                const claimable = await Promise.all(
+                    joiners.map(getMember => templ.getClaimablePoolAmount(getMember().address))
+                );
 
-            // Calculate expected: 30% of entry fee
-            const thirtyPercent = (ENTRY_FEE * 30n) / 100n;
-            
-            // Member 1 should get the full 30% from member 2's pool contribution
-            const claimable1 = await templ.getClaimablePoolAmount(member1.address);
-            expect(claimable1).to.equal(thirtyPercent);
-            
-            // Member 2 should have 0 claimable
-            const claimable2 = await templ.getClaimablePoolAmount(member2.address);
-            expect(claimable2).to.equal(0);
-            
-            console.log("✅ Member 1 gets 30% from Member 2's entry fee");
-            console.log(`   Expected: ${ethers.formatEther(thirtyPercent)} tokens`);
-            console.log(`   Actual: ${ethers.formatEther(claimable1)} tokens`);
-        });
-
-        it("SCENARIO 3: Third member joins - first two should each get 15%", async function () {
-            // Members 1 and 2 join
-            await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member1).purchaseAccess();
-            
-            await token.connect(member2).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member2).purchaseAccess();
-
-            // Clear member 1's existing claims first
-            await templ.connect(member1).claimMemberPool();
-
-            // Member 3 joins
-            await token.connect(member3).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member3).purchaseAccess();
-
-            // Calculate expected: 30% pool split between 2 existing members = 15% each
-            const thirtyPercent = (ENTRY_FEE * 30n) / 100n;
-            const fifteenPercent = thirtyPercent / 2n;
-            
-            // Check claimable amounts
-            const claimable1 = await templ.getClaimablePoolAmount(member1.address);
-            const claimable2 = await templ.getClaimablePoolAmount(member2.address);
-            const claimable3 = await templ.getClaimablePoolAmount(member3.address);
-            
-            expect(claimable1).to.equal(fifteenPercent);
-            expect(claimable2).to.equal(fifteenPercent);
-            expect(claimable3).to.equal(0);
-            
-            console.log("✅ Members 1 & 2 each get 15% from Member 3's entry fee");
-            console.log(`   Expected each: ${ethers.formatEther(fifteenPercent)} tokens`);
-            console.log(`   Member 1: ${ethers.formatEther(claimable1)} tokens`);
-            console.log(`   Member 2: ${ethers.formatEther(claimable2)} tokens`);
-        });
-
-        it("SCENARIO 4: Fourth member joins - first three should each get 10%", async function () {
-            // Members 1, 2, and 3 join
-            await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member1).purchaseAccess();
-            
-            await token.connect(member2).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member2).purchaseAccess();
-            
-            await token.connect(member3).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member3).purchaseAccess();
-
-            // Clear existing claims
-            await templ.connect(member1).claimMemberPool();
-            await templ.connect(member2).claimMemberPool();
-
-            // Member 4 joins
-            await token.connect(member4).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member4).purchaseAccess();
-
-            // Calculate expected: 30% pool split between 3 existing members = 10% each
-            const thirtyPercent = (ENTRY_FEE * 30n) / 100n;
-            const tenPercent = thirtyPercent / 3n;
-            
-            // Check claimable amounts
-            const claimable1 = await templ.getClaimablePoolAmount(member1.address);
-            const claimable2 = await templ.getClaimablePoolAmount(member2.address);
-            const claimable3 = await templ.getClaimablePoolAmount(member3.address);
-            const claimable4 = await templ.getClaimablePoolAmount(member4.address);
-            
-            expect(claimable1).to.equal(tenPercent);
-            expect(claimable2).to.equal(tenPercent);
-            expect(claimable3).to.equal(tenPercent);
-            expect(claimable4).to.equal(0);
-            
-            console.log("✅ Members 1, 2 & 3 each get 10% from Member 4's entry fee");
-            console.log(`   Expected each: ${ethers.formatEther(tenPercent)} tokens`);
-            console.log(`   Member 1: ${ethers.formatEther(claimable1)} tokens`);
-            console.log(`   Member 2: ${ethers.formatEther(claimable2)} tokens`);
-            console.log(`   Member 3: ${ethers.formatEther(claimable3)} tokens`);
-        });
+                expect(claimable).to.deep.equal(expectedShares);
+            });
+        }
     });
 
     describe("Cumulative Rewards Testing", function () {
@@ -193,10 +120,6 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
             // Member 3: 10%
             expect(claimable3).to.equal(tenPercent);
             
-            console.log("✅ Cumulative rewards tracked correctly:");
-            console.log(`   Member 1 total: ${ethers.formatEther(claimable1)} (30% + 15% + 10%)`);
-            console.log(`   Member 2 total: ${ethers.formatEther(claimable2)} (15% + 10%)`);
-            console.log(`   Member 3 total: ${ethers.formatEther(claimable3)} (10%)`);
         });
     });
 
@@ -262,9 +185,6 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
             const totalClaimed = claimable1 + claimable2 + claimable3;
             expect(finalPoolBalance).to.equal(initialPoolBalance - totalClaimed);
 
-            console.log("✅ All claims processed correctly");
-            console.log(`   Total claimed: ${ethers.formatEther(totalClaimed)}`);
-            console.log(`   Pool remaining: ${ethers.formatEther(finalPoolBalance)}`);
         });
     });
 
@@ -320,10 +240,6 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
             const totalClaimable = claimable1 + claimable2 + claimable3;
             const dust = thirtyPercent - totalClaimable;
             
-            console.log("✅ Rounding handled correctly:");
-            console.log(`   Pool amount: ${ethers.formatEther(thirtyPercent)}`);
-            console.log(`   Per member: ${ethers.formatEther(perMember)}`);
-            console.log(`   Dust remaining: ${ethers.formatEther(dust)}`);
         });
 
         it("Should prevent claims when member hasn't purchased", async function () {
@@ -356,8 +272,6 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
             const claimable1 = await templ.getClaimablePoolAmount(member1.address);
             expect(claimable1).to.equal(tenPercent); // Only from member 4
             
-            console.log("✅ Partial claims tracked correctly");
-            console.log(`   Member 1 can only claim new rewards: ${ethers.formatEther(claimable1)}`);
         });
     });
 
@@ -399,8 +313,6 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
             expectedPoolBalance -= fifteenPercent;
             expect(await templ.memberPoolBalance()).to.equal(expectedPoolBalance);
 
-            console.log("✅ Pool balance integrity maintained throughout all operations");
-            console.log(`   Final pool balance: ${ethers.formatEther(expectedPoolBalance)}`);
         });
     });
 
