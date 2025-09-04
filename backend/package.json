@@ -8,6 +8,7 @@
   "scripts": {
     "start": "node src/server.js",
     "test": "DISABLE_XMTP_WAIT=1 node --test --import ./test/after-cleanup.js",
+    "coverage": "c8 --reporter=text --reporter=lcov --report-dir=coverage npm test",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc -p tsconfig.json"
@@ -29,6 +30,7 @@
     "globals": "^16.3.0",
     "@types/node": "^22.7.5",
     "typescript": "^5.5.4",
-    "supertest": "^6.3.3"
+    "supertest": "^6.3.3",
+    "c8": "^9.1.0"
   }
 }

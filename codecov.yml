@@ -1,0 +1,24 @@
+coverage:
+  precision: 2
+  round: down
+  status:
+    project:
+      contracts:
+        target: 100
+        flags: contracts
+      backend:
+        target: auto
+        flags: backend
+      frontend:
+        target: auto
+        flags: frontend
+flags:
+  contracts:
+    paths:
+      - coverage/contracts
+  backend:
+    paths:
+      - backend/coverage
+  frontend:
+    paths:
+      - frontend/coverage
