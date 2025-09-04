@@ -2,6 +2,7 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
 const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
+const { encodeSweepMemberRewardRemainderDAO } = require("./utils/callDataBuilders");
 
 describe("Sweep Member Remainder", function () {
   let templ;
@@ -36,10 +37,7 @@ describe("Sweep Member Remainder", function () {
     const recipient = accounts[10];
     const before = await token.balanceOf(recipient.address);
 
-    const callData = templ.interface.encodeFunctionData(
-      "sweepMemberRewardRemainderDAO",
-      [recipient.address]
-    );
+    const callData = encodeSweepMemberRewardRemainderDAO(recipient.address);
 
     await templ.connect(user1).createProposal(
       "Sweep remainder",
@@ -68,12 +66,8 @@ describe("Sweep Member Remainder", function () {
   });
 
   it("should revert proposal execution with InvalidRecipient", async function () {
-    const iface = new ethers.Interface([
-      "function sweepMemberRewardRemainderDAO(address)"
-    ]);
-    const callData = iface.encodeFunctionData(
-      "sweepMemberRewardRemainderDAO",
-      [ethers.ZeroAddress]
+    const callData = encodeSweepMemberRewardRemainderDAO(
+      ethers.ZeroAddress
     );
 
     await templ.connect(user1).createProposal(
@@ -96,13 +90,7 @@ describe("Sweep Member Remainder", function () {
   });
 
   it("should revert proposal execution with AmountZero when pool is empty", async function () {
-    const iface = new ethers.Interface([
-      "function sweepMemberRewardRemainderDAO(address)"
-    ]);
-    const callData = iface.encodeFunctionData(
-      "sweepMemberRewardRemainderDAO",
-      [user1.address]
-    );
+    const callData = encodeSweepMemberRewardRemainderDAO(user1.address);
 
     await templ.connect(user1).createProposal(
       "Sweep once",

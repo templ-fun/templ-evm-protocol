@@ -2,6 +2,14 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
 const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
+const {
+    encodeSetPausedDAO,
+    encodeWithdrawTreasuryDAO,
+    encodeWithdrawAllTreasuryDAO,
+    encodeWithdrawTokenDAO,
+    encodeWithdrawETHDAO,
+    encodeUpdateConfigDAO,
+} = require("./utils/callDataBuilders");
 
 describe("TEMPL Contract with DAO Governance", function () {
     let templ;
@@ -108,8 +116,7 @@ describe("TEMPL Contract with DAO Governance", function () {
         it("Should allow members to create proposals", async function () {
             const title = "Test Proposal";
             const description = "This is a test proposal";
-            const iface = new ethers.Interface(["function setPausedDAO(bool)"]);
-            const callData = iface.encodeFunctionData("setPausedDAO", [false]);
+            const callData = encodeSetPausedDAO(false);
             const votingPeriod = 7 * 24 * 60 * 60; // 7 days
 
             await expect(templ.connect(user1).createProposal(
@@ -128,8 +135,7 @@ describe("TEMPL Contract with DAO Governance", function () {
         });
 
         it("Should prevent non-members from creating proposals", async function () {
-            const iface = new ethers.Interface(["function setPausedDAO(bool)"]);
-            const callData = iface.encodeFunctionData("setPausedDAO", [false]);
+            const callData = encodeSetPausedDAO(false);
             await expect(templ.connect(user2).createProposal(
                 "Test",
                 "Description",
@@ -139,14 +145,11 @@ describe("TEMPL Contract with DAO Governance", function () {
         });
 
         it("Should allow creating a proposal to withdraw treasury funds", async function () {
-            const iface = new ethers.Interface([
-                "function withdrawTreasuryDAO(address,uint256,string)"
-            ]);
-            const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
+            const callData = encodeWithdrawTreasuryDAO(
                 treasury.address,
                 ethers.parseUnits("1", 18),
                 "Move funds"
-            ]);
+            );
             await expect(
                 templ.connect(user1).createProposal(
                     "Treasury Withdraw",
@@ -158,13 +161,10 @@ describe("TEMPL Contract with DAO Governance", function () {
         });
 
         it("Should allow creating a proposal to withdraw all treasury funds", async function () {
-            const iface = new ethers.Interface([
-                "function withdrawAllTreasuryDAO(address,string)"
-            ]);
-            const callData = iface.encodeFunctionData("withdrawAllTreasuryDAO", [
+            const callData = encodeWithdrawAllTreasuryDAO(
                 treasury.address,
                 "Drain treasury"
-            ]);
+            );
             await expect(
                 templ.connect(user1).createProposal(
                     "Full Treasury Withdraw",
@@ -176,8 +176,7 @@ describe("TEMPL Contract with DAO Governance", function () {
         });
 
         it("Should enforce minimum voting period", async function () {
-            const iface2 = new ethers.Interface(["function setPausedDAO(bool)"]);
-            const cd2 = iface2.encodeFunctionData("setPausedDAO", [false]);
+            const cd2 = encodeSetPausedDAO(false);
             await expect(templ.connect(user1).createProposal(
                 "Test",
                 "Description",
@@ -187,8 +186,7 @@ describe("TEMPL Contract with DAO Governance", function () {
         });
 
         it("Should enforce maximum voting period", async function () {
-            const iface3 = new ethers.Interface(["function setPausedDAO(bool)"]);
-            const cd3 = iface3.encodeFunctionData("setPausedDAO", [false]);
+            const cd3 = encodeSetPausedDAO(false);
             await expect(templ.connect(user1).createProposal(
                 "Test",
                 "Description",
@@ -198,8 +196,7 @@ describe("TEMPL Contract with DAO Governance", function () {
         });
 
         it("Should require non-empty title", async function () {
-            const iface4 = new ethers.Interface(["function setPausedDAO(bool)"]);
-            const cd4 = iface4.encodeFunctionData("setPausedDAO", [false]);
+            const cd4 = encodeSetPausedDAO(false);
             await expect(templ.connect(user1).createProposal(
                 "",
                 "Description",
@@ -209,8 +206,7 @@ describe("TEMPL Contract with DAO Governance", function () {
         });
 
         it("Should require non-empty description", async function () {
-            const iface5 = new ethers.Interface(["function setPausedDAO(bool)"]);
-            const cd5 = iface5.encodeFunctionData("setPausedDAO", [false]);
+            const cd5 = encodeSetPausedDAO(false);
             await expect(templ.connect(user1).createProposal(
                 "Test",
                 "",
@@ -255,14 +251,11 @@ describe("TEMPL Contract with DAO Governance", function () {
             await purchaseAccess(templ, token, [user3]);
 
             // Create a proposal
-            const iface = new ethers.Interface([
-                "function withdrawTreasuryDAO(address,uint256,string)"
-            ]);
-            const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
+            const callData = encodeWithdrawTreasuryDAO(
                 treasury.address,
                 ethers.parseUnits("10", 18),
                 "Test withdrawal"
-            ]);
+            );
 
             await templ.connect(user1).createProposal(
                 "Treasury Withdrawal",
@@ -344,14 +337,11 @@ describe("TEMPL Contract with DAO Governance", function () {
         it("Should execute passed treasury withdrawal proposal", async function () {
             // Create treasury withdrawal proposal
             const withdrawAmount = ethers.parseUnits("10", 18);
-            const iface = new ethers.Interface([
-                "function withdrawTreasuryDAO(address,uint256,string)"
-            ]);
-            const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
+            const callData = encodeWithdrawTreasuryDAO(
                 treasury.address,
                 withdrawAmount,
                 "Test withdrawal"
-            ]);
+            );
 
             await templ.connect(user1).createProposal(
                 "Treasury Withdrawal",
@@ -387,14 +377,11 @@ describe("TEMPL Contract with DAO Governance", function () {
 
         it("Should not execute failed proposals", async function () {
             // Create proposal
-            const iface = new ethers.Interface([
-                "function withdrawTreasuryDAO(address,uint256,string)"
-            ]);
-            const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
+            const callData = encodeWithdrawTreasuryDAO(
                 treasury.address,
                 ethers.parseUnits("10", 18),
                 "Test"
-            ]);
+            );
 
             await templ.connect(user1).createProposal(
                 "Test",
@@ -419,10 +406,7 @@ describe("TEMPL Contract with DAO Governance", function () {
 
         it("Should not execute before voting ends", async function () {
             // Create proposal
-            const iface = new ethers.Interface([
-                "function setPausedDAO(bool)"
-            ]);
-            const callData = iface.encodeFunctionData("setPausedDAO", [true]);
+            const callData = encodeSetPausedDAO(true);
 
             await templ.connect(user1).createProposal(
                 "Pause",
@@ -442,13 +426,10 @@ describe("TEMPL Contract with DAO Governance", function () {
 
         it("Should execute config update proposal", async function () {
             const newFee = ethers.parseUnits("200", 18);
-            const iface = new ethers.Interface([
-                "function updateConfigDAO(address,uint256)"
-            ]);
-            const callData = iface.encodeFunctionData("updateConfigDAO", [
+            const callData = encodeUpdateConfigDAO(
                 ethers.ZeroAddress, // Don't change token
                 newFee
-            ]);
+            );
 
             await templ.connect(user1).createProposal(
                 "Update Fee",
@@ -473,10 +454,7 @@ describe("TEMPL Contract with DAO Governance", function () {
         // Removed: executeDAO arbitrary external call tests for security hardening
 
         it("Should execute pause/unpause proposal", async function () {
-            const iface = new ethers.Interface([
-                "function setPausedDAO(bool)"
-            ]);
-            const callData = iface.encodeFunctionData("setPausedDAO", [true]);
+            const callData = encodeSetPausedDAO(true);
 
             await templ.connect(user1).createProposal(
                 "Pause Contract",
@@ -504,10 +482,7 @@ describe("TEMPL Contract with DAO Governance", function () {
         });
 
         it("Should prevent double execution", async function () {
-            const iface = new ethers.Interface([
-                "function setPausedDAO(bool)"
-            ]);
-            const callData = iface.encodeFunctionData("setPausedDAO", [true]);
+            const callData = encodeSetPausedDAO(true);
 
             await templ.connect(user1).createProposal(
                 "Test",
@@ -569,14 +544,11 @@ describe("TEMPL Contract with DAO Governance", function () {
             const treasuryBalance = await templ.treasuryBalance();
             const withdrawAmount = treasuryBalance / 2n; // Half of treasury
 
-            const iface = new ethers.Interface([
-                "function withdrawTreasuryDAO(address,uint256,string)"
-            ]);
-            const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
+            const callData = encodeWithdrawTreasuryDAO(
                 treasury.address,
                 withdrawAmount,
                 "Approved withdrawal"
-            ]);
+            );
 
             await templ.connect(user1).createProposal(
                 "Treasury Transfer",
@@ -619,12 +591,8 @@ describe("TEMPL Contract with DAO Governance", function () {
             await purchaseAccess(templ, token, [user2]);
 
             // interface for pause/unpause proposals
-            const iface = new ethers.Interface([
-                "function setPausedDAO(bool)"
-            ]);
-
             // create proposal that remains active for voting after pause
-            const unpauseData = iface.encodeFunctionData("setPausedDAO", [false]);
+            const unpauseData = encodeSetPausedDAO(false);
             await templ.connect(user1).createProposal(
                 "Unpause",
                 "Resume operations",
@@ -633,7 +601,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             );
 
             // create and execute pause proposal
-            const pauseData = iface.encodeFunctionData("setPausedDAO", [true]);
+            const pauseData = encodeSetPausedDAO(true);
 
             await templ.connect(user2).createProposal(
                 "Pause",
@@ -659,8 +627,7 @@ describe("TEMPL Contract with DAO Governance", function () {
         });
 
         it("Should allow createProposal when paused", async function () {
-            const iface = new ethers.Interface(["function setPausedDAO(bool)"]);
-            const callData = iface.encodeFunctionData("setPausedDAO", [false]);
+            const callData = encodeSetPausedDAO(false);
             await expect(
                 templ.connect(user2).createProposal(
                     "New",
@@ -704,9 +671,8 @@ describe("TEMPL Contract with DAO Governance", function () {
 
         it("Should return active proposals correctly", async function () {
             // Create multiple proposals with different users (due to single proposal restriction)
-            const iface = new ethers.Interface(["function setPausedDAO(bool)"]);
-            const cd1 = iface.encodeFunctionData("setPausedDAO", [false]);
-            const cd2 = iface.encodeFunctionData("setPausedDAO", [true]);
+            const cd1 = encodeSetPausedDAO(false);
+            const cd2 = encodeSetPausedDAO(true);
             await templ.connect(user1).createProposal(
                 "Active 1",
                 "First active",
@@ -728,8 +694,7 @@ describe("TEMPL Contract with DAO Governance", function () {
         });
 
         it("Should exclude expired proposals", async function () {
-            const iface2 = new ethers.Interface(["function setPausedDAO(bool)"]);
-            const cd3 = iface2.encodeFunctionData("setPausedDAO", [false]);
+            const cd3 = encodeSetPausedDAO(false);
             await templ.connect(user1).createProposal(
                 "Short",
                 "Expires soon",
@@ -737,7 +702,7 @@ describe("TEMPL Contract with DAO Governance", function () {
                 7 * 24 * 60 * 60 // 7 days
             );
 
-            const cd4 = iface2.encodeFunctionData("setPausedDAO", [true]);
+            const cd4 = encodeSetPausedDAO(true);
             await templ.connect(user2).createProposal(
                 "Long",
                 "Active longer",
@@ -755,10 +720,7 @@ describe("TEMPL Contract with DAO Governance", function () {
         });
 
         it("Should exclude executed proposals", async function () {
-            const iface = new ethers.Interface([
-                "function setPausedDAO(bool)"
-            ]);
-            const callData = iface.encodeFunctionData("setPausedDAO", [true]);
+            const callData = encodeSetPausedDAO(true);
 
             await templ.connect(user1).createProposal(
                 "Execute Me",
@@ -767,8 +729,7 @@ describe("TEMPL Contract with DAO Governance", function () {
                 7 * 24 * 60 * 60
             );
 
-            const iface3 = new ethers.Interface(["function setPausedDAO(bool)"]);
-            const cd5 = iface3.encodeFunctionData("setPausedDAO", [false]);
+            const cd5 = encodeSetPausedDAO(false);
             await templ.connect(user2).createProposal(
                 "Still Active",
                 "Not executed",
@@ -924,13 +885,10 @@ describe("TEMPL Contract with DAO Governance", function () {
         });
 
         it("Should execute withdrawAllTreasuryDAO through proposal", async function () {
-            const iface = new ethers.Interface([
-                "function withdrawAllTreasuryDAO(address,string)"
-            ]);
-            const callData = iface.encodeFunctionData("withdrawAllTreasuryDAO", [
+            const callData = encodeWithdrawAllTreasuryDAO(
                 treasury.address,
                 "Empty treasury"
-            ]);
+            );
 
             await templ.connect(user1).createProposal(
                 "Empty Treasury",
@@ -1037,14 +995,11 @@ describe("TEMPL Contract with DAO Governance", function () {
             await templ.connect(user1).claimMemberPool();
 
             // User 1 creates proposal
-            const iface = new ethers.Interface([
-                "function withdrawTreasuryDAO(address,uint256,string)"
-            ]);
-            const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
+            const callData = encodeWithdrawTreasuryDAO(
                 treasury.address,
                 ethers.parseUnits("10", 18),
                 "Community fund"
-            ]);
+            );
 
             await templ.connect(user1).createProposal(
                 "Community Fund",
