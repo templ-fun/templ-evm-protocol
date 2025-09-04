@@ -17,9 +17,9 @@ workflows:
           name: check-paths
           base-revision: main
           config-path: .circleci/continue.yml
-          additional-parameters: run_manual_tests
           mapping: |
             contracts/.* run_contracts true
             test/.* run_contracts true
             backend/.* run_app true
             frontend/.* run_app true
+            .* run_manual_tests << pipeline.parameters.run_manual_tests >>
