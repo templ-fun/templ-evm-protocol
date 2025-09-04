@@ -53,7 +53,7 @@ BASESCAN_API_KEY=...
 
 `ENTRY_FEE` must be at least 10 and a multiple of 10 so the 30/30/30/10
 fee split divides evenly. This requirement is enforced in the
-[constructor check](contracts/TEMPL.sol#L213-L215).
+[constructor check](contracts/TEMPL.sol#L208-L210).
 
 ## Trust assumptions
 - Contract code is immutable after deployment.
