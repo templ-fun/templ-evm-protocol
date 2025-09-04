@@ -44,4 +44,27 @@ describe("Self Purchase Guard", function () {
       )
     ).to.be.revertedWithCustomError(templ, "InvalidCallData");
   });
+
+  it("reverts when DAO invokes helper calling purchaseAccess", async function () {
+    const Caller = await ethers.getContractFactory("PurchaseCaller");
+    const caller = await Caller.deploy(await templ.getAddress());
+    await caller.waitForDeployment();
+
+    const templAddress = await templ.getAddress();
+    // fund DAO address with ETH for tx fees
+    await owner.sendTransaction({
+      to: templAddress,
+      value: ethers.parseEther("1"),
+    });
+
+    // impersonate DAO
+    await ethers.provider.send("hardhat_impersonateAccount", [templAddress]);
+    const dao = await ethers.getSigner(templAddress);
+
+    await expect(
+      caller.connect(dao).callPurchaseAccess()
+    ).to.be.revertedWithCustomError(templ, "InsufficientBalance");
+
+    await ethers.provider.send("hardhat_stopImpersonatingAccount", [templAddress]);
+  });
 });

@@ -1,3 +1,4 @@
+// @ts-check
 import { useState, useEffect, useRef } from 'react';
 import { ethers } from 'ethers';
 import { Client } from '@xmtp/browser-sdk';
@@ -683,4 +684,3 @@ function App() {
 }
 
 export default App;
-// @ts-check

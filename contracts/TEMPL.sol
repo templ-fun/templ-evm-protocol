@@ -29,7 +29,6 @@ error InvalidRecipient();
 error AmountZero();
 error InsufficientTreasuryBalance();
 error NoTreasuryFunds();
-// Removed with executeDAO elimination
 error EntryFeeTooSmall();
 error InvalidEntryFee();
 error NoRewardsToClaim();
