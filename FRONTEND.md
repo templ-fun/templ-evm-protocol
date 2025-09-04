@@ -42,7 +42,7 @@ npm run xmtp:local:down
 - **Default configuration** – priest vote weight and priest weight threshold default to 10.
 - **Pay‑to‑join flow** in `purchaseAndJoin` verifies membership and requests an invite from the backend (defaults to `http://localhost:3001`). If already purchased, it skips on‑chain transactions and goes straight to `/join`.
 - **Chat UI** streams XMTP messages and sends new ones using the group inbox ID. Backend “/send” fallback is disabled by default and not enabled in CI/e2e; you may turn it on manually for local debugging only (never in production).
-- **Moderation** – the client polls `GET /mutes` and filters out messages from muted addresses before rendering.
+- **Moderation** – priests sign `delegate:<contract>:<delegate>` and use `delegateMute` to call `POST /delegates` or `DELETE /delegates` through the UI, granting or revoking mute rights. Priests or delegates sign `mute:<contract>:<target>` and submit it via `muteMember` (`POST /mute`). The client polls `GET /mutes` and filters out messages from muted addresses before rendering.
 - **Governance** – members create proposals and vote from the chat; `watchProposals` updates the UI when events fire.
   The backend mirrors on‑chain events into the group as JSON so clients see real‑time updates.
 
