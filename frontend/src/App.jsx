@@ -14,6 +14,7 @@ import {
   delegateMute,
   muteMember
 } from './flows.js';
+import { dlog } from './utils/dlog.js';
 import './App.css';
 
 function App() {
@@ -52,15 +53,6 @@ function App() {
   function pushStatus(msg) {
     setStatus((s) => [...s, msg]);
   }
-
-  // Minimal debug logger: prints only in dev or when explicitly enabled for e2e
-  const dlog = (...args) => {
-    try {
-      if (import.meta.env?.DEV || import.meta.env?.VITE_E2E_DEBUG === '1') {
-        console.log(...args);
-      }
-    } catch {}
-  };
 
   async function connectWallet() {
     if (!window.ethereum) return;
