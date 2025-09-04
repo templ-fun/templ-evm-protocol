@@ -69,8 +69,13 @@ Use the docs below to dive into each component:
 
    See component docs for individual commands.
 
-3. **Run**  
-   Start the backend and frontend services. Deployment and runtime details are available in [CONTRACTS.md](./CONTRACTS.md), [BACKEND.md](./BACKEND.md), and [FRONTEND.md](./FRONTEND.md).
+3. **Run**
+   Start the backend and frontend services:
+   ```bash
+   npm --prefix backend start
+   npm --prefix frontend run dev
+   ```
+   The backend expects environment variables like `BOT_PRIVATE_KEY`, `RPC_URL`, and `ALLOWED_ORIGINS` in `backend/.env`. See [BACKEND.md](./BACKEND.md) and [FRONTEND.md](./FRONTEND.md) for details.
 
 ## Environment Variables
 
