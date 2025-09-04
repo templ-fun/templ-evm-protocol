@@ -17,18 +17,13 @@ const XMTP_ENV = process.env.XMTP_ENV || 'dev';
  * Build an express application for managing TEMPL groups.
  * Dependencies like XMTP client and purchase verifier are injected to make
  * the server testable.
- * @param {object} deps
- * @param {object} deps.xmtp XMTP client instance
- * @param {(contract: string, member: string) => Promise<boolean>} deps.hasPurchased
- * @param {(address: string) => { on: Function }} [deps.connectContract] Optional
+ * @param {object} opts Options used to configure the server.
+ * @param {object} opts.xmtp XMTP client instance
+ * @param {(contract: string, member: string) => Promise<boolean>} opts.hasPurchased
+ * @param {(address: string) => { on: Function }} [opts.connectContract] Optional
  *        factory returning a contract instance used to watch on-chain events.
- * @param {{
- *   xmtp: any,
- *   hasPurchased: (contract: string, member: string) => Promise<boolean>,
- *   connectContract?: (address: string) => { on: Function },
- *   dbPath?: string,
- *   db?: any,
- * }} opts
+ * @param {string} [opts.dbPath] Optional database path
+ * @param {any} [opts.db] Optional database instance
  */
 export function createApp(opts) {
   /** @type {{xmtp:any, hasPurchased:(contract:string,member:string)=>Promise<boolean>, connectContract?: (address:string)=>{on:Function}, dbPath?: string, db?: any}} */
@@ -36,9 +31,9 @@ export function createApp(opts) {
   const { xmtp, hasPurchased, connectContract, dbPath, db } = opts || {};
   const app = express();
   const allowedOrigins =
-    process.env.ALLOWED_ORIGINS?.split(',').filter(Boolean) ?? [
-      'http://localhost:5173'
-    ];
+    process.env.ALLOWED_ORIGINS?.split(',')
+      .map((o) => o.trim())
+      .filter(Boolean) ?? ['http://localhost:5173'];
   app.use(cors({ origin: allowedOrigins }));
   app.use(express.json());
   app.use(helmet());
