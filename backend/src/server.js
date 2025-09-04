@@ -6,6 +6,7 @@ import { ethers } from 'ethers';
 import { Client } from '@xmtp/node-sdk';
 import helmet from 'helmet';
 import rateLimit, { MemoryStore } from 'express-rate-limit';
+import { createRateLimitStore } from './config.js';
 import cors from 'cors';
 import Database from 'better-sqlite3';
 import pino from 'pino';
@@ -52,11 +53,14 @@ export async function waitForInboxReady(inboxId, tries = 60) {
  *        factory returning a contract instance used to watch on-chain events.
  * @param {string} [opts.dbPath] Optional database path
  * @param {any} [opts.db] Optional database instance
+ * @param {import('express-rate-limit').Store} [opts.rateLimitStore] Optional rate
+ *        limit store; defaults to MemoryStore.
  */
 export function createApp(opts) {
-  /** @type {{xmtp:any, hasPurchased:(contract:string,member:string)=>Promise<boolean>, connectContract?: (address:string)=>{on:Function}, dbPath?: string, db?: any}} */
+  /** @type {{xmtp:any, hasPurchased:(contract:string,member:string)=>Promise<boolean>, connectContract?: (address:string)=>{on:Function}, dbPath?: string, db?: any, rateLimitStore?: import('express-rate-limit').Store}} */
   // @ts-ignore - runtime validation below
-  const { xmtp, hasPurchased, connectContract, dbPath, db } = opts || {};
+  const { xmtp, hasPurchased, connectContract, dbPath, db, rateLimitStore } =
+    opts || {};
   const app = express();
   const allowedOrigins =
     process.env.ALLOWED_ORIGINS?.split(',')
@@ -65,12 +69,8 @@ export function createApp(opts) {
   app.use(cors({ origin: allowedOrigins }));
   app.use(express.json());
   app.use(helmet());
-  const store = new MemoryStore();
-  const limiter = rateLimit({
-    windowMs: 60_000,
-    max: 100,
-    store
-  });
+  const store = rateLimitStore ?? new MemoryStore();
+  const limiter = rateLimit({ windowMs: 60_000, max: 100, store });
   app.use(limiter);
 
   const groups = new Map();
@@ -661,8 +661,8 @@ export function createApp(opts) {
   });
 
 
-  app.close = () => {
-    store.shutdown();
+  app.close = async () => {
+    await store.shutdown?.();
     database.close();
   };
 
@@ -745,9 +745,14 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   // Optional: use an ephemeral DB path for e2e to avoid stale group mappings
   const dbPath = process.env.DB_PATH;
   if (dbPath && process.env.CLEAR_DB === '1') {
-    try { fs.rmSync(dbPath, { force: true }); } catch (e) { logger.warn({ err: e?.message || e }); };
+    try {
+      fs.rmSync(dbPath, { force: true });
+    } catch (e) {
+      logger.warn({ err: e?.message || e });
+    }
   }
-  const app = createApp({ xmtp, hasPurchased, dbPath });
+  const rateLimitStore = await createRateLimitStore();
+  const app = createApp({ xmtp, hasPurchased, dbPath, rateLimitStore });
   const port = process.env.PORT || 3001;
   app.listen(port, () => {
     logger.info({ port }, 'TEMPL backend listening');
