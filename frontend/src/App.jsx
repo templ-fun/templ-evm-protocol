@@ -51,9 +51,14 @@ function App() {
   const [groupConnected, setGroupConnected] = useState(false);
   const [paused, setPaused] = useState(false);
   const [status, setStatus] = useState([]);
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState([]); // [{ kind:'text'|'proposal'|'system', content, senderAddress, proposalId, title, yes, no }]
   const [messageInput, setMessageInput] = useState('');
   const [proposals, setProposals] = useState([]);
+  const [proposalsById, setProposalsById] = useState({});
+  const [profilesByAddress, setProfilesByAddress] = useState({}); // { [addressLower]: { name, avatar } }
+  const [profileName, setProfileName] = useState('');
+  const [profileAvatar, setProfileAvatar] = useState('');
+  const [profileOpen, setProfileOpen] = useState(false);
   const [proposalTitle, setProposalTitle] = useState('');
   const [proposalDesc, setProposalDesc] = useState('');
   const [proposalCalldata, setProposalCalldata] = useState('');
@@ -78,6 +83,7 @@ function App() {
   const [templAddress, setTemplAddress] = useState('');
   const [groupId, setGroupId] = useState('');
   const joinedLoggedRef = useRef(false);
+  const lastProfileBroadcastRef = useRef(0);
 
   function pushStatus(msg) {
     setStatus((s) => [...s, msg]);
@@ -184,6 +190,21 @@ function App() {
     pushStatus('✅ Messaging client ready');
   }
 
+  // Load persisted profile for this XMTP inbox and seed local cache
+  useEffect(() => {
+    if (!xmtp) return;
+    try {
+      const raw = localStorage.getItem(`templ:profile:${xmtp.inboxId}`);
+      if (raw) {
+        const saved = JSON.parse(raw);
+        const me = (walletAddress || xmtp.address || '').toLowerCase();
+        setProfileName(saved.name || '');
+        setProfileAvatar(saved.avatar || '');
+        if (me) setProfilesByAddress((p) => ({ ...p, [me]: { name: saved.name || '', avatar: saved.avatar || '' } }));
+      }
+    } catch {}
+  }, [xmtp, walletAddress]);
+
   async function handleDeploy() {
     dlog('[app] handleDeploy clicked', { signer: !!signer, xmtp: !!xmtp });
     if (!signer) return;
@@ -276,8 +297,36 @@ function App() {
     const stream = async () => {
       for await (const msg of await group.streamMessages()) {
         if (cancelled) break;
-        if (mutes.includes(msg.senderAddress.toLowerCase())) continue;
-        setMessages((m) => [...m, msg]);
+        const from = (msg.senderAddress || '').toLowerCase();
+        if (mutes.includes(from)) continue;
+        const raw = String(msg.content || '');
+        let parsed = null;
+        try { parsed = JSON.parse(raw); } catch {}
+        // Profile messages: update local profile cache
+        if (parsed && parsed.type === 'profile') {
+          const name = String(parsed.name || '').slice(0, 64);
+          const avatar = String(parsed.avatar || '').slice(0, 512);
+          setProfilesByAddress((prev) => ({ ...prev, [from]: { name, avatar } }));
+          continue;
+        }
+        if (parsed && parsed.type === 'proposal') {
+          const id = Number(parsed.id);
+          const title = String(parsed.title || `Proposal #${id}`);
+          setProposalsById((prev) => ({ ...prev, [id]: { ...(prev[id]||{}), id, title, yes: (prev[id]?.yes || 0), no: (prev[id]?.no || 0) } }));
+          setMessages((m) => [...m, { kind: 'proposal', senderAddress: from, proposalId: id, title }]);
+          continue;
+        }
+        if (parsed && parsed.type === 'vote') {
+          const id = Number(parsed.id);
+          const support = Boolean(parsed.support);
+          setProposalsById((prev) => ({ ...prev, [id]: { ...(prev[id]||{ id, yes:0, no:0 }), yes: (prev[id]?.yes || 0) + (support ? 1 : 0), no: (prev[id]?.no || 0) + (!support ? 1 : 0) } }));
+          continue;
+        }
+        if (parsed && (parsed.type === 'templ-created' || parsed.type === 'member-joined')) {
+          setMessages((m) => [...m, { kind: 'system', senderAddress: from, content: parsed.type === 'templ-created' ? 'Templ created' : `${shorten(parsed.address)} joined` }]);
+          continue;
+        }
+        setMessages((m) => [...m, { kind: 'text', senderAddress: from, content: raw }]);
       }
     };
     stream();
@@ -400,15 +449,15 @@ function App() {
       provider,
       templAddress,
       templArtifact,
-      onProposal: (p) => setProposals((prev) => [...prev, { ...p, yes: 0, no: 0 }]),
-      onVote: (v) =>
-        setProposals((prev) =>
-          prev.map((p) =>
-            p.id === v.id
-              ? { ...p, [v.support ? 'yes' : 'no']: (p[v.support ? 'yes' : 'no'] || 0) + 1 }
-              : p
-          )
-        )
+      onProposal: (p) => {
+        setProposals((prev) => [...prev, { ...p, yes: 0, no: 0 }]);
+        setProposalsById((map) => ({ ...map, [p.id]: { id: p.id, title: p.title, yes: 0, no: 0 } }));
+        setMessages((m) => [...m, { kind: 'proposal', senderAddress: p.proposer?.toLowerCase?.() || '', proposalId: p.id, title: p.title }]);
+      },
+      onVote: (v) => {
+        setProposals((prev) => prev.map((p) => p.id === v.id ? { ...p, [v.support ? 'yes' : 'no']: (p[v.support ? 'yes' : 'no'] || 0) + 1 } : p));
+        setProposalsById((map) => ({ ...map, [v.id]: { ...(map[v.id] || { id: v.id, yes:0, no:0 }), yes: (map[v.id]?.yes || 0) + (v.support ? 1 : 0), no: (map[v.id]?.no || 0) + (!v.support ? 1 : 0) } }));
+      }
     });
     // Poll paused state for display
     let cancelled = false;
@@ -493,6 +542,34 @@ function App() {
       console.error('Send failed', err);
     }
   }
+
+  function saveProfileLocally({ name, avatar }) {
+    try {
+      if (!xmtp) return;
+      const data = { name: String(name || '').slice(0, 64), avatar: String(avatar || '').slice(0, 512) };
+      localStorage.setItem(`templ:profile:${xmtp.inboxId}`, JSON.stringify(data));
+      const me = (walletAddress || xmtp.address || '').toLowerCase();
+      if (me) setProfilesByAddress((p) => ({ ...p, [me]: data }));
+    } catch {}
+  }
+
+  async function broadcastProfileToGroup() {
+    try {
+      if (!group || !profileName) return;
+      const now = Date.now();
+      if (now - lastProfileBroadcastRef.current < 10_000) return; // throttle 10s
+      lastProfileBroadcastRef.current = now;
+      const payload = JSON.stringify({ type: 'profile', name: profileName, avatar: profileAvatar });
+      await sendMessage({ group, content: payload });
+    } catch {}
+  }
+
+  // When joining or switching groups, broadcast profile once for discovery
+  useEffect(() => {
+    if (!group || !profileName) return;
+    (async () => { try { await broadcastProfileToGroup(); } catch {} })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [group, profileName]);
 
   async function handlePropose() {
     if (!templAddress || !signer) return;
@@ -627,9 +704,14 @@ function App() {
             <button className="px-3 py-1 rounded border border-black/20" onClick={() => navigate('/join')}>Join</button>
             <button className="px-3 py-1 rounded border border-black/20" onClick={() => navigate('/chat')}>Chat</button>
           </div>
-          {!walletAddress && (
-            <button className="px-3 py-1 rounded bg-primary text-black font-semibold" onClick={connectWallet}>Connect Wallet</button>
-          )}
+          <div className="flex items-center gap-2">
+            {walletAddress && (
+              <button className="px-3 py-1 rounded border border-black/20" onClick={() => setProfileOpen(true)}>Profile</button>
+            )}
+            {!walletAddress && (
+              <button className="px-3 py-1 rounded bg-primary text-black font-semibold" onClick={connectWallet}>Connect Wallet</button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -638,7 +720,7 @@ function App() {
         <div className="status mb-4">
           <h3 className="text-lg font-semibold mb-2">Run Status</h3>
           <div className="status-items text-sm space-y-1">
-            {status.map((s, i) => (
+            {status.slice(-8).map((s, i) => (
               <div key={i}>{s}</div>
             ))}
           </div>
@@ -717,10 +799,22 @@ function App() {
 
         {path === '/chat' && (
           <div className="chat space-y-3">
-            <h2 className="text-xl font-semibold">Group Chat</h2>
-            {!group && <p>Connecting to group… syncing messages</p>}
-            {groupConnected && <p data-testid="group-connected">✅ Group connected</p>}
-            <p>DAO Status: {paused ? 'Paused' : 'Active'}</p>
+            <div className="chat-header flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="avatar avatar--group" aria-hidden />
+                <div>
+                  <div className="text-lg font-semibold">Group Chat</div>
+                  {templAddress && (
+                    <div className="text-xs text-black/60">{shorten(templAddress)}</div>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {groupConnected && <span className="text-xs text-green-600" data-testid="group-connected">● Connected</span>}
+                {!groupConnected && <span className="text-xs text-black/60">Connecting…</span>}
+              </div>
+            </div>
+            <div className="text-sm text-black/70">DAO Status: {paused ? 'Paused' : 'Active'}</div>
 
             {/* Stats */}
             {templAddress && (
@@ -743,17 +837,61 @@ function App() {
               </div>
             )}
 
-            <div className="messages space-y-1 max-h-[40vh] overflow-auto border border-black/10 rounded p-2">
-              {messages.map((m, i) => (
-                <div key={i} className="text-sm break-words">
-                  <strong className="font-mono">
-                    <button className="underline underline-offset-4" onClick={() => copyToClipboard(m.senderAddress)}>
-                      {shorten(m.senderAddress)}
-                    </button>:
-                  </strong> {m.content}
+          <div className="messages chat-list max-h-[60vh] overflow-auto border border-black/10 rounded p-2">
+            {messages.map((m, i) => {
+              if (m.kind === 'proposal') {
+                const pid = m.proposalId;
+                const poll = proposalsById[pid] || { yes: 0, no: 0 };
+                const total = (poll.yes || 0) + (poll.no || 0);
+                const yesPct = total ? Math.round((poll.yes || 0) * 100 / total) : 0;
+                const noPct = total ? 100 - yesPct : 0;
+                return (
+                  <div key={i} className="chat-item chat-item--poll">
+                    <div className="chat-poll">
+                      <div className="chat-poll__title">{m.title || `Proposal #${pid}`}</div>
+                      <div className="chat-poll__bars">
+                        <div className="chat-poll__bar is-yes" style={{ width: `${yesPct}%` }} />
+                        <div className="chat-poll__bar is-no" style={{ width: `${noPct}%` }} />
+                      </div>
+                      <div className="chat-poll__legend">Yes {poll.yes || 0} · No {poll.no || 0}</div>
+                      <div className="chat-poll__actions">
+                        <button className="btn" onClick={() => handleVote(pid, true)}>Vote Yes</button>
+                        <button className="btn" onClick={() => handleVote(pid, false)}>Vote No</button>
+                        {isPriest && (
+                          <button className="btn btn-primary" onClick={() => handleExecuteProposal(pid)}>Execute</button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+              if (m.kind === 'system') {
+                return (
+                  <div key={i} className="chat-item chat-item--system">{m.content}</div>
+                );
+              }
+              const mine = walletAddress && m.senderAddress && m.senderAddress.toLowerCase() === walletAddress.toLowerCase();
+              const addr = (m.senderAddress || '').toLowerCase();
+              const prof = profilesByAddress[addr] || {};
+              const display = (mine ? (profileName || 'You') : (prof.name || shorten(m.senderAddress)));
+              return (
+                <div key={i} className={`chat-item ${mine ? 'is-mine' : ''}`}>
+                  {!mine && (
+                    <div className="chat-ava" aria-hidden>{avatarFallback(prof.avatar, display)}</div>
+                  )}
+                  <div className={`chat-bubble ${mine ? 'mine' : ''}`}>
+                    <div className="chat-meta">
+                      <button className="chat-name" title={m.senderAddress} onClick={() => copyToClipboard(m.senderAddress)}>
+                        {display}
+                      </button>
+                      <span className="chat-time">{formatTime(new Date())}</span>
+                    </div>
+                    <div className="chat-text">{m.content}</div>
+                  </div>
                 </div>
-              ))}
-            </div>
+              );
+            })}
+          </div>
             <div className="flex gap-2">
               <input className="flex-1 border border-black/20 rounded px-3 py-2" data-testid="chat-input" placeholder="Type a message" value={messageInput} onChange={(e) => setMessageInput(e.target.value)} />
               <button className="px-3 py-2 rounded bg-primary text-black font-semibold" data-testid="chat-send" onClick={handleSend} disabled={!group && !groupId}>Send</button>
@@ -765,20 +903,6 @@ function App() {
               <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Description" value={proposalDesc} onChange={(e) => setProposalDesc(e.target.value)} />
               <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Call data" value={proposalCalldata} onChange={(e) => setProposalCalldata(e.target.value)} />
               <button className="px-3 py-1 rounded bg-primary text-black font-semibold w-full sm:w-auto" onClick={handlePropose}>Propose</button>
-            </div>
-
-            <div className="proposals space-y-2">
-              <h3 className="font-semibold">Proposals</h3>
-              {proposals.map((p) => (
-                <div key={p.id} className="proposal border border-black/10 rounded p-2 flex flex-col sm:flex-row sm:items-center gap-2">
-                  <p className="flex-1">{p.title} — yes {p.yes || 0} / no {p.no || 0}</p>
-                  <div className="flex gap-2">
-                    <button className="px-3 py-1 rounded border border-black/20" onClick={() => handleVote(p.id, true)}>Yes</button>
-                    <button className="px-3 py-1 rounded border border-black/20" onClick={() => handleVote(p.id, false)}>No</button>
-                    <button className="px-3 py-1 rounded bg-primary text-black font-semibold" onClick={() => handleExecuteProposal(p.id)}>Execute</button>
-                  </div>
-                </div>
-              ))}
             </div>
 
             {isPriest && (
@@ -807,8 +931,51 @@ function App() {
           </div>
         )}
       </div>
+
+      {/* Profile Modal */}
+      {profileOpen && (
+        <div className="modal" role="dialog" aria-modal="true">
+          <div className="modal__backdrop" onClick={() => setProfileOpen(false)} />
+          <div className="modal__card">
+            <div className="modal__header">
+              <div className="modal__title">Your Profile</div>
+              <button className="modal__close" onClick={() => setProfileOpen(false)}>×</button>
+            </div>
+            <div className="modal__body">
+              <div className="mb-2 text-sm text-black/70">Set a display name and an optional avatar URL. This will be reused across all Templs. We’ll also broadcast it to the current group so others can see it.</div>
+              <input className="w-full border border-black/20 rounded px-3 py-2 mb-2" placeholder="Display name" value={profileName} onChange={(e) => setProfileName(e.target.value)} />
+              <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Avatar URL (optional)" value={profileAvatar} onChange={(e) => setProfileAvatar(e.target.value)} />
+            </div>
+            <div className="modal__footer">
+              <button className="btn" onClick={() => setProfileOpen(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={async () => { saveProfileLocally({ name: profileName, avatar: profileAvatar }); await broadcastProfileToGroup(); setProfileOpen(false); }}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 export default App;
+
+// UI helpers kept at bottom to avoid re-renders
+function formatTime(d) {
+  try {
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch { return ''; }
+}
+
+function avatarFallback(url, label) {
+  if (url && /^https?:\/\//i.test(url)) {
+    return <img className="avatar-img" src={url} alt="avatar" onError={(e) => { e.currentTarget.style.display = 'none'; }} />;
+  }
+  const initials = (label || '')
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((s) => s[0] || '')
+    .join('')
+    .toUpperCase() || '👤';
+  return <div className="avatar-fallback">{initials}</div>;
+}
