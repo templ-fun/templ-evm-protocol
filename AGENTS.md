@@ -48,5 +48,4 @@
 - Servers: Playwright starts Hardhat (`:8545`), the backend (`:3001`), and serves the frontend via `vite build && vite preview` on `:5179`.
 - Real ERC‑20: e2e deploys the actual `TestToken` artifact and calls ERC‑20 `approve` + `TEMPL#purchaseAccess` on Hardhat.
 - Group discovery: the app renders chat as soon as `groupId` is known and keeps syncing to find the XMTP group; the backend also sends a welcome message to “warm” the conversation.
-- Messaging fallback: e2e does NOT enable backend `/send`. Messaging requires browser discovery. You may enable `/send` manually for local debugging by starting the backend with `ENABLE_FALLBACK_SEND=1`.
 - Accounts: backend bot uses a random bot key; e2e wallets rotate to avoid nonce/installation collisions.

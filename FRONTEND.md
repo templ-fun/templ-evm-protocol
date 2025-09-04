@@ -41,7 +41,7 @@ npm run xmtp:local:down
 - The backend currently ignores the `protocolFeeRecipient` field. In production a contract factory will set this to the protocol treasury address automatically.
 - **Default configuration** – priest vote weight and priest weight threshold default to 10.
 - **Pay‑to‑join flow** in `purchaseAndJoin` verifies membership and requests an invite from the backend (defaults to `http://localhost:3001`). If already purchased, it skips on‑chain transactions and goes straight to `/join`.
-- **Chat UI** streams XMTP messages and sends new ones using the group inbox ID. Backend “/send” fallback is disabled by default and not enabled in CI/e2e; you may turn it on manually for local debugging only (never in production).
+- **Chat UI** streams XMTP messages and sends new ones using the group inbox ID.
 - **Moderation** – the client polls `GET /mutes` and filters out messages from muted addresses before rendering.
 - **Governance** – members create proposals and vote from the chat; `watchProposals` updates the UI when events fire.
   The backend mirrors on‑chain events into the group as JSON so clients see real‑time updates.

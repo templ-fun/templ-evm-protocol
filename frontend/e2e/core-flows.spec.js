@@ -213,7 +213,7 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
     {
       const w = wallets.member;
       const addr = await w.getAddress();
-      // Bridge sign/send for member
+      // Bridge sign and send for member
       await page.exposeFunction('e2e_member_sign', async ({ message }) => {
         if (typeof message === 'string' && message.startsWith('0x')) {
           return await w.signMessage(ethers.getBytes(message));
@@ -413,12 +413,12 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
       await expect(messageInput).toHaveValue(body);
       await sendBtn.click();
       console.log('Sent via UI');
-      // Try to observe in UI (best-effort, but no backend fallback)
+      // Try to observe in UI (best-effort)
       try {
         await expect(page.locator('.messages')).toContainText('Hello TEMPL!', { timeout: 15000 });
       } catch {}
     } else {
-      console.log('Send disabled; skipping backend fallback (enforced)');
+      console.log('Send disabled (enforced)');
     }
 
     // Core Flow 5–7: Proposal create, vote, execute (protocol-level)

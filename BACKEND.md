@@ -54,7 +54,6 @@ npm --prefix backend run lint
   - `DELETE /delegates` – revoke a delegate's mute rights.
   - `POST /mute` – priest or delegate records an escalating mute for a member.
   - `GET /mutes` – list active mutes for a contract so the frontend can hide messages.
-  - `POST /send` – disabled by default; enable with `ENABLE_FALLBACK_SEND=1` only for CI/e2e or local debugging. Lets the backend post a message into a group's chat as a temporary fallback while the browser is still discovering the group.
 - **Dependencies** – XMTP JS SDK and an on-chain provider; event watching requires a `connectContract` factory.
 - **Persistence** – group metadata persists to a SQLite database at `backend/groups.db` (or a custom path via `createApp({ dbPath })` in tests). The database is read on startup and updated when groups change; back it up to avoid losing state.
 
