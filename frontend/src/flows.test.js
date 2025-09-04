@@ -212,6 +212,28 @@ describe('templ flows', () => {
     ).rejects.toThrow(/Join failed: 500/);
   });
 
+  it('purchaseAndJoin errors when access not purchased', async () => {
+    const templContract = { hasPurchased: vi.fn().mockResolvedValue(true) };
+    const ethers = { Contract: vi.fn().mockReturnValue(templContract) };
+    const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 403,
+      statusText: 'Forbidden',
+      text: () => Promise.resolve('Access not purchased')
+    });
+    await expect(
+      purchaseAndJoin({
+        ethers,
+        xmtp: undefined,
+        signer,
+        walletAddress: '0xabc',
+        templAddress: '0xTempl',
+        templArtifact
+      })
+    ).rejects.toThrow(/Access not purchased/);
+  });
+
   it('sendMessage forwards content to group', async () => {
     const group = { send: vi.fn() };
     await sendMessage({ group, content: 'hello' });
