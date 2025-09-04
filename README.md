@@ -33,8 +33,14 @@ Use the docs below to dive into each component:
   
 ## Monorepo Structure
 - `contracts/` – Hardhat + Solidity 0.8.23
-- `backend/` – Node service that owns the XMTP group and exposes an HTTP API
+- `backend/` – Node service with XMTP bot and HTTP API
 - `frontend/` – Vite + React demo app with Playwright e2e
+- `shared/` – JS utilities shared by backend and frontend
+- `deployments/` – network-specific contract records
+- `scripts/` – Hardhat deployment and utility scripts
+- `test/` – Hardhat contract tests
+- `artifacts/` – compiled contract artifacts
+- `cache/` – Hardhat compilation cache
 
 ## Quick Start
 1. **Clone & install**
