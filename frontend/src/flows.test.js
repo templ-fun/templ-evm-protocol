@@ -77,6 +77,64 @@ describe('templ flows', () => {
     expect(result).toEqual({ contractAddress: '0xDeAd', group: { id: 'group-1', consentState: 'allowed' }, groupId: 'group-1' });
   });
 
+  it('deployTempl throws on non-200 backend response', async () => {
+    const fakeContract = {
+      waitForDeployment: vi.fn(),
+      getAddress: vi.fn().mockResolvedValue('0xDeAd')
+    };
+    const factory = { deploy: vi.fn().mockResolvedValue(fakeContract) };
+    const ethers = {
+      ContractFactory: vi.fn().mockImplementation(() => factory)
+    };
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      statusText: 'Server Error',
+      text: () => Promise.resolve('fail')
+    });
+    const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
+    await expect(
+      deployTempl({
+        ethers,
+        xmtp: undefined,
+        signer,
+        walletAddress: '0xabc',
+        tokenAddress: '0xdef',
+        protocolFeeRecipient: '0xfee',
+        entryFee: '1',
+        templArtifact
+      })
+    ).rejects.toThrow(/Templ registration failed/);
+  });
+
+  it('deployTempl throws on invalid JSON response', async () => {
+    const fakeContract = {
+      waitForDeployment: vi.fn(),
+      getAddress: vi.fn().mockResolvedValue('0xDeAd')
+    };
+    const factory = { deploy: vi.fn().mockResolvedValue(fakeContract) };
+    const ethers = {
+      ContractFactory: vi.fn().mockImplementation(() => factory)
+    };
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({})
+    });
+    const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
+    await expect(
+      deployTempl({
+        ethers,
+        xmtp: undefined,
+        signer,
+        walletAddress: '0xabc',
+        tokenAddress: '0xdef',
+        protocolFeeRecipient: '0xfee',
+        entryFee: '1',
+        templArtifact
+      })
+    ).rejects.toThrow(/Invalid \/templs response/);
+  });
+
   it('purchaseAndJoin purchases access and joins group', async () => {
     const templContract = {
       hasPurchased: vi.fn().mockResolvedValue(false),
@@ -210,6 +268,34 @@ describe('templ flows', () => {
     expect(result).toBe(true);
   });
 
+  it('delegateMute returns false on non-200', async () => {
+    const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: false });
+    const result = await delegateMute({
+      signer,
+      contractAddress: '0xTempl',
+      priestAddress: '0xPriest',
+      delegateAddress: '0xDel'
+    });
+    expect(result).toBe(false);
+  });
+
+  it('delegateMute throws on invalid JSON response', async () => {
+    const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({})
+    });
+    await expect(
+      delegateMute({
+        signer,
+        contractAddress: '0xTempl',
+        priestAddress: '0xPriest',
+        delegateAddress: '0xDel'
+      })
+    ).rejects.toThrow('Invalid /delegates response');
+  });
+
   it('muteMember posts mute to backend', async () => {
     const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
     globalThis.fetch = vi
@@ -236,6 +322,34 @@ describe('templ flows', () => {
       })
     );
     expect(result).toBe(123);
+  });
+
+  it('muteMember returns 0 on non-200', async () => {
+    const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: false });
+    const result = await muteMember({
+      signer,
+      contractAddress: '0xTempl',
+      moderatorAddress: '0xMod',
+      targetAddress: '0xTar'
+    });
+    expect(result).toBe(0);
+  });
+
+  it('muteMember throws on invalid JSON response', async () => {
+    const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({})
+    });
+    await expect(
+      muteMember({
+        signer,
+        contractAddress: '0xTempl',
+        moderatorAddress: '0xMod',
+        targetAddress: '0xTar'
+      })
+    ).rejects.toThrow('Invalid /mute response');
   });
 
   it('fetchActiveMutes queries backend for mutes', async () => {
