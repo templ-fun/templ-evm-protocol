@@ -670,8 +670,15 @@ export function createApp(opts) {
 // Boot the standalone server when executed directly
 if (import.meta.url === `file://${process.argv[1]}`) {
   dotenv.config();
-  const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
-  const wallet = new ethers.Wallet(process.env.BOT_PRIVATE_KEY, provider);
+  const { RPC_URL, BOT_PRIVATE_KEY } = process.env;
+  if (!RPC_URL) {
+    throw new Error('Missing RPC_URL environment variable');
+  }
+  if (!BOT_PRIVATE_KEY) {
+    throw new Error('Missing BOT_PRIVATE_KEY environment variable');
+  }
+  const provider = new ethers.JsonRpcProvider(RPC_URL);
+  const wallet = new ethers.Wallet(BOT_PRIVATE_KEY, provider);
   
   // Create signer compatible with new SDK - using the pattern that worked in tests
   async function createXmtpWithRotation() {
