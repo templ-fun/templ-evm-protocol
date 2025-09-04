@@ -155,21 +155,21 @@ sequenceDiagram
     participant B as Backend
     participant X as XMTP
 
-    Note over F,C,B,X: deployTempl
+    Note over F: deployTempl
     F->>C: deployTempl()
     C-->>F: contract address
     F->>B: POST /templs {contract}
     B->>X: newGroup
     B-->>F: {groupId}
 
-    Note over F,C,B,X: purchaseAndJoin
+    Note over F: purchaseAndJoin
     F->>C: purchaseAccess()
     C-->>F: membership granted
     F->>B: POST /join
     B->>X: addMembers
     B-->>F: {groupId}
 
-    Note over F,X: messaging
+    Note over F: messaging
     F->>X: send message
     X-->>F: receive message
 ```
