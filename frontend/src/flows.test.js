@@ -27,9 +27,14 @@ import { createSignerMock, createXMTPMock } from '../test-utils/mocks.js';
 
 const templArtifact = { abi: [], bytecode: '0x' };
 const originalFetch = globalThis.fetch;
+let xmtp;
+let signer;
 
 beforeEach(() => {
   waitForConversation.mockReset();
+  xmtp = createXMTPMock();
+  signer = createSignerMock();
+  mockFetchSuccess({});
 });
 
 afterEach(() => {
@@ -54,8 +59,6 @@ describe('templ flows', () => {
       ContractFactory: vi.fn().mockImplementation(() => factory)
     };
     mockFetchSuccess({ groupId: 'group-1' });
-    const xmtp = createXMTPMock();
-    const signer = createSignerMock();
     waitForConversation.mockResolvedValueOnce({ id: 'group-1', consentState: 'allowed' });
 
     const result = await deployTempl({
@@ -110,7 +113,6 @@ describe('templ flows', () => {
       statusText: 'Server Error',
       response: 'fail'
     });
-    const signer = createSignerMock();
     await expect(
       deployTempl({
         ethers,
@@ -135,7 +137,6 @@ describe('templ flows', () => {
       ContractFactory: vi.fn().mockImplementation(() => factory)
     };
     mockFetchSuccess({});
-    const signer = createSignerMock();
     await expect(
       deployTempl({
         ethers,
@@ -167,7 +168,6 @@ describe('templ flows', () => {
     const ethers = { Contract };
     mockFetchSuccess({ groupId: 'group-2' });
     const xmtp = createXMTPMock({ inboxId: 'inbox-2' });
-    const signer = createSignerMock();
     waitForConversation.mockResolvedValueOnce({ id: 'group-2', consentState: 'allowed' });
 
     const result = await purchaseAndJoin({
@@ -187,7 +187,6 @@ describe('templ flows', () => {
   it('purchaseAndJoin rejects on backend failure', async () => {
     const templContract = { hasAccess: vi.fn().mockResolvedValue(true) };
     const ethers = { Contract: vi.fn().mockReturnValue(templContract) };
-    const signer = createSignerMock();
     mockFetchFailure({
       status: 500,
       statusText: 'Server Error',
@@ -208,7 +207,6 @@ describe('templ flows', () => {
   it('purchaseAndJoin errors when access not purchased', async () => {
     const templContract = { hasAccess: vi.fn().mockResolvedValue(true) };
     const ethers = { Contract: vi.fn().mockReturnValue(templContract) };
-    const signer = createSignerMock();
     mockFetchFailure({
       status: 403,
       statusText: 'Forbidden',
@@ -328,7 +326,6 @@ describe('templ flows', () => {
   });
 
   it('delegateMute posts delegation to backend', async () => {
-    const signer = createSignerMock();
     mockFetchSuccess({ delegated: true });
     const result = await delegateMute({
       signer,
@@ -356,7 +353,6 @@ describe('templ flows', () => {
   });
 
   it('delegateMute returns false on non-200', async () => {
-    const signer = createSignerMock();
     mockFetchFailure();
     const result = await delegateMute({
       signer,
@@ -367,34 +363,7 @@ describe('templ flows', () => {
     expect(result).toBe(false);
   });
 
-  it('delegateMute rejects on fetch error', async () => {
-    const signer = createSignerMock();
-    mockFetchError(new Error('fail'));
-    await expect(
-      delegateMute({
-        signer,
-        contractAddress: '0xTempl',
-        priestAddress: '0xPriest',
-        delegateAddress: '0xDel'
-      })
-    ).rejects.toThrow('fail');
-  });
-
-  it('delegateMute throws on invalid JSON response', async () => {
-    const signer = createSignerMock();
-    mockFetchSuccess({});
-    await expect(
-      delegateMute({
-        signer,
-        contractAddress: '0xTempl',
-        priestAddress: '0xPriest',
-        delegateAddress: '0xDel'
-      })
-    ).rejects.toThrow('Invalid /delegates response');
-  });
-
   it('muteMember posts mute to backend', async () => {
-    const signer = createSignerMock();
     mockFetchSuccess({ mutedUntil: 123 });
     const result = await muteMember({
       signer,
@@ -422,7 +391,6 @@ describe('templ flows', () => {
   });
 
   it('muteMember returns 0 on non-200', async () => {
-    const signer = createSignerMock();
     mockFetchFailure();
     const result = await muteMember({
       signer,
@@ -431,32 +399,6 @@ describe('templ flows', () => {
       targetAddress: '0xTar'
     });
     expect(result).toBe(0);
-  });
-
-  it('muteMember rejects on fetch error', async () => {
-    const signer = createSignerMock();
-    mockFetchError(new Error('fail'));
-    await expect(
-      muteMember({
-        signer,
-        contractAddress: '0xTempl',
-        moderatorAddress: '0xMod',
-        targetAddress: '0xTar'
-      })
-    ).rejects.toThrow('fail');
-  });
-
-  it('muteMember throws on invalid JSON response', async () => {
-    const signer = createSignerMock();
-    mockFetchSuccess({});
-    await expect(
-      muteMember({
-        signer,
-        contractAddress: '0xTempl',
-        moderatorAddress: '0xMod',
-        targetAddress: '0xTar'
-      })
-    ).rejects.toThrow('Invalid /mute response');
   });
 
   it('fetchActiveMutes queries backend for mutes', async () => {
@@ -474,10 +416,67 @@ describe('templ flows', () => {
     expect(result).toEqual([]);
   });
 
-  it('fetchActiveMutes throws on invalid JSON response', async () => {
-    mockFetchSuccess({});
-    await expect(
-      fetchActiveMutes({ contractAddress: '0xTempl' })
-    ).rejects.toThrow('Invalid /mutes response');
+  const errorTable = [
+    {
+      fn: delegateMute,
+      args: () => ({
+        signer,
+        contractAddress: '0xTempl',
+        priestAddress: '0xPriest',
+        delegateAddress: '0xDel'
+      }),
+      expectedError: 'fail'
+    },
+    {
+      fn: delegateMute,
+      args: () => ({
+        signer,
+        contractAddress: '0xTempl',
+        priestAddress: '0xPriest',
+        delegateAddress: '0xDel'
+      }),
+      expectedError: 'Invalid /delegates response'
+    },
+    {
+      fn: muteMember,
+      args: () => ({
+        signer,
+        contractAddress: '0xTempl',
+        moderatorAddress: '0xMod',
+        targetAddress: '0xTar'
+      }),
+      expectedError: 'fail'
+    },
+    {
+      fn: muteMember,
+      args: () => ({
+        signer,
+        contractAddress: '0xTempl',
+        moderatorAddress: '0xMod',
+        targetAddress: '0xTar'
+      }),
+      expectedError: 'Invalid /mute response'
+    },
+    {
+      fn: fetchActiveMutes,
+      args: () => ({ contractAddress: '0xTempl' }),
+      expectedError: 'fail'
+    },
+    {
+      fn: fetchActiveMutes,
+      args: () => ({ contractAddress: '0xTempl' }),
+      expectedError: 'Invalid /mutes response'
+    }
+  ];
+
+  errorTable.forEach(({ fn, args, expectedError }) => {
+    it(`${fn.name} rejects with ${expectedError}`, async () => {
+      if (expectedError === 'fail') {
+        mockFetchError(new Error('fail'));
+      } else {
+        mockFetchSuccess({});
+      }
+      await expect(fn(args())).rejects.toThrow(expectedError);
+    });
   });
 });
