@@ -5,7 +5,9 @@ import { Client } from '@xmtp/node-sdk';
 const originalEnv = { ...process.env };
 
 const loadModule = async () => {
-  return import(`../src/server.js?test=${Math.random()}`);
+  const waitMod = await import(`../../shared/wait.js?test=${Math.random()}`);
+  const logMod = await import('../../shared/logging.js');
+  return { ...waitMod, ...logMod };
 };
 
 test('waitForInboxReady returns true and logs on success', { concurrency: false }, async () => {
@@ -25,7 +27,7 @@ test('waitForInboxReady returns true and logs on success', { concurrency: false 
     assert.deepEqual(ids, ['abc']);
     return fakeStates;
   };
-  const res = await waitForInboxReady('abc', 1);
+  const res = await waitForInboxReady('abc', 1, Client);
   assert.equal(res, true);
   assert.equal(info.mock.callCount(), 1);
   assert.equal(debug.mock.callCount(), 0);
@@ -52,7 +54,7 @@ test('waitForInboxReady logs debug on failure and returns false', { concurrency:
   Client.inboxStateFromInboxIds = async () => {
     throw new Error('fail');
   };
-  const res = await waitForInboxReady('abc', 1);
+  const res = await waitForInboxReady('abc', 1, Client);
   assert.equal(res, false);
   assert.equal(info.mock.callCount(), 0);
   assert.equal(debug.mock.callCount(), 1);
@@ -77,7 +79,7 @@ test('waitForInboxReady skips network checks in test env', { concurrency: false 
   const orig = Client.inboxStateFromInboxIds;
   const spy = mock.fn(async () => []);
   Client.inboxStateFromInboxIds = spy;
-  const res = await waitForInboxReady('abc', 1);
+  const res = await waitForInboxReady('abc', 1, Client);
   assert.equal(res, true);
   assert.equal(spy.mock.callCount(), 0);
   assert.equal(info.mock.callCount(), 0);

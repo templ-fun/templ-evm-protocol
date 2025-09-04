@@ -1,18 +1,8 @@
 // @ts-check
 
 // XMTP utility helpers shared across frontend, backend, and tests
-
-// Minimal debug logger usable in both browser and Node environments
-const __isDebug = (() => {
-  try { if (globalThis?.process?.env?.DEBUG_TEMPL === '1') return true; } catch {}
-  try {
-    // @ts-ignore - vite injects env on import.meta at build time
-    const env = import.meta?.env;
-    if (env?.VITE_E2E_DEBUG === '1') return true;
-  } catch {}
-  return false;
-})();
-const dlog = (...args) => { if (__isDebug) { try { console.log(...args); } catch {} } };
+import { logger } from './logging.js';
+import { wait } from './wait.js';
 
 /**
  * Synchronize XMTP conversations and preferences with optional retries.
@@ -23,15 +13,15 @@ const dlog = (...args) => { if (__isDebug) { try { console.log(...args); } catch
 export async function syncXMTP(xmtp, retries = 1, delayMs = 1000) {
   for (let i = 0; i < retries; i++) {
     try { await xmtp?.conversations?.sync?.(); } catch (err) {
-      dlog('conversations.sync failed:', err?.message || String(err));
+      logger.debug('conversations.sync failed:', err?.message || String(err));
     }
     try { await xmtp?.preferences?.sync?.(); } catch (err) {
-      dlog('preferences.sync failed:', err?.message || String(err));
+      logger.debug('preferences.sync failed:', err?.message || String(err));
     }
     try { await xmtp?.conversations?.syncAll?.(['allowed','unknown','denied']); } catch (err) {
-      dlog('conversations.syncAll failed:', err?.message || String(err));
+      logger.debug('conversations.syncAll failed:', err?.message || String(err));
     }
-    if (i < retries - 1) await new Promise(r => setTimeout(r, delayMs));
+    if (i < retries - 1) await wait(delayMs);
   }
 }
 
@@ -51,29 +41,29 @@ export async function waitForConversation({ xmtp, groupId, retries = 60, delayMs
     try {
       group = await xmtp?.conversations?.getConversationById?.(groupId);
     } catch (err) {
-      dlog('getConversationById failed:', err?.message || String(err));
+      logger.debug('getConversationById failed:', err?.message || String(err));
     }
     if (!group) {
       try {
         const conversations = await xmtp?.conversations?.list?.({ consentStates: ['allowed','unknown','denied'] }) || [];
-        dlog(`Sync attempt ${i + 1}: Found ${conversations.length} conversations; firstIds=`, conversations.slice(0,3).map(c => c.id));
+        logger.debug(`Sync attempt ${i + 1}: Found ${conversations.length} conversations; firstIds=`, conversations.slice(0,3).map(c => c.id));
         group = conversations.find(c => c.id === groupId) || null;
       } catch (err) {
-        dlog('list conversations failed:', err?.message || String(err));
+        logger.debug('list conversations failed:', err?.message || String(err));
       }
     }
     if (group) {
-      dlog('Found group:', group.id, 'consent state:', group.consentState);
+      logger.debug('Found group:', group.id, 'consent state:', group.consentState);
       if (group.consentState !== 'allowed' && typeof group.updateConsentState === 'function') {
         try {
           await group.updateConsentState('allowed');
         } catch (err) {
-          dlog('updateConsentState failed:', err?.message || String(err));
+          logger.debug('updateConsentState failed:', err?.message || String(err));
         }
       }
       break;
     }
-    if (i < retries - 1) await new Promise(r => setTimeout(r, delayMs));
+    if (i < retries - 1) await wait(delayMs);
   }
   return group;
 }

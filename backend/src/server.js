@@ -9,41 +9,13 @@ import rateLimit, { MemoryStore } from 'express-rate-limit';
 import { createRateLimitStore } from './config.js';
 import cors from 'cors';
 import Database from 'better-sqlite3';
-import pino from 'pino';
 import { buildDelegateMessage, buildMuteMessage } from '../../shared/signing.js';
 import { requireAddresses, verifySignature } from './middleware/validate.js';
 import { syncXMTP } from '../../shared/xmtp.js';
+import { logger } from '../../shared/logging.js';
+import { wait, waitForInboxReady } from '../../shared/wait.js';
 
-export const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 const XMTP_ENV = process.env.XMTP_ENV || 'dev';
-
-// Linearize: wait until the target inbox is visible on the XMTP network
-export async function waitForInboxReady(inboxId, tries = 60) {
-  const id = String(inboxId || '').replace(/^0x/i, '');
-  if (!id) return false;
-  // Only attempt in known XMTP envs; otherwise, skip
-  if (!['local', 'dev', 'production'].includes(XMTP_ENV)) return true;
-  // In test/mocked environments, don't block on network checks
-  if (process.env.NODE_ENV === 'test' || process.env.DISABLE_XMTP_WAIT === '1') return true;
-  // If the static helper is not available (older SDK or mock), skip waiting
-  if (typeof Client.inboxStateFromInboxIds !== 'function') return true;
-  for (let i = 0; i < tries; i++) {
-    try {
-      if (typeof Client.inboxStateFromInboxIds === 'function') {
-        const envOpt = /** @type {any} */ (
-          ['local', 'dev', 'production'].includes(XMTP_ENV) ? XMTP_ENV : 'dev'
-        );
-        const states = await Client.inboxStateFromInboxIds([id], envOpt);
-        logger.info({ inboxId: id, states }, 'Inbox states (inboxStateFromInboxIds)');
-        if (Array.isArray(states) && states.length > 0) return true;
-      }
-    } catch (e) {
-      logger.debug({ err: String(e?.message || e), inboxId: id }, 'Inbox state check failed');
-    }
-    await new Promise((r) => setTimeout(r, 1000));
-  }
-  return false;
-}
 
 /**
  * Build an express application for managing TEMPL groups.
@@ -144,7 +116,7 @@ export function createApp(opts) {
               const found = await xmtp.findInboxIdByIdentifier(identifier);
               if (found) return found;
             } catch (err) { void err; }
-            await new Promise((r) => setTimeout(r, 1000));
+            await wait(1000);
           }
           return null;
         }
@@ -201,7 +173,7 @@ export function createApp(opts) {
           } catch (e) { void e; }
         }
         if (priestInbox && typeof group.addMembers === 'function') {
-          const ready = await waitForInboxReady(priestInbox, 30);
+          const ready = await waitForInboxReady(priestInbox, 30, Client);
           logger.info({ priestInboxId: priestInbox, ready }, 'Priest inbox readiness before add');
           const beforeAgg = xmtp?.debugInformation?.apiAggregateStatistics?.();
           try {
@@ -358,7 +330,7 @@ export function createApp(opts) {
             const found = await xmtp.findInboxIdByIdentifier(identifier);
             if (found) return found;
           } catch (e) { void e; }
-          await new Promise((r) => setTimeout(r, 1000));
+          await wait(1000);
         }
         return null;
       }
@@ -373,7 +345,7 @@ export function createApp(opts) {
         return res.status(503).json({ error: 'Member identity not registered yet; retry shortly' });
       }
       // Linearize against identity readiness on XMTP infra
-      const ready = await waitForInboxReady(inboxId, 60);
+      const ready = await waitForInboxReady(inboxId, 60, Client);
       logger.info({ inboxId, ready }, 'Member inbox readiness before add');
       const beforeAgg = xmtp?.debugInformation?.apiAggregateStatistics?.();
       const joinMeta = { contract: contractAddress.toLowerCase(), member: memberAddress.toLowerCase(), inboxId, serverInboxId: xmtp?.inboxId || null, groupId: record.group?.id || record.groupId || null };

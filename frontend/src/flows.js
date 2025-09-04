@@ -2,20 +2,8 @@
 import { BACKEND_URL } from './config.js';
 import { buildDelegateMessage, buildMuteMessage } from '../../shared/signing.js';
 import { waitForConversation } from '../../shared/xmtp.js';
-
-// Minimal debug logger usable in both browser and Node tests
-const __isDebug = (() => {
-  // Node tests: opt-in via DEBUG_TEMPL=1
-  try { if (globalThis?.process?.env?.DEBUG_TEMPL === '1') return true; } catch {}
-  // Browser (Vite): import.meta.env.VITE_E2E_DEBUG — typed loosely to appease TS in JS files
-  try {
-    // @ts-ignore - vite injects env on import.meta at build time
-    const env = import.meta?.env;
-    if (env?.VITE_E2E_DEBUG === '1') return true;
-  } catch {}
-  return false;
-})();
-const dlog = (...args) => { if (__isDebug) { try { console.log(...args); } catch {} } };
+import { logger } from '../../shared/logging.js';
+import { wait } from '../../shared/wait.js';
 
 /**
  * Deploy a new TEMPL contract and register a group with the backend.
@@ -61,13 +49,13 @@ export async function deployTempl({
   // Get the priest's inbox ID from XMTP client if available
   const priestInboxId = xmtp?.inboxId;
   if (priestInboxId) {
-    dlog('Priest XMTP client:', {
+    logger.debug('Priest XMTP client:', {
       inboxId: priestInboxId,
       address: xmtp.address,
       env: xmtp.env
     });
   } else {
-    dlog('XMTP not ready at deploy; backend will resolve inboxId from network');
+    logger.debug('XMTP not ready at deploy; backend will resolve inboxId from network');
   }
   
   const res = await fetch(`${backendUrl}/templs`, {
@@ -97,7 +85,7 @@ export async function deployTempl({
     return { contractAddress, group: null, groupId };
   }
   
-  dlog('Syncing conversations to find group', groupId);
+  logger.debug('Syncing conversations to find group', groupId);
   const group = await waitForConversation({ xmtp, groupId, retries: 6, delayMs: 1000 });
   if (!group) {
     console.error('Could not find group after creation; will rely on join step');
@@ -133,7 +121,7 @@ export async function purchaseAndJoin({
           if (uploads >= 1) break;
         }
       } catch {}
-      await new Promise((r) => setTimeout(r, 300));
+      await wait(300);
     }
   } catch {}
   const contract = new ethers.Contract(templAddress, templArtifact.abi, signer);
@@ -194,7 +182,7 @@ export async function purchaseAndJoin({
   // If identity not yet registered, poll until backend accepts the invite
   if (res.status === 503) {
     for (let i = 0; i < 60; i++) {
-      await new Promise((r) => setTimeout(r, 1000));
+      await wait(1000);
       const again = await fetch(`${backendUrl}/join`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -224,11 +212,11 @@ export async function purchaseAndJoin({
     throw new Error('Invalid /join response: missing groupId');
   }
   const groupId = String(data.groupId).replace(/^0x/i, '');
-  dlog('purchaseAndJoin: backend returned groupId=', data.groupId);
+  logger.debug('purchaseAndJoin: backend returned groupId=', data.groupId);
   // Optional diagnostics: verify membership server-side when debug endpoints are enabled
   try {
     const dbg = await fetch(`${backendUrl}/debug/membership?contractAddress=${templAddress}&inboxId=${memberInboxId || ''}`).then(r => r.json());
-    dlog('purchaseAndJoin: server membership snapshot', dbg);
+    logger.debug('purchaseAndJoin: server membership snapshot', dbg);
   } catch {}
   return await finalizeJoin({ xmtp, groupId });
 }
