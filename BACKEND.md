@@ -120,22 +120,17 @@ sequenceDiagram
 - After creation/join, the backend syncs and records XMTP aggregate stats around operations for diagnostics.
 
 ### Debug endpoints
-Enabled with `ENABLE_DEBUG_ENDPOINTS=1`:
-- `GET /debug/group?contractAddress=<addr>&refresh=1` – server view of groupId, members (when available)
-- `GET /debug/conversations` – server conversation ids
-- `GET /debug/membership?contractAddress=<addr>&inboxId=<id>` – whether server group view contains `inboxId`
-- `GET /debug/last-join` – last join metadata
-- `GET /debug/inbox-state?inboxId=<id>&env=<local|dev|production>` – raw XMTP inbox state
+When `ENABLE_DEBUG_ENDPOINTS=1`, these endpoints assist tests and local debugging:
+- `GET /debug/group?contractAddress=<addr>&refresh=1` – returns server inboxId, stored/resolved groupId, and (when available) members.
+- `GET /debug/conversations` – returns a count and the first few conversation ids seen by the server.
+- `GET /debug/membership?contractAddress=<addr>&inboxId=<id>` – whether server group view contains `inboxId`.
+- `GET /debug/last-join` – last join metadata.
+- `GET /debug/inbox-state?inboxId=<id>&env=<local|dev|production>` – raw XMTP inbox state.
 
 #### Running against a local XMTP node
 - Start the local node: `npm run xmtp:local:up` (requires Docker) and watch logs with `(cd xmtp-local-node && docker compose logs -f)`.
 - Set `XMTP_ENV=local` on the backend (Playwright config does this automatically when `E2E_XMTP_LOCAL=1`).
 - Default local endpoints: API `http://localhost:5555`, History `http://localhost:5558`.
-
-### E2E and debug endpoints
-When `ENABLE_DEBUG_ENDPOINTS=1`, additional endpoints assist tests and local debugging:
-- `GET /debug/group?contractAddress=<addr>&refresh=1` – returns server inboxId, stored/resolved groupId, and (if available) members.
-- `GET /debug/conversations` – returns a count and the first few conversation ids seen by the server.
 
 Playwright e2e uses `XMTP_ENV=production` by default and injects a random `BOT_PRIVATE_KEY` per run. When `E2E_XMTP_LOCAL=1`, it starts `xmtp-local-node` and sets `XMTP_ENV=local`.
 
