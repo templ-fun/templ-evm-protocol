@@ -124,8 +124,6 @@ contract TEMPL is ReentrancyGuard {
 
     event ContractPaused(bool isPaused);
 
-    // event DAOExecuted removed with executeDAO elimination
-    
     modifier onlyMember() {
         if (!members[msg.sender].purchased) revert TemplErrors.NotMember();
         _;
