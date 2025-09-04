@@ -7,7 +7,7 @@
   },
   "scripts": {
     "start": "node src/server.js",
-    "test": "DISABLE_XMTP_WAIT=1 node --test --import ./test/after-cleanup.js",
+    "test": "DISABLE_XMTP_WAIT=1 node --test --import ./test/after-cleanup.js './test/**/*.test.js' '../shared/**/*.test.js'",
     "coverage": "c8 --reporter=text --reporter=lcov --report-dir=coverage npm test",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
