@@ -102,9 +102,38 @@ See [BACKEND.md#environment-variables](./BACKEND.md#environment-variables) and [
 5. Build the frontend (`npm --prefix frontend run build`) and serve the static files.
 
 ## Core flows
-Core flows cover **TEMPL creation** with contract deployment and a private XMTP group, pay‑to‑join onboarding where `purchaseAccess` triggers an invitation, ongoing group messaging, priest‑controlled muting with escalating durations, proposal drafting for allowlisted actions with backend rebroadcasts, live yes/no voting, and atomic execution of passing proposals. Full diagrams are in [CORE_FLOW_DOCS.MD](./CORE_FLOW_DOCS.MD).
 
-For auditing guides, continue with the docs linked above.
+High‑level sequence for deploying, joining, and messaging:
+
+```mermaid
+sequenceDiagram
+    participant F as Frontend
+    participant C as Contract
+    participant B as Backend
+    participant X as XMTP
+
+    Note over F: deployTempl
+    F->>C: deployTempl()
+    C-->>F: contract address
+    F->>B: POST /templs {contract}
+    B->>X: newGroup
+    B-->>F: {groupId}
+
+    Note over F: purchaseAndJoin
+    F->>C: purchaseAccess()
+    C-->>F: membership granted
+    F->>B: POST /join
+    B->>X: addMembers
+    B-->>F: {groupId}
+
+    Note over F: messaging
+    F->>X: send message
+    X-->>F: receive message
+```
+
+Core flows cover **TEMPL creation** with contract deployment and a private XMTP group, pay‑to‑join onboarding where `purchaseAccess` triggers an invitation, ongoing group messaging, priest‑controlled muting with escalating durations, proposal drafting for allowlisted actions with backend rebroadcasts, live yes/no voting, and atomic execution of passing proposals.
+
+Full diagrams are in [CORE_FLOW_DOCS.MD](./CORE_FLOW_DOCS.MD).
 
 ## Security considerations
 
