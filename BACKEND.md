@@ -11,22 +11,23 @@ npm --prefix backend install
 
 ## Environment variables
 
-```env
-RPC_URL=https://mainnet.base.org
-PORT=3001
-BOT_PRIVATE_KEY=0x...
-ALLOWED_ORIGINS=http://localhost:5173
-ENABLE_DEBUG_ENDPOINTS=1
-XMTP_ENV=dev # XMTP network: dev|production|local (default: dev)
-# Optional rate limit store ('redis' uses Redis)
-RATE_LIMIT_STORE=redis
-# When using Redis store
-REDIS_URL=redis://localhost:6379
-# Optional for tests to bypass network checks
-DISABLE_XMTP_WAIT=1
-# Optional cap on XMTP client rotation attempts
-XMTP_MAX_ATTEMPTS=5
-```
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `RPC_URL` | RPC endpoint for on-chain reads and writes | — |
+| `PORT` | HTTP port for the API service | `3001` |
+| `BOT_PRIVATE_KEY` | Private key for the XMTP bot wallet | — |
+| `ALLOWED_ORIGINS` | Comma-separated CORS origins | `http://localhost:5173` |
+| `ENABLE_DEBUG_ENDPOINTS` | Expose debug endpoints when set to `1` | `0` |
+| `XMTP_ENV` | XMTP network (`dev`, `production`, `local`) | `dev` |
+
+### Optional variables
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `RATE_LIMIT_STORE` | Rate limit store (`memory` or `redis`) | `memory` |
+| `REDIS_URL` | Redis URL when `RATE_LIMIT_STORE=redis` | — |
+| `DISABLE_XMTP_WAIT` | Skip XMTP readiness checks in tests | `0` |
+| `XMTP_MAX_ATTEMPTS` | Limit XMTP client rotation attempts | unlimited |
 
 See [README.md#environment-variables](./README.md#environment-variables) for minimal setup variables.
 
