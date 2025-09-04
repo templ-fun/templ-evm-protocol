@@ -1,5 +1,7 @@
 # TEMPL
 
+[![Coverage](https://codecov.io/gh/templ-co/templ/branch/main/graph/badge.svg)](https://codecov.io/gh/templ-co/templ)
+
 DAO‑governed token‑gated private groups with onchain treasury management and XMTP messaging
 
 <p align="center">
@@ -58,11 +60,12 @@ Use the docs below to dive into each component:
    npm --prefix frontend install
    ```
 
-2. **Test**  
-   Run the full suite:
+2. **Test**
+   Run the full suite locally:
    ```bash
    npm run test:all
    ```
+
    See component docs for individual commands.
 
 3. **Run**  

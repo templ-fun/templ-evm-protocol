@@ -21,8 +21,11 @@ jobs:
           name: Install dependencies
           command: npm ci
       - run:
-          name: Run contract tests
-          command: npm test
+          name: Run contract coverage
+          command: npm run coverage
+      - run:
+          name: Upload coverage
+          command: npx codecov
 
   slither:
     docker:
