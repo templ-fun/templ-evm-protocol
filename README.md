@@ -55,8 +55,9 @@ Use the docs below to dive into each component:
 
 ## Quick Start
 1. **Install**
+   Install all dependencies; running `npm install` in the repo root pulls in contract packages:
    ```bash
-   npm --prefix contracts install
+   npm install
    npm --prefix backend install
    npm --prefix frontend install
    ```
