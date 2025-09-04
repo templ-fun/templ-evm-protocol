@@ -17,6 +17,8 @@ npm --prefix frontend install
 
 ## Environment variables
 
+Global variables such as `RPC_URL` live in the project `.env`; see the [README's environment variables](./README.md#environment-variables).
+
 | Name | Description | Default |
 | --- | --- | --- |
 | `VITE_XMTP_ENV` | XMTP environment for the Browser SDK (`local`, `dev`, `production`). Defaults to `dev` on `localhost`/`127.0.0.1` and `production` elsewhere. | `dev` (localhost) / `production` |
