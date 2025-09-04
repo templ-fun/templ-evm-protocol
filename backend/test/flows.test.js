@@ -4,6 +4,7 @@ import request from 'supertest';
 import { EventEmitter } from 'node:events';
 import { Wallet } from 'ethers';
 import { createApp } from '../src/server.js';
+import { buildDelegateMessage, buildMuteMessage } from '../../shared/signing.js';
 
 const makeApp = (opts) => createApp({ dbPath: ':memory:', ...opts });
 
@@ -401,7 +402,7 @@ test('only authorized addresses can mute members', async () => {
     .expect(200);
 
   let muteSig = await wallets.stranger.signMessage(
-    `mute:${addresses.contract}:${addresses.member.toLowerCase()}`
+    buildMuteMessage(addresses.contract, addresses.member)
   );
   await request(app)
     .post('/mute')
@@ -414,7 +415,7 @@ test('only authorized addresses can mute members', async () => {
     .expect(403);
 
   muteSig = await wallets.priest.signMessage(
-    `mute:${addresses.contract}:${addresses.member.toLowerCase()}`
+    buildMuteMessage(addresses.contract, addresses.member)
   );
   const resp = await request(app)
     .post('/mute')
@@ -462,7 +463,7 @@ test('priest can delegate mute power', async () => {
     .expect(200);
 
   let delSig = await wallets.priest.signMessage(
-    `delegate:${addresses.contract}:${addresses.delegate.toLowerCase()}`
+    buildDelegateMessage(addresses.contract, addresses.delegate)
   );
   await request(app)
     .post('/delegates')
@@ -475,7 +476,7 @@ test('priest can delegate mute power', async () => {
     .expect(200, { delegated: true });
 
   const muteSig = await wallets.delegate.signMessage(
-    `mute:${addresses.contract}:${addresses.member.toLowerCase()}`
+    buildMuteMessage(addresses.contract, addresses.member)
   );
   await request(app)
     .post('/mute')
@@ -488,7 +489,7 @@ test('priest can delegate mute power', async () => {
     .expect(200);
 
   delSig = await wallets.priest.signMessage(
-    `delegate:${addresses.contract}:${addresses.delegate.toLowerCase()}`
+    buildDelegateMessage(addresses.contract, addresses.delegate)
   );
   await request(app)
     .delete('/delegates')
@@ -501,7 +502,7 @@ test('priest can delegate mute power', async () => {
     .expect(200, { delegated: false });
 
   const badSig = await wallets.delegate.signMessage(
-    `mute:${addresses.contract}:${addresses.member.toLowerCase()}`
+    buildMuteMessage(addresses.contract, addresses.member)
   );
   await request(app)
     .post('/mute')
@@ -537,7 +538,7 @@ test('rejects delegate addition with non-priest signature', async () => {
     .expect(200);
 
   const badSig = await wallets.stranger.signMessage(
-    `delegate:${addresses.contract}:${addresses.delegate.toLowerCase()}`
+    buildDelegateMessage(addresses.contract, addresses.delegate)
   );
   await request(app)
     .post('/delegates')
@@ -573,7 +574,7 @@ test('rejects delegate removal with malformed signature', async () => {
     .expect(200);
 
   const delSig = await wallets.priest.signMessage(
-    `delegate:${addresses.contract}:${addresses.delegate.toLowerCase()}`
+    buildDelegateMessage(addresses.contract, addresses.delegate)
   );
   await request(app)
     .post('/delegates')
@@ -618,7 +619,7 @@ test('mute durations escalate', async () => {
     .expect(200);
 
   let muteSig = await wallets.priest.signMessage(
-    `mute:${addresses.contract}:${addresses.member.toLowerCase()}`
+    buildMuteMessage(addresses.contract, addresses.member)
   );
   const first = await request(app)
     .post('/mute')
@@ -631,7 +632,7 @@ test('mute durations escalate', async () => {
     .expect(200);
 
   muteSig = await wallets.priest.signMessage(
-    `mute:${addresses.contract}:${addresses.member.toLowerCase()}`
+    buildMuteMessage(addresses.contract, addresses.member)
   );
   const second = await request(app)
     .post('/mute')
@@ -670,7 +671,7 @@ test('permanently mutes after repeated escalations', async () => {
   let resp;
   for (let i = 0; i < 5; i++) {
     const muteSig = await wallets.priest.signMessage(
-      `mute:${addresses.contract}:${addresses.member.toLowerCase()}`
+      buildMuteMessage(addresses.contract, addresses.member)
     );
     resp = await request(app)
       .post('/mute')
@@ -708,7 +709,7 @@ test('rejects mute with bad signature', async () => {
     .expect(200);
 
   const badSig = await wallets.member.signMessage(
-    `mute:${addresses.contract}:${addresses.member.toLowerCase()}`
+    buildMuteMessage(addresses.contract, addresses.member)
   );
   await request(app)
     .post('/mute')

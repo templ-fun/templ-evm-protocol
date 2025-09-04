@@ -1,5 +1,6 @@
 // @ts-check
 import { BACKEND_URL } from './config.js';
+import { buildDelegateMessage, buildMuteMessage } from '../../shared/signing.js';
 
 // Minimal debug logger usable in both browser and Node tests
 const __isDebug = (() => {
@@ -380,7 +381,7 @@ export async function delegateMute({
   delegateAddress,
   backendUrl = BACKEND_URL
 }) {
-  const message = `delegate:${contractAddress.toLowerCase()}:${delegateAddress.toLowerCase()}`;
+  const message = buildDelegateMessage(contractAddress, delegateAddress);
   const signature = await signer.signMessage(message);
   const res = await fetch(`${backendUrl}/delegates`, {
     method: 'POST',
@@ -407,7 +408,7 @@ export async function muteMember({
   targetAddress,
   backendUrl = BACKEND_URL
 }) {
-  const message = `mute:${contractAddress.toLowerCase()}:${targetAddress.toLowerCase()}`;
+  const message = buildMuteMessage(contractAddress, targetAddress);
   const signature = await signer.signMessage(message);
   const res = await fetch(`${backendUrl}/mute`, {
     method: 'POST',

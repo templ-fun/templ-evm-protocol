@@ -9,6 +9,7 @@ import rateLimit, { MemoryStore } from 'express-rate-limit';
 import cors from 'cors';
 import Database from 'better-sqlite3';
 import pino from 'pino';
+import { buildDelegateMessage, buildMuteMessage } from '../../shared/signing.js';
 
 export const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 const XMTP_ENV = process.env.XMTP_ENV || 'dev';
@@ -433,7 +434,7 @@ export function createApp(opts) {
     }
     const record = groups.get(contractAddress.toLowerCase());
     if (!record) return res.status(404).json({ error: 'Unknown Templ' });
-    const message = `delegate:${contractAddress.toLowerCase()}:${delegateAddress.toLowerCase()}`;
+    const message = buildDelegateMessage(contractAddress, delegateAddress);
     if (
       record.priest !== priestAddress.toLowerCase() ||
       !verify(priestAddress, signature, message)
@@ -464,7 +465,7 @@ export function createApp(opts) {
     }
     const record = groups.get(contractAddress.toLowerCase());
     if (!record) return res.status(404).json({ error: 'Unknown Templ' });
-    const message = `delegate:${contractAddress.toLowerCase()}:${delegateAddress.toLowerCase()}`;
+    const message = buildDelegateMessage(contractAddress, delegateAddress);
     if (
       record.priest !== priestAddress.toLowerCase() ||
       !verify(priestAddress, signature, message)
@@ -492,7 +493,7 @@ export function createApp(opts) {
     }
     const record = groups.get(contractAddress.toLowerCase());
     if (!record) return res.status(404).json({ error: 'Unknown Templ' });
-    const message = `mute:${contractAddress.toLowerCase()}:${targetAddress.toLowerCase()}`;
+    const message = buildMuteMessage(contractAddress, targetAddress);
     const contractKey = contractAddress.toLowerCase();
     const actorKey = moderatorAddress.toLowerCase();
     const delegated = database

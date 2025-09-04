@@ -12,6 +12,7 @@ import {
   fetchActiveMutes
 } from './flows.js';
 import { BACKEND_URL } from './config.js';
+import { buildDelegateMessage, buildMuteMessage } from '../../shared/signing.js';
 
 const templArtifact = { abi: [], bytecode: '0x' };
 const originalFetch = globalThis.fetch;
@@ -346,7 +347,9 @@ describe('templ flows', () => {
       priestAddress: '0xPriest',
       delegateAddress: '0xDel'
     });
-    expect(signer.signMessage).toHaveBeenCalledWith('delegate:0xtempl:0xdel');
+    expect(signer.signMessage).toHaveBeenCalledWith(
+      buildDelegateMessage('0xTempl', '0xDel')
+    );
     expect(globalThis.fetch).toHaveBeenCalledWith(
       `${BACKEND_URL}/delegates`,
       expect.objectContaining({
@@ -415,7 +418,9 @@ describe('templ flows', () => {
       moderatorAddress: '0xMod',
       targetAddress: '0xTar'
     });
-    expect(signer.signMessage).toHaveBeenCalledWith('mute:0xtempl:0xtar');
+    expect(signer.signMessage).toHaveBeenCalledWith(
+      buildMuteMessage('0xTempl', '0xTar')
+    );
     expect(globalThis.fetch).toHaveBeenCalledWith(
       `${BACKEND_URL}/mute`,
       expect.objectContaining({
