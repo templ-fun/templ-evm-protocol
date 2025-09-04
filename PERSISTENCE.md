@@ -94,31 +94,20 @@ This section answers common questions about what data is stored and why certain 
 
 ## Testing
 
-Integration tests run entirely in Node and are deterministic, while E2E tests exercise the browser SDK and can fail due to install limits or OPFS handle issues. The following notes outline the differences and provide strategies to avoid flakiness. Choose the approach that best fits your testing goals.
+### Integration tests
 
-- Integration tests (Vitest)
-  - Run entirely in Node. They use the Node SDK for XMTP clients and an in-process backend. The Node SDK writes to on-disk SQLCipher DBs, not OPFS. There are no browser access-handle conflicts.
-  - The tests create fresh random wallets (new EOAs) for priest/member/delegate each run, so they don’t hit the dev network’s 10-installation cap.
-  - Result: Deterministic, no OPFS, no install exhaustion → group joining passes.
-- E2E tests (Playwright)
-  - Use the Browser SDK inside Chromium. Our UI previously rotated installation nonces in the browser to “recover” from the dev install cap. Combined with reusing the same fixed Hardhat accounts and actively clearing OPFS/IndexedDB between candidate wallets, this produced two failure modes:
-    1. XMTP dev “10/10 installations reached” for the reused wallet’s inboxId.
-    2. OPFS `createSyncAccessHandle` errors due to rapid client re-creation and storage churn during rotation.
-  - Result: Client initialization would fail before the app could join the group, causing the test to fail at “Failed to initialize XMTP for any candidate wallet”.
-- Mitigations and recommended patterns
-  - Stable installation (preferred in browser)
-    - Use a stable, persisted nonce per wallet address for Browser SDK clients. Reuse the same installation and OPFS DB across runs. This avoids hitting the install cap and reduces OPFS handle churn.
-    - This repo now uses that approach in the app: the nonce is read/written in `localStorage` and reused.
-  - Ephemeral wallets for tests (simple and robust)
-    - Generating a brand-new EOA for the UI per E2E run completely avoids previous installation caps for that address. Fund it from Hardhat.
-    - Trade-offs:
-      - Pros: clean state, no need to rotate installations, no risk of historical caps.
-      - Cons: if you depend on reusing the same inboxId across runs, you lose that continuity.
-    - We can toggle this in Playwright fixtures to use fresh random wallets instead of fixed Hardhat accounts.
-  - Avoid aggressive OPFS clearing & multiple client attempts
-    - If possible, do not clear OPFS between wallet attempts on the same page. Prefer selecting the wallet once and letting the app reuse the same installation.
-    - Ensure one XMTP client per page lifecycle in the browser. If you must switch wallets, fully reload or close the previous client if the SDK exposes it.
-  - Backend (Node) notes
-    - The backend also creates an XMTP Node client. Because the inboxId is stable for the bot’s address, the Node SDK reuses the same local DB between runs. The code includes an installation-rotation fallback but typically does not need to create new installs if the DB and inbox are intact.
-    - The backend’s own SQLite (`groups.db`) is unrelated to XMTP’s DB. It’s safe to clear between runs in E2E via `DB_PATH` and `CLEAR_DB` without affecting XMTP identity.
+- Node-based (Vitest) using the Node SDK and an in-process backend.
+- Fresh random wallets each run avoid the dev network’s 10-installation cap.
+- Deterministic: uses on-disk SQLCipher DBs, so no OPFS handle conflicts.
+
+### E2E tests
+
+- Browser SDK in Chromium; earlier nonce rotation with fixed Hardhat accounts and storage clearing caused
+  - `10/10 installations reached` errors.
+  - OPFS `createSyncAccessHandle` contention.
+- **Mitigations**
+  - Persist a nonce per wallet in `localStorage` to reuse the same installation and OPFS DB.
+  - Generate fresh funded wallets for each run when continuity isn’t needed.
+  - Avoid clearing OPFS or running multiple clients on a page; reload before switching wallets.
+  - Backend Node client reuses its local DB and rarely needs installation rotation; clearing `groups.db` is safe.
 
