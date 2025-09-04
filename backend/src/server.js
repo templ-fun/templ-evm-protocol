@@ -11,6 +11,7 @@ import cors from 'cors';
 import Database from 'better-sqlite3';
 import pino from 'pino';
 import { buildDelegateMessage, buildMuteMessage } from '../../shared/signing.js';
+import { requireAddresses, verifySignature } from './middleware/validate.js';
 
 export const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 const XMTP_ENV = process.env.XMTP_ENV || 'dev';
@@ -115,49 +116,38 @@ export function createApp(opts) {
     }
   })();
 
-  function verify(address, signature, message) {
-    try {
-      return (
-        ethers.verifyMessage(message, signature).toLowerCase() ===
-        address.toLowerCase()
-      );
-    } catch {
-      return false;
-    }
-  }
-
-  app.post('/templs', async (req, res) => {
-    const { contractAddress, priestAddress, signature, priestInboxId } = req.body;
-    if (!ethers.isAddress(contractAddress) || !ethers.isAddress(priestAddress)) {
-      return res.status(400).json({ error: 'Invalid addresses' });
-    }
-    const message = `create:${contractAddress.toLowerCase()}`;
-    if (!verify(priestAddress, signature, message)) {
-      return res.status(403).json({ error: 'Bad signature' });
-    }
-    try {
-      // Capture baseline set of server conversations to help identify the new one
-      let beforeIds = [];
+  app.post(
+    '/templs',
+    requireAddresses(['contractAddress', 'priestAddress']),
+    verifySignature(
+      'priestAddress',
+      (req) => `create:${req.body.contractAddress.toLowerCase()}`
+    ),
+    async (req, res) => {
+      const { contractAddress, priestAddress, priestInboxId } = req.body;
       try {
-        if (xmtp.conversations?.sync) await xmtp.conversations.sync();
-        const beforeList = (await xmtp.conversations?.list?.()) ?? [];
-        beforeIds = beforeList.map((c) => c.id);
-      } catch (err) { void err; }
-      // Prefer identity-based membership (Ethereum = 0) when supported
-      const priestIdentifierObj = { identifier: priestAddress.toLowerCase(), identifierKind: 0 };
-      // Ensure the priest identity is registered before creating a group
-      async function waitForIdentityReady(identifier, tries = 60) {
-        if (!xmtp?.findInboxIdByIdentifier) return;
-        for (let i = 0; i < tries; i++) {
-          try {
-            const found = await xmtp.findInboxIdByIdentifier(identifier);
-            if (found) return found;
-          } catch (err) { void err; }
-          await new Promise((r) => setTimeout(r, 1000));
+        // Capture baseline set of server conversations to help identify the new one
+        let beforeIds = [];
+        try {
+          if (xmtp.conversations?.sync) await xmtp.conversations.sync();
+          const beforeList = (await xmtp.conversations?.list?.()) ?? [];
+          beforeIds = beforeList.map((c) => c.id);
+        } catch (err) { void err; }
+        // Prefer identity-based membership (Ethereum = 0) when supported
+        const priestIdentifierObj = { identifier: priestAddress.toLowerCase(), identifierKind: 0 };
+        // Ensure the priest identity is registered before creating a group
+        async function waitForIdentityReady(identifier, tries = 60) {
+          if (!xmtp?.findInboxIdByIdentifier) return;
+          for (let i = 0; i < tries; i++) {
+            try {
+              const found = await xmtp.findInboxIdByIdentifier(identifier);
+              if (found) return found;
+            } catch (err) { void err; }
+            await new Promise((r) => setTimeout(r, 1000));
+          }
+          return null;
         }
-        return null;
-      }
-      await waitForIdentityReady(priestIdentifierObj, 60);
+        await waitForIdentityReady(priestIdentifierObj, 60);
 
       // The SDK often reports successful syncs as errors, so capture that case.
       let group;
@@ -325,33 +315,39 @@ export function createApp(opts) {
       const key = contractAddress.toLowerCase();
       groups.set(key, record);
       persist(key, record);
-      res.json({ groupId: group.id });
-    } catch (err) {
-      logger.error({ err, priestAddress, contractAddress }, 'Failed to create group');
-      res.status(500).json({ error: err.message });
+        res.json({ groupId: group.id });
+      } catch (err) {
+        logger.error({ err, priestAddress, contractAddress }, 'Failed to create group');
+        res.status(500).json({ error: err.message });
+      }
     }
-  });
+  );
 
-  app.post('/join', async (req, res) => {
-    const { contractAddress, memberAddress, signature, memberInboxId } = req.body;
-    if (!ethers.isAddress(contractAddress) || !ethers.isAddress(memberAddress)) {
-      return res.status(400).json({ error: 'Invalid addresses' });
-    }
-    const record = groups.get(contractAddress.toLowerCase());
-    if (!record) return res.status(404).json({ error: 'Unknown Templ' });
-    const message = `join:${contractAddress.toLowerCase()}`;
-    if (!verify(memberAddress, signature, message)) {
-      return res.status(403).json({ error: 'Bad signature' });
-    }
-    let purchased;
+  app.post(
+    '/join',
+    requireAddresses(['contractAddress', 'memberAddress']),
+    (req, res, next) => {
+      const record = groups.get(req.body.contractAddress.toLowerCase());
+      if (!record) return res.status(404).json({ error: 'Unknown Templ' });
+      req.record = record;
+      next();
+    },
+    verifySignature(
+      'memberAddress',
+      (req) => `join:${req.body.contractAddress.toLowerCase()}`
+    ),
+    async (req, res) => {
+      const { contractAddress, memberAddress, memberInboxId } = req.body;
+      const record = /** @type {any} */ (req.record);
+      let purchased;
     try {
       // Snapshot removal: no longer needed with identity-based add
       purchased = await hasPurchased(contractAddress, memberAddress);
     } catch {
       return res.status(500).json({ error: 'Purchase check failed' });
     }
-    if (!purchased) return res.status(403).json({ error: 'Access not purchased' });
-    try {
+      if (!purchased) return res.status(403).json({ error: 'Access not purchased' });
+      try {
       // Resolve member inboxId and add explicitly by inboxId for maximum compatibility
       const memberIdentifier = { identifier: memberAddress.toLowerCase(), identifierKind: 0 };
       async function waitForInboxId(identifier, tries = 180) {
@@ -417,190 +413,220 @@ export function createApp(opts) {
       try { if (typeof record.group.sync === 'function') await record.group.sync(); } catch (err) { void err; }
       try { await record.group.send(JSON.stringify({ type: 'member-joined', address: memberAddress })); } catch (err) { void err; }
       res.json({ groupId: record.group.id });
-    } catch (err) {
-      logger.error({ err, contractAddress }, 'Join failed');
-      res.status(500).json({ error: err.message });
+      } catch (err) {
+        logger.error({ err, contractAddress }, 'Join failed');
+        res.status(500).json({ error: err.message });
+      }
     }
-  });
+  );
 
-  app.post('/delegates', (req, res) => {
-    const { contractAddress, priestAddress, delegateAddress, signature } = req.body;
-    if (
-      !ethers.isAddress(contractAddress) ||
-      !ethers.isAddress(priestAddress) ||
-      !ethers.isAddress(delegateAddress)
-    ) {
-      return res.status(400).json({ error: 'Invalid addresses' });
+  app.post(
+    '/delegates',
+    requireAddresses(['contractAddress', 'priestAddress', 'delegateAddress']),
+    (req, res, next) => {
+      const record = groups.get(req.body.contractAddress.toLowerCase());
+      if (!record) return res.status(404).json({ error: 'Unknown Templ' });
+      req.record = record;
+      next();
+    },
+    verifySignature(
+      'priestAddress',
+      (req) =>
+        buildDelegateMessage(req.body.contractAddress, req.body.delegateAddress),
+      'Only priest can delegate'
+    ),
+    (req, res) => {
+      const { contractAddress, priestAddress, delegateAddress } = req.body;
+      const record = /** @type {any} */ (req.record);
+      if (record.priest !== priestAddress.toLowerCase()) {
+        return res.status(403).json({ error: 'Only priest can delegate' });
+      }
+      try {
+        database
+          .prepare(
+            'INSERT OR REPLACE INTO delegates (contract, delegate) VALUES (?, ?)'
+          )
+          .run(contractAddress.toLowerCase(), delegateAddress.toLowerCase());
+        res.json({ delegated: true });
+      } catch (err) {
+        logger.error({ err, contractAddress }, 'Backend /delegates failed');
+        res.status(500).json({ error: err.message });
+      }
     }
-    const record = groups.get(contractAddress.toLowerCase());
-    if (!record) return res.status(404).json({ error: 'Unknown Templ' });
-    const message = buildDelegateMessage(contractAddress, delegateAddress);
-    if (
-      record.priest !== priestAddress.toLowerCase() ||
-      !verify(priestAddress, signature, message)
-    ) {
-      return res.status(403).json({ error: 'Only priest can delegate' });
-    }
-    try {
-      database
-        .prepare(
-          'INSERT OR REPLACE INTO delegates (contract, delegate) VALUES (?, ?)'
-        )
-        .run(contractAddress.toLowerCase(), delegateAddress.toLowerCase());
-      res.json({ delegated: true });
-    } catch (err) {
-      logger.error({ err, contractAddress }, 'Backend /delegates failed');
-      res.status(500).json({ error: err.message });
-    }
-  });
+  );
 
-  app.delete('/delegates', (req, res) => {
-    const { contractAddress, priestAddress, delegateAddress, signature } = req.body;
-    if (
-      !ethers.isAddress(contractAddress) ||
-      !ethers.isAddress(priestAddress) ||
-      !ethers.isAddress(delegateAddress)
-    ) {
-      return res.status(400).json({ error: 'Invalid addresses' });
+  app.delete(
+    '/delegates',
+    requireAddresses(['contractAddress', 'priestAddress', 'delegateAddress']),
+    (req, res, next) => {
+      const record = groups.get(req.body.contractAddress.toLowerCase());
+      if (!record) return res.status(404).json({ error: 'Unknown Templ' });
+      req.record = record;
+      next();
+    },
+    verifySignature(
+      'priestAddress',
+      (req) =>
+        buildDelegateMessage(req.body.contractAddress, req.body.delegateAddress),
+      'Only priest can delegate'
+    ),
+    (req, res) => {
+      const { contractAddress, priestAddress, delegateAddress } = req.body;
+      const record = /** @type {any} */ (req.record);
+      if (record.priest !== priestAddress.toLowerCase()) {
+        return res.status(403).json({ error: 'Only priest can delegate' });
+      }
+      try {
+        database
+          .prepare('DELETE FROM delegates WHERE contract = ? AND delegate = ?')
+          .run(contractAddress.toLowerCase(), delegateAddress.toLowerCase());
+        res.json({ delegated: false });
+      } catch (err) {
+        res.status(500).json({ error: err.message });
+      }
     }
-    const record = groups.get(contractAddress.toLowerCase());
-    if (!record) return res.status(404).json({ error: 'Unknown Templ' });
-    const message = buildDelegateMessage(contractAddress, delegateAddress);
-    if (
-      record.priest !== priestAddress.toLowerCase() ||
-      !verify(priestAddress, signature, message)
-    ) {
-      return res.status(403).json({ error: 'Only priest can delegate' });
-    }
-    try {
-      database
-        .prepare('DELETE FROM delegates WHERE contract = ? AND delegate = ?')
-        .run(contractAddress.toLowerCase(), delegateAddress.toLowerCase());
-      res.json({ delegated: false });
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
+  );
 
-  app.post('/mute', async (req, res) => {
-    const { contractAddress, moderatorAddress, targetAddress, signature } = req.body;
-    if (
-      !ethers.isAddress(contractAddress) ||
-      !ethers.isAddress(moderatorAddress) ||
-      !ethers.isAddress(targetAddress)
-    ) {
-      return res.status(400).json({ error: 'Invalid addresses' });
+  app.post(
+    '/mute',
+    requireAddresses(['contractAddress', 'moderatorAddress', 'targetAddress']),
+    (req, res, next) => {
+      const record = groups.get(req.body.contractAddress.toLowerCase());
+      if (!record) return res.status(404).json({ error: 'Unknown Templ' });
+      req.record = record;
+      next();
+    },
+    verifySignature(
+      'moderatorAddress',
+      (req) =>
+        buildMuteMessage(req.body.contractAddress, req.body.targetAddress)
+    ),
+    async (req, res) => {
+      const { contractAddress, moderatorAddress, targetAddress } = req.body;
+      const record = /** @type {any} */ (req.record);
+      const contractKey = contractAddress.toLowerCase();
+      const actorKey = moderatorAddress.toLowerCase();
+      const delegated = database
+        .prepare('SELECT 1 FROM delegates WHERE contract = ? AND delegate = ?')
+        .get(contractKey, actorKey);
+      if (record.priest !== actorKey && !delegated) {
+        return res
+          .status(403)
+          .json({ error: 'Only priest or delegate can mute' });
+      }
+      try {
+        const targetKey = targetAddress.toLowerCase();
+        const existing = database
+          .prepare(
+            'SELECT count FROM mutes WHERE contract = ? AND target = ?'
+          )
+          .get(contractKey, targetKey);
+        const count = (existing?.count ?? 0) + 1;
+        const durations = [3600e3, 86400e3, 7 * 86400e3, 30 * 86400e3];
+        const now = Date.now();
+        const until =
+          count <= durations.length ? now + durations[count - 1] : 0;
+        database
+          .prepare(
+            'INSERT OR REPLACE INTO mutes (contract, target, count, until) VALUES (?, ?, ?, ?)'
+          )
+          .run(contractKey, targetKey, count, until);
+        res.json({ mutedUntil: until });
+      } catch (err) {
+        res.status(500).json({ error: err.message });
+      }
     }
-    const record = groups.get(contractAddress.toLowerCase());
-    if (!record) return res.status(404).json({ error: 'Unknown Templ' });
-    const message = buildMuteMessage(contractAddress, targetAddress);
-    const contractKey = contractAddress.toLowerCase();
-    const actorKey = moderatorAddress.toLowerCase();
-    const delegated = database
-      .prepare('SELECT 1 FROM delegates WHERE contract = ? AND delegate = ?')
-      .get(contractKey, actorKey);
-    if (record.priest !== actorKey && !delegated) {
-      return res
-        .status(403)
-        .json({ error: 'Only priest or delegate can mute' });
-    }
-    if (!verify(moderatorAddress, signature, message)) {
-      return res.status(403).json({ error: 'Bad signature' });
-    }
-    try {
-      const targetKey = targetAddress.toLowerCase();
-      const existing = database
-        .prepare(
-          'SELECT count FROM mutes WHERE contract = ? AND target = ?'
-        )
-        .get(contractKey, targetKey);
-      const count = (existing?.count ?? 0) + 1;
-      const durations = [3600e3, 86400e3, 7 * 86400e3, 30 * 86400e3];
-      const now = Date.now();
-      const until =
-        count <= durations.length ? now + durations[count - 1] : 0;
-      database
-        .prepare(
-          'INSERT OR REPLACE INTO mutes (contract, target, count, until) VALUES (?, ?, ?, ?)'
-        )
-        .run(contractKey, targetKey, count, until);
-      res.json({ mutedUntil: until });
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
+  );
 
   // --- Debug endpoints to help E2E diagnostics (test-only) ---
   if (process.env.ENABLE_DEBUG_ENDPOINTS === '1') {
-  app.get('/debug/membership', async (req, res) => {
-    try {
-      const contractAddress = String(req.query.contractAddress || '').toLowerCase();
-      const who = String(req.query.inboxId || '').replace(/^0x/i, '');
-      if (!ethers.isAddress(contractAddress)) {
-        return res.status(400).json({ error: 'Invalid contractAddress' });
-      }
-      const record = groups.get(contractAddress);
-      if (!record) return res.status(404).json({ error: 'Unknown Templ' });
-      const info = {
-        contract: contractAddress,
-        serverInboxId: xmtp?.inboxId || null,
-        groupId: record.group?.id || record.groupId || null,
-        members: null,
-        contains: null,
-      };
+  app.get(
+    '/debug/membership',
+    requireAddresses(['contractAddress'], 'Invalid contractAddress'),
+    async (req, res) => {
       try {
-        if (xmtp?.conversations?.sync) await xmtp.conversations.sync();
-        const members = Array.isArray(record.group?.members) ? record.group.members : [];
-        info.members = members;
-        info.contains = who ? members.includes(who) : null;
-      } catch (e) { logger.warn({ e }, 'membership debug failed'); }
-      res.json(info);
-    } catch (err) {
-      logger.error({ err }, 'Debug membership failed');
-      res.status(500).json({ error: err.message });
-    }
-  });
-  app.get('/debug/group', async (req, res) => {
-    try {
-      const contractAddress = String(req.query.contractAddress || '').toLowerCase();
-      const refresh = String(req.query.refresh || '0') === '1';
-      if (!ethers.isAddress(contractAddress)) {
-        return res.status(400).json({ error: 'Invalid contractAddress' });
-      }
-      const record = groups.get(contractAddress);
-      if (!record) return res.status(404).json({ error: 'Unknown Templ' });
-      const info = {
-        contract: contractAddress,
-        serverInboxId: xmtp?.inboxId || null,
-        storedGroupId: record.groupId || record.group?.id || null,
-        resolvedGroupId: null,
-        membersCount: null,
-        members: null,
-      };
-      if (refresh && xmtp?.conversations?.sync) {
-        try { await xmtp.conversations.sync(); } catch (e) { logger.warn({ err: e?.message || e }) }
+        const contractAddress = String(
+          req.query.contractAddress || ''
+        ).toLowerCase();
+        const who = String(req.query.inboxId || '').replace(/^0x/i, '');
+        const record = groups.get(contractAddress);
+        if (!record) return res.status(404).json({ error: 'Unknown Templ' });
+        const info = {
+          contract: contractAddress,
+          serverInboxId: xmtp?.inboxId || null,
+          groupId: record.group?.id || record.groupId || null,
+          members: null,
+          contains: null,
+        };
         try {
-          const gid = record.groupId || record.group?.id;
-          if (gid && xmtp.conversations?.getConversationById) {
-            const maybe = await xmtp.conversations.getConversationById(gid);
-            if (maybe) record.group = maybe;
-          }
-        } catch (e) { logger.warn({ err: e?.message || e }) }
-      }
-      info.resolvedGroupId = record.group?.id || null;
-      try {
-        if (record.group && Array.isArray(record.group.members)) {
-          info.membersCount = record.group.members.length;
-          info.members = record.group.members;
+          if (xmtp?.conversations?.sync) await xmtp.conversations.sync();
+          const members = Array.isArray(record.group?.members)
+            ? record.group.members
+            : [];
+          info.members = members;
+          info.contains = who ? members.includes(who) : null;
+        } catch (e) {
+          logger.warn({ e }, 'membership debug failed');
         }
-      } catch (e) { logger.warn({ err: e?.message || e }) }
-      logger.info(info, 'Debug group info');
-      res.json(info);
-    } catch (err) {
-      logger.error({ err }, 'Debug group failed');
-      res.status(500).json({ error: err.message });
+        res.json(info);
+      } catch (err) {
+        logger.error({ err }, 'Debug membership failed');
+        res.status(500).json({ error: err.message });
+      }
     }
-  });
+  );
+  app.get(
+    '/debug/group',
+    requireAddresses(['contractAddress'], 'Invalid contractAddress'),
+    async (req, res) => {
+      try {
+        const contractAddress = String(
+          req.query.contractAddress || ''
+        ).toLowerCase();
+        const refresh = String(req.query.refresh || '0') === '1';
+        const record = groups.get(contractAddress);
+        if (!record) return res.status(404).json({ error: 'Unknown Templ' });
+        const info = {
+          contract: contractAddress,
+          serverInboxId: xmtp?.inboxId || null,
+          storedGroupId: record.groupId || record.group?.id || null,
+          resolvedGroupId: null,
+          membersCount: null,
+          members: null,
+        };
+        if (refresh && xmtp?.conversations?.sync) {
+          try {
+            await xmtp.conversations.sync();
+          } catch (e) {
+            logger.warn({ err: e?.message || e });
+          }
+          try {
+            const gid = record.groupId || record.group?.id;
+            if (gid && xmtp.conversations?.getConversationById) {
+              const maybe = await xmtp.conversations.getConversationById(gid);
+              if (maybe) record.group = maybe;
+            }
+          } catch (e) {
+            logger.warn({ err: e?.message || e });
+          }
+        }
+        info.resolvedGroupId = record.group?.id || null;
+        try {
+          if (record.group && Array.isArray(record.group.members)) {
+            info.membersCount = record.group.members.length;
+            info.members = record.group.members;
+          }
+        } catch (e) {
+          logger.warn({ err: e?.message || e });
+        }
+        logger.info(info, 'Debug group info');
+        res.json(info);
+      } catch (err) {
+        logger.error({ err }, 'Debug group failed');
+        res.status(500).json({ error: err.message });
+      }
+    }
+  );
 
   app.get('/debug/conversations', async (req, res) => {
     try {
@@ -645,15 +671,12 @@ export function createApp(opts) {
   });
   }
 
-  app.get('/mutes', (req, res) => {
+  app.get('/mutes', requireAddresses(['contractAddress']), (req, res) => {
     const { contractAddress } = req.query;
-    if (!ethers.isAddress(contractAddress)) {
-      return res.status(400).json({ error: 'Invalid addresses' });
-    }
     const now = Date.now();
     const rows = database
       .prepare(
-        'SELECT target, count, until FROM mutes WHERE contract = ? AND (until = 0 OR until > ?)'
+        'SELECT target, count, until FROM mutes WHERE contract = ? AND (until = 0 OR until > ?)' 
       )
       .all(contractAddress.toLowerCase(), now);
     res.json({
