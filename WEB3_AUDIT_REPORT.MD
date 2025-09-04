@@ -1,7 +1,7 @@
 # TEMPL Smart Contracts Audit Report
 
 ## Overview
-- **Repository:** templ-contracts
+- **Repository:** templ
 - **Scope:** `contracts/TEMPL.sol`, `contracts/TestToken.sol`
 - **Tools Used:** Hardhat tests, Slither static analysis
 

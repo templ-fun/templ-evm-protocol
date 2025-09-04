@@ -1,5 +1,5 @@
 {
-  "name": "templ-contracts",
+  "name": "templ",
   "version": "1.0.0",
   "description": "TEMPL - Smart contracts for DAO-governed token-gated access",
   "engines": {
