@@ -1,5 +1,7 @@
 # TEMPL
 
+[![Coverage](https://codecov.io/gh/templ-co/templ/branch/main/graph/badge.svg)](https://codecov.io/gh/templ-co/templ)
+
 DAO‑governed token‑gated private groups with onchain treasury management and XMTP messaging
 
 <p align="center">
@@ -58,11 +60,12 @@ Use the docs below to dive into each component:
 1. **Install**  
    Install dependencies for contracts, the backend, and the frontend. See [CONTRACTS.md](./CONTRACTS.md), [BACKEND.md](./BACKEND.md), and [FRONTEND.md](./FRONTEND.md) for detailed commands.
 
-2. **Test**  
-   Run the full suite:
+2. **Test**
+   Run the full suite locally:
    ```bash
    npm run test:all
    ```
+   To run the suite in CircleCI and update the coverage badge, trigger a manual pipeline with `run_manual_tests` set to `true` and approve the `run_all_tests` job.
    Component-specific test commands are documented in [CONTRACTS.md](./CONTRACTS.md), [BACKEND.md](./BACKEND.md), and [FRONTEND.md](./FRONTEND.md).
 
 3. **Run**  
