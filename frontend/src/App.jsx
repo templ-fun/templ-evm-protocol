@@ -646,9 +646,18 @@ function App() {
 
         {/* Contract info (if known) */}
         {templAddress && (
-          <div className="deploy-info mb-4 text-sm">
-            <p>Contract: {templAddress}</p>
-            <p>Group ID: {groupId}</p>
+          <div
+            className="deploy-info mb-4 text-sm"
+            data-testid="deploy-info"
+            data-contract-address={templAddress}
+            data-group-id={groupId}
+          >
+            <p>
+              Contract: <button className="underline underline-offset-4" onClick={() => copyToClipboard(templAddress)}>{shorten(templAddress)}</button>
+            </p>
+            <p>
+              Group ID: <button className="underline underline-offset-4" onClick={() => copyToClipboard(groupId)}>{shorten(groupId)}</button>
+            </p>
           </div>
         )}
 
@@ -737,7 +746,11 @@ function App() {
             <div className="messages space-y-1 max-h-[40vh] overflow-auto border border-black/10 rounded p-2">
               {messages.map((m, i) => (
                 <div key={i} className="text-sm break-words">
-                  <strong className="font-mono">{m.senderAddress}:</strong> {m.content}
+                  <strong className="font-mono">
+                    <button className="underline underline-offset-4" onClick={() => copyToClipboard(m.senderAddress)}>
+                      {shorten(m.senderAddress)}
+                    </button>:
+                  </strong> {m.content}
                 </div>
               ))}
             </div>
@@ -782,13 +795,15 @@ function App() {
                 {mutes.length > 0 && (
                   <div className="active-mutes">
                     <h4 className="font-semibold">Currently Muted:</h4>
-                    {mutes.map((addr) => (
-                      <div key={addr} className="text-sm break-all">{addr}</div>
-                    ))}
+                {mutes.map((addr) => (
+                  <div key={addr} className="text-sm break-all">
+                    <button className="underline underline-offset-4" onClick={() => copyToClipboard(addr)}>{shorten(addr)}</button>
                   </div>
-                )}
+                ))}
               </div>
             )}
+          </div>
+        )}
           </div>
         )}
       </div>

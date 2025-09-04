@@ -175,9 +175,14 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
     
     await page.click('button:has-text("Deploy")');
 
-    // Get deployed contract address
-    const contractElement = await page.locator('text=Contract:').textContent({ timeout: 30000 });
-    templAddress = contractElement.split(':')[1].trim();
+    // Get deployed contract address (from data attribute or localStorage fallback)
+    const depInfo = page.locator('[data-testid="deploy-info"]');
+    await expect(depInfo).toBeVisible({ timeout: 30000 });
+    templAddress = (await depInfo.getAttribute('data-contract-address')) || '';
+    if (!templAddress) {
+      templAddress = await page.evaluate(() => localStorage.getItem('templ:lastAddress'));
+    }
+    if (!templAddress) throw new Error('Could not resolve deployed contract address');
     console.log('TEMPL deployed at:', templAddress);
     // Assert the contract on-chain state matches input
     const templ = new ethers.Contract(templAddress, templAbi, wallets.priest);
