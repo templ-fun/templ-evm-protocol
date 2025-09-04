@@ -1,7 +1,7 @@
 # TEMPL Contracts
 
 ## Overview
-This document describes the on-chain portion of TEMPL for auditors.
+See the [README](./README.md#architecture) for a system overview; this document focuses on the on-chain contracts for auditors.
 
 ## Economic model
 - **30% Burn** – sent to `0xdead`.
