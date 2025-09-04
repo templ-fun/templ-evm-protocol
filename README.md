@@ -90,7 +90,7 @@ Use the docs below to dive into each component:
   RPC_URL=https://mainnet.base.org
   BOT_PRIVATE_KEY=0x...
   ALLOWED_ORIGINS=http://localhost:5173
-  XMTP_MAX_ATTEMPTS=100000000 # optional override for XMTP client registration attempts
+  XMTP_MAX_ATTEMPTS=100000000 # optional override for XMTP client registration attempts (default: 100000000)
   ```
 5. **Launch backend bot**
    ```bash
