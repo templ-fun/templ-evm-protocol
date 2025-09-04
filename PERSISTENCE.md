@@ -49,9 +49,6 @@ Where Data Comes From And Goes
   - Re-syncs and sends a `member-joined` message to give the UI fresh content to discover.
   - Returns `groupId` but does NOT persist membership to our DB (membership is managed by XMTP/the group itself).
 
-- POST `/send` (fallback posting via backend)
-  - Disabled by default; enabled only when `ENABLE_FALLBACK_SEND=1`.
-  - Tries to send on the server’s group handle. If it can’t (due to eventual consistency), it re-syncs/re-resolves and retries with backoff. No additional persistence.
 
 - POST/DELETE `/delegates`, POST `/mute`
   - Update the SQLite tables as described above.
