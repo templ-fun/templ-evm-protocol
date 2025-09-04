@@ -13,15 +13,11 @@ DAO‑governed token‑gated private groups with onchain treasury management and
 
 ## Architecture
 
-A TEMPL is composed of three parts that work together:
-
-- **Smart contracts** on Base gate access by requiring a paid `purchaseAccess` call.
-- **Backend bot** owns the XMTP group and only invites wallets that purchased.
-- **React frontend** deploys contracts, verifies purchases and lets members chat.
-
-The frontend calls the contract to purchase membership, then asks the backend to invite
-the wallet into the group. The backend can also watch contract events and forward
-proposal or vote updates to the chat.
+A TEMPL combines three pieces:
+- **Smart contracts** on Base gate membership with `purchaseAccess`.
+- **Backend bot** owns the XMTP group and invites paid wallets.
+- **React frontend** deploys contracts, verifies purchases and hosts chat.
+The frontend buys access and requests an invite; the backend can mirror contract events in chat.
 
 ```mermaid
 sequenceDiagram
@@ -57,16 +53,20 @@ Use the docs below to dive into each component:
 - `cache/` – Hardhat compilation cache
 
 ## Quick Start
-1. **Install**  
-   Install dependencies for contracts, the backend, and the frontend. See [CONTRACTS.md](./CONTRACTS.md), [BACKEND.md](./BACKEND.md), and [FRONTEND.md](./FRONTEND.md) for detailed commands.
+1. **Install**
+   ```bash
+   npm --prefix contracts install
+   npm --prefix backend install
+   npm --prefix frontend install
+   ```
 
 2. **Test**
    Run the full suite locally:
    ```bash
    npm run test:all
    ```
-   To run the suite in CircleCI and update the coverage badge, trigger a manual pipeline with `run_manual_tests` set to `true` and approve the `run_all_tests` job.
-   Component-specific test commands are documented in [CONTRACTS.md](./CONTRACTS.md), [BACKEND.md](./BACKEND.md), and [FRONTEND.md](./FRONTEND.md).
+
+   See component docs for individual commands.
 
 3. **Run**  
    Start the backend and frontend services. Deployment and runtime details are available in [CONTRACTS.md](./CONTRACTS.md), [BACKEND.md](./BACKEND.md), and [FRONTEND.md](./FRONTEND.md).
@@ -85,28 +85,15 @@ Minimal local setup requires only a handful of variables:
 See [BACKEND.md#environment-variables](./BACKEND.md#environment-variables) and [CONTRACTS.md#configuration](./CONTRACTS.md#configuration) for complete lists.
 
 ## Deploying to production
-See [BACKEND.md#environment-variables](./BACKEND.md#environment-variables) and [CONTRACTS.md#configuration](./CONTRACTS.md#configuration) for descriptions of required configuration.
-1. Create a `.env` file in the project root for the deployment scripts. This file is distinct from `backend/.env` used by the bot; copy any overlapping variables (e.g., `RPC_URL`, keys) into `backend/.env` if the bot requires them. The bot's key (`BOT_PRIVATE_KEY`) belongs only in `backend/.env`. The deploying wallet becomes the priest automatically, so `PRIEST_ADDRESS` is only needed when overriding in tests.
-    ```env
-    PROTOCOL_FEE_RECIPIENT=0x...
-    TOKEN_ADDRESS=0x...
-    ENTRY_FEE=100000000000000000 # wei
-    RPC_URL=https://mainnet.base.org
-    PRIVATE_KEY=0x...
-    PRIEST_VOTE_WEIGHT=10
-    PRIEST_WEIGHT_THRESHOLD=10
-    BASESCAN_API_KEY=...
-    ```
-   See [`CONTRACTS.md`](./CONTRACTS.md) for the full list of supported variables.
+1. Create a `.env` file in the project root for deployment scripts and a `backend/.env` for the bot. Required variables are documented in [CONTRACTS.md#configuration](./CONTRACTS.md#configuration) and [BACKEND.md#environment-variables](./BACKEND.md#environment-variables).
 2. Run the full test suite and Slither analysis.
 3. Deploy with `scripts/deploy.js` and record the contract address and XMTP group ID.
-4. Host the backend bot (e.g., on a VM) using the contract address and bot key. Ensure
-   `backend/.env` sets `ALLOWED_ORIGINS` to the frontend URL(s) permitted to call the API.
+4. Host the backend bot and set `ALLOWED_ORIGINS` to the permitted frontend URL(s).
 5. Build the frontend (`npm --prefix frontend run build`) and serve the static files.
 
 ## Core flows
 
-High‑level sequence for deploying, joining, and messaging:
+High‑level sequence for deploying, joining, and messaging (see [CORE_FLOW_DOCS.MD](./CORE_FLOW_DOCS.MD) for full diagrams):
 
 ```mermaid
 sequenceDiagram
@@ -134,9 +121,7 @@ sequenceDiagram
     X-->>F: receive message
 ```
 
-Core flows cover **TEMPL creation** with contract deployment and a private XMTP group, pay‑to‑join onboarding where `purchaseAccess` triggers an invitation, ongoing group messaging, priest‑controlled muting with escalating durations, proposal drafting for allowlisted actions with backend rebroadcasts, live yes/no voting, and atomic execution of passing proposals.
-
-Full diagrams are in [CORE_FLOW_DOCS.MD](./CORE_FLOW_DOCS.MD).
+Core flows include TEMPL creation, paid onboarding, chat, moderation, proposal drafting, voting, and execution.
 
 ## Security considerations
 

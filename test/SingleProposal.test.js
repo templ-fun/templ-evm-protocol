@@ -1,6 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
+const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
 
 describe("Single Active Proposal Restriction", function () {
     let templ;
@@ -14,18 +15,9 @@ describe("Single Active Proposal Restriction", function () {
         ({ templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE }));
         [owner, priest, member1, member2, member3] = accounts;
 
-        await token.mint(member1.address, TOKEN_SUPPLY);
-        await token.mint(member2.address, TOKEN_SUPPLY);
-        await token.mint(member3.address, TOKEN_SUPPLY);
+        await mintToUsers(token, [member1, member2, member3], TOKEN_SUPPLY);
 
-        await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
-        await templ.connect(member1).purchaseAccess();
-
-        await token.connect(member2).approve(await templ.getAddress(), ENTRY_FEE);
-        await templ.connect(member2).purchaseAccess();
-
-        await token.connect(member3).approve(await templ.getAddress(), ENTRY_FEE);
-        await templ.connect(member3).purchaseAccess();
+        await purchaseAccess(templ, token, [member1, member2, member3]);
     });
 
     describe("Single Proposal Per Account", function () {

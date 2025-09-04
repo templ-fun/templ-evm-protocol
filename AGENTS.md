@@ -4,7 +4,7 @@
 - `contracts/`: Solidity sources (0.8.23) with Hardhat; tests in `test/`; deployment utilities in `scripts/`.
 - `backend/`: Node (ESM) service. Entry `backend/src/server.js`; tests in `backend/test/*.test.js`; runtime config in `backend/.env`.
 - `frontend/`: Vite + React app. Source in `frontend/src/`; unit tests in `frontend/src/*.test.js`; e2e in `frontend/e2e/` (Playwright configs provided).
-- CI: `.circleci/`; Docs: `README.md`, `BACKEND.md`, `FRONTEND.md`, `CONTRACTS.md`, `CORE_FLOW_DOCS.MD`.
+- CI: `.circleci/`; Docs: `README.md`, `BACKEND.md`, `FRONTEND.md`, `CONTRACTS.md`, `CORE_FLOW_DOCS.MD`, `PERSISTENCE.md`, `WEB3_AUDIT_REPORT.MD`.
 
 ## Build, Test, and Development Commands
 - Contracts: `npm run compile`, `npm test`, `npm run node`, `npm run deploy:local`, `npm run slither`.

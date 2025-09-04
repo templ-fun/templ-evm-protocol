@@ -1,11 +1,11 @@
 # TEMPL Frontend
 
-The TEMPL frontend is a React + Vite application that lets members deploy contracts, verify purchases, and chat.
+See the [README](./README.md#architecture) for how the frontend fits into TEMPL; this doc covers local development and testing.
 
 ## Prerequisites
 
 - Node.js `22.18.0` and the repo-wide setup steps from the [root README](./README.md#quick-start).
-- Environment variables like `VITE_XMTP_ENV`, `VITE_E2E_DEBUG`, and `E2E_XMTP_LOCAL` configure the frontend. See the [README](./README.md#environment-variables) for details.
+- Environment variables like `VITE_XMTP_ENV`, `VITE_E2E_DEBUG`, and `E2E_XMTP_LOCAL` configure the frontend. See [Environment variables](#environment-variables) for details.
 
 ## Setup
 
@@ -14,6 +14,14 @@ Install dependencies:
 ```bash
 npm --prefix frontend install
 ```
+
+## Environment variables
+
+| Name | Description | Default |
+| --- | --- | --- |
+| `VITE_XMTP_ENV` | XMTP environment for the Browser SDK (`local`, `dev`, `production`). Defaults to `dev` on `localhost`/`127.0.0.1` and `production` elsewhere. | `dev` (localhost) / `production` |
+| `VITE_E2E_DEBUG` | Enables debug helpers (`window.__XMTP`, etc.) during E2E runs. | `0` |
+| `E2E_XMTP_LOCAL` | When `1`, Playwright E2E tests connect to a local XMTP node instead of production. | `0` |
 
 ## Development
 
@@ -32,13 +40,7 @@ npm --prefix frontend run build
 npm --prefix frontend test -- src/core-flows.integration.test.js # integration (local Hardhat + backend + XMTP dev)
 npm --prefix frontend run test:e2e                          # end‑to‑end (Playwright)
 ```
-To run e2e against a local XMTP node for logs/instrumentation:
-```bash
-git clone https://github.com/xmtp/xmtp-local-node.git
-npm run xmtp:local:up
-E2E_XMTP_LOCAL=1 npm --prefix frontend run test:e2e -- --project=tech-demo
-npm run xmtp:local:down
-```
+To run e2e against a local XMTP node: clone `xmtp-local-node`, run `npm run xmtp:local:up`, execute tests with `E2E_XMTP_LOCAL=1`, then `npm run xmtp:local:down`.
 ## Architecture
 
 - **Wallet connection** via `ethers` and `window.ethereum`.
@@ -55,10 +57,9 @@ flowchart LR
 ```
 
 ## Notes
-- XMTP environment: defaults to `dev` on `localhost`/`127.0.0.1` and `production` elsewhere. Set `VITE_XMTP_ENV` to override (e.g. `local` for a local node); Playwright switches to `local` automatically when `E2E_XMTP_LOCAL=1`.
-- E2E debug helpers: when `VITE_E2E_DEBUG=1`, the browser exposes `window.__XMTP`, `window.__xmtpList()` and `window.__xmtpGetById(id)` for diagnostics.
-- Client options: the Browser SDK is constructed with `appVersion` for better diagnostics (see `src/App.jsx`).
-- Typed flows: `src/flows.js` is documented with JSDoc and backed by `src/flows.types.d.ts`.
+- `VITE_XMTP_ENV` defaults to `dev` on localhost and `production` elsewhere; override for `local` nodes.
+- `VITE_E2E_DEBUG=1` exposes `window.__XMTP` helpers for diagnostics.
+- The Browser SDK sets `appVersion` for diagnostics and `src/flows.js` is typed via JSDoc.
 
 ## Security considerations
 - Membership verification happens on-chain; bypassing the backend would require membership proof.

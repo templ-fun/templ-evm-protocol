@@ -141,7 +141,7 @@ describe('core flows e2e', () => {
       xmtp: xmtpServer,
       hasPurchased: async (contractAddr, memberAddr) => {
         const c = new ethers.Contract(contractAddr, templArtifact.abi, provider);
-        return c.hasPurchased(memberAddr);
+        return c.hasAccess(memberAddr);
       },
       connectContract: (addr) => new ethers.Contract(addr, templArtifact.abi, provider)
     });
@@ -219,7 +219,7 @@ describe('core flows e2e', () => {
       txOptions: { nonce: memberNonce++ }
     });
     expect(pj.groupId).toBeDefined();
-    expect(await templ.hasPurchased(await memberSigner.getAddress())).toBe(true);
+    expect(await templ.hasAccess(await memberSigner.getAddress())).toBe(true);
 
     await sendMessage({ group, content: 'hello' });
     // Give the network a beat and confirm server can still see the group

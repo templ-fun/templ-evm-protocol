@@ -397,7 +397,7 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
     // Membership is handled by the UI flow; avoid duplicate purchase.
     // Optionally assert membership without writing:
     const ensureBuy = new ethers.Contract(templAddress, templAbi, testWallet);
-    await expect.poll(async () => await ensureBuy.hasPurchased(testAddress), { timeout: 20000 }).toBe(true);
+    await expect.poll(async () => await ensureBuy.hasAccess(testAddress), { timeout: 20000 }).toBe(true);
 
     // Core Flow 4: Messaging (best-effort)
     console.log('Core Flow 4: Messaging');

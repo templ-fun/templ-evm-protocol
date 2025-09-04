@@ -2,11 +2,15 @@
 
 This document explains every place we persist state across the TEMPL stack, how XMTP client storage works in Node versus the browser, what OPFS is, and why this matters for end-to-end (E2E) versus integration tests. If you understand the smart contract but not how XMTP storage is wired, start here.
 
+| Storage | Location | Encryption | Usage |
+| --- | --- | --- | --- |
+| Backend DB | `backend/groups.db` (override with `DB_PATH`) | none | Maps contracts to XMTP `groupId` and moderation data |
+| XMTP Node DB | `xmtp-<env>-<inboxId>.db3` in process CWD | SQLCipher via `dbEncryptionKey` | Client identity, installations, and conversation metadata |
+| XMTP Browser DB | OPFS `xmtp-<env>-<inboxId>.db3` per origin | none | Browser client identity and metadata; handle limits |
+
 ## Backend DB
 
-The backend service uses a SQLite database to map TEMPL contracts to their XMTP group IDs and to track moderation. A lightweight in-memory cache mirrors the groups table so the server can restore state on boot. During E2E runs the database path can be overridden or cleared.
-
-- File: `backend/groups.db` by default. In E2E we override with `DB_PATH=e2e-groups.db` and clear it when `CLEAR_DB=1`.
+The backend service uses a SQLite database (`backend/groups.db` by default) to map TEMPL contracts to their XMTP group IDs and to track moderation. A lightweight in-memory cache mirrors the groups table so the server can restore state on boot. During E2E runs the path can be overridden with `DB_PATH` or cleared with `CLEAR_DB=1`.
 - Tables and meaning:
   - `groups(contract TEXT PRIMARY KEY, groupId TEXT, priest TEXT)`
     - Maps on-chain TEMPL contract address to the XMTP group conversation ID and the priest’s EOA address.
@@ -19,24 +23,18 @@ The backend service uses a SQLite database to map TEMPL contracts to their XMTP 
 
 ## XMTP Node DB
 
-The XMTP Node SDK persists client identity and message metadata in SQLCipher databases stored in the process's working directory. Each inboxId uses one database that can be reused across runs, and the database is encrypted when provided a 32‑byte key. Both the backend service and integration tests rely on this storage.
+The XMTP Node SDK persists client identity and message metadata in SQLCipher databases named `xmtp-<env>-<inboxId>.db3` in the process's working directory. Each inboxId reuses its database across runs when opened with the same `dbEncryptionKey`. Both the backend service and integration tests rely on this storage.
 
-- Files: `xmtp-<env>-<inboxId>.db3` (+ `-wal`/`-shm`) in the process CWD. You'll see these at repo root during dev (e.g., `xmtp-dev-<hash>.db3`).
-- Encryption: SQLCipher when a `dbEncryptionKey` is provided. The Browser SDK does NOT encrypt.
-- Purpose: stores the client’s identity state, installations, and conversation/message metadata. It is not our schema; it's managed by the XMTP SDK.
-- Identity model:
+### Identity model
   - `inboxId`: stable per “user” on XMTP, derived from the identity ledger for an EOA/SCW.
   - Installations: each inbox can have multiple installations (devices/agents). On the dev network, installs are limited (10 installations per inbox).
   - When creating an XMTP client, the Node SDK locates/creates a local DB for the inboxId and reuses it.
 
 ## XMTP Browser DB
 
-The Browser SDK stores its SQLite database inside the Origin Private File System (OPFS), a per-origin sandbox not visible on the host OS. OPFS uses exclusive access handles, so creating multiple clients or rapidly opening and closing handles can trigger `NoModificationAllowedError`. The browser implementation cannot encrypt the database even when a key is supplied.
+The Browser SDK stores its SQLite database inside the Origin Private File System (OPFS), a per-origin sandbox not visible on the host OS. The SDK still names the file `xmtp-dev-<inboxId>.db3`, but it lives inside OPFS rather than on disk and cannot be encrypted even when a key is supplied. OPFS uses exclusive access handles, so creating multiple clients or rapidly opening and closing handles can trigger `NoModificationAllowedError`.
 
-- Storage: OPFS via the browser’s Storage Foundation API.
-- Path: the SDK still names the DB like `xmtp-dev-<inboxId>.db3` but it lives inside OPFS, not on disk.
-- Encryption: none (Browser SDK cannot use `dbEncryptionKey` for actual encryption).
-- Important behavior:
+### Important behavior
   - OPFS uses “synchronous access handles” that are exclusive. If two handles or a writable stream are opened for the same file, further attempts can fail with `NoModificationAllowedError: createSyncAccessHandle` until the handle is released.
   - Don’t spin up multiple XMTP clients for the same inboxId concurrently in the browser.
   - Avoid repeatedly creating and tearing down clients in quick succession, which increases the chance of handle contention.
@@ -66,7 +64,7 @@ flowchart TD
   - Persists `{ contract, groupId, priest }` to SQLite and to the in-memory `groups` cache.
 - POST `/join` (purchase check + add member to XMTP group)
   - Verifies `join:<contract>` signature.
-  - Validates `hasPurchased` against the contract (on-chain read via ethers).
+  - Validates `hasAccess` against the contract (on-chain read via ethers).
   - Adds the member’s inboxId to the group. If `memberInboxId` is provided, it is used directly; otherwise the server resolves via `findInboxIdByIdentifier` and waits for identity readiness before inviting.
   - Re-syncs and sends a `member-joined` message to give the UI fresh content to discover.
   - Returns `groupId` but does NOT persist membership to our DB (membership is managed by XMTP/the group itself).
@@ -94,31 +92,20 @@ This section answers common questions about what data is stored and why certain 
 
 ## Testing
 
-Integration tests run entirely in Node and are deterministic, while E2E tests exercise the browser SDK and can fail due to install limits or OPFS handle issues. The following notes outline the differences and provide strategies to avoid flakiness. Choose the approach that best fits your testing goals.
+### Integration tests
 
-- Integration tests (Vitest)
-  - Run entirely in Node. They use the Node SDK for XMTP clients and an in-process backend. The Node SDK writes to on-disk SQLCipher DBs, not OPFS. There are no browser access-handle conflicts.
-  - The tests create fresh random wallets (new EOAs) for priest/member/delegate each run, so they don’t hit the dev network’s 10-installation cap.
-  - Result: Deterministic, no OPFS, no install exhaustion → group joining passes.
-- E2E tests (Playwright)
-  - Use the Browser SDK inside Chromium. Our UI previously rotated installation nonces in the browser to “recover” from the dev install cap. Combined with reusing the same fixed Hardhat accounts and actively clearing OPFS/IndexedDB between candidate wallets, this produced two failure modes:
-    1. XMTP dev “10/10 installations reached” for the reused wallet’s inboxId.
-    2. OPFS `createSyncAccessHandle` errors due to rapid client re-creation and storage churn during rotation.
-  - Result: Client initialization would fail before the app could join the group, causing the test to fail at “Failed to initialize XMTP for any candidate wallet”.
-- Mitigations and recommended patterns
-  - Stable installation (preferred in browser)
-    - Use a stable, persisted nonce per wallet address for Browser SDK clients. Reuse the same installation and OPFS DB across runs. This avoids hitting the install cap and reduces OPFS handle churn.
-    - This repo now uses that approach in the app: the nonce is read/written in `localStorage` and reused.
-  - Ephemeral wallets for tests (simple and robust)
-    - Generating a brand-new EOA for the UI per E2E run completely avoids previous installation caps for that address. Fund it from Hardhat.
-    - Trade-offs:
-      - Pros: clean state, no need to rotate installations, no risk of historical caps.
-      - Cons: if you depend on reusing the same inboxId across runs, you lose that continuity.
-    - We can toggle this in Playwright fixtures to use fresh random wallets instead of fixed Hardhat accounts.
-  - Avoid aggressive OPFS clearing & multiple client attempts
-    - If possible, do not clear OPFS between wallet attempts on the same page. Prefer selecting the wallet once and letting the app reuse the same installation.
-    - Ensure one XMTP client per page lifecycle in the browser. If you must switch wallets, fully reload or close the previous client if the SDK exposes it.
-  - Backend (Node) notes
-    - The backend also creates an XMTP Node client. Because the inboxId is stable for the bot’s address, the Node SDK reuses the same local DB between runs. The code includes an installation-rotation fallback but typically does not need to create new installs if the DB and inbox are intact.
-    - The backend’s own SQLite (`groups.db`) is unrelated to XMTP’s DB. It’s safe to clear between runs in E2E via `DB_PATH` and `CLEAR_DB` without affecting XMTP identity.
+- Node-based (Vitest) using the Node SDK and an in-process backend.
+- Fresh random wallets each run avoid the dev network’s 10-installation cap.
+- Deterministic: uses on-disk SQLCipher DBs, so no OPFS handle conflicts.
+
+### E2E tests
+
+- Browser SDK in Chromium; earlier nonce rotation with fixed Hardhat accounts and storage clearing caused
+  - `10/10 installations reached` errors.
+  - OPFS `createSyncAccessHandle` contention.
+- **Mitigations**
+  - Persist a nonce per wallet in `localStorage` to reuse the same installation and OPFS DB.
+  - Generate fresh funded wallets for each run when continuity isn’t needed.
+  - Avoid clearing OPFS or running multiple clients on a page; reload before switching wallets.
+  - Backend Node client reuses its local DB and rarely needs installation rotation; clearing `groups.db` is safe.
 

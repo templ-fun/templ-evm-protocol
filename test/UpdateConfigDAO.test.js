@@ -1,6 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
+const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
 
 describe("updateConfigDAO", function () {
     const ENTRY_FEE = ethers.parseUnits("100", 18);
@@ -21,9 +22,8 @@ describe("updateConfigDAO", function () {
         newToken = await Token.deploy("New Token", "NEW", 18);
         await newToken.waitForDeployment();
 
-        await token.mint(member.address, TOKEN_SUPPLY);
-        await token.connect(member).approve(await templ.getAddress(), ENTRY_FEE);
-        await templ.connect(member).purchaseAccess();
+        await mintToUsers(token, [member], TOKEN_SUPPLY);
+        await purchaseAccess(templ, token, [member]);
     });
 
     it("reverts when entry fee is less than 10", async function () {
@@ -122,11 +122,8 @@ describe("updateConfigDAO", function () {
         await templ2.waitForDeployment();
 
         const members = [m1, m2, m3, m4, m5];
-        for (const m of members) {
-            await token0.mint(m.address, 1000);
-            await token0.connect(m).approve(await templ2.getAddress(), 100);
-            await templ2.connect(m).purchaseAccess();
-        }
+        await mintToUsers(token0, members, 1000);
+        await purchaseAccess(templ2, token0, members, 100);
 
         // First four members claim their rewards
         for (const m of members.slice(0, 4)) {

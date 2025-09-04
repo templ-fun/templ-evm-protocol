@@ -1,6 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
+const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
 
 describe("Member Pool Distribution - Exhaustive Tests", function () {
     let templ;
@@ -14,11 +15,7 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
         ({ templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE }));
         [owner, priest, member1, member2, member3, member4, member5] = accounts;
 
-        await token.mint(member1.address, TOKEN_SUPPLY);
-        await token.mint(member2.address, TOKEN_SUPPLY);
-        await token.mint(member3.address, TOKEN_SUPPLY);
-        await token.mint(member4.address, TOKEN_SUPPLY);
-        await token.mint(member5.address, TOKEN_SUPPLY);
+        await mintToUsers(token, [member1, member2, member3, member4, member5], TOKEN_SUPPLY);
     });
 
     describe("Pool Distribution Formula Validation", function () {
