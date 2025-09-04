@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   deployTempl,
   purchaseAndJoin,
@@ -13,9 +13,11 @@ import {
 } from './flows.js';
 
 const templArtifact = { abi: [], bytecode: '0x' };
+const originalFetch = globalThis.fetch;
 
-beforeEach(() => {
+afterEach(() => {
   vi.restoreAllMocks();
+  globalThis.fetch = originalFetch;
 });
 
 describe('templ flows', () => {
@@ -314,6 +316,19 @@ describe('templ flows', () => {
     expect(result).toBe(false);
   });
 
+  it('delegateMute rejects on fetch error', async () => {
+    const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('fail'));
+    await expect(
+      delegateMute({
+        signer,
+        contractAddress: '0xTempl',
+        priestAddress: '0xPriest',
+        delegateAddress: '0xDel'
+      })
+    ).rejects.toThrow('fail');
+  });
+
   it('delegateMute throws on invalid JSON response', async () => {
     const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({
@@ -368,6 +383,19 @@ describe('templ flows', () => {
       targetAddress: '0xTar'
     });
     expect(result).toBe(0);
+  });
+
+  it('muteMember rejects on fetch error', async () => {
+    const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('fail'));
+    await expect(
+      muteMember({
+        signer,
+        contractAddress: '0xTempl',
+        moderatorAddress: '0xMod',
+        targetAddress: '0xTar'
+      })
+    ).rejects.toThrow('fail');
   });
 
   it('muteMember throws on invalid JSON response', async () => {
