@@ -341,9 +341,16 @@ export async function executeProposal({
   proposalId,
   txOptions = {}
 }) {
+  if (!ethers || !signer || !templAddress || !templArtifact) {
+    throw new Error('Missing required executeProposal parameters');
+  }
   const contract = new ethers.Contract(templAddress, templArtifact.abi, signer);
-  const tx = await contract.executeProposal(proposalId, txOptions);
-  await tx.wait();
+  try {
+    const tx = await contract.executeProposal(proposalId, txOptions);
+    return await tx.wait();
+  } catch (err) {
+    throw new Error(err?.reason || err?.message || String(err));
+  }
 }
 
 export function watchProposals({
