@@ -274,6 +274,12 @@ describe('core flows e2e', () => {
         templArtifact,
         proposalId: 0,
         txOptions: { nonce: priestNonce++ }
+      }).catch(err => {
+        const iface = new ethers.Interface(templArtifact.abi);
+        const data = err?.data ?? err?.error?.data ?? '';
+        const selector = data.slice(0, 10);
+        const name = Object.values(iface.errors).find(e => e.selector === selector)?.name;
+        throw new Error(name || err.message);
       })
     ).rejects.toThrow(/VotingNotEnded|ProposalNotPassed/);
 
