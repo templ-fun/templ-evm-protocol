@@ -72,6 +72,7 @@ fee split divides evenly. This requirement is enforced in the
 
 ## Flows
 ### Membership purchase
+The membership purchase splits fees among burn, treasury, member pool, and protocol.
 ```mermaid
 sequenceDiagram
     participant User
@@ -89,6 +90,7 @@ sequenceDiagram
 ```
 
 ### Proposal execution
+Executing a proposal calls an allowlisted action and reverts on failure.
 ```mermaid
 sequenceDiagram
     participant Member
