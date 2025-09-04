@@ -1,6 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
+const templInterface = require("./utils/templInterface");
 
 describe("Donation withdrawal functions", function () {
   let templ;
@@ -37,10 +38,7 @@ describe("Donation withdrawal functions", function () {
       const amount = ethers.parseUnits("50", 18);
       await donationToken.transfer(await templ.getAddress(), amount);
 
-      const iface = new ethers.Interface([
-        "function withdrawTokenDAO(address,address,uint256,string)"
-      ]);
-      const callData = iface.encodeFunctionData("withdrawTokenDAO", [
+            const callData = templInterface.encodeFunctionData("withdrawTokenDAO", [
         await donationToken.getAddress(),
         recipient.address,
         amount,
@@ -76,10 +74,7 @@ describe("Donation withdrawal functions", function () {
       const ethAmount = ethers.parseEther("1");
       await owner.sendTransaction({ to: await templ.getAddress(), value: ethAmount });
 
-      const iface = new ethers.Interface([
-        "function withdrawETHDAO(address,uint256,string)"
-      ]);
-      const callData = iface.encodeFunctionData("withdrawETHDAO", [
+            const callData = templInterface.encodeFunctionData("withdrawETHDAO", [
         recipient.address,
         ethAmount,
         "Sweep ETH"

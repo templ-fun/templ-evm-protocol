@@ -1,6 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
+const templInterface = require("./utils/templInterface");
 
 describe("Single Active Proposal Restriction", function () {
     let templ;
@@ -30,10 +31,7 @@ describe("Single Active Proposal Restriction", function () {
 
     describe("Single Proposal Per Account", function () {
         it("Should allow a member to create their first proposal", async function () {
-            const iface = new ethers.Interface([
-                "function withdrawTreasuryDAO(address,uint256,string)"
-            ]);
-            const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
+                        const callData = templInterface.encodeFunctionData("withdrawTreasuryDAO", [
                 member1.address,
                 ethers.parseUnits("10", 18),
                 "Test withdrawal"
@@ -51,10 +49,7 @@ describe("Single Active Proposal Restriction", function () {
         });
 
         it("Should prevent creating a second proposal while one is active", async function () {
-            const iface2 = new ethers.Interface([
-                "function withdrawTreasuryDAO(address,uint256,string)"
-            ]);
-            const callData = iface2.encodeFunctionData("withdrawTreasuryDAO", [
+                        const callData = templInterface.encodeFunctionData("withdrawTreasuryDAO", [
                 member1.address,
                 ethers.parseUnits("10", 18),
                 "Test"
@@ -78,10 +73,7 @@ describe("Single Active Proposal Restriction", function () {
         });
 
         it("Should allow different members to have active proposals simultaneously", async function () {
-            const iface = new ethers.Interface([
-                "function withdrawTreasuryDAO(address,uint256,string)"
-            ]);
-            const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
+                        const callData = templInterface.encodeFunctionData("withdrawTreasuryDAO", [
                 member1.address,
                 ethers.parseUnits("10", 18),
                 "Test"
@@ -121,11 +113,8 @@ describe("Single Active Proposal Restriction", function () {
         });
 
         it("Should allow creating new proposal after previous one is executed", async function () {
-            const iface = new ethers.Interface([
-                "function setPausedDAO(bool)"
-            ]);
-            const callData1 = iface.encodeFunctionData("setPausedDAO", [true]);
-            const callData2 = iface.encodeFunctionData("setPausedDAO", [false]);
+                        const callData1 = templInterface.encodeFunctionData("setPausedDAO", [true]);
+            const callData2 = templInterface.encodeFunctionData("setPausedDAO", [false]);
 
             // Create and execute first proposal
             await templ.connect(member1).createProposal(
@@ -162,10 +151,7 @@ describe("Single Active Proposal Restriction", function () {
         });
 
         it("Should allow creating new proposal after previous one expires without execution", async function () {
-            const iface = new ethers.Interface([
-                "function withdrawTreasuryDAO(address,uint256,string)"
-            ]);
-            const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
+                        const callData = templInterface.encodeFunctionData("withdrawTreasuryDAO", [
                 member1.address,
                 ethers.parseUnits("10", 18),
                 "Test"
@@ -196,10 +182,7 @@ describe("Single Active Proposal Restriction", function () {
         });
 
         it("Should allow creating new proposal if previous one failed to pass", async function () {
-            const iface = new ethers.Interface([
-                "function withdrawTreasuryDAO(address,uint256,string)"
-            ]);
-            const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
+                        const callData = templInterface.encodeFunctionData("withdrawTreasuryDAO", [
                 member1.address,
                 ethers.parseUnits("10", 18),
                 "Test"
@@ -236,11 +219,8 @@ describe("Single Active Proposal Restriction", function () {
 
         it("Should properly handle failed execution and maintain active status", async function () {
             // Create proposal with valid selector but invalid params to trigger revert at execution
-            const iface = new ethers.Interface([
-                "function withdrawTreasuryDAO(address,uint256,string)"
-            ]);
-            const tooMuch = (await templ.treasuryBalance()) + 1n;
-            const badCallData = iface.encodeFunctionData("withdrawTreasuryDAO", [
+                        const tooMuch = (await templ.treasuryBalance()) + 1n;
+            const badCallData = templInterface.encodeFunctionData("withdrawTreasuryDAO", [
                 member1.address,
                 tooMuch,
                 "Too much"
@@ -282,10 +262,7 @@ describe("Single Active Proposal Restriction", function () {
             await ethers.provider.send("evm_mine");
 
             // Now should be able to create another proposal since the first expired
-            const iface2 = new ethers.Interface([
-                "function withdrawTreasuryDAO(address,uint256,string)"
-            ]);
-            const callData = iface2.encodeFunctionData("withdrawTreasuryDAO", [
+                        const callData = templInterface.encodeFunctionData("withdrawTreasuryDAO", [
                 member1.address,
                 ethers.parseUnits("10", 18),
                 "Test"
@@ -302,10 +279,7 @@ describe("Single Active Proposal Restriction", function () {
 
     describe("Edge Cases", function () {
         it("Should handle proposal ID 0 correctly", async function () {
-            const iface = new ethers.Interface([
-                "function setPausedDAO(bool)"
-            ]);
-            const callData = iface.encodeFunctionData("setPausedDAO", [true]);
+                        const callData = templInterface.encodeFunctionData("setPausedDAO", [true]);
 
             // First proposal gets ID 0
             await templ.connect(member1).createProposal(
@@ -334,15 +308,12 @@ describe("Single Active Proposal Restriction", function () {
         });
 
         it("Should track active proposals correctly across multiple cycles", async function () {
-            const iface = new ethers.Interface([
-                "function setPausedDAO(bool)"
-            ]);
-
+            
             // Cycle 1: Create, pass, execute
             await templ.connect(member1).createProposal(
                 "Cycle 1",
                 "First cycle",
-                iface.encodeFunctionData("setPausedDAO", [true]),
+                templInterface.encodeFunctionData("setPausedDAO", [true]),
                 7 * 24 * 60 * 60
             );
             
@@ -356,7 +327,7 @@ describe("Single Active Proposal Restriction", function () {
             await templ.connect(member1).createProposal(
                 "Cycle 2",
                 "Second cycle",
-                iface.encodeFunctionData("setPausedDAO", [false]),
+                templInterface.encodeFunctionData("setPausedDAO", [false]),
                 7 * 24 * 60 * 60
             );
             
@@ -367,7 +338,7 @@ describe("Single Active Proposal Restriction", function () {
             await templ.connect(member1).createProposal(
                 "Cycle 3",
                 "Third cycle",
-                iface.encodeFunctionData("setPausedDAO", [true]),
+                templInterface.encodeFunctionData("setPausedDAO", [true]),
                 7 * 24 * 60 * 60
             );
 

@@ -1,6 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
+const templInterface = require("./utils/templInterface");
 
 describe("Vote reverts", function () {
     let templ;
@@ -25,10 +26,7 @@ describe("Vote reverts", function () {
     });
 
     it("reverts when voting after endTime", async function () {
-        const iface = new ethers.Interface([
-            "function withdrawTreasuryDAO(address,uint256,string)"
-        ]);
-        const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
+                const callData = templInterface.encodeFunctionData("withdrawTreasuryDAO", [
             member1.address,
             ethers.parseUnits("10", 18),
             "Test"

@@ -1,6 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
+const templInterface = require("./utils/templInterface");
 
 describe("Voting Eligibility Based on Join Time", function () {
     let templ;
@@ -38,10 +39,7 @@ describe("Voting Eligibility Based on Join Time", function () {
             await ethers.provider.send("evm_mine");
 
             // Member 1 creates proposal
-            const iface = new ethers.Interface([
-                "function withdrawTreasuryDAO(address,uint256,string)"
-            ]);
-            const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
+                        const callData = templInterface.encodeFunctionData("withdrawTreasuryDAO", [
                 member1.address,
                 ethers.parseUnits("10", 18),
                 "Test"
@@ -87,10 +85,7 @@ describe("Voting Eligibility Based on Join Time", function () {
             await ethers.provider.send("evm_mine");
 
             // Create proposal
-            const iface = new ethers.Interface([
-                "function withdrawTreasuryDAO(address,uint256,string)"
-            ]);
-            const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
+                        const callData = templInterface.encodeFunctionData("withdrawTreasuryDAO", [
                 member1.address,
                 ethers.parseUnits("10", 18),
                 "Test"
@@ -141,10 +136,7 @@ describe("Voting Eligibility Based on Join Time", function () {
             await ethers.provider.send("evm_mine");
 
             // Create proposal - should have 3 eligible voters
-            const iface = new ethers.Interface([
-                "function setPausedDAO(bool)"
-            ]);
-            const callData = iface.encodeFunctionData("setPausedDAO", [true]);
+                        const callData = templInterface.encodeFunctionData("setPausedDAO", [true]);
 
             await templ.connect(member1).createProposal(
                 "Pause Proposal",
@@ -198,10 +190,7 @@ describe("Voting Eligibility Based on Join Time", function () {
             await ethers.provider.send("evm_mine");
 
             // Create contentious proposal where member2 would vote no
-            const iface = new ethers.Interface([
-                "function withdrawTreasuryDAO(address,uint256,string)"
-            ]);
-            const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
+                        const callData = templInterface.encodeFunctionData("withdrawTreasuryDAO", [
                 member1.address, // Only benefits member1
                 ethers.parseUnits("50", 18),
                 "Selfish withdrawal"
@@ -263,14 +252,11 @@ describe("Voting Eligibility Based on Join Time", function () {
             await ethers.provider.send("evm_mine");
 
             // First proposal - 2 eligible voters
-            const iface = new ethers.Interface([
-                "function setPausedDAO(bool)"
-            ]);
-            
+                        
             await templ.connect(member1).createProposal(
                 "Proposal 1",
                 "With 2 members",
-                iface.encodeFunctionData("setPausedDAO", [true]),
+                templInterface.encodeFunctionData("setPausedDAO", [true]),
                 7 * 24 * 60 * 60
             );
 
@@ -286,7 +272,7 @@ describe("Voting Eligibility Based on Join Time", function () {
             await templ.connect(member2).createProposal(
                 "Proposal 2",
                 "With 3 members",
-                iface.encodeFunctionData("setPausedDAO", [false]),
+                templInterface.encodeFunctionData("setPausedDAO", [false]),
                 7 * 24 * 60 * 60
             );
 
@@ -326,14 +312,11 @@ describe("Voting Eligibility Based on Join Time", function () {
             await templ.connect(member2).purchaseAccess();
             
             // Create proposal immediately
-            const iface = new ethers.Interface([
-                "function setPausedDAO(bool)"
-            ]);
-            
+                        
             await templ.connect(member1).createProposal(
                 "Quick Proposal",
                 "Same block test",
-                iface.encodeFunctionData("setPausedDAO", [true]),
+                templInterface.encodeFunctionData("setPausedDAO", [true]),
                 7 * 24 * 60 * 60
             );
 

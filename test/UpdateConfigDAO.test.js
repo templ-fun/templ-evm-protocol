@@ -1,6 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
+const templInterface = require("./utils/templInterface");
 
 describe("updateConfigDAO", function () {
     const ENTRY_FEE = ethers.parseUnits("100", 18);
@@ -28,10 +29,7 @@ describe("updateConfigDAO", function () {
 
     it("reverts when entry fee is less than 10", async function () {
         const smallFee = 5;
-        const iface = new ethers.Interface([
-            "function updateConfigDAO(address,uint256)"
-        ]);
-        const callData = iface.encodeFunctionData("updateConfigDAO", [
+                const callData = templInterface.encodeFunctionData("updateConfigDAO", [
             ethers.ZeroAddress,
             smallFee
         ]);
@@ -53,10 +51,7 @@ describe("updateConfigDAO", function () {
 
     it("reverts when entry fee is not divisible by 10", async function () {
         const invalidFee = ENTRY_FEE + 5n;
-        const iface = new ethers.Interface([
-            "function updateConfigDAO(address,uint256)"
-        ]);
-        const callData = iface.encodeFunctionData("updateConfigDAO", [
+                const callData = templInterface.encodeFunctionData("updateConfigDAO", [
             ethers.ZeroAddress,
             invalidFee
         ]);
@@ -77,10 +72,7 @@ describe("updateConfigDAO", function () {
     });
 
     it("reverts when balances are non-zero", async function () {
-        const iface = new ethers.Interface([
-            "function updateConfigDAO(address,uint256)"
-        ]);
-        const callData = iface.encodeFunctionData("updateConfigDAO", [
+                const callData = templInterface.encodeFunctionData("updateConfigDAO", [
             await newToken.getAddress(),
             0
         ]);
@@ -137,10 +129,7 @@ describe("updateConfigDAO", function () {
         }
 
         // Empty the treasury so only member pool remainder remains
-        const withdrawIface = new ethers.Interface([
-            "function withdrawAllTreasuryDAO(address,string)"
-        ]);
-        const withdrawCalldata = withdrawIface.encodeFunctionData(
+                const withdrawCalldata = templInterface.encodeFunctionData(
             "withdrawAllTreasuryDAO",
             [priest.address, "sweep"]
         );
@@ -157,10 +146,7 @@ describe("updateConfigDAO", function () {
         await templ2.executeProposal(0);
 
         // Attempt config update - should revert due to remainder
-        const updateIface = new ethers.Interface([
-            "function updateConfigDAO(address,uint256)"
-        ]);
-        const updateCalldata = updateIface.encodeFunctionData(
+                const updateCalldata = templInterface.encodeFunctionData(
             "updateConfigDAO",
             [await newToken0.getAddress(), 0]
         );
@@ -178,10 +164,7 @@ describe("updateConfigDAO", function () {
             .to.be.revertedWithCustomError(templ2, "NonZeroBalances");
 
         // Sweep remainder to priest
-        const sweepIface = new ethers.Interface([
-            "function sweepMemberRewardRemainderDAO(address)"
-        ]);
-        const sweepCalldata = sweepIface.encodeFunctionData(
+                const sweepCalldata = templInterface.encodeFunctionData(
             "sweepMemberRewardRemainderDAO",
             [priest.address]
         );

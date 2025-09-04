@@ -1,6 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
+const templInterface = require("./utils/templInterface");
 
 describe("Sweep Member Remainder Reverts", function () {
   let templ;
@@ -31,10 +32,7 @@ describe("Sweep Member Remainder Reverts", function () {
   });
 
   it("should revert proposal execution with InvalidRecipient", async function () {
-    const iface = new ethers.Interface([
-      "function sweepMemberRewardRemainderDAO(address)"
-    ]);
-    const callData = iface.encodeFunctionData(
+        const callData = templInterface.encodeFunctionData(
       "sweepMemberRewardRemainderDAO",
       [ethers.ZeroAddress]
     );
@@ -59,10 +57,7 @@ describe("Sweep Member Remainder Reverts", function () {
   });
 
   it("should revert proposal execution with AmountZero when pool is empty", async function () {
-    const iface = new ethers.Interface([
-      "function sweepMemberRewardRemainderDAO(address)"
-    ]);
-    const callData = iface.encodeFunctionData(
+        const callData = templInterface.encodeFunctionData(
       "sweepMemberRewardRemainderDAO",
       [user1.address]
     );

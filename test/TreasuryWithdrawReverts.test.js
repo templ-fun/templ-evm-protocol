@@ -1,6 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
+const templInterface = require("./utils/templInterface");
 
 describe("Treasury Withdrawal Reverts", function () {
     let templ;
@@ -26,10 +27,7 @@ describe("Treasury Withdrawal Reverts", function () {
 
     describe("withdrawTreasuryDAO", function () {
         it("should revert with InvalidRecipient", async function () {
-            const iface = new ethers.Interface([
-                "function withdrawTreasuryDAO(address,uint256,string)"
-            ]);
-            const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
+                        const callData = templInterface.encodeFunctionData("withdrawTreasuryDAO", [
                 ethers.ZeroAddress,
                 ethers.parseUnits("1", 18),
                 "Invalid"
@@ -53,10 +51,7 @@ describe("Treasury Withdrawal Reverts", function () {
         });
 
         it("should revert with AmountZero", async function () {
-            const iface = new ethers.Interface([
-                "function withdrawTreasuryDAO(address,uint256,string)"
-            ]);
-            const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
+                        const callData = templInterface.encodeFunctionData("withdrawTreasuryDAO", [
                 user1.address,
                 0,
                 "Zero"
@@ -80,11 +75,8 @@ describe("Treasury Withdrawal Reverts", function () {
         });
 
         it("should revert with InsufficientTreasuryBalance", async function () {
-            const iface = new ethers.Interface([
-                "function withdrawTreasuryDAO(address,uint256,string)"
-            ]);
-            const treasury = await templ.treasuryBalance();
-            const callData = iface.encodeFunctionData("withdrawTreasuryDAO", [
+                        const treasury = await templ.treasuryBalance();
+            const callData = templInterface.encodeFunctionData("withdrawTreasuryDAO", [
                 user1.address,
                 treasury + 1n,
                 "Too much"
@@ -110,10 +102,7 @@ describe("Treasury Withdrawal Reverts", function () {
 
     describe("withdrawAllTreasuryDAO", function () {
         it("should revert with InvalidRecipient", async function () {
-            const iface = new ethers.Interface([
-                "function withdrawAllTreasuryDAO(address,string)"
-            ]);
-            const callData = iface.encodeFunctionData("withdrawAllTreasuryDAO", [
+                        const callData = templInterface.encodeFunctionData("withdrawAllTreasuryDAO", [
                 ethers.ZeroAddress,
                 "Invalid"
             ]);
@@ -136,10 +125,7 @@ describe("Treasury Withdrawal Reverts", function () {
         });
 
         it("should revert with NoTreasuryFunds", async function () {
-            const iface = new ethers.Interface([
-                "function withdrawAllTreasuryDAO(address,string)"
-            ]);
-            const callData = iface.encodeFunctionData("withdrawAllTreasuryDAO", [
+                        const callData = templInterface.encodeFunctionData("withdrawAllTreasuryDAO", [
                 user1.address,
                 "Valid"
             ]);
