@@ -1,6 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
+const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
 
 describe("Treasury Withdrawal Reverts", function () {
     let templ;
@@ -14,14 +15,9 @@ describe("Treasury Withdrawal Reverts", function () {
         ({ templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE }));
         [owner, priest, user1, user2, treasuryRecipient] = accounts;
 
-        await token.mint(user1.address, TOKEN_SUPPLY);
-        await token.mint(user2.address, TOKEN_SUPPLY);
+        await mintToUsers(token, [user1, user2], TOKEN_SUPPLY);
 
-        await token.connect(user1).approve(await templ.getAddress(), ENTRY_FEE);
-        await templ.connect(user1).purchaseAccess();
-
-        await token.connect(user2).approve(await templ.getAddress(), ENTRY_FEE);
-        await templ.connect(user2).purchaseAccess();
+        await purchaseAccess(templ, token, [user1, user2]);
     });
 
     describe("withdrawTreasuryDAO", function () {

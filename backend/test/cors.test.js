@@ -1,9 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../src/server.js';
-
-const makeApp = (opts) => createApp({ dbPath: ':memory:', ...opts });
+import { makeApp } from './helpers.js';
 
 test('trims ALLOWED_ORIGINS entries', async () => {
   const prev = process.env.ALLOWED_ORIGINS;

@@ -1,6 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
+const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
 
 describe("Vote reverts", function () {
     let templ;
@@ -14,9 +15,8 @@ describe("Vote reverts", function () {
         ({ templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE }));
         [owner, priest, member1] = accounts;
 
-        await token.mint(member1.address, TOKEN_SUPPLY);
-        await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
-        await templ.connect(member1).purchaseAccess();
+        await mintToUsers(token, [member1], TOKEN_SUPPLY);
+        await purchaseAccess(templ, token, [member1]);
     });
 
     it("reverts when voting on non-existent proposal", async function () {

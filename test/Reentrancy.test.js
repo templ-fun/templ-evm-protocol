@@ -1,5 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
 
 describe("Reentrancy protection", function () {
   const ENTRY_FEE = ethers.parseUnits("100", 18);
@@ -80,18 +81,9 @@ describe("Reentrancy protection", function () {
     it("reverts with ReentrantCall when claimMemberPool is reentered", async function () {
       const [, member1, member2] = accounts;
 
-      await token.mint(member1.address, ENTRY_FEE);
-      await token.mint(member2.address, ENTRY_FEE);
+      await mintToUsers(token, [member1, member2], ENTRY_FEE);
 
-      await token
-        .connect(member1)
-        .approve(await templ.getAddress(), ENTRY_FEE);
-      await templ.connect(member1).purchaseAccess();
-
-      await token
-        .connect(member2)
-        .approve(await templ.getAddress(), ENTRY_FEE);
-      await templ.connect(member2).purchaseAccess();
+      await purchaseAccess(templ, token, [member1, member2]);
 
       await token.setCallback(2);
 

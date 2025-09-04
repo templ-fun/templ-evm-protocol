@@ -1,4 +1,9 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+vi.mock('./xmtpHelpers.js', () => ({
+  waitForConversation: vi.fn(),
+  syncXMTP: vi.fn()
+}));
+import { waitForConversation } from './xmtpHelpers.js';
 import {
   deployTempl,
   purchaseAndJoin,
@@ -16,6 +21,10 @@ import { buildDelegateMessage, buildMuteMessage } from '../../shared/signing.js'
 
 const templArtifact = { abi: [], bytecode: '0x' };
 const originalFetch = globalThis.fetch;
+
+beforeEach(() => {
+  waitForConversation.mockReset();
+});
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -45,23 +54,24 @@ describe('templ flows', () => {
     const xmtp = {
       inboxId: 'inbox-1',
       conversations: {
-        getConversationById: vi.fn().mockResolvedValue({ id: 'group-1', consentState: 'allowed' }),
+        getConversationById: vi.fn(),
         sync: vi.fn().mockResolvedValue(undefined),
         list: vi.fn().mockResolvedValue([])
       }
     };
     const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
+    waitForConversation.mockResolvedValueOnce({ id: 'group-1', consentState: 'allowed' });
 
-      const result = await deployTempl({
-        ethers,
-        xmtp,
-        signer,
-        walletAddress: '0xabc',
-        tokenAddress: '0xdef',
-        protocolFeeRecipient: '0xfee',
-        entryFee: '1',
-        templArtifact
-      });
+    const result = await deployTempl({
+      ethers,
+      xmtp,
+      signer,
+      walletAddress: '0xabc',
+      tokenAddress: '0xdef',
+      protocolFeeRecipient: '0xfee',
+      entryFee: '1',
+      templArtifact
+    });
 
     expect(ethers.ContractFactory).toHaveBeenCalled();
     expect(factory.deploy).toHaveBeenCalledWith(
@@ -150,7 +160,7 @@ describe('templ flows', () => {
 
   it('purchaseAndJoin purchases access and joins group', async () => {
     const templContract = {
-      hasPurchased: vi.fn().mockResolvedValue(false),
+      hasAccess: vi.fn().mockResolvedValue(false),
       purchaseAccess: vi.fn().mockResolvedValue({ wait: vi.fn() }),
       getConfig: vi.fn().mockResolvedValue(['0xToken', 100n, false, 0n, 0n, 0n])
     };
@@ -170,12 +180,13 @@ describe('templ flows', () => {
     const xmtp = {
       inboxId: 'inbox-2',
       conversations: {
-        getConversationById: vi.fn().mockResolvedValue({ id: 'group-2', consentState: 'allowed' }),
+        getConversationById: vi.fn(),
         sync: vi.fn().mockResolvedValue(undefined),
         list: vi.fn().mockResolvedValue([])
       }
     };
     const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
+    waitForConversation.mockResolvedValueOnce({ id: 'group-2', consentState: 'allowed' });
 
     const result = await purchaseAndJoin({
       ethers,
@@ -192,7 +203,7 @@ describe('templ flows', () => {
   });
 
   it('purchaseAndJoin rejects on backend failure', async () => {
-    const templContract = { hasPurchased: vi.fn().mockResolvedValue(true) };
+    const templContract = { hasAccess: vi.fn().mockResolvedValue(true) };
     const ethers = { Contract: vi.fn().mockReturnValue(templContract) };
     const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({
@@ -214,7 +225,7 @@ describe('templ flows', () => {
   });
 
   it('purchaseAndJoin errors when access not purchased', async () => {
-    const templContract = { hasPurchased: vi.fn().mockResolvedValue(true) };
+    const templContract = { hasAccess: vi.fn().mockResolvedValue(true) };
     const ethers = { Contract: vi.fn().mockReturnValue(templContract) };
     const signer = { signMessage: vi.fn().mockResolvedValue('sig') };
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({

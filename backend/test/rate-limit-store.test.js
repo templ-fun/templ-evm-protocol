@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { MemoryStore } from 'express-rate-limit';
-import { createApp } from '../src/server.js';
+import { makeApp } from './helpers.js';
 
 class CustomStore extends MemoryStore {
   constructor() {
@@ -16,11 +16,10 @@ class CustomStore extends MemoryStore {
 
 test('allows injecting a rate limit store', async () => {
   const store = new CustomStore();
-  const app = createApp({
+  const app = makeApp({
     xmtp: { conversations: {} },
     hasPurchased: async () => true,
-    rateLimitStore: store,
-    dbPath: ':memory:'
+    rateLimitStore: store
   });
   await app.close();
   assert.equal(store.closed, true);

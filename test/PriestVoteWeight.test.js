@@ -1,6 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
+const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
 
 describe("Priest Vote Weight Feature", function () {
     let templ;
@@ -20,17 +21,7 @@ describe("Priest Vote Weight Feature", function () {
         }));
         [owner, priest, member1, member2, member3, member4, member5, member6, member7, member8, member9, member10] = accounts;
 
-        await token.mint(priest.address, TOKEN_SUPPLY);
-        await token.mint(member1.address, TOKEN_SUPPLY);
-        await token.mint(member2.address, TOKEN_SUPPLY);
-        await token.mint(member3.address, TOKEN_SUPPLY);
-        await token.mint(member4.address, TOKEN_SUPPLY);
-        await token.mint(member5.address, TOKEN_SUPPLY);
-        await token.mint(member6.address, TOKEN_SUPPLY);
-        await token.mint(member7.address, TOKEN_SUPPLY);
-        await token.mint(member8.address, TOKEN_SUPPLY);
-        await token.mint(member9.address, TOKEN_SUPPLY);
-        await token.mint(member10.address, TOKEN_SUPPLY);
+        await mintToUsers(token, [priest, member1, member2, member3, member4, member5, member6, member7, member8, member9, member10], TOKEN_SUPPLY);
     });
 
     describe("Configuration", function () {

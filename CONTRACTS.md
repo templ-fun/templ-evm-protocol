@@ -1,7 +1,7 @@
 # TEMPL Contracts
 
 ## Overview
-This document describes the on-chain portion of TEMPL for auditors.
+See the [README](./README.md#architecture) for a system overview; this document focuses on the on-chain contracts for auditors.
 
 ## Economic model
 - **30% Burn** – sent to `0xdead`.
@@ -39,17 +39,19 @@ updates their snapshot. Unclaimed rewards continue to accumulate until claimed.
 ## Configuration
 The deployment script accepts the following environment variables (the priest defaults to the deploying wallet):
 
-```env
-# PRIEST_ADDRESS=0x...       # optional override for tests
-PROTOCOL_FEE_RECIPIENT=0x... # required
-TOKEN_ADDRESS=0x...          # required
-ENTRY_FEE=100000000000000000 # wei, minimum 10 and divisible by 10
-PRIEST_VOTE_WEIGHT=10
-PRIEST_WEIGHT_THRESHOLD=10
-PRIVATE_KEY=0x...
-RPC_URL=https://mainnet.base.org
-BASESCAN_API_KEY=...
-```
+| Variable | Role | Required |
+| --- | --- | --- |
+| `PRIEST_ADDRESS` | Override priest address for tests | Optional |
+| `PROTOCOL_FEE_RECIPIENT` | Recipient of protocol fee | Required |
+| `TOKEN_ADDRESS` | ERC20 token used for membership fees | Required |
+| `ENTRY_FEE` | Membership cost in wei (≥10 and divisible by 10) | Required |
+| `PRIEST_VOTE_WEIGHT` | Priest voting weight | Optional (default 10) |
+| `PRIEST_WEIGHT_THRESHOLD` | Member count at which priest loses extra weight | Optional (default 10) |
+| `PRIVATE_KEY` | Deployer wallet key | Required |
+| `RPC_URL` | Base network RPC endpoint | Required |
+| `BASESCAN_API_KEY` | BaseScan API key for verification | Optional |
+
+More context appears in [README.md#environment-variables](README.md#environment-variables).
 
 `ENTRY_FEE` must be at least 10 and a multiple of 10 so the 30/30/30/10
 fee split divides evenly. This requirement is enforced in the
