@@ -1,3 +1,4 @@
+// @ts-check
 // Minimal debug logger usable in both browser and Node tests
 const __isDebug = (() => {
   // Node tests: opt-in via DEBUG_TEMPL=1
@@ -433,4 +434,3 @@ export async function fetchActiveMutes({
   }
   return data.mutes;
 }
-// @ts-check
