@@ -37,72 +37,18 @@ Use the docs below to dive into each component:
 - `frontend/` – Vite + React demo app with Playwright e2e
 
 ## Quick Start
-1. **Clone & install**
-   - Requires Node.js `>=22.18.0`; mismatched versions may break scripts or tests.
-     ```bash
-     nvm install 22.18.0 && nvm use 22.18.0
-     ```
+1. **Install**  
+   Install dependencies for contracts, the backend, and the frontend. See [CONTRACTS.md](./CONTRACTS.md), [BACKEND.md](./BACKEND.md), and [FRONTEND.md](./FRONTEND.md) for detailed commands.
+
+2. **Test**  
+   Run the full suite:
    ```bash
-   git clone <repo>
-   cd templ
-   npm install # install contract tests and deployment dependencies
-   npm --prefix backend install
-   npm --prefix frontend install
-   npm run prepare # enable Husky pre‑commit
-   pipx install slither-analyzer solc-select # install Slither and solc-select
+   npm run test:all
    ```
-2. **Run tests**
-   ```bash
-   npm run test:all # full sweep: contracts, slither, types, lint, unit, integration, e2e
-   npm test # run contract tests
-   npm run slither
-   npm --prefix backend test
-   npm --prefix frontend test # unit tests
-   npm --prefix frontend test -- src/core-flows.integration.test.js # integration tests
-   npm --prefix frontend run test:e2e # end‑to‑end tests
-   npm --prefix backend run typecheck && npm --prefix frontend run typecheck
-   npm --prefix backend run lint && npm --prefix frontend run lint
-   ```
-   Common dev commands:
-   - Contracts: `npm run compile`, `npm test`, `npm run node`, `npm run deploy:local`
-   - Backend (dev): `RPC_URL=http://127.0.0.1:8545 BOT_PRIVATE_KEY=<hardhat-0> ALLOWED_ORIGINS=http://localhost:5173 ENABLE_DEBUG_ENDPOINTS=1 XMTP_ENV=dev npm --prefix backend start`
-   - Frontend (dev): `VITE_XMTP_ENV=production VITE_E2E_DEBUG=1 npm --prefix frontend run dev`
-   To run e2e against a local XMTP node:
-   ```bash
-   git clone https://github.com/xmtp/xmtp-local-node.git
-   # requires Docker; this brings up ports 5555 (API) and 5558 (history)
-   npm run xmtp:local:up
-   E2E_XMTP_LOCAL=1 npm --prefix frontend run test:e2e -- --project=tech-demo
-   # tear down when done
-   npm run xmtp:local:down
-   ```
-   Check node logs with:
-   ```bash
-   (cd xmtp-local-node && docker compose logs -f)
-   ```
-   End‑to‑end details: Playwright spins up Hardhat (8545), the backend bot (3001), and serves the built frontend (5179). The e2e uses XMTP production to mirror real‑world behavior and exercises discovery and the full core flows.
-3. **Deploy contracts**
-   ```bash
-   npx hardhat run scripts/deploy.js --network base
-   ```
-4. **Configure environment files**
-   - **Root `.env`** – used by deployment scripts. Populate values like RPC URL and deployer keys (see *Deploying to production* below).
-  - **`backend/.env`** – used only by the XMTP bot. Copy any shared values from the root `.env` or provide separate ones as needed.
-    Include `ALLOWED_ORIGINS` with the frontend URLs allowed to call the API.
-  ```env
-  # backend/.env
-  RPC_URL=https://mainnet.base.org
-  BOT_PRIVATE_KEY=0x...
-  ALLOWED_ORIGINS=http://localhost:5173
-  ```
-5. **Launch backend bot**
-   ```bash
-   npm --prefix backend start
-   ```
-6. **Start frontend**
-   ```bash
-   npm --prefix frontend run dev
-   ```
+   Component-specific test commands are documented in [CONTRACTS.md](./CONTRACTS.md), [BACKEND.md](./BACKEND.md), and [FRONTEND.md](./FRONTEND.md).
+
+3. **Run**  
+   Start the backend and frontend services. Deployment and runtime details are available in [CONTRACTS.md](./CONTRACTS.md), [BACKEND.md](./BACKEND.md), and [FRONTEND.md](./FRONTEND.md).
 
 ## Environment Variables
 
