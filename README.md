@@ -106,26 +106,19 @@ Use the docs below to dive into each component:
 
 ## Environment Variables
 
+Minimal local setup requires only a handful of variables:
+
 | Variable | Description | Location |
 | --- | --- | --- |
 | `RPC_URL` | RPC endpoint for Base network | `.env`, `backend/.env` |
 | `PRIVATE_KEY` | Deployer wallet key for contract deployments | `.env` |
 | `BOT_PRIVATE_KEY` | XMTP bot wallet key | `backend/.env` |
 | `ALLOWED_ORIGINS` | Comma-separated frontend origins allowed to call the backend | `backend/.env` |
-| `PROTOCOL_FEE_RECIPIENT` | Address receiving protocol fees | `.env` |
-| `TOKEN_ADDRESS` | ERC-20 token used for membership purchases | `.env` |
-| `ENTRY_FEE` | Membership cost in wei | `.env` |
-| `PRIEST_VOTE_WEIGHT` | Priest vote weight multiplier | `.env` |
-| `PRIEST_WEIGHT_THRESHOLD` | Total weight required for priest proposals | `.env` |
-| `BASESCAN_API_KEY` | API key for contract verification on BaseScan | `.env` |
-| `XMTP_ENV` | XMTP network (`dev`, `production`, or `local`) | `backend/.env` |
-| `ENABLE_DEBUG_ENDPOINTS` | Enable backend debug endpoints | `backend/.env` |
-| `PORT` | Backend HTTP server port | `backend/.env` |
-| `DISABLE_XMTP_WAIT` | Skip XMTP readiness checks in tests | `backend/.env` |
-| `XMTP_MAX_ATTEMPTS` | Max XMTP client rotation attempts | `backend/.env` |
+
+See [BACKEND.md#environment-variables](./BACKEND.md#environment-variables) and [CONTRACTS.md#configuration](./CONTRACTS.md#configuration) for complete lists.
 
 ## Deploying to production
-See [Environment Variables](#environment-variables) for descriptions of required configuration.
+See [BACKEND.md#environment-variables](./BACKEND.md#environment-variables) and [CONTRACTS.md#configuration](./CONTRACTS.md#configuration) for descriptions of required configuration.
 1. Create a `.env` file in the project root for the deployment scripts. This file is distinct from `backend/.env` used by the bot; copy any overlapping variables (e.g., `RPC_URL`, keys) into `backend/.env` if the bot requires them. The bot's key (`BOT_PRIVATE_KEY`) belongs only in `backend/.env`. The deploying wallet becomes the priest automatically, so `PRIEST_ADDRESS` is only needed when overriding in tests.
     ```env
     PROTOCOL_FEE_RECIPIENT=0x...

@@ -9,7 +9,7 @@ Install dependencies:
 npm --prefix backend install
 ```
 
-Environment variables (see [Environment Variables](./README.md#environment-variables) for descriptions):
+## Environment variables
 
 ```env
 RPC_URL=https://mainnet.base.org
@@ -23,6 +23,8 @@ DISABLE_XMTP_WAIT=1
 # Optional cap on XMTP client rotation attempts
 XMTP_MAX_ATTEMPTS=5
 ```
+
+See [README.md#environment-variables](./README.md#environment-variables) for minimal setup variables.
 
 The server will throw an error on startup if `RPC_URL` or `BOT_PRIVATE_KEY` are missing.
 
