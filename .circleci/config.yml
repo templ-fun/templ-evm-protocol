@@ -30,4 +30,3 @@ workflows:
     jobs:
       - continuation/continue:
           configuration_path: .circleci/continue.yml
-          parameters: '{"run_manual_tests": true}'
