@@ -393,3 +393,44 @@ export async function fetchActiveMutes({
   }
   return data.mutes;
 }
+
+/**
+ * Fetch list of known templs from backend.
+ * @param {string} [backendUrl]
+ * @returns {Promise<Array<{contract:string, groupId:string|null, priest:string|null}>>}
+ */
+export async function listTempls(backendUrl = BACKEND_URL) {
+  const res = await fetch(`${backendUrl}/templs`);
+  if (!res.ok) return [];
+  const data = await res.json().catch(() => null);
+  if (!data || !Array.isArray(data.templs)) return [];
+  return data.templs;
+}
+
+/**
+ * Read treasury info from contract.
+ * @param {{ethers:any, providerOrSigner:any, templAddress:string, templArtifact:any}} params
+ */
+export async function getTreasuryInfo({ ethers, providerOrSigner, templAddress, templArtifact }) {
+  const contract = new ethers.Contract(templAddress, templArtifact.abi, providerOrSigner);
+  // tuple: treasury, memberPool, totalReceived, totalBurned, totalProtocolFees, protocolAddress
+  const [treasury, memberPool, totalReceived, totalBurnedAmount, totalProtocolFees, protocolAddress] = await contract.getTreasuryInfo();
+  return {
+    treasury: BigInt(treasury).toString(),
+    memberPool: BigInt(memberPool).toString(),
+    totalReceived: BigInt(totalReceived).toString(),
+    totalBurnedAmount: BigInt(totalBurnedAmount).toString(),
+    totalProtocolFees: BigInt(totalProtocolFees).toString(),
+    protocolAddress
+  };
+}
+
+/**
+ * Read claimable pool amount for a member.
+ * @param {{ethers:any, providerOrSigner:any, templAddress:string, templArtifact:any, memberAddress:string}} params
+ */
+export async function getClaimable({ ethers, providerOrSigner, templAddress, templArtifact, memberAddress }) {
+  const contract = new ethers.Contract(templAddress, templArtifact.abi, providerOrSigner);
+  const amount = await contract.getClaimablePoolAmount(memberAddress);
+  return BigInt(amount).toString();
+}

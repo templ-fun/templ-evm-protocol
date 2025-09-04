@@ -13,12 +13,37 @@ import {
   watchProposals,
   fetchActiveMutes,
   delegateMute,
-  muteMember
+  muteMember,
+  listTempls,
+  getTreasuryInfo,
+  getClaimable
 } from './flows.js';
 import { syncXMTP } from '../../shared/xmtp.js';
 import './App.css';
 
 function App() {
+  // Minimal client-side router (no external deps)
+  const [path, setPath] = useState(() => window.location.pathname || '/');
+  const [query, setQuery] = useState(() => new URLSearchParams(window.location.search));
+  useEffect(() => {
+    const onPop = () => {
+      setPath(window.location.pathname || '/');
+      setQuery(new URLSearchParams(window.location.search));
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+  function navigate(to) {
+    try {
+      const url = new URL(to, window.location.origin);
+      window.history.pushState({}, '', url.toString());
+      setPath(url.pathname);
+      setQuery(url.searchParams);
+    } catch {
+      // Fallback to hash navigation
+      window.location.assign(to);
+    }
+  }
   const [walletAddress, setWalletAddress] = useState();
   const [signer, setSigner] = useState();
   const [xmtp, setXmtp] = useState();
@@ -33,6 +58,9 @@ function App() {
   const [proposalDesc, setProposalDesc] = useState('');
   const [proposalCalldata, setProposalCalldata] = useState('');
   const [mutes, setMutes] = useState([]);
+  const [templList, setTemplList] = useState([]);
+  const [treasuryInfo, setTreasuryInfo] = useState(null);
+  const [claimable, setClaimable] = useState(null);
   
   // muting form
   const [muteAddress, setMuteAddress] = useState('');
@@ -190,6 +218,9 @@ function App() {
       } else {
         pushStatus('🔄 Group created, waiting for connection');
       }
+      // Move priest to chat interface
+      try { localStorage.setItem('templ:lastAddress', result.contractAddress); } catch {}
+      navigate('/chat');
     } catch (err) {
       console.error('[app] deploy failed', err);
       alert(err.message);
@@ -222,6 +253,8 @@ function App() {
         } else {
           pushStatus('🔄 Waiting for group discovery');
         }
+        try { localStorage.setItem('templ:lastAddress', templAddress); } catch {}
+        navigate('/chat');
       }
     } catch (err) {
       alert(err.message);
@@ -411,11 +444,46 @@ function App() {
     };
   }, [templAddress]);
 
+  // Load templ list for landing/join
+  useEffect(() => {
+    (async () => {
+      try { setTemplList(await listTempls()); } catch {}
+    })();
+  }, []);
+
+  // Sync query param for join prefill
+  useEffect(() => {
+    if (path === '/join') {
+      const addr = String(query.get('address') || '').trim();
+      if (addr && addr !== templAddress) setTemplAddress(addr);
+    }
+  }, [path, query, templAddress]);
+
+  // Fetch treasury and claimable stats when context is ready
+  useEffect(() => {
+    (async () => {
+      if (!signer || !templAddress) return;
+      try {
+        const info = await getTreasuryInfo({ ethers, providerOrSigner: signer, templAddress, templArtifact });
+        setTreasuryInfo(info);
+      } catch {}
+      try {
+        if (walletAddress) {
+          const c = await getClaimable({ ethers, providerOrSigner: signer, templAddress, templArtifact, memberAddress: walletAddress });
+          setClaimable(c);
+        }
+      } catch {}
+    })();
+  }, [signer, templAddress, walletAddress, proposals, groupConnected]);
+
   async function handleSend() {
     if (!messageInput) return;
     try {
       if (group) {
-        await sendMessage({ group, content: messageInput });
+        const body = messageInput;
+        await sendMessage({ group, content: body });
+        // Local echo to ensure immediate UI feedback (stream may take time)
+        setMessages((m) => [...m, { senderAddress: walletAddress, content: body }]);
       } else {
         return;
       }
@@ -522,161 +590,223 @@ function App() {
     checkPriest();
   }, [templAddress, walletAddress, signer]);
 
+  function shorten(addr) {
+    try {
+      const a = String(addr);
+      if (a.length <= 12) return a;
+      return a.slice(0, 6) + '...' + a.slice(-6);
+    } catch {
+      return addr;
+    }
+  }
+  async function copyToClipboard(text) {
+    try {
+      await navigator.clipboard?.writeText(text);
+      pushStatus('📋 Copied to clipboard');
+    } catch {
+      try {
+        const el = document.createElement('textarea');
+        el.value = text;
+        document.body.appendChild(el);
+        el.select();
+        document.execCommand('copy');
+        document.body.removeChild(el);
+        pushStatus('📋 Copied to clipboard');
+      } catch {}
+    }
+  }
+
   return (
-    <div className="App">
-      <div className="status">
-        <h3>Run Status</h3>
-        <div className="status-items">
-          {status.map((s, i) => (
-            <div key={i}>{s}</div>
-          ))}
+    <div className="App min-h-screen flex flex-col overflow-x-hidden">
+      {/* Header / Nav */}
+      <div className="w-full border-b border-black/10">
+        <div className="max-w-screen-md mx-auto px-4 py-2 flex items-center justify-between">
+          <div className="flex gap-2">
+            <button className="px-3 py-1 rounded border border-black/20" onClick={() => navigate('/')}>Home</button>
+            <button className="px-3 py-1 rounded border border-black/20" onClick={() => navigate('/create')}>Create</button>
+            <button className="px-3 py-1 rounded border border-black/20" onClick={() => navigate('/join')}>Join</button>
+            <button className="px-3 py-1 rounded border border-black/20" onClick={() => navigate('/chat')}>Chat</button>
+          </div>
+          {!walletAddress && (
+            <button className="px-3 py-1 rounded bg-primary text-black font-semibold" onClick={connectWallet}>Connect Wallet</button>
+          )}
         </div>
       </div>
-      {templAddress && (
-        <div className="deploy-info">
-          <p>Contract: {templAddress}</p>
-          <p>Group ID: {groupId}</p>
-        </div>
-      )}
-      {!walletAddress && (
-        <button onClick={connectWallet}>Connect Wallet</button>
-      )}
 
-      {walletAddress && !group && (
-        <div className="forms">
-          <div className="deploy">
-            <h2>Create Templ</h2>
-            <input
-              placeholder="Token address"
-              value={tokenAddress}
-              onChange={(e) => setTokenAddress(e.target.value)}
-            />
-            <input
-              placeholder="Protocol fee recipient"
-              value={protocolFeeRecipient}
-              onChange={(e) => setProtocolFeeRecipient(e.target.value)}
-            />
-            <input
-              placeholder="Entry fee"
-              value={entryFee}
-              onChange={(e) => setEntryFee(e.target.value)}
-            />
-            <input
-              placeholder="Priest vote weight (default 10)"
-              value={priestVoteWeight}
-              onChange={(e) => setPriestVoteWeight(e.target.value)}
-            />
-            <input
-              placeholder="Priest weight threshold (default 10)"
-              value={priestWeightThreshold}
-              onChange={(e) => setPriestWeightThreshold(e.target.value)}
-            />
-            <button onClick={handleDeploy}>Deploy</button>
-            {templAddress && (
-              <div>
-                <p>Contract: {templAddress}</p>
-                <p>Group ID: {groupId}</p>
+      <div className="max-w-screen-md w-full mx-auto px-4 py-4 flex-1">
+        {/* Status area (shared) */}
+        <div className="status mb-4">
+          <h3 className="text-lg font-semibold mb-2">Run Status</h3>
+          <div className="status-items text-sm space-y-1">
+            {status.map((s, i) => (
+              <div key={i}>{s}</div>
+            ))}
+          </div>
+        </div>
+
+        {/* Contract info (if known) */}
+        {templAddress && (
+          <div
+            className="deploy-info mb-4 text-sm"
+            data-testid="deploy-info"
+            data-contract-address={templAddress}
+            data-group-id={groupId}
+          >
+            <p>
+              Contract: <button className="underline underline-offset-4" onClick={() => copyToClipboard(templAddress)}>{shorten(templAddress)}</button>
+            </p>
+            <p>
+              Group ID: <button className="underline underline-offset-4" onClick={() => copyToClipboard(groupId)}>{shorten(groupId)}</button>
+            </p>
+          </div>
+        )}
+
+        {/* Routes */}
+        {path === '/' && (
+          <div data-testid="templ-list" className="space-y-3">
+            <h2 className="text-xl font-semibold">Templs</h2>
+            {templList.length === 0 && <p>No templs yet</p>}
+            {templList.map((t) => (
+              <div key={t.contract} className="flex flex-col sm:flex-row sm:items-center gap-2">
+                <button type="button" title="Copy address" data-address={String(t.contract).toLowerCase()} className="text-left underline underline-offset-4 font-mono text-sm flex-1 break-words" onClick={() => copyToClipboard(t.contract)}>
+                  {shorten(t.contract)}
+                </button>
+                <button className="px-3 py-1 rounded bg-primary text-black font-semibold w-full sm:w-auto" onClick={() => navigate(`/join?address=${t.contract}`)}>Join</button>
+              </div>
+            ))}
+            <div className="pt-2">
+              <button className="px-4 py-2 rounded bg-primary text-black font-semibold" onClick={() => navigate('/create')}>Create Templ</button>
+            </div>
+          </div>
+        )}
+
+        {path === '/create' && (
+          <div className="forms space-y-3">
+            <div className="deploy space-y-2">
+              <h2 className="text-xl font-semibold">Create Templ</h2>
+              <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Token address" value={tokenAddress} onChange={(e) => setTokenAddress(e.target.value)} />
+              <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Protocol fee recipient" value={protocolFeeRecipient} onChange={(e) => setProtocolFeeRecipient(e.target.value)} />
+              <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Entry fee" value={entryFee} onChange={(e) => setEntryFee(e.target.value)} />
+              <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Priest vote weight (default 10)" value={priestVoteWeight} onChange={(e) => setPriestVoteWeight(e.target.value)} />
+              <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Priest weight threshold (default 10)" value={priestWeightThreshold} onChange={(e) => setPriestWeightThreshold(e.target.value)} />
+              <button className="px-4 py-2 rounded bg-primary text-black font-semibold w-full sm:w-auto" onClick={handleDeploy}>Deploy</button>
+            </div>
+          </div>
+        )}
+
+        {path === '/join' && (
+          <div className="join space-y-3">
+            <h2 className="text-xl font-semibold">Join Existing Templ</h2>
+            <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Contract address" value={templAddress} onChange={(e) => setTemplAddress(e.target.value)} />
+            <button className="px-4 py-2 rounded bg-primary text-black font-semibold w-full sm:w-auto" onClick={handlePurchaseAndJoin}>Purchase & Join</button>
+            {/* Optional list if no prefill */}
+            {(!templAddress || templAddress.trim() === '') && (
+              <div className="space-y-2">
+                {templList.map((t) => (
+                  <div key={t.contract} className="flex flex-col sm:flex-row sm:items-center gap-2">
+                    <button type="button" title="Copy address" data-address={String(t.contract).toLowerCase()} className="text-left underline underline-offset-4 font-mono text-sm flex-1 break-words" onClick={() => copyToClipboard(t.contract)}>
+                      {shorten(t.contract)}
+                    </button>
+                    <button className="px-3 py-1 rounded border border-black/20 w-full sm:w-auto" onClick={() => navigate(`/join?address=${t.contract}`)}>Select</button>
+                  </div>
+                ))}
               </div>
             )}
           </div>
-          <div className="join">
-            <h2>Join Existing Templ</h2>
-            <input
-              placeholder="Contract address"
-              value={templAddress}
-              onChange={(e) => setTemplAddress(e.target.value)}
-            />
-            <button onClick={handlePurchaseAndJoin}>Purchase & Join</button>
-          </div>
-        </div>
-      )}
+        )}
 
-      {groupId && (
-        <div className="chat">
-          <h2>Group Chat</h2>
-          {!group && <p>Connecting to group… syncing messages</p>}
-          {groupConnected && <p>✅ Group connected</p>}
-          <p>DAO Status: {paused ? 'Paused' : 'Active'}</p>
-          <div className="messages">
-            {messages.map((m, i) => (
-              <div key={i}>
-                <strong>{m.senderAddress}:</strong> {m.content}
-              </div>
-            ))}
-          </div>
-          <input
-            data-testid="chat-input"
-            placeholder="Type a message"
-            value={messageInput}
-            onChange={(e) => setMessageInput(e.target.value)}
-          />
-          <button data-testid="chat-send" onClick={handleSend} disabled={!group && !groupId}>Send</button>
+        {path === '/chat' && (
+          <div className="chat space-y-3">
+            <h2 className="text-xl font-semibold">Group Chat</h2>
+            {!group && <p>Connecting to group… syncing messages</p>}
+            {groupConnected && <p data-testid="group-connected">✅ Group connected</p>}
+            <p>DAO Status: {paused ? 'Paused' : 'Active'}</p>
 
-          <div className="proposal-form">
-            <h3>New Proposal</h3>
-            <input
-              placeholder="Title"
-              value={proposalTitle}
-              onChange={(e) => setProposalTitle(e.target.value)}
-            />
-            <input
-              placeholder="Description"
-              value={proposalDesc}
-              onChange={(e) => setProposalDesc(e.target.value)}
-            />
-            <input
-              placeholder="Call data"
-              value={proposalCalldata}
-              onChange={(e) => setProposalCalldata(e.target.value)}
-            />
-            <button onClick={handlePropose}>Propose</button>
-          </div>
-
-          <div className="proposals">
-            <h3>Proposals</h3>
-            {proposals.map((p) => (
-              <div key={p.id} className="proposal">
-                <p>
-                  {p.title} — yes {p.yes || 0} / no {p.no || 0}
-                </p>
-                <button onClick={() => handleVote(p.id, true)}>Yes</button>
-                <button onClick={() => handleVote(p.id, false)}>No</button>
-                <button onClick={() => handleExecuteProposal(p.id)}>Execute</button>
-              </div>
-            ))}
-          </div>
-
-          {isPriest && (
-            <div className="muting-controls">
-              <h3>Moderation Controls</h3>
-              <div className="mute-form">
-                <input
-                  placeholder="Address to mute"
-                  value={muteAddress}
-                  onChange={(e) => setMuteAddress(e.target.value)}
-                />
-                <button onClick={handleMute}>Mute Address</button>
-              </div>
-              <div className="delegate-form">
-                <input
-                  placeholder="Delegate moderation to address"
-                  value={delegateAddress}
-                  onChange={(e) => setDelegateAddress(e.target.value)}
-                />
-                <button onClick={handleDelegate}>Delegate</button>
-              </div>
-              {mutes.length > 0 && (
-                <div className="active-mutes">
-                  <h4>Currently Muted:</h4>
-                  {mutes.map((addr) => (
-                    <div key={addr}>{addr}</div>
-                  ))}
+            {/* Stats */}
+            {templAddress && (
+              <div className="space-y-1">
+                <div>Treasury: {treasuryInfo?.treasury || '0'}</div>
+                <div>Total Burned: {treasuryInfo?.totalBurnedAmount || '0'}</div>
+                <div>Claimable (you): {claimable || '0'}</div>
+                <div className="pt-2">
+                  <button className="px-3 py-1 rounded bg-primary text-black font-semibold" onClick={() => navigate('/create')}>Create Proposal</button>
                 </div>
-              )}
+              </div>
+            )}
+
+            {/* Invite link */}
+            {templAddress && (
+              <div className="space-y-2">
+                <div>Invite Link</div>
+                <input className="w-full border border-black/20 rounded px-3 py-2" readOnly value={`${window.location.origin}/join?address=${templAddress}`} />
+                <button className="px-3 py-1 rounded border border-black/20" onClick={() => { navigator.clipboard?.writeText(`${window.location.origin}/join?address=${templAddress}`).catch(()=>{}); }}>Copy Invite</button>
+              </div>
+            )}
+
+            <div className="messages space-y-1 max-h-[40vh] overflow-auto border border-black/10 rounded p-2">
+              {messages.map((m, i) => (
+                <div key={i} className="text-sm break-words">
+                  <strong className="font-mono">
+                    <button className="underline underline-offset-4" onClick={() => copyToClipboard(m.senderAddress)}>
+                      {shorten(m.senderAddress)}
+                    </button>:
+                  </strong> {m.content}
+                </div>
+              ))}
             </div>
-          )}
-        </div>
-      )}
+            <div className="flex gap-2">
+              <input className="flex-1 border border-black/20 rounded px-3 py-2" data-testid="chat-input" placeholder="Type a message" value={messageInput} onChange={(e) => setMessageInput(e.target.value)} />
+              <button className="px-3 py-2 rounded bg-primary text-black font-semibold" data-testid="chat-send" onClick={handleSend} disabled={!group && !groupId}>Send</button>
+            </div>
+
+            <div className="proposal-form space-y-2">
+              <h3 className="font-semibold">New Proposal</h3>
+              <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Title" value={proposalTitle} onChange={(e) => setProposalTitle(e.target.value)} />
+              <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Description" value={proposalDesc} onChange={(e) => setProposalDesc(e.target.value)} />
+              <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Call data" value={proposalCalldata} onChange={(e) => setProposalCalldata(e.target.value)} />
+              <button className="px-3 py-1 rounded bg-primary text-black font-semibold w-full sm:w-auto" onClick={handlePropose}>Propose</button>
+            </div>
+
+            <div className="proposals space-y-2">
+              <h3 className="font-semibold">Proposals</h3>
+              {proposals.map((p) => (
+                <div key={p.id} className="proposal border border-black/10 rounded p-2 flex flex-col sm:flex-row sm:items-center gap-2">
+                  <p className="flex-1">{p.title} — yes {p.yes || 0} / no {p.no || 0}</p>
+                  <div className="flex gap-2">
+                    <button className="px-3 py-1 rounded border border-black/20" onClick={() => handleVote(p.id, true)}>Yes</button>
+                    <button className="px-3 py-1 rounded border border-black/20" onClick={() => handleVote(p.id, false)}>No</button>
+                    <button className="px-3 py-1 rounded bg-primary text-black font-semibold" onClick={() => handleExecuteProposal(p.id)}>Execute</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {isPriest && (
+              <div className="muting-controls space-y-2">
+                <h3 className="font-semibold">Moderation Controls</h3>
+                <div className="mute-form flex gap-2">
+                  <input className="flex-1 border border-black/20 rounded px-3 py-2" placeholder="Address to mute" value={muteAddress} onChange={(e) => setMuteAddress(e.target.value)} />
+                  <button className="px-3 py-1 rounded border border-black/20" onClick={handleMute}>Mute Address</button>
+                </div>
+                <div className="delegate-form flex gap-2">
+                  <input className="flex-1 border border-black/20 rounded px-3 py-2" placeholder="Delegate moderation to address" value={delegateAddress} onChange={(e) => setDelegateAddress(e.target.value)} />
+                  <button className="px-3 py-1 rounded border border-black/20" onClick={handleDelegate}>Delegate</button>
+                </div>
+                {mutes.length > 0 && (
+                  <div className="active-mutes">
+                    <h4 className="font-semibold">Currently Muted:</h4>
+                {mutes.map((addr) => (
+                  <div key={addr} className="text-sm break-all">
+                    <button className="underline underline-offset-4" onClick={() => copyToClipboard(addr)}>{shorten(addr)}</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
