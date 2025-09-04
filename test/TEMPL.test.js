@@ -85,7 +85,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             await token.connect(user1).approve(await templ.getAddress(), ENTRY_FEE);
             await templ.connect(user1).purchaseAccess();
             
-            expect(await templ.hasPurchased(user1.address)).to.be.true;
+            expect(await templ.hasAccess(user1.address)).to.be.true;
             expect(await templ.getMemberCount()).to.equal(1);
         });
 

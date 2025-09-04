@@ -55,7 +55,7 @@ sequenceDiagram
     F->>C: approve(ERC20) + purchaseAccess()
     C-->>F: membership granted
     F->>B: POST /join {contract, member, signature, [memberInboxId]?}
-    B->>C: hasPurchased(member)
+    B->>C: hasAccess(member)
     C-->>B: true
     B->>X: addMembers([inboxId])
     B-->>F: { groupId }

@@ -763,10 +763,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const hasPurchased = async (contractAddress, memberAddress) => {
     const contract = new ethers.Contract(
       contractAddress,
-      ['function hasPurchased(address) view returns (bool)'],
+      ['function hasAccess(address) view returns (bool)'],
       provider
     );
-    return contract.hasPurchased(memberAddress);
+    return contract.hasAccess(memberAddress);
   };
   // Optional: use an ephemeral DB path for e2e to avoid stale group mappings
   const dbPath = process.env.DB_PATH;
