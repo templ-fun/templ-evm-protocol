@@ -137,6 +137,27 @@ sequenceDiagram
     C-->>M: ProposalExecuted(id, success)
 ```
 
+## Proposal lifecycle with treasury movement
+```mermaid
+sequenceDiagram
+    participant M as Member
+    participant C as Contract (TEMPL)
+    participant B as Backend
+    participant X as XMTP
+    participant T as Treasury
+    participant R as Recipient
+    M->>C: createProposal(withdrawTreasuryDAO(R, amount))
+    C-->>B: ProposalCreated(id,...)
+    B->>X: send {type:"proposal", id, ...}
+    M->>C: vote(id, support)
+    C-->>B: VoteCast(id, voter, support,...)
+    B->>X: send {type:"vote", id, voter, support, ...}
+    M->>C: executeProposal(id)
+    C->>T: withdrawTreasury(amount)
+    T->>R: transfer(amount)
+    C-->>M: ProposalExecuted(id, success)
+```
+
 ## Purchase Distribution (On-Chain)
 ```mermaid
 sequenceDiagram
