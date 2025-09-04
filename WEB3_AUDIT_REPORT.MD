@@ -2,7 +2,7 @@
 
 ## Overview
 - **Repository:** templ
-- **Scope:** `contracts/TEMPL.sol`, `contracts/TestToken.sol`
+- **Scope:** `contracts/TEMPL.sol`, `contracts/mocks/TestToken.sol`
 - **Tools Used:** Hardhat tests, Slither static analysis
 
 ## Summary
@@ -24,7 +24,7 @@ The contracts implement a DAO-governed membership system with treasury managemen
 ## Detailed Review
 
 ### Scope and Architecture
-- Files reviewed: `contracts/TEMPL.sol`, `contracts/TestToken.sol`.
+- Files reviewed: `contracts/TEMPL.sol`, `contracts/mocks/TestToken.sol`.
 - Solidity 0.8.23 with OZ `IERC20` and `SafeERC20`.
 - Non-upgradeable, constructor parameters set immutables for `priest`, `protocolFeeRecipient`, vote weights, and thresholds; `accessToken` and `entryFee` are mutable via DAO proposal with safety checks.
 

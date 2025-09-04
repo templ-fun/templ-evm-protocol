@@ -14,7 +14,9 @@ describe("Reentrancy protection", function () {
       accounts = await ethers.getSigners();
       const [owner, priest] = accounts;
 
-      const ReentrantToken = await ethers.getContractFactory("ReentrantToken");
+      const ReentrantToken = await ethers.getContractFactory(
+        "contracts/mocks/ReentrantToken.sol:ReentrantToken"
+      );
       token = await ReentrantToken.deploy("Reentrant Token", "RNT");
       await token.waitForDeployment();
 
@@ -58,7 +60,7 @@ describe("Reentrancy protection", function () {
       const [owner, priest] = accounts;
 
       const ReentrantToken = await ethers.getContractFactory(
-        "ReentrantToken"
+        "contracts/mocks/ReentrantToken.sol:ReentrantToken"
       );
       token = await ReentrantToken.deploy("Reentrant Token", "RNT");
       await token.waitForDeployment();

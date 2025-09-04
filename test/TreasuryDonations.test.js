@@ -16,7 +16,9 @@ describe("Donation withdrawal functions", function () {
     ({ templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE }));
     [owner, priest, user1, user2, user3, recipient] = accounts;
 
-    const DonationToken = await ethers.getContractFactory("TestToken");
+    const DonationToken = await ethers.getContractFactory(
+      "contracts/mocks/TestToken.sol:TestToken"
+    );
     donationToken = await DonationToken.deploy("Donation Token", "DON", 18);
     await donationToken.waitForDeployment();
 

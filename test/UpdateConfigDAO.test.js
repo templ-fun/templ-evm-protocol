@@ -18,7 +18,9 @@ describe("updateConfigDAO", function () {
         ({ templ, token, accounts, priest } = await deployTempl({ entryFee: ENTRY_FEE }));
         [, , member] = accounts;
 
-        const Token = await ethers.getContractFactory("TestToken");
+        const Token = await ethers.getContractFactory(
+            "contracts/mocks/TestToken.sol:TestToken"
+        );
         newToken = await Token.deploy("New Token", "NEW", 18);
         await newToken.waitForDeployment();
 
@@ -104,7 +106,9 @@ describe("updateConfigDAO", function () {
         const [priest, m1, m2, m3, m4, m5] = await ethers.getSigners();
 
         // Deploy tokens with 0 decimals to force remainder
-        const Token = await ethers.getContractFactory("TestToken");
+        const Token = await ethers.getContractFactory(
+            "contracts/mocks/TestToken.sol:TestToken"
+        );
         const token0 = await Token.deploy("Test Token", "TEST", 0);
         await token0.waitForDeployment();
         const newToken0 = await Token.deploy("New Token", "NEW", 0);
