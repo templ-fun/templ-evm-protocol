@@ -1,0 +1,135 @@
+# Test Locally (Fast Path)
+
+This guide spins up a full local stack (Hardhat + backend + frontend) and lets you use pre‑generated wallets in MetaMask to act as the priest and a member. It uses Hardhat’s default accounts; never reuse these keys on real networks.
+
+## Prerequisites
+
+- Node >= 22.18.0
+- One terminal per service (or use tmux)
+
+## 1) Start a local chain
+
+Terminal A:
+
+```
+npm run node
+```
+
+This boots Hardhat at `http://127.0.0.1:8545` with 20 funded test accounts.
+
+## 2) Start the backend (local XMTP + Hardhat)
+
+Create `backend/.env` with the local RPC and a bot key (Hardhat account #0):
+
+```
+RPC_URL=http://127.0.0.1:8545
+BOT_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+ALLOWED_ORIGINS=http://localhost:5173
+ENABLE_DEBUG_ENDPOINTS=1
+```
+
+Terminal B:
+
+```
+npm --prefix backend start
+```
+
+The backend listens on `http://localhost:3001`.
+
+## 3) Start the frontend (Vite dev)
+
+Terminal C:
+
+```
+npm --prefix frontend run dev
+```
+
+Open `http://localhost:5173` in your browser.
+
+Tip: the app defaults to XMTP dev when running on `localhost`.
+
+## 4) Import pre‑generated local wallets into MetaMask
+
+Add the Hardhat network in MetaMask:
+
+- Network name: Hardhat
+- RPC URL: `http://127.0.0.1:8545`
+- Chain ID: `31337`
+- Currency: ETH
+
+Import these private keys (addresses are shown for convenience):
+
+- Backend bot (do not use in UI):
+  - `0xac0974…ff80` → `0xf39f…2266`
+- Priest (use this first in the UI):
+  - `0x7c8521…07a6` → `0x90F7…b906`
+- Member (use after deploying):
+  - `0x47e179…926a` → `0x15d3…6A65`
+- Optional delegate:
+  - `0x8b3a35…ffba` → `0x9965…A4dc`
+
+These are Hardhat defaults, funded automatically.
+
+## 5) Deploy a test ERC‑20 token locally
+
+Use Hardhat console (Terminal A or a new one):
+
+```
+npx hardhat console --network localhost
+```
+
+In the console:
+
+```
+const [deployer] = await ethers.getSigners();
+const Token = await ethers.getContractFactory("TestToken");
+const token = await Token.deploy("Test", "TEST", 18);
+await token.waitForDeployment();
+token.target
+
+// Fund priest and member with TEST tokens
+await token.mint("0x90F79bf6EB2c4f870365E785982E1f101E93b906", ethers.parseEther("1000000"));
+await token.mint("0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65", ethers.parseEther("1000000"));
+```
+
+Copy the printed `token.target` address.
+
+## 6) Create a Templ (priest)
+
+In the frontend (with the Priest wallet selected):
+
+1. Click `Connect Wallet`.
+2. Go to `Create`.
+3. Fill:
+   - Token address: paste the `token.target` from step 5
+   - Protocol fee recipient: `0x70997970C51812dc3A010C7d01b50e0d17dc79C8` (Hardhat #1)
+   - Entry fee: `100` (must be ≥10 and divisible by 10)
+   - Leave vote weights default
+4. Click `Deploy`.
+
+You’ll land in `Chat` with the group created. The header shows the contract short address.
+
+## 7) Join as a member
+
+Switch MetaMask to the Member wallet (`0x15d3…6A65`). In the app:
+
+1. Click `Connect Wallet`.
+2. Go to `Join`.
+3. Paste the Templ contract address you just deployed.
+4. Click `Purchase & Join` (the UI approves tokens and purchases access, then connects to chat).
+
+The chat auto‑loads the last 100 messages and any past proposals. Use “Load previous” to page older history.
+
+## 8) Try governance in chat
+
+- Click `Propose vote` (priest or any member): set a title and use “Pause DAO” quick action (encodes `setPausedDAO(true)`). Submit and sign the tx.
+- A poll bubble appears in chat.
+- Vote via `Vote Yes/No`; each voter signs their tx.
+- If you’re the priest, an `Execute` button appears after the voting period (or advance time on Hardhat).
+
+## Troubleshooting
+
+- Backend CORS: update `ALLOWED_ORIGINS` in `backend/.env` if your frontend origin differs.
+- Ports in use: stop stray `:8545`, `:3001`, or `:5173` processes before restarting.
+- XMTP boot time: the first run may take ~20–60s while the SDK initializes identity and device sync. Subsequent runs are faster.
+
