@@ -20,7 +20,8 @@
     "prepare": "husky",
     "test:all": "npm test && npm run slither:ci && npm --prefix backend run typecheck && npm --prefix frontend run typecheck && npm --prefix backend test && npm --prefix backend run lint && VITEST_FORCE_CLEAN_EXIT=1 npm --prefix frontend test && npm --prefix frontend run lint && npm --prefix frontend run build && npm --prefix frontend run test:e2e",
     "xmtp:local:up": "bash -lc 'cd xmtp-local-node && ./up'",
-    "xmtp:local:down": "bash -lc 'cd xmtp-local-node && ./down'"
+    "xmtp:local:down": "bash -lc 'cd xmtp-local-node && ./down'",
+    "gen:wallets": "node scripts/gen-wallets.js"
   },
   "keywords": [
     "solidity",

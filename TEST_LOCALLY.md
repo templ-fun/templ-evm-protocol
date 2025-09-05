@@ -48,7 +48,21 @@ Open `http://localhost:5173` in your browser.
 
 Tip: the app defaults to XMTP dev when running on `localhost`.
 
-## 4) Import pre‑generated local wallets into MetaMask
+## 4) Generate fresh wallets (avoid XMTP install caps)
+
+By default, Hardhat’s first 20 accounts are static. XMTP imposes per‑address installation limits over time. For clean local tests, generate fresh wallets and fund them from Hardhat #0:
+
+```
+npm run gen:wallets
+```
+
+This writes `wallets.local.json` and prints private keys for import. You can also mint TestToken to them in one go if you already deployed the token:
+
+```
+npm run gen:wallets -- --token <TestTokenAddress>
+```
+
+## 5) Import wallets into MetaMask
 
 Add the Hardhat network in MetaMask:
 
@@ -70,7 +84,7 @@ Import these private keys (addresses are shown for convenience):
 
 These are Hardhat defaults, funded automatically.
 
-## 5) Deploy a test ERC‑20 token locally
+## 6) Deploy a test ERC‑20 token locally
 
 Use Hardhat console (Terminal A or a new one):
 
@@ -94,7 +108,7 @@ await token.mint("0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65", ethers.parseEther
 
 Copy the printed `token.target` address.
 
-## 6) Create a Templ (priest)
+## 7) Create a Templ (priest)
 
 In the frontend (with the Priest wallet selected):
 
@@ -109,7 +123,7 @@ In the frontend (with the Priest wallet selected):
 
 You’ll land in `Chat` with the group created. The header shows the contract short address.
 
-## 7) Join as a member
+## 8) Join as a member
 
 Switch MetaMask to the Member wallet (`0x15d3…6A65`). In the app:
 
@@ -120,7 +134,7 @@ Switch MetaMask to the Member wallet (`0x15d3…6A65`). In the app:
 
 The chat auto‑loads the last 100 messages and any past proposals. Use “Load previous” to page older history.
 
-## 8) Try governance in chat
+## 9) Try governance in chat
 
 - Click `Propose vote` (priest or any member): set a title and use “Pause DAO” quick action (encodes `setPausedDAO(true)`). Submit and sign the tx.
 - A poll bubble appears in chat.
@@ -132,4 +146,3 @@ The chat auto‑loads the last 100 messages and any past proposals. Use “Load 
 - Backend CORS: update `ALLOWED_ORIGINS` in `backend/.env` if your frontend origin differs.
 - Ports in use: stop stray `:8545`, `:3001`, or `:5173` processes before restarting.
 - XMTP boot time: the first run may take ~20–60s while the SDK initializes identity and device sync. Subsequent runs are faster.
-
