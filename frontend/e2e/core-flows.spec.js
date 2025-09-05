@@ -426,29 +426,94 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
     console.log('Sent via UI');
     await expect(page.locator('.messages')).toContainText(body, { timeout: 30000 });
 
-    // Core Flow 5–7: Proposal create, vote, execute (protocol-level)
-    console.log('Core Flow 5–7: Proposal lifecycle via protocol');
-      // Core Flow 5–7 via protocol using a separate member wallet to avoid nonce issues
-      console.log('Core Flow 5–7: Proposal lifecycle (protocol)');
+    // Core Flow 5–7: Proposal create and vote via UI; execute via priest (protocol)
+    console.log('Core Flow 5–7: Proposal lifecycle via UI + protocol');
+    // Switch back to the original UI wallet to avoid join-time equality edge cases
+    await page.reload();
+    await page.waitForLoadState('domcontentloaded');
+    await page.exposeFunction('e2e_ui_sign', async ({ message }) => {
+      if (typeof message === 'string' && message.startsWith('0x')) {
+        return await testWallet.signMessage(ethers.getBytes(message));
+      }
+      return await testWallet.signMessage(message);
+    });
+    await page.exposeFunction('e2e_ui_send', async (tx) => {
+      const req = {
+        to: tx.to || undefined,
+        data: tx.data || undefined,
+        value: tx.value ? BigInt(tx.value) : undefined,
+        gasPrice: tx.gasPrice ? BigInt(tx.gasPrice) : undefined,
+        gasLimit: tx.gas || tx.gasLimit ? BigInt(tx.gas || tx.gasLimit) : undefined,
+      };
+      const resp = await testWallet.sendTransaction(req);
+      return resp.hash;
+    });
+    await page.evaluate(async ({ address }) => {
+      window.ethereum = {
+        isMetaMask: true,
+        selectedAddress: address,
+        request: async ({ method, params }) => {
+          if (method === 'eth_requestAccounts' || method === 'eth_accounts') return [address];
+          if (method === 'eth_chainId') return '0x7a69';
+          if (method === 'personal_sign' || method === 'eth_sign') {
+            const data = (params && params[0]) || '';
+            // @ts-ignore
+            return await window.e2e_ui_sign({ message: data });
+          }
+          if (method === 'eth_sendTransaction') {
+            const [tx] = params || [];
+            // @ts-ignore
+            return await window.e2e_ui_send(tx);
+          }
+          // passthrough
+          const response = await fetch('http://127.0.0.1:8545', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ jsonrpc: '2.0', method, params, id: 1 })
+          });
+          const result = await response.json();
+          if (result.error) throw new Error(result.error.message);
+          return result.result;
+        },
+        on: () => {},
+        removeListener: () => {}
+      };
+    }, { address: testAddress });
+    await page.click('button:has-text("Connect Wallet")');
+    await expect(page.locator('.status')).toContainText('Messaging client ready', { timeout: 15000 });
+    await page.click('button:has-text("Chat")');
+    // Ensure proposal is created in a later block than the member purchase to avoid equality edge case
+    await fetch('http://localhost:8545', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'evm_increaseTime', params: [1] }) });
+    await fetch('http://localhost:8545', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'evm_mine', params: [] }) });
+    await page.click('button:has-text("Propose vote")');
+    await page.fill('input[placeholder="Title"]', 'Pause DAO');
+    await page.click('button:has-text("Pause DAO")');
+    await page.click('button:has-text("Submit Proposal")');
+    // Wait for poll item to appear in chat
+    await expect(page.locator('.chat-item--poll')).toBeVisible({ timeout: 60000 });
+    // Vote yes via UI
+    await page.click('.chat-item--poll >> text=Vote Yes');
+    console.log('Clicked Vote Yes via UI');
+    // Resolve latest proposal id
+      const templPriest = new ethers.Contract(templAddress, templAbi, wallets.priest);
+      const lastIdBN1 = await templPriest.proposalCount();
+      const lastId1 = Number(lastIdBN1) - 1;
+    // Verify UI voter recorded on-chain
+      await expect.poll(async () => {
+        const [has, ] = await templPriest.hasVoted(lastId1, testAddress);
+        return has;
+      }, { timeout: 15000 }).toBe(true);
+    // Advance time and execute via priest programmatically
       const member = wallets.member;
       const templMember = new ethers.Contract(templAddress, templAbi, member);
       const provider = templMember.runner.provider;
-      const memberAddr = await member.getAddress();
-      let nonceBase = await provider.getTransactionCount(memberAddr);
-      // Membership already purchased earlier for the member; skip approve/purchase here
-      const iface = new ethers.Interface(['function setPausedDAO(bool)']);
-      const callData = iface.encodeFunctionData('setPausedDAO', [true]);
-      // Explicit nonces after waits to avoid node scheduling edge cases
-      let tx = await templMember.createProposal('Test Proposal', 'Testing', callData, 0, { nonce: nonceBase++ });
-      await tx.wait();
-      tx = await templMember.vote(0, true, { nonce: nonceBase++ });
-      await tx.wait();
       await fetch('http://localhost:8545', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'evm_increaseTime', params: [7 * 24 * 60 * 60] }) });
       await fetch('http://localhost:8545', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'evm_mine', params: [] }) });
-      const templPriest = new ethers.Contract(templAddress, templAbi, wallets.priest);
       const priestAddr = await wallets.priest.getAddress();
       let priestNonce = await provider.getTransactionCount(priestAddr);
-      tx = await templPriest.executeProposal(0, { nonce: priestNonce });
+      const lastIdBN = await templPriest.proposalCount();
+      const lastId = Number(lastIdBN) - 1;
+      const tx = await templPriest.executeProposal(lastId, { nonce: priestNonce });
       await tx.wait();
       const templFinal = new ethers.Contract(templAddress, templAbi, wallets.priest);
       expect(await templFinal.paused()).toBe(true);

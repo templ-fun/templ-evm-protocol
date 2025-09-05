@@ -12,8 +12,6 @@ import {
   executeProposal,
   watchProposals,
   fetchActiveMutes,
-  delegateMute,
-  muteMember,
   listTempls,
   getTreasuryInfo,
   getClaimable
@@ -59,17 +57,22 @@ function App() {
   const [profileName, setProfileName] = useState('');
   const [profileAvatar, setProfileAvatar] = useState('');
   const [profileOpen, setProfileOpen] = useState(false);
-  const [proposalTitle, setProposalTitle] = useState('');
-  const [proposalDesc, setProposalDesc] = useState('');
-  const [proposalCalldata, setProposalCalldata] = useState('');
   const [mutes, setMutes] = useState([]);
   const [templList, setTemplList] = useState([]);
   const [treasuryInfo, setTreasuryInfo] = useState(null);
   const [claimable, setClaimable] = useState(null);
+  const [showInfo, setShowInfo] = useState(false);
+  const [proposeOpen, setProposeOpen] = useState(false);
+  const [proposeTitle, setProposeTitle] = useState('');
+  const [proposeDesc, setProposeDesc] = useState('');
+  const [proposeAction, setProposeAction] = useState('none'); // none | pause | unpause
+  const [toast, setToast] = useState('');
+  const messagesRef = useRef(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [hasMoreHistory, setHasMoreHistory] = useState(false);
+  const oldestNsRef = useRef(null); // bigint
   
   // muting form
-  const [muteAddress, setMuteAddress] = useState('');
-  const [delegateAddress, setDelegateAddress] = useState('');
   const [isPriest, setIsPriest] = useState(false);
 
   // deployment form
@@ -86,7 +89,12 @@ function App() {
   const lastProfileBroadcastRef = useRef(0);
 
   function pushStatus(msg) {
-    setStatus((s) => [...s, msg]);
+    setStatus((s) => [...s, String(msg)]);
+    try {
+      setToast(String(msg));
+      window.clearTimeout(window.__templToastT);
+      window.__templToastT = window.setTimeout(() => setToast(''), 1800);
+    } catch {}
   }
 
   // Minimal debug logger: prints only in dev or when explicitly enabled for e2e
@@ -294,6 +302,55 @@ function App() {
   useEffect(() => {
     if (!group) return;
     let cancelled = false;
+    // Load initial history (last 100)
+    (async () => {
+      try {
+        setHistoryLoading(true);
+        const batch = await group.messages?.({ limit: BigInt(100) });
+        const list = Array.isArray(batch) ? batch.slice() : [];
+        // sort ascending by time so chronology is natural
+        list.sort((a, b) => (a.sentAtNs < b.sentAtNs ? -1 : a.sentAtNs > b.sentAtNs ? 1 : 0));
+        // track earliest
+        if (list.length > 0) oldestNsRef.current = list[0].sentAtNs;
+        setHasMoreHistory(list.length === 100);
+        // transform and seed messages
+        const transformed = list.map((dm) => {
+          let raw = '';
+          try { raw = (typeof dm.content === 'string') ? dm.content : (dm.fallback || ''); } catch {}
+          let parsed = null;
+          try { parsed = JSON.parse(raw); } catch {}
+          if (parsed && parsed.type === 'proposal') {
+            const id = Number(parsed.id);
+            const title = String(parsed.title || `Proposal #${id}`);
+            setProposalsById((prev) => ({ ...prev, [id]: { ...(prev[id]||{}), id, title, yes: (prev[id]?.yes || 0), no: (prev[id]?.no || 0) } }));
+            return { mid: dm.id, kind: 'proposal', senderAddress: '', proposalId: id, title };
+          }
+          if (parsed && parsed.type === 'vote') {
+            const id = Number(parsed.id);
+            const support = Boolean(parsed.support);
+            setProposalsById((prev) => ({ ...prev, [id]: { ...(prev[id]||{ id, yes:0, no:0 }), yes: (prev[id]?.yes || 0) + (support ? 1 : 0), no: (prev[id]?.no || 0) + (!support ? 1 : 0) } }));
+            return null;
+          }
+          if (parsed && (parsed.type === 'templ-created' || parsed.type === 'member-joined')) {
+            return { mid: dm.id, kind: 'system', senderAddress: '', content: parsed.type === 'templ-created' ? 'Templ created' : 'Member joined' };
+          }
+          return { mid: dm.id, kind: 'text', senderAddress: '', content: raw };
+        }).filter(Boolean);
+        setMessages((prev) => {
+          if (prev.length === 0) return transformed;
+          // Merge without dup by mid or by proposal id
+          const seen = new Set(prev.map((m) => m.mid).filter(Boolean));
+          const merged = [...prev];
+          for (const m of transformed) {
+            if (m.mid && seen.has(m.mid)) continue;
+            if (m.kind === 'proposal' && merged.some((it) => it.kind === 'proposal' && Number(it.proposalId) === Number(m.proposalId))) continue;
+            merged.push(m);
+          }
+          return merged;
+        });
+      } catch {}
+      finally { setHistoryLoading(false); }
+    })();
     const stream = async () => {
       for await (const msg of await group.streamMessages()) {
         if (cancelled) break;
@@ -313,7 +370,11 @@ function App() {
           const id = Number(parsed.id);
           const title = String(parsed.title || `Proposal #${id}`);
           setProposalsById((prev) => ({ ...prev, [id]: { ...(prev[id]||{}), id, title, yes: (prev[id]?.yes || 0), no: (prev[id]?.no || 0) } }));
-          setMessages((m) => [...m, { kind: 'proposal', senderAddress: from, proposalId: id, title }]);
+          setMessages((m) => {
+            // dedupe by proposal id in message list
+            if (m.some((it) => it.kind === 'proposal' && Number(it.proposalId) === id)) return m;
+            return [...m, { kind: 'proposal', senderAddress: from, proposalId: id, title }];
+          });
           continue;
         }
         if (parsed && parsed.type === 'vote') {
@@ -450,9 +511,15 @@ function App() {
       templAddress,
       templArtifact,
       onProposal: (p) => {
-        setProposals((prev) => [...prev, { ...p, yes: 0, no: 0 }]);
-        setProposalsById((map) => ({ ...map, [p.id]: { id: p.id, title: p.title, yes: 0, no: 0 } }));
-        setMessages((m) => [...m, { kind: 'proposal', senderAddress: p.proposer?.toLowerCase?.() || '', proposalId: p.id, title: p.title }]);
+        setProposals((prev) => {
+          if (prev.some((x) => x.id === p.id)) return prev;
+          return [...prev, { ...p, yes: 0, no: 0 }];
+        });
+        setProposalsById((map) => ({ ...map, [p.id]: { id: p.id, title: p.title, yes: map[p.id]?.yes || 0, no: map[p.id]?.no || 0 } }));
+        setMessages((m) => {
+          if (m.some((it) => it.kind === 'proposal' && Number(it.proposalId) === p.id)) return m;
+          return [...m, { kind: 'proposal', senderAddress: p.proposer?.toLowerCase?.() || '', proposalId: p.id, title: p.title }];
+        });
       },
       onVote: (v) => {
         setProposals((prev) => prev.map((p) => p.id === v.id ? { ...p, [v.support ? 'yes' : 'no']: (p[v.support ? 'yes' : 'no'] || 0) + 1 } : p));
@@ -500,6 +567,15 @@ function App() {
     })();
   }, []);
 
+  // Restore last used templ address on reload so chat and watchers initialize
+  useEffect(() => {
+    if (templAddress) return;
+    try {
+      const last = localStorage.getItem('templ:lastAddress');
+      if (last && ethers.isAddress(last)) setTemplAddress(last);
+    } catch {}
+  }, [templAddress]);
+
   // Sync query param for join prefill
   useEffect(() => {
     if (path === '/join') {
@@ -525,6 +601,48 @@ function App() {
     })();
   }, [signer, templAddress, walletAddress, proposals, groupConnected]);
 
+  // Persist and restore chat state (messages + proposals) per group/templ for quick reloads
+  useEffect(() => {
+    // restore when groupId or templAddress available
+    try {
+      const gid = (groupId || '').toLowerCase();
+      if (gid) {
+        const raw = localStorage.getItem(`templ:messages:${gid}`);
+        if (raw) {
+          const arr = JSON.parse(raw);
+          if (Array.isArray(arr)) setMessages(arr);
+        }
+      }
+    } catch {}
+    try {
+      const addr = (templAddress || '').toLowerCase();
+      if (addr) {
+        const raw = localStorage.getItem(`templ:proposals:${addr}`);
+        if (raw) {
+          const map = JSON.parse(raw);
+          if (map && typeof map === 'object') setProposalsById(map);
+        }
+      }
+    } catch {}
+  }, [groupId, templAddress]);
+
+  useEffect(() => {
+    try {
+      const gid = (groupId || '').toLowerCase();
+      if (!gid) return;
+      const toSave = messages.slice(-200); // cap
+      localStorage.setItem(`templ:messages:${gid}`, JSON.stringify(toSave));
+    } catch {}
+  }, [messages, groupId]);
+
+  useEffect(() => {
+    try {
+      const addr = (templAddress || '').toLowerCase();
+      if (!addr) return;
+      localStorage.setItem(`templ:proposals:${addr}`, JSON.stringify(proposalsById));
+    } catch {}
+  }, [proposalsById, templAddress]);
+
   async function handleSend() {
     if (!messageInput) return;
     try {
@@ -542,6 +660,14 @@ function App() {
       console.error('Send failed', err);
     }
   }
+
+  // Auto-scroll to bottom on new messages
+  useEffect(() => {
+    try {
+      const el = messagesRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+    } catch {}
+  }, [messages]);
 
   function saveProfileLocally({ name, avatar }) {
     try {
@@ -571,23 +697,6 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [group, profileName]);
 
-  async function handlePropose() {
-    if (!templAddress || !signer) return;
-    await proposeVote({
-      ethers,
-      signer,
-      templAddress,
-      templArtifact,
-      title: proposalTitle,
-      description: proposalDesc,
-      callData: proposalCalldata
-    });
-    setProposalTitle('');
-    setProposalDesc('');
-    setProposalCalldata('');
-    pushStatus('✅ Proposal submitted');
-  }
-
   async function handleVote(id, support) {
     if (!templAddress || !signer) return;
     await voteOnProposal({
@@ -600,40 +709,8 @@ function App() {
     });
   }
 
-  async function handleMute() {
-    if (!templAddress || !signer || !muteAddress) return;
-    try {
-      const mutedUntil = await muteMember({
-        signer,
-        contractAddress: templAddress,
-        moderatorAddress: walletAddress,
-        targetAddress: muteAddress
-      });
-      alert(`Muted ${muteAddress} until ${mutedUntil || 'indefinite'}`);
-      setMuteAddress('');
-      // Refresh mutes
-      const data = await fetchActiveMutes({ contractAddress: templAddress });
-      setMutes(data.map((m) => m.address.toLowerCase()));
-    } catch (err) {
-      alert('Mute failed: ' + err.message);
-    }
-  }
-
-  async function handleDelegate() {
-    if (!templAddress || !signer || !delegateAddress) return;
-    try {
-      const delegated = await delegateMute({
-        signer,
-        contractAddress: templAddress,
-        priestAddress: walletAddress,
-        delegateAddress
-      });
-      alert(delegated ? `Delegated muting power to ${delegateAddress}` : 'Delegation removed');
-      setDelegateAddress('');
-    } catch (err) {
-      alert('Delegate failed: ' + err.message);
-    }
-  }
+  // moderation actions are available via contract-level APIs and backend endpoints,
+  // but there is no dedicated form in the chat UI anymore
 
   async function handleExecuteProposal(proposalId) {
     if (!templAddress || !signer) return;
@@ -715,33 +792,18 @@ function App() {
         </div>
       </div>
 
-      <div className="max-w-screen-md w-full mx-auto px-4 py-4 flex-1">
-        {/* Status area (shared) */}
-        <div className="status mb-4">
-          <h3 className="text-lg font-semibold mb-2">Run Status</h3>
-          <div className="status-items text-sm space-y-1">
-            {status.slice(-8).map((s, i) => (
-              <div key={i}>{s}</div>
-            ))}
-          </div>
-        </div>
-
-        {/* Contract info (if known) */}
+      <div className="max-w-screen-md w-full mx-auto px-4 py-4 flex-1 flex flex-col min-h-0">
+        {/* Hidden debug payloads for tooling if needed */}
         {templAddress && (
           <div
-            className="deploy-info mb-4 text-sm"
             data-testid="deploy-info"
             data-contract-address={templAddress}
             data-group-id={groupId}
-          >
-            <p>
-              Contract: <button className="underline underline-offset-4" onClick={() => copyToClipboard(templAddress)}>{shorten(templAddress)}</button>
-            </p>
-            <p>
-              Group ID: <button className="underline underline-offset-4" onClick={() => copyToClipboard(groupId)}>{shorten(groupId)}</button>
-            </p>
-          </div>
+            style={{ position: 'absolute', left: '-9999px', width: '1px', height: '1px', opacity: 0 }}
+          />
         )}
+
+        {/* Contract info block removed from main view; accessible via Info drawer in Chat */}
 
         {/* Routes */}
         {path === '/' && (
@@ -798,7 +860,7 @@ function App() {
         )}
 
         {path === '/chat' && (
-          <div className="chat space-y-3">
+          <div className="chat-shell">
             <div className="chat-header flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="avatar avatar--group" aria-hidden />
@@ -812,32 +874,107 @@ function App() {
               <div className="flex items-center gap-2">
                 {groupConnected && <span className="text-xs text-green-600" data-testid="group-connected">● Connected</span>}
                 {!groupConnected && <span className="text-xs text-black/60">Connecting…</span>}
+                <button className="btn" onClick={() => setProposeOpen(true)}>Propose vote</button>
+                <button className="btn" onClick={() => {
+                  try {
+                    const el = messagesRef.current;
+                    if (!el) return;
+                    const poll = el.querySelector('.chat-item--poll');
+                    if (poll && poll.scrollIntoView) poll.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  } catch {}
+                }}>See open votes</button>
+                <button className="btn" onClick={() => setShowInfo((v) => !v)}>{showInfo ? 'Hide' : 'Info'}</button>
               </div>
             </div>
-            <div className="text-sm text-black/70">DAO Status: {paused ? 'Paused' : 'Active'}</div>
 
-            {/* Stats */}
+            {/* Always-on brief stats */}
             {templAddress && (
-              <div className="space-y-1">
-                <div>Treasury: {treasuryInfo?.treasury || '0'}</div>
-                <div>Total Burned: {treasuryInfo?.totalBurnedAmount || '0'}</div>
-                <div>Claimable (you): {claimable || '0'}</div>
-                <div className="pt-2">
-                  <button className="px-3 py-1 rounded bg-primary text-black font-semibold" onClick={() => navigate('/create')}>Create Proposal</button>
+              <div className="text-xs text-black/70 px-1 py-1">
+                Treasury: {treasuryInfo?.treasury || '0'} · Burned: {treasuryInfo?.totalBurnedAmount || '0'}
+              </div>
+            )}
+
+            {showInfo && (
+              <div className="drawer my-2">
+                <div className="drawer-title">Group Info</div>
+                <div className="drawer-grid">
+                  <div className="text-sm text-black/70">DAO Status: {paused ? 'Paused' : 'Active'}</div>
+                  {templAddress && (
+                    <>
+                      <div className="text-sm">Treasury: {treasuryInfo?.treasury || '0'}</div>
+                      <div className="text-sm">Total Burned: {treasuryInfo?.totalBurnedAmount || '0'}</div>
+                      <div className="text-sm">Claimable (you): {claimable || '0'}</div>
+                      <div className="flex gap-2 items-center">
+                        <input className="flex-1 border border-black/20 rounded px-3 py-2" readOnly value={`${window.location.origin}/join?address=${templAddress}`} />
+                        <button className="btn" onClick={() => { navigator.clipboard?.writeText(`${window.location.origin}/join?address=${templAddress}`).catch(()=>{}); pushStatus('📋 Invite link copied'); }}>Copy Invite</button>
+                      </div>
+                      <div className="flex gap-2">
+                        <button className="btn btn-primary" onClick={() => navigate('/create')}>Create Proposal</button>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             )}
 
-            {/* Invite link */}
-            {templAddress && (
-              <div className="space-y-2">
-                <div>Invite Link</div>
-                <input className="w-full border border-black/20 rounded px-3 py-2" readOnly value={`${window.location.origin}/join?address=${templAddress}`} />
-                <button className="px-3 py-1 rounded border border-black/20" onClick={() => { navigator.clipboard?.writeText(`${window.location.origin}/join?address=${templAddress}`).catch(()=>{}); }}>Copy Invite</button>
+            <div ref={messagesRef} className="messages chat-main chat-list border border-black/10 rounded">
+            {hasMoreHistory && (
+              <div className="w-full flex justify-center py-1">
+                <button className="btn" disabled={historyLoading} onClick={async () => {
+                  if (!group || historyLoading) return;
+                  setHistoryLoading(true);
+                  const el = messagesRef.current;
+                  const prevHeight = el ? el.scrollHeight : 0;
+                  try {
+                    const before = oldestNsRef.current;
+                    const opts = before ? { limit: BigInt(100), sentBeforeNs: before } : { limit: BigInt(100) };
+                    const batch = await group.messages?.(opts);
+                    const list = Array.isArray(batch) ? batch.slice() : [];
+                    list.sort((a, b) => (a.sentAtNs < b.sentAtNs ? -1 : a.sentAtNs > b.sentAtNs ? 1 : 0));
+                    if (list.length > 0) oldestNsRef.current = list[0].sentAtNs;
+                    setHasMoreHistory(list.length === 100);
+                    const transformed = list.map((dm) => {
+                      let raw = '';
+                      try { raw = (typeof dm.content === 'string') ? dm.content : (dm.fallback || ''); } catch {}
+                      let parsed = null;
+                      try { parsed = JSON.parse(raw); } catch {}
+                      if (parsed && parsed.type === 'proposal') {
+                        const id = Number(parsed.id);
+                        const title = String(parsed.title || `Proposal #${id}`);
+                        setProposalsById((prev) => ({ ...prev, [id]: { ...(prev[id]||{}), id, title, yes: (prev[id]?.yes || 0), no: (prev[id]?.no || 0) } }));
+                        return { mid: dm.id, kind: 'proposal', senderAddress: '', proposalId: id, title };
+                      }
+                      if (parsed && parsed.type === 'vote') {
+                        const id = Number(parsed.id);
+                        const support = Boolean(parsed.support);
+                        setProposalsById((prev) => ({ ...prev, [id]: { ...(prev[id]||{ id, yes:0, no:0 }), yes: (prev[id]?.yes || 0) + (support ? 1 : 0), no: (prev[id]?.no || 0) + (!support ? 1 : 0) } }));
+                        return null;
+                      }
+                      if (parsed && (parsed.type === 'templ-created' || parsed.type === 'member-joined')) {
+                        return { mid: dm.id, kind: 'system', senderAddress: '', content: parsed.type === 'templ-created' ? 'Templ created' : 'Member joined' };
+                      }
+                      return { mid: dm.id, kind: 'text', senderAddress: '', content: raw };
+                    }).filter(Boolean);
+                    setMessages((prev) => {
+                      const seen = new Set(prev.map((m) => m.mid).filter(Boolean));
+                      const merged = [...transformed, ...prev.filter((m) => !m.mid || !seen.has(m.mid))];
+                      return merged;
+                    });
+                  } catch {}
+                  finally {
+                    setHistoryLoading(false);
+                    // maintain scroll position after prepending
+                    setTimeout(() => {
+                      const afterEl = messagesRef.current;
+                      if (el && afterEl) {
+                        const delta = afterEl.scrollHeight - prevHeight;
+                        afterEl.scrollTop = delta + afterEl.scrollTop;
+                      }
+                    }, 0);
+                  }
+                }}>Load previous</button>
               </div>
             )}
-
-          <div className="messages chat-list max-h-[60vh] overflow-auto border border-black/10 rounded p-2">
             {messages.map((m, i) => {
               if (m.kind === 'proposal') {
                 const pid = m.proposalId;
@@ -891,46 +1028,17 @@ function App() {
                 </div>
               );
             })}
-          </div>
-            <div className="flex gap-2">
+            </div>
+            <div className="chat-composer flex gap-2">
               <input className="flex-1 border border-black/20 rounded px-3 py-2" data-testid="chat-input" placeholder="Type a message" value={messageInput} onChange={(e) => setMessageInput(e.target.value)} />
               <button className="px-3 py-2 rounded bg-primary text-black font-semibold" data-testid="chat-send" onClick={handleSend} disabled={!group && !groupId}>Send</button>
             </div>
-
-            <div className="proposal-form space-y-2">
-              <h3 className="font-semibold">New Proposal</h3>
-              <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Title" value={proposalTitle} onChange={(e) => setProposalTitle(e.target.value)} />
-              <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Description" value={proposalDesc} onChange={(e) => setProposalDesc(e.target.value)} />
-              <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Call data" value={proposalCalldata} onChange={(e) => setProposalCalldata(e.target.value)} />
-              <button className="px-3 py-1 rounded bg-primary text-black font-semibold w-full sm:w-auto" onClick={handlePropose}>Propose</button>
-            </div>
-
-            {isPriest && (
-              <div className="muting-controls space-y-2">
-                <h3 className="font-semibold">Moderation Controls</h3>
-                <div className="mute-form flex gap-2">
-                  <input className="flex-1 border border-black/20 rounded px-3 py-2" placeholder="Address to mute" value={muteAddress} onChange={(e) => setMuteAddress(e.target.value)} />
-                  <button className="px-3 py-1 rounded border border-black/20" onClick={handleMute}>Mute Address</button>
-                </div>
-                <div className="delegate-form flex gap-2">
-                  <input className="flex-1 border border-black/20 rounded px-3 py-2" placeholder="Delegate moderation to address" value={delegateAddress} onChange={(e) => setDelegateAddress(e.target.value)} />
-                  <button className="px-3 py-1 rounded border border-black/20" onClick={handleDelegate}>Delegate</button>
-                </div>
-                {mutes.length > 0 && (
-                  <div className="active-mutes">
-                    <h4 className="font-semibold">Currently Muted:</h4>
-                {mutes.map((addr) => (
-                  <div key={addr} className="text-sm break-all">
-                    <button className="underline underline-offset-4" onClick={() => copyToClipboard(addr)}>{shorten(addr)}</button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
           </div>
         )}
       </div>
+
+      {/* Hidden status bucket for tests (not user-facing) */}
+      <div className="status" style={{ position: 'absolute', left: '-10000px', width: 0, height: 0, overflow: 'hidden' }}>{status.join('\n')}</div>
 
       {/* Profile Modal */}
       {profileOpen && (
@@ -951,6 +1059,60 @@ function App() {
               <button className="btn btn-primary" onClick={async () => { saveProfileLocally({ name: profileName, avatar: profileAvatar }); await broadcastProfileToGroup(); setProfileOpen(false); }}>Save</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Propose Modal */}
+      {proposeOpen && (
+        <div className="modal" role="dialog" aria-modal="true">
+          <div className="modal__backdrop" onClick={() => setProposeOpen(false)} />
+          <div className="modal__card">
+            <div className="modal__header">
+              <div className="modal__title">Propose a Vote</div>
+              <button className="modal__close" onClick={() => setProposeOpen(false)}>×</button>
+            </div>
+            <div className="modal__body">
+              <input className="w-full border border-black/20 rounded px-3 py-2 mb-2" placeholder="Title" value={proposeTitle} onChange={(e) => setProposeTitle(e.target.value)} />
+              <input className="w-full border border-black/20 rounded px-3 py-2 mb-3" placeholder="Description (optional)" value={proposeDesc} onChange={(e) => setProposeDesc(e.target.value)} />
+              <div className="text-sm mb-2">Quick Actions</div>
+              <div className="flex gap-2 mb-2">
+                <button className={`btn ${proposeAction==='pause'?'btn-primary':''}`} onClick={() => setProposeAction('pause')}>Pause DAO</button>
+                <button className={`btn ${proposeAction==='unpause'?'btn-primary':''}`} onClick={() => setProposeAction('unpause')}>Unpause DAO</button>
+                <button className={`btn ${proposeAction==='none'?'btn-primary':''}`} onClick={() => setProposeAction('none')}>Custom/None</button>
+              </div>
+              <div className="text-xs text-black/60">Tip: Pause/Unpause encodes the call data automatically.</div>
+            </div>
+            <div className="modal__footer">
+              <button className="btn" onClick={() => setProposeOpen(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={async () => {
+                try {
+                  if (!templAddress || !signer) return;
+                  let callData = '0x';
+                  if (proposeAction === 'pause' || proposeAction === 'unpause') {
+                    try {
+                      const iface = new ethers.Interface(['function setPausedDAO(bool)']);
+                      callData = iface.encodeFunctionData('setPausedDAO', [proposeAction === 'pause']);
+                    } catch {}
+                  }
+                  await proposeVote({ ethers, signer, templAddress, templArtifact, title: proposeTitle || 'Untitled', description: (proposeDesc || proposeTitle || 'Proposal'), callData });
+                  setProposeOpen(false);
+                  setProposeTitle('');
+                  setProposeDesc('');
+                  setProposeAction('none');
+                  pushStatus('✅ Proposal submitted');
+                } catch (err) {
+                  alert('Proposal failed: ' + (err?.message || String(err)));
+                }
+              }}>Submit Proposal</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast */}
+      {toast && (
+        <div className="fixed left-1/2 -translate-x-1/2 bottom-4 bg-black text-white text-sm px-3 py-2 rounded shadow">
+          {toast}
         </div>
       )}
     </div>
