@@ -248,7 +248,10 @@ function App() {
         pushStatus('🔄 Group created, waiting for connection');
       }
       // Move priest to chat interface
-      try { localStorage.setItem('templ:lastAddress', result.contractAddress); } catch {}
+      try {
+        localStorage.setItem('templ:lastAddress', result.contractAddress);
+        if (result.groupId) localStorage.setItem('templ:lastGroupId', String(result.groupId));
+      } catch {}
       navigate('/chat');
     } catch (err) {
       console.error('[app] deploy failed', err);
@@ -282,7 +285,10 @@ function App() {
         } else {
           pushStatus('🔄 Waiting for group discovery');
         }
-        try { localStorage.setItem('templ:lastAddress', templAddress); } catch {}
+        try {
+          localStorage.setItem('templ:lastAddress', templAddress);
+          if (result.groupId) localStorage.setItem('templ:lastGroupId', String(result.groupId));
+        } catch {}
         navigate('/chat');
       }
     } catch (err) {
@@ -569,12 +575,14 @@ function App() {
 
   // Restore last used templ address on reload so chat and watchers initialize
   useEffect(() => {
-    if (templAddress) return;
+    if (templAddress && groupId) return;
     try {
       const last = localStorage.getItem('templ:lastAddress');
       if (last && ethers.isAddress(last)) setTemplAddress(last);
+      const lastG = localStorage.getItem('templ:lastGroupId');
+      if (lastG && !groupId) setGroupId(lastG.replace(/^0x/i, ''));
     } catch {}
-  }, [templAddress]);
+  }, [templAddress, groupId]);
 
   // Sync query param for join prefill
   useEffect(() => {
