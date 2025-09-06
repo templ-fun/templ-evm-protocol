@@ -10,13 +10,14 @@ import {
   proposeVote,
   voteOnProposal,
   executeProposal,
+  claimMemberPool,
   watchProposals,
   fetchActiveMutes,
   listTempls,
   getTreasuryInfo,
   getClaimable
 } from './flows.js';
-import { syncXMTP } from '../../shared/xmtp.js';
+import { syncXMTP, waitForConversation } from '../../shared/xmtp.js';
 import './App.css';
 
 function App() {
@@ -61,6 +62,7 @@ function App() {
   const [templList, setTemplList] = useState([]);
   const [treasuryInfo, setTreasuryInfo] = useState(null);
   const [claimable, setClaimable] = useState(null);
+  const [claimLoading, setClaimLoading] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const [proposeOpen, setProposeOpen] = useState(false);
   const [proposeTitle, setProposeTitle] = useState('');
@@ -116,6 +118,14 @@ function App() {
     setWalletAddress(address);
     pushStatus('✅ Wallet connected');
     
+    // Proactively close any existing XMTP client before switching identities to avoid
+    // OPFS/db handle contention and duplicate streams across wallets during e2e runs.
+    try {
+      if (xmtp && typeof xmtp.close === 'function') {
+        await xmtp.close();
+      }
+    } catch {}
+
     // Use an XMTP-compatible signer wrapper for the browser SDK with inbox rotation
     const forcedEnv = import.meta.env.VITE_XMTP_ENV?.trim();
     const xmtpEnv = forcedEnv || (['localhost', '127.0.0.1'].includes(window.location.hostname) ? 'dev' : 'production');
@@ -169,6 +179,9 @@ function App() {
         throw err;
       }
     }
+    // Reset conversation state so the new identity discovers and streams afresh
+    setGroup(null);
+    setGroupConnected(false);
     const client = await createXmtpStable();
     setXmtp(client);
     dlog('[app] XMTP client created', { env: xmtpEnv, inboxId: client.inboxId });
@@ -179,23 +192,102 @@ function App() {
         if (agg) dlog('[app] XMTP aggregate stats at init:\n' + agg);
       }
     } catch {}
-    try {
-      if (import.meta.env.VITE_E2E_DEBUG === '1') {
+      try {
+        if (import.meta.env.VITE_E2E_DEBUG === '1') {
         // Expose limited debug helpers for tests only (built via Vite env)
-        window.__XMTP = client;
-        window.__xmtpList = async () => {
-          try { await syncXMTP(client); } catch {}
-          const list = await client.conversations.list();
-          return list.map(c => c.id);
-        };
-        window.__xmtpGetById = async (id) => {
-          try { await syncXMTP(client); } catch {}
-          try { return Boolean(await client.conversations.getConversationById(id)); }
-          catch { return false; }
-        };
-      }
-    } catch {}
-    pushStatus('✅ Messaging client ready');
+          window.__XMTP = client;
+          window.__xmtpList = async () => {
+            try { await syncXMTP(client); } catch {}
+            const list = await client.conversations.list();
+            return list.map(c => c.id);
+          };
+          window.__xmtpGetById = async (id) => {
+            try { await syncXMTP(client); } catch {}
+            try { return Boolean(await client.conversations.getConversationById(id)); }
+            catch { return false; }
+          };
+          window.__xmtpSendById = async (id, content) => {
+            try { await syncXMTP(client); } catch {}
+            try {
+              const conv = await client.conversations.getConversationById(String(id).replace(/^0x/i, ''));
+              if (conv) { await conv.send(String(content)); return true; }
+              return false;
+            } catch { return false; }
+          };
+          // Create a temporary XMTP client using a raw private key string (hex), optionally
+          // send a message to a specific conversation id, and return success. For e2e only.
+          window.__xmtpEnsureIdentity = async (privHex) => {
+            try {
+              const w = new ethers.Wallet(String(privHex));
+              const signer = {
+                getAddress: async () => w.address,
+                signMessage: async (message) => {
+                  let toSign;
+                  if (message instanceof Uint8Array) {
+                    try { toSign = ethers.toUtf8String(message); } catch { toSign = ethers.hexlify(message); }
+                  } else if (typeof message === 'string') {
+                    toSign = message;
+                  } else {
+                    toSign = String(message);
+                  }
+                  const sig = await w.signMessage(toSign);
+                  return ethers.getBytes(sig);
+                }
+              };
+              const tmp = await Client.create(signer, { env: xmtpEnv, appVersion: 'templ-e2e/0.1.0' });
+              const id = tmp.inboxId;
+              try { await tmp.close?.(); } catch {}
+              return id || '';
+            } catch { return ''; }
+          };
+          window.__xmtpSendAs = async ({ privHex, id, content }) => {
+            try {
+              const w = new ethers.Wallet(String(privHex));
+              const signer = {
+                getAddress: async () => w.address,
+                signMessage: async (message) => {
+                  let toSign;
+                  if (message instanceof Uint8Array) {
+                    try { toSign = ethers.toUtf8String(message); } catch { toSign = ethers.hexlify(message); }
+                  } else if (typeof message === 'string') {
+                    toSign = message;
+                  } else {
+                    toSign = String(message);
+                  }
+                  const sig = await w.signMessage(toSign);
+                  return ethers.getBytes(sig);
+                }
+              };
+              const tmp = await Client.create(signer, { env: xmtpEnv, appVersion: 'templ-e2e/0.1.0' });
+              const wanted = String(id).replace(/^0x/i, '');
+              let conv = null;
+              const end = Date.now() + 120_000;
+              while (Date.now() < end && !conv) {
+                try { await tmp.preferences?.inboxState?.(true); } catch {}
+                try { await syncXMTP(tmp); } catch {}
+                try {
+                  conv = await tmp.conversations.getConversationById(wanted);
+                  if (!conv) {
+                    const list = await tmp.conversations.list?.({ consentStates: ['allowed','unknown','denied'] }) || [];
+                    conv = list.find((c) => c.id === wanted) || null;
+                  }
+                } catch {}
+                if (!conv) await new Promise(r => setTimeout(r, 1000));
+              }
+              if (!conv) { try { await tmp.close?.(); } catch {}; return false; }
+              await conv.send(String(content));
+              try { await tmp.close?.(); } catch {}
+              return true;
+            } catch { return false; }
+          };
+          window.__pushMessage = (from, content) => {
+            try {
+              setMessages((m) => [...m, { kind: 'text', senderAddress: String(from || '').toLowerCase(), content: String(content || '') }]);
+            } catch {}
+          };
+        }
+      } catch {}
+      pushStatus('✅ Messaging client ready');
   }
 
   // Load persisted profile for this XMTP inbox and seed local cache
@@ -306,7 +398,7 @@ function App() {
   }, [groupId]);
 
   useEffect(() => {
-    if (!group) return;
+    if (!group || !xmtp) return;
     let cancelled = false;
     // Load initial history (last 100)
     (async () => {
@@ -321,6 +413,7 @@ function App() {
         setHasMoreHistory(list.length === 100);
         // transform and seed messages
         const transformed = list.map((dm) => {
+          const from = (dm.senderAddress || '').toLowerCase();
           let raw = '';
           try { raw = (typeof dm.content === 'string') ? dm.content : (dm.fallback || ''); } catch {}
           let parsed = null;
@@ -329,7 +422,7 @@ function App() {
             const id = Number(parsed.id);
             const title = String(parsed.title || `Proposal #${id}`);
             setProposalsById((prev) => ({ ...prev, [id]: { ...(prev[id]||{}), id, title, yes: (prev[id]?.yes || 0), no: (prev[id]?.no || 0) } }));
-            return { mid: dm.id, kind: 'proposal', senderAddress: '', proposalId: id, title };
+            return { mid: dm.id, kind: 'proposal', senderAddress: from, proposalId: id, title };
           }
           if (parsed && parsed.type === 'vote') {
             const id = Number(parsed.id);
@@ -338,9 +431,9 @@ function App() {
             return null;
           }
           if (parsed && (parsed.type === 'templ-created' || parsed.type === 'member-joined')) {
-            return { mid: dm.id, kind: 'system', senderAddress: '', content: parsed.type === 'templ-created' ? 'Templ created' : 'Member joined' };
+            return { mid: dm.id, kind: 'system', senderAddress: from, content: parsed.type === 'templ-created' ? 'Templ created' : 'Member joined' };
           }
-          return { mid: dm.id, kind: 'text', senderAddress: '', content: raw };
+          return { mid: dm.id, kind: 'text', senderAddress: from, content: raw };
         }).filter(Boolean);
         setMessages((prev) => {
           if (prev.length === 0) return transformed;
@@ -358,43 +451,49 @@ function App() {
       finally { setHistoryLoading(false); }
     })();
     const stream = async () => {
-      for await (const msg of await group.streamMessages()) {
-        if (cancelled) break;
-        const from = (msg.senderAddress || '').toLowerCase();
-        if (mutes.includes(from)) continue;
-        const raw = String(msg.content || '');
-        let parsed = null;
-        try { parsed = JSON.parse(raw); } catch {}
-        // Profile messages: update local profile cache
-        if (parsed && parsed.type === 'profile') {
-          const name = String(parsed.name || '').slice(0, 64);
-          const avatar = String(parsed.avatar || '').slice(0, 512);
-          setProfilesByAddress((prev) => ({ ...prev, [from]: { name, avatar } }));
-          continue;
+      try {
+        const wanted = String(group.id || '').replace(/^0x/i, '');
+        const s = await xmtp.conversations.streamAllMessages({
+          onError: () => {},
+        });
+        for await (const msg of s) {
+          if (cancelled) break;
+          const convId = String(msg?.conversationId || '').replace(/^0x/i, '');
+          if (!wanted || convId !== wanted) continue;
+          const from = (msg.senderAddress || '').toLowerCase();
+          if (mutes.includes(from)) continue;
+          const raw = String(msg.content || '');
+          let parsed = null;
+          try { parsed = JSON.parse(raw); } catch {}
+          if (parsed && parsed.type === 'profile') {
+            const name = String(parsed.name || '').slice(0, 64);
+            const avatar = String(parsed.avatar || '').slice(0, 512);
+            setProfilesByAddress((prev) => ({ ...prev, [from]: { name, avatar } }));
+            continue;
+          }
+          if (parsed && parsed.type === 'proposal') {
+            const id = Number(parsed.id);
+            const title = String(parsed.title || `Proposal #${id}`);
+            setProposalsById((prev) => ({ ...prev, [id]: { ...(prev[id]||{}), id, title, yes: (prev[id]?.yes || 0), no: (prev[id]?.no || 0) } }));
+            setMessages((m) => {
+              if (m.some((it) => it.kind === 'proposal' && Number(it.proposalId) === id)) return m;
+              return [...m, { kind: 'proposal', senderAddress: from, proposalId: id, title }];
+            });
+            continue;
+          }
+          if (parsed && parsed.type === 'vote') {
+            const id = Number(parsed.id);
+            const support = Boolean(parsed.support);
+            setProposalsById((prev) => ({ ...prev, [id]: { ...(prev[id]||{ id, yes:0, no:0 }), yes: (prev[id]?.yes || 0) + (support ? 1 : 0), no: (prev[id]?.no || 0) + (!support ? 1 : 0) } }));
+            continue;
+          }
+          if (parsed && (parsed.type === 'templ-created' || parsed.type === 'member-joined')) {
+            setMessages((m) => [...m, { kind: 'system', senderAddress: from, content: parsed.type === 'templ-created' ? 'Templ created' : `${shorten(parsed.address)} joined` }]);
+            continue;
+          }
+          setMessages((m) => [...m, { kind: 'text', senderAddress: from, content: raw }]);
         }
-        if (parsed && parsed.type === 'proposal') {
-          const id = Number(parsed.id);
-          const title = String(parsed.title || `Proposal #${id}`);
-          setProposalsById((prev) => ({ ...prev, [id]: { ...(prev[id]||{}), id, title, yes: (prev[id]?.yes || 0), no: (prev[id]?.no || 0) } }));
-          setMessages((m) => {
-            // dedupe by proposal id in message list
-            if (m.some((it) => it.kind === 'proposal' && Number(it.proposalId) === id)) return m;
-            return [...m, { kind: 'proposal', senderAddress: from, proposalId: id, title }];
-          });
-          continue;
-        }
-        if (parsed && parsed.type === 'vote') {
-          const id = Number(parsed.id);
-          const support = Boolean(parsed.support);
-          setProposalsById((prev) => ({ ...prev, [id]: { ...(prev[id]||{ id, yes:0, no:0 }), yes: (prev[id]?.yes || 0) + (support ? 1 : 0), no: (prev[id]?.no || 0) + (!support ? 1 : 0) } }));
-          continue;
-        }
-        if (parsed && (parsed.type === 'templ-created' || parsed.type === 'member-joined')) {
-          setMessages((m) => [...m, { kind: 'system', senderAddress: from, content: parsed.type === 'templ-created' ? 'Templ created' : `${shorten(parsed.address)} joined` }]);
-          continue;
-        }
-        setMessages((m) => [...m, { kind: 'text', senderAddress: from, content: raw }]);
-      }
+      } catch {}
     };
     stream();
     setGroupConnected(true);
@@ -402,7 +501,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [group, mutes]);
+  }, [group, xmtp, mutes]);
 
   // When we know the `groupId`, keep trying to resolve the group locally until found.
   useEffect(() => {
@@ -532,6 +631,30 @@ function App() {
         setProposalsById((map) => ({ ...map, [v.id]: { ...(map[v.id] || { id: v.id, yes:0, no:0 }), yes: (map[v.id]?.yes || 0) + (v.support ? 1 : 0), no: (map[v.id]?.no || 0) + (!v.support ? 1 : 0) } }));
       }
     });
+    // Poll on-chain proposal tallies to keep UI in sync even if events are missed
+    const contract = new ethers.Contract(templAddress, templArtifact.abi, signer);
+    const pollTallies = async () => {
+      try {
+        const count = Number(await contract.proposalCount());
+        for (let i = 0; i < count; i++) {
+          try {
+            const p = await contract.getProposal(i);
+            const yes = Number(p.yesVotes ?? p[3] ?? 0);
+            const no = Number(p.noVotes ?? p[4] ?? 0);
+            const title = String(p.title ?? p[1] ?? `Proposal #${i}`);
+            if (cancelled) return;
+            setProposalsById((map) => ({ ...map, [i]: { ...(map[i] || { id: i }), id: i, title: (map[i]?.title || title), yes, no } }));
+            setProposals((prev) => prev.map((it) => it.id === i ? { ...it, yes, no } : it));
+            // Ensure a poll bubble exists in chat
+            setMessages((m) => {
+              if (m.some((it) => it.kind === 'proposal' && Number(it.proposalId) === i)) return m;
+              return [...m, { kind: 'proposal', senderAddress: '', proposalId: i, title }];
+            });
+          } catch {}
+        }
+      } catch {}
+    };
+    pollTallies();
     // Poll paused state for display
     let cancelled = false;
     const checkPaused = async () => {
@@ -543,10 +666,12 @@ function App() {
     };
     checkPaused();
     const id = setInterval(checkPaused, 3000);
+    const idTallies = setInterval(pollTallies, 3000);
     return () => {
       stopWatching();
       cancelled = true;
       clearInterval(id);
+      clearInterval(idTallies);
     };
   }, [templAddress, signer]);
 
@@ -654,14 +779,26 @@ function App() {
   async function handleSend() {
     if (!messageInput) return;
     try {
-      if (group) {
-        const body = messageInput;
-        await sendMessage({ group, content: body });
-        // Local echo to ensure immediate UI feedback (stream may take time)
-        setMessages((m) => [...m, { senderAddress: walletAddress, content: body }]);
-      } else {
+      let activeGroup = group;
+      // If discovery lags, resolve the conversation on demand before sending
+      if (!activeGroup && xmtp && groupId) {
+        try {
+          activeGroup = await waitForConversation({ xmtp, groupId, retries: 30, delayMs: 1000 });
+          if (activeGroup) {
+            setGroup(activeGroup);
+            setGroupConnected(true);
+            pushStatus('✅ Group discovered');
+          }
+        } catch {}
+      }
+      if (!activeGroup) {
+        pushStatus('⏳ Connecting to group; please retry');
         return;
       }
+      const body = messageInput;
+      await sendMessage({ group: activeGroup, content: body });
+      // Local echo to ensure immediate UI feedback (stream may take time)
+      setMessages((m) => [...m, { senderAddress: walletAddress, content: body }]);
       setMessageInput('');
       pushStatus('✅ Message sent');
     } catch (err) {
@@ -737,6 +874,30 @@ function App() {
     }
   }
 
+  async function handleClaimFees() {
+    if (!templAddress || !signer) return;
+    setClaimLoading(true);
+    try {
+      await claimMemberPool({ ethers, signer, templAddress, templArtifact });
+      // Refresh claimable and treasury info after claim
+      try {
+        const info = await getTreasuryInfo({ ethers, providerOrSigner: signer, templAddress, templArtifact });
+        setTreasuryInfo(info);
+      } catch {}
+      try {
+        if (walletAddress) {
+          const c = await getClaimable({ ethers, providerOrSigner: signer, templAddress, templArtifact, memberAddress: walletAddress });
+          setClaimable(c);
+        }
+      } catch {}
+      pushStatus('✅ Rewards claimed');
+    } catch (err) {
+      alert('Claim failed: ' + (err?.message || String(err)));
+    } finally {
+      setClaimLoading(false);
+    }
+  }
+
   // Check if user is priest
   useEffect(() => {
     async function checkPriest() {
@@ -793,9 +954,7 @@ function App() {
             {walletAddress && (
               <button className="px-3 py-1 rounded border border-black/20" onClick={() => setProfileOpen(true)}>Profile</button>
             )}
-            {!walletAddress && (
-              <button className="px-3 py-1 rounded bg-primary text-black font-semibold" onClick={connectWallet}>Connect Wallet</button>
-            )}
+            <button className="px-3 py-1 rounded bg-primary text-black font-semibold" onClick={connectWallet}>Connect Wallet</button>
           </div>
         </div>
       </div>
@@ -898,7 +1057,7 @@ function App() {
             {/* Always-on brief stats */}
             {templAddress && (
               <div className="text-xs text-black/70 px-1 py-1">
-                Treasury: {treasuryInfo?.treasury || '0'} · Burned: {treasuryInfo?.totalBurnedAmount || '0'}
+                Treasury: {treasuryInfo?.treasury || '0'} · Burned: {treasuryInfo?.totalBurnedAmount || '0'} · Claimable: <span data-testid="claimable-amount">{claimable || '0'}</span>
               </div>
             )}
 
@@ -911,7 +1070,10 @@ function App() {
                     <>
                       <div className="text-sm">Treasury: {treasuryInfo?.treasury || '0'}</div>
                       <div className="text-sm">Total Burned: {treasuryInfo?.totalBurnedAmount || '0'}</div>
-                      <div className="text-sm">Claimable (you): {claimable || '0'}</div>
+                      <div className="text-sm flex items-center gap-2">
+                        <span>Claimable (you): <span data-testid="claimable-amount-info">{claimable || '0'}</span></span>
+                        <button className="btn btn-primary" data-testid="claim-fees" disabled={claimLoading || !claimable || claimable === '0'} onClick={handleClaimFees}>{claimLoading ? 'Claiming…' : 'Claim'}</button>
+                      </div>
                       <div className="flex gap-2 items-center">
                         <input className="flex-1 border border-black/20 rounded px-3 py-2" readOnly value={`${window.location.origin}/join?address=${templAddress}`} />
                         <button className="btn" onClick={() => { navigator.clipboard?.writeText(`${window.location.origin}/join?address=${templAddress}`).catch(()=>{}); pushStatus('📋 Invite link copied'); }}>Copy Invite</button>
@@ -998,7 +1160,7 @@ function App() {
                         <div className="chat-poll__bar is-yes" style={{ width: `${yesPct}%` }} />
                         <div className="chat-poll__bar is-no" style={{ width: `${noPct}%` }} />
                       </div>
-                      <div className="chat-poll__legend">Yes {poll.yes || 0} · No {poll.no || 0}</div>
+                      <div className="chat-poll__legend" data-testid="poll-legend">Yes <span data-testid="poll-yes-count">{poll.yes || 0}</span> · No <span data-testid="poll-no-count">{poll.no || 0}</span></div>
                       <div className="chat-poll__actions">
                         <button className="btn" onClick={() => handleVote(pid, true)}>Vote Yes</button>
                         <button className="btn" onClick={() => handleVote(pid, false)}>Vote No</button>
@@ -1086,6 +1248,7 @@ function App() {
               <div className="flex gap-2 mb-2">
                 <button className={`btn ${proposeAction==='pause'?'btn-primary':''}`} onClick={() => setProposeAction('pause')}>Pause DAO</button>
                 <button className={`btn ${proposeAction==='unpause'?'btn-primary':''}`} onClick={() => setProposeAction('unpause')}>Unpause DAO</button>
+                <button className={`btn ${proposeAction==='moveTreasuryToMe'?'btn-primary':''}`} onClick={() => setProposeAction('moveTreasuryToMe')}>Move Treasury To Me</button>
                 <button className={`btn ${proposeAction==='none'?'btn-primary':''}`} onClick={() => setProposeAction('none')}>Custom/None</button>
               </div>
               <div className="text-xs text-black/60">Tip: Pause/Unpause encodes the call data automatically.</div>
@@ -1100,6 +1263,13 @@ function App() {
                     try {
                       const iface = new ethers.Interface(['function setPausedDAO(bool)']);
                       callData = iface.encodeFunctionData('setPausedDAO', [proposeAction === 'pause']);
+                    } catch {}
+                  } else if (proposeAction === 'moveTreasuryToMe') {
+                    try {
+                      const me = await signer.getAddress();
+                      const iface = new ethers.Interface(['function withdrawAllTreasuryDAO(address recipient, string reason)']);
+                      callData = iface.encodeFunctionData('withdrawAllTreasuryDAO', [me, 'Tech demo payout']);
+                      if (!proposeTitle) setProposeTitle('Move Treasury to me');
                     } catch {}
                   }
                   await proposeVote({ ethers, signer, templAddress, templArtifact, title: proposeTitle || 'Untitled', description: (proposeDesc || proposeTitle || 'Proposal'), callData });

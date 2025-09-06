@@ -434,3 +434,13 @@ export async function getClaimable({ ethers, providerOrSigner, templAddress, tem
   const amount = await contract.getClaimablePoolAmount(memberAddress);
   return BigInt(amount).toString();
 }
+
+/**
+ * Claim member pool rewards for the connected wallet.
+ * @param {{ethers:any, signer:any, templAddress:string, templArtifact:any, txOptions?:any}} params
+ */
+export async function claimMemberPool({ ethers, signer, templAddress, templArtifact, txOptions = {} }) {
+  const contract = new ethers.Contract(templAddress, templArtifact.abi, signer);
+  const tx = await contract.claimMemberPool(txOptions);
+  await tx.wait();
+}
