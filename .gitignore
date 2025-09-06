@@ -39,3 +39,11 @@ deployments/
 
 # XMTP test databases
 xmtp-*.db3*
+
+# Test outputs
+test-results/
+frontend/test-results/
+backend/e2e-groups.db*
+coverage/
+frontend/coverage/
+backend/coverage/

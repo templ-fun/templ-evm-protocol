@@ -6,6 +6,7 @@ import { logger } from '../logger.js';
 
 export default function joinRouter({ xmtp, groups, hasPurchased, lastJoin }) {
   const router = express.Router();
+  const DISABLE_WAIT = process.env.DISABLE_XMTP_WAIT === '1' || process.env.NODE_ENV === 'test';
 
   router.post(
     '/join',
@@ -35,13 +36,14 @@ export default function joinRouter({ xmtp, groups, hasPurchased, lastJoin }) {
         // Resolve member inboxId and add explicitly by inboxId for maximum compatibility
         const memberIdentifier = { identifier: memberAddress.toLowerCase(), identifierKind: 0 };
         async function waitForInboxId(identifier, tries = 180) {
+          if (DISABLE_WAIT) return null;
           if (!xmtp?.findInboxIdByIdentifier) return null;
           for (let i = 0; i < tries; i++) {
             try {
               const found = await xmtp.findInboxIdByIdentifier(identifier);
               if (found) return found;
             } catch (e) { void e; }
-            await new Promise((r) => setTimeout(r, 1000));
+            await new Promise((r) => setTimeout(r, DISABLE_WAIT ? 1 : 1000));
           }
           return null;
         }

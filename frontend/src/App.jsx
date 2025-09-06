@@ -434,15 +434,10 @@ function App() {
         }).filter(Boolean);
         setMessages((prev) => {
           if (prev.length === 0) return transformed;
-          // Merge without dup by mid or by proposal id
-          const seen = new Set(prev.map((m) => m.mid).filter(Boolean));
-          const merged = [...prev];
-          for (const m of transformed) {
-            if (m.mid && seen.has(m.mid)) continue;
-            if (m.kind === 'proposal' && merged.some((it) => it.kind === 'proposal' && Number(it.proposalId) === Number(m.proposalId))) continue;
-            merged.push(m);
-          }
-          return merged;
+          // Prepend any new items not already present by message id; keep existing order
+          const prevIds = new Set(prev.map((m) => m.mid).filter(Boolean));
+          const deduped = transformed.filter((m) => !m.mid || !prevIds.has(m.mid));
+          return [...deduped, ...prev];
         });
       } catch {}
       finally { setHistoryLoading(false); }
@@ -474,7 +469,7 @@ function App() {
             setProposalsById((prev) => ({ ...prev, [id]: { ...(prev[id]||{}), id, title, yes: (prev[id]?.yes || 0), no: (prev[id]?.no || 0) } }));
             setMessages((m) => {
               if (m.some((it) => it.kind === 'proposal' && Number(it.proposalId) === id)) return m;
-              return [...m, { kind: 'proposal', senderAddress: from, proposalId: id, title }];
+              return [...m, { mid: msg.id, kind: 'proposal', senderAddress: from, proposalId: id, title }];
             });
             continue;
           }
@@ -485,10 +480,23 @@ function App() {
             continue;
           }
           if (parsed && (parsed.type === 'templ-created' || parsed.type === 'member-joined')) {
-            setMessages((m) => [...m, { kind: 'system', senderAddress: from, content: parsed.type === 'templ-created' ? 'Templ created' : `${shorten(parsed.address)} joined` }]);
+            setMessages((m) => {
+              if (m.some((it) => it.mid === msg.id)) return m;
+              return [...m, { mid: msg.id, kind: 'system', senderAddress: from, content: parsed.type === 'templ-created' ? 'Templ created' : `${shorten(parsed.address)} joined` }];
+            });
             continue;
           }
-          setMessages((m) => [...m, { kind: 'text', senderAddress: from, content: raw }]);
+          setMessages((m) => {
+            if (m.some((it) => it.mid === msg.id)) return m;
+            // Replace local echo if present
+            const idx = m.findIndex((it) => !it.mid && it.kind === 'text' && (it.senderAddress||'').toLowerCase() === from && it.content === raw);
+            if (idx !== -1) {
+              const copy = m.slice();
+              copy[idx] = { mid: msg.id, kind: 'text', senderAddress: from, content: raw };
+              return copy;
+            }
+            return [...m, { mid: msg.id, kind: 'text', senderAddress: from, content: raw }];
+          });
         }
       } catch {}
     };
@@ -797,8 +805,8 @@ function App() {
       }
       const body = messageInput;
       await sendMessage({ group: activeGroup, content: body });
-      // Local echo to ensure immediate UI feedback (stream may take time)
-      setMessages((m) => [...m, { senderAddress: walletAddress, content: body }]);
+      // Local echo to ensure immediate UI feedback; mark without mid so it can be replaced by stream
+      setMessages((m) => [...m, { kind: 'text', senderAddress: walletAddress, content: body }]);
       setMessageInput('');
       pushStatus('✅ Message sent');
     } catch (err) {

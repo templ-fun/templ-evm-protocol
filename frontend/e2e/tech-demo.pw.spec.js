@@ -3,9 +3,11 @@ import { ethers } from 'ethers';
 import { readFileSync } from 'fs';
 import path from 'path';
 
+const VERBOSE = process.env.PW_E2E_VERBOSE === '1';
+
 test.describe('Tech Demo: Realtime multi-user flow', () => {
   test('Create, join, chat, claim fees, move treasury, vote, execute', async ({ page, provider, wallets }) => {
-    page.on('console', msg => console.log('PAGE LOG:', msg.text()));
+    if (VERBOSE) page.on('console', msg => console.log('PAGE LOG:', msg.text()));
     page.on('pageerror', err => console.log('PAGE ERROR:', err.message));
 
     // Load TEMPL ABI

@@ -3,15 +3,19 @@ import { ethers } from 'ethers';
 import { readFileSync } from 'fs';
 import path from 'path';
 
+// Reduce noisy logs by default; enable with PW_E2E_VERBOSE=1
+const VERBOSE = process.env.PW_E2E_VERBOSE === '1';
+const dbg = (...args) => { if (VERBOSE) console.log(...args); };
+
 test.describe('TEMPL E2E - All 7 Core Flows', () => {
   let templAddress;
   let templAbi;
 
   test('All 7 Core Flows', async ({ page, wallets }) => {
 
-    page.on('console', msg => console.log('PAGE LOG:', msg.text()));
+    if (VERBOSE) page.on('console', msg => console.log('PAGE LOG:', msg.text()));
     page.on('pageerror', err => console.log('PAGE ERROR:', err.message));
-    page.on('dialog', dialog => {
+    if (VERBOSE) page.on('dialog', dialog => {
       console.log('PAGE DIALOG:', dialog.message());
       dialog.dismiss();
     });
@@ -106,7 +110,7 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
           isMetaMask: true,
           selectedAddress: TEST_ACCOUNT,
           request: async ({ method, params }) => {
-            console.log('ETH method:', method);
+      console.log('ETH method:', method);
             if (method === 'eth_requestAccounts' || method === 'eth_accounts') return [TEST_ACCOUNT];
             if (method === 'eth_chainId') return '0x7a69';
             if (method === 'personal_sign') {
@@ -139,7 +143,7 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
       }, { address: addr, signFnName, sendFnName });
 
       // Attempt connect
-      console.log('Core Flow 1: Connect Wallet');
+      dbg('Core Flow 1: Connect Wallet');
       await page.click('button:has-text("Connect Wallet")');
       // Navigate to /create in the new routed UI
       await page.click('button:has-text("Create")');
@@ -168,7 +172,7 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
     await tokenTx.wait();
 
     // Core Flow 2: Templ Creation
-    console.log('Core Flow 2: Templ Creation');
+    dbg('Core Flow 2: Templ Creation');
     await page.fill('input[placeholder*="Token address"]', tokenAddress);
     await page.fill('input[placeholder*="Protocol fee recipient"]', '0x70997970C51812dc3A010C7d01b50e0d17dc79C8');
     await page.fill('input[placeholder*="Entry fee"]', '100');
@@ -206,15 +210,15 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
       // Approve with explicit nonce, wait for mining
       let tx = await tokenForUI.approve(templAddress, 100, { nonce: nonce++ });
       await tx.wait();
-      console.log('Tokens approved');
+      dbg('Tokens approved');
       // Pre-purchase on Node side to avoid UI sendTransaction nonce races
       tx = await templForUI.purchaseAccess({ nonce: nonce++ });
       await tx.wait();
-      console.log('Access purchased (pre-join)');
+      dbg('Access purchased (pre-join)');
     }
     
     // Now join as a separate member to better mirror real usage
-    console.log('Core Flow 3b: Switch to member wallet and join');
+    dbg('Core Flow 3b: Switch to member wallet and join');
     await page.reload();
     await page.waitForLoadState('domcontentloaded');
     {
@@ -276,11 +280,11 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
       // Ensure browser installation is visible on XMTP infra before join (linearize readiness)
       try {
         const inboxId = await page.evaluate(() => window.__XMTP?.inboxId || null);
-        console.log('DEBUG member browser inboxId before join:', inboxId);
+        dbg('DEBUG member browser inboxId before join:', inboxId);
         for (let i = 0; i < 30; i++) {
           try {
             const resp = await fetch(`http://localhost:3001/debug/inbox-state?inboxId=${inboxId}&env=production`).then(r => r.json());
-            console.log('DEBUG /debug/inbox-state:', resp);
+            dbg('DEBUG /debug/inbox-state:', resp);
             if (resp && Array.isArray(resp.states) && resp.states.length > 0) break;
           } catch {}
           await page.waitForTimeout(1000);
@@ -312,7 +316,7 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
     for (let i = 0; i < 60 && !groupId; i++) {
       try {
         const dbgJoin = await fetch(`http://localhost:3001/debug/group?contractAddress=${templAddress}&refresh=1`).then(r => r.json());
-        console.log('DEBUG after join (pre-UI):', dbgJoin);
+        dbg('DEBUG after join (pre-UI):', dbgJoin);
         groupId = dbgJoin.resolvedGroupId || dbgJoin.storedGroupId || '';
         if (groupId && groupId.startsWith('0x')) groupId = groupId.slice(2);
       } catch {}
@@ -326,31 +330,31 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
       groupId = gidText.split(':').pop().trim();
     }
     expect(groupId && groupId.length > 0).toBe(true);
-    console.log('Resolved groupId for discovery:', groupId);
+    dbg('Resolved groupId for discovery:', groupId);
     // Debug server-side view of group and conversations after join
     try {
       const dbg1 = await fetch(`http://localhost:3001/debug/group?contractAddress=${templAddress}`).then(r => r.json());
-      console.log('DEBUG /debug/group after join:', dbg1);
+      dbg('DEBUG /debug/group after join:', dbg1);
     } catch {}
     try {
       const dbg2 = await fetch('http://localhost:3001/debug/conversations').then(r => r.json());
-      console.log('DEBUG /debug/conversations after join:', dbg2);
+      dbg('DEBUG /debug/conversations after join:', dbg2);
     } catch {}
     try {
       const inboxId = await page.evaluate(() => window.__XMTP?.inboxId || null);
       const dbg3 = await fetch(`http://localhost:3001/debug/membership?contractAddress=${templAddress}&inboxId=${inboxId}`).then(r => r.json());
-      console.log('DEBUG /debug/membership after join:', dbg3);
+      dbg('DEBUG /debug/membership after join:', dbg3);
       // Wait until backend records a successful join (last-join payload) to linearize addMembers completion
       let dbg4;
       for (let i = 0; i < 60; i++) {
         try {
           dbg4 = await fetch('http://localhost:3001/debug/last-join').then(r => r.json());
-          console.log('DEBUG /debug/last-join:', dbg4);
+          dbg('DEBUG /debug/last-join:', dbg4);
           if (dbg4 && dbg4.payload && dbg4.payload.joinMeta && dbg4.payload.joinMeta.groupId) break;
         } catch {}
         await new Promise(r => setTimeout(r, 1000));
       }
-      console.log('DEBUG /debug/last-join final:', dbg4);
+      dbg('DEBUG /debug/last-join final:', dbg4);
     } catch {}
     
     // Require actual discovery in the browser: either UI shows connected or the
@@ -382,7 +386,7 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
       } catch {}
       throw new Error('Browser did not discover group conversation');
     }
-    console.log('✅ Browser discovered group conversation');
+    dbg('✅ Browser discovered group conversation');
     // Landing page should list created templs
     await page.click('button:has-text("Home")');
     await expect(page.locator('[data-testid="templ-list"]')).toBeVisible();
@@ -393,18 +397,18 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
     // Extra diagnostics right before messaging
     try {
       const dbg3 = await fetch(`http://localhost:3001/debug/group?contractAddress=${templAddress}`).then(r => r.json());
-      console.log('DEBUG /debug/group before messaging:', dbg3);
+      dbg('DEBUG /debug/group before messaging:', dbg3);
     } catch {}
     try {
       const dbg4 = await fetch('http://localhost:3001/debug/conversations').then(r => r.json());
-      console.log('DEBUG /debug/conversations before messaging:', dbg4);
+      dbg('DEBUG /debug/conversations before messaging:', dbg4);
     } catch {}
     try {
       const agg = await page.evaluate(async () => {
         if (!window.__XMTP?.debugInformation?.apiAggregateStatistics) return null;
         return await window.__XMTP.debugInformation.apiAggregateStatistics();
       });
-      if (agg) console.log('Browser XMTP aggregate stats post-discovery:\n' + agg);
+      if (agg) dbg('Browser XMTP aggregate stats post-discovery:\n' + agg);
     } catch {}
 
     // Membership is handled by the UI flow; avoid duplicate purchase.
@@ -413,7 +417,7 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
     await expect.poll(async () => await ensureBuy.hasAccess(testAddress), { timeout: 20000 }).toBe(true);
 
     // Core Flow 4: Messaging — wait until connected, send, and assert render
-    console.log('Core Flow 4: Messaging');
+    dbg('Core Flow 4: Messaging');
     await page.click('button:has-text("Chat")');
     await expect(page.locator('[data-testid="group-connected"]')).toBeVisible({ timeout: 60000 });
     const sendBtn = page.locator('[data-testid="chat-send"]');
@@ -423,11 +427,11 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
     await messageInput.fill(body);
     await expect(messageInput).toHaveValue(body);
     await sendBtn.click();
-    console.log('Sent via UI');
+    dbg('Sent via UI');
     await expect(page.locator('.messages')).toContainText(body, { timeout: 30000 });
 
     // Core Flow 5–7: Proposal create and vote via UI; execute via priest (protocol)
-    console.log('Core Flow 5–7: Proposal lifecycle via UI + protocol');
+    dbg('Core Flow 5–7: Proposal lifecycle via UI + protocol');
     // Switch back to the original UI wallet to avoid join-time equality edge cases
     await page.reload();
     await page.waitForLoadState('domcontentloaded');
@@ -493,7 +497,7 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
     await expect(page.locator('.chat-item--poll')).toBeVisible({ timeout: 60000 });
     // Vote yes via UI
     await page.click('.chat-item--poll >> text=Vote Yes');
-    console.log('Clicked Vote Yes via UI');
+    dbg('Clicked Vote Yes via UI');
     // Resolve latest proposal id
       const templPriest = new ethers.Contract(templAddress, templAbi, wallets.priest);
       const lastIdBN1 = await templPriest.proposalCount();
@@ -528,6 +532,7 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
       }
       
     console.log('✅ All 7 Core Flows Tested Successfully!');
-    await page.screenshot({ path: 'test-results/all-flows-complete.png', fullPage: true });
+    const screenshotPath = path.resolve(process.cwd(), '..', 'test-results', 'e2e', 'all-flows-complete.png');
+    await page.screenshot({ path: screenshotPath, fullPage: true });
   });
 });

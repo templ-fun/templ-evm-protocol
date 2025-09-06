@@ -1,2 +1,3 @@
 import pino from 'pino';
-export const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
+const defaultLevel = process.env.NODE_ENV === 'test' ? 'warn' : 'info';
+export const logger = pino({ level: process.env.LOG_LEVEL || defaultLevel });
