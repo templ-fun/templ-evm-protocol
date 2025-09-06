@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "TEMPL - Smart contracts for DAO-governed token-gated access",
   "engines": {
-    "node": ">=22.18.0"
+    "node": "22.18.0"
   },
   "scripts": {
     "compile": "npx hardhat compile",
@@ -33,23 +33,23 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
-    "@nomicfoundation/hardhat-chai-matchers": "^2.0.0",
-    "@nomicfoundation/hardhat-ethers": "^3.0.0",
-    "@nomicfoundation/hardhat-network-helpers": "^1.0.0",
-    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
-    "@nomicfoundation/hardhat-verify": "^2.0.0",
-    "@openzeppelin/contracts": "^5.0.2",
-    "@types/chai": "^4.2.0",
-    "@types/mocha": ">=9.1.0",
-    "chai": "^4.2.0",
-    "ethers": "^6.9.0",
-    "hardhat": "^2.19.2",
-    "hardhat-gas-reporter": "^1.0.8",
-    "husky": "^9.1.7",
-    "solidity-coverage": "^0.8.1",
-    "codecov": "^3.8.3"
+    "@nomicfoundation/hardhat-chai-matchers": "2.0.0",
+    "@nomicfoundation/hardhat-ethers": "3.0.0",
+    "@nomicfoundation/hardhat-network-helpers": "1.0.0",
+    "@nomicfoundation/hardhat-toolbox": "4.0.0",
+    "@nomicfoundation/hardhat-verify": "2.0.0",
+    "@openzeppelin/contracts": "5.0.2",
+    "@types/chai": "4.2.0",
+    "@types/mocha": "9.1.0",
+    "chai": "4.2.0",
+    "ethers": "6.9.0",
+    "hardhat": "2.19.2",
+    "hardhat-gas-reporter": "1.0.8",
+    "husky": "9.1.7",
+    "solidity-coverage": "0.8.1",
+    "codecov": "3.8.3"
   },
   "dependencies": {
-    "dotenv": "^16.3.1"
+    "dotenv": "16.3.1"
   }
 }
