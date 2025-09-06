@@ -322,29 +322,6 @@ test.describe('Tech Demo: Realtime multi-user flow', () => {
       // Stay on priest for the final capture; GMs have already been sent by other wallets over XMTP
     }
 
-    // Ensure visible chat messages from many users for the final state
-    async function ensureDiscoveryAndSend(label, w, body) {
-      await switchWallet(label, w, { reload: false });
-      await page.click('button:has-text("Chat")');
-      let ok = false;
-      try { await expect(page.locator('[data-testid="group-connected"]')).toBeVisible({ timeout: 10000 }); ok = true; } catch {}
-      if (!ok) {
-        try {
-          ok = await page.evaluate(async (gid) => {
-            if (!window.__xmtpGetById) return false;
-            for (let i = 0; i < 10; i++) {
-              try { const c = await window.__xmtpGetById(gid); if (c) return true; } catch {}
-              await new Promise(r => setTimeout(r, 1000));
-            }
-            return false;
-          }, groupId);
-        } catch { ok = false; }
-      }
-      if (ok) {
-        await page.fill('[data-testid="chat-input"]', body);
-        await page.click('[data-testid="chat-send"]');
-      }
-    }
     // Final assertion: poll reflects votes (counts from on-chain) and screenshot the final state
     await expect(page.locator('.chat-item--poll')).toBeVisible({ timeout: 60000 });
     await expect(page.locator('[data-testid="poll-legend"]')).toContainText('Yes 3 · No 2', { timeout: 60000 });
