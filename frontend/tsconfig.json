@@ -8,7 +8,8 @@
     "skipLibCheck": true,
     "noEmit": true,
     "moduleResolution": "Bundler",
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "types": ["vite/client"]
   },
   "include": ["src/**/*.js"],
   "exclude": [

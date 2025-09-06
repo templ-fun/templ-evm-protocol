@@ -75,7 +75,7 @@ Discovery
 The backend enforces escalating mutes and allows delegated moderation.
 ```mermaid
 flowchart LR
-    P[Priest] -->|POST /delegates| B[Backend]
+    P[Priest] -->|POST /delegateMute| B[Backend]
     P -->|POST /mute| B
     M[Delegate] -->|POST /mute| B
     F[Frontend] -->|GET /mutes| B
@@ -93,7 +93,7 @@ sequenceDiagram
     participant P as Priest
     participant B as Backend
     participant D as SQLite
-    P->>B: POST /delegates {contract, priest, delegate, signature}
+    P->>B: POST /delegateMute {contract, priest, delegate, signature}
     B->>D: upsert delegate
     P-->>B: 200 { delegated: true }
     P->>B: POST /mute {contract, moderator, target, signature}
@@ -184,11 +184,11 @@ sequenceDiagram
   - Signature: `join:<contract>` signed by member EOA.
   - Body: `{ contractAddress, memberAddress, signature, memberInboxId? }`
   - Response: `{ groupId }` or HTTP 503 until identity is visible on XMTP.
-- POST `/delegates` – grant mute rights
+- POST `/delegateMute` – grant mute rights
   - Signature: `delegate:<contract>:<delegate>` signed by priest EOA.
   - Body: `{ contractAddress, priestAddress, delegateAddress, signature }`
   - Response: `{ delegated: true }`
-- DELETE `/delegates` – revoke mute rights
+- DELETE `/delegateMute` – revoke mute rights
   - Same signature format; `{ delegated: false }` on success.
 - POST `/mute` – escalate mute for a target
   - Signature: `mute:<contract>:<target>` signed by priest or a delegate.
@@ -205,7 +205,7 @@ Backend resolves inboxIds from the XMTP network via `findInboxIdByIdentifier` an
   - `withdrawTreasuryDAO(address,uint256,string)`
   - `withdrawAllTreasuryDAO(address,string)`
   - `sweepMemberRewardRemainderDAO(address)`
-- Voting: 1/member; priest weight = `priestVoteWeight` while `members.length < priestWeightThreshold`, else 1.
+- Voting: 1 vote per member; no priest bonus weighting.
 - Anti‑flash: voters must have joined before `proposal.createdAt`.
 - Majority: `yesVotes > noVotes`, anyone may execute after `endTime`.
 

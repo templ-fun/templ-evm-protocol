@@ -456,7 +456,7 @@ test('priest can delegate mute power', async () => {
     buildDelegateMessage(addresses.contract, addresses.delegate)
   );
   await request(app)
-    .post('/delegates')
+    .post('/delegateMute')
     .send({
       contractAddress: addresses.contract,
       priestAddress: addresses.priest,
@@ -482,7 +482,7 @@ test('priest can delegate mute power', async () => {
     buildDelegateMessage(addresses.contract, addresses.delegate)
   );
   await request(app)
-    .delete('/delegates')
+    .delete('/delegateMute')
     .send({
       contractAddress: addresses.contract,
       priestAddress: addresses.priest,
@@ -531,7 +531,7 @@ test('rejects delegate addition with non-priest signature', async () => {
     buildDelegateMessage(addresses.contract, addresses.delegate)
   );
   await request(app)
-    .post('/delegates')
+    .post('/delegateMute')
     .send({
       contractAddress: addresses.contract,
       priestAddress: addresses.priest,
@@ -567,7 +567,7 @@ test('rejects delegate removal with malformed signature', async () => {
     buildDelegateMessage(addresses.contract, addresses.delegate)
   );
   await request(app)
-    .post('/delegates')
+    .post('/delegateMute')
     .send({
       contractAddress: addresses.contract,
       priestAddress: addresses.priest,
@@ -577,7 +577,7 @@ test('rejects delegate removal with malformed signature', async () => {
     .expect(200);
 
   await request(app)
-    .delete('/delegates')
+    .delete('/delegateMute')
     .send({
       contractAddress: addresses.contract,
       priestAddress: addresses.priest,

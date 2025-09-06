@@ -274,11 +274,24 @@ describe("TEMPL Contract with DAO Governance", function () {
             expect(proposal.noVotes).to.equal(0);
         });
 
-        it("Should prevent double voting", async function () {
+        it("Should allow changing vote until deadline", async function () {
+            // Initial vote YES (note: proposer auto-voted yes at creation, but user1 may re-cast)
             await templ.connect(user1).vote(0, true);
+            let proposal = await templ.getProposal(0);
+            expect(proposal.yesVotes).to.equal(1);
+            expect(proposal.noVotes).to.equal(0);
 
-            await expect(templ.connect(user1).vote(0, false))
-                .to.be.revertedWithCustomError(templ, "AlreadyVoted");
+            // Change to NO
+            await templ.connect(user1).vote(0, false);
+            proposal = await templ.getProposal(0);
+            expect(proposal.yesVotes).to.equal(0);
+            expect(proposal.noVotes).to.equal(1);
+
+            // Change back to YES
+            await templ.connect(user1).vote(0, true);
+            proposal = await templ.getProposal(0);
+            expect(proposal.yesVotes).to.equal(1);
+            expect(proposal.noVotes).to.equal(0);
         });
 
         it("Should prevent non-members from voting", async function () {

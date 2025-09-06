@@ -229,7 +229,8 @@ describe('core flows e2e', () => {
     const [proposer, title,, yesVotes, noVotes] = await templ.getProposal(0);
     expect(proposer.toLowerCase()).toBe((await memberSigner.getAddress()).toLowerCase());
     expect(title).toBe('t');
-    expect(yesVotes).toBe(0n);
+    // Proposer auto-votes YES at creation
+    expect(yesVotes).toBe(1n);
     expect(noVotes).toBe(0n);
 
     await voteOnProposal({

@@ -78,8 +78,8 @@ describe('templ flows', () => {
       '0xfee',
       '0xdef',
       BigInt(1),
-      BigInt(10),
-      BigInt(10),
+      BigInt(1),
+      BigInt(1),
       {}
     );
     expect(signer.signMessage).toHaveBeenCalledWith('create:0xdead');
@@ -353,7 +353,7 @@ describe('templ flows', () => {
       buildDelegateMessage('0xTempl', '0xDel')
     );
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      `${BACKEND_URL}/delegates`,
+      `${BACKEND_URL}/delegateMute`,
       expect.objectContaining({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -451,7 +451,7 @@ describe('templ flows', () => {
         priestAddress: '0xPriest',
         delegateAddress: '0xDel'
       }),
-      expectedError: 'Invalid /delegates response'
+      expectedError: 'Invalid /delegateMute response'
     },
     {
       fn: muteMember,

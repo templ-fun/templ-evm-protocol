@@ -23,7 +23,7 @@
 - Frontend: Vitest unit tests in `frontend/src/`; Playwright e2e in `frontend/e2e/`. Run `npm --prefix frontend test` and `npm --prefix frontend run test:e2e`.
 
 ## Commit & Pull Request Guidelines
-- Commits: short, imperative subject; include scope and references (e.g., `feat(contracts): add vote weighting`).
+- Commits: short, imperative subject; include scope and references (e.g., `feat(contracts): voting auto-YES + changeable`).
 - PRs: clear description, linked issues, steps to test. Add screenshots/GIFs for UI; for contract changes, include deployed address, network, and migration notes; call out any `.env` updates.
 
 ## Security & Configuration Tips

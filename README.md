@@ -42,6 +42,7 @@ Use the docs below to dive into each component:
 - [FRONTEND.md](./FRONTEND.md) – React client
 - [PERSISTENCE.md](./PERSISTENCE.md) – data storage and XMTP DBs
 - [WEB3_AUDIT_REPORT.MD](./WEB3_AUDIT_REPORT.MD) – web3 audit summary
+ - [TEST_LOCALLY.md](./TEST_LOCALLY.md) – fast local end‑to‑end setup
   
 ## Monorepo Structure
 - `contracts/` – Hardhat + Solidity 0.8.23

@@ -19,7 +19,7 @@ The contracts implement a DAO-governed membership system with treasury managemen
 ### Informational
 - Entry fee distribution logic divides payments among burn address, treasury, member pool, and protocol fee recipient.
 - Configuration updates require zero treasury and member pool balances before changing the payment token.
-- The `priest` address has elevated voting weight until membership exceeds a threshold.
+- Voting is one member-one vote. The proposer’s vote is auto-cast as YES at creation, and voters may change their vote until the deadline.
 
 ## Detailed Review
 
@@ -34,7 +34,8 @@ The contracts implement a DAO-governed membership system with treasury managemen
   - At execution: `_executeCall` enforces the same allowlist prior to a `call` to `address(this)`.
 - Single active proposal per member enforced; executed/expired proposals clear the active flag.
 - Voting rules:
-  - One member-one vote; `priest` weight is `priestVoteWeight` while `members.length < priestWeightThreshold`; otherwise weight is 1.
+  - One member-one vote; no elevated weighting.
+  - Proposer auto‑YES on creation; vote is changeable until deadline.
   - Anti-gaming rule: voter must have joined before `proposal.createdAt`.
   - Simple majority `yesVotes > noVotes` required; anyone may execute after `endTime`.
 

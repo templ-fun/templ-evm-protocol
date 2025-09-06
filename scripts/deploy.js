@@ -158,7 +158,7 @@ async function main() {
   console.log("- Treasury controlled by member voting");
   console.log("- Proposals require >50% yes votes to pass");
   console.log("- Voting period: 7-30 days");
-  console.log("- Priest has", PRIEST_VOTE_WEIGHT + "x voting weight until", PRIEST_WEIGHT_THRESHOLD, "members");
+  console.log("- One member = one vote (proposer auto‑YES; votes changeable until deadline)");
   console.log("\n🔒 Security Features:");
   console.log("- No backdoor functions");
   console.log("- All tokens only movable via DAO votes");

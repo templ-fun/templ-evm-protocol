@@ -7,7 +7,7 @@ export default function delegatesRouter({ groups, database }) {
   const router = express.Router();
 
   router.post(
-    '/delegates',
+    '/delegateMute',
     requireAddresses(['contractAddress', 'priestAddress', 'delegateAddress']),
     (req, res, next) => {
       const record = groups.get(req.body.contractAddress.toLowerCase());
@@ -34,14 +34,14 @@ export default function delegatesRouter({ groups, database }) {
           .run(contractAddress.toLowerCase(), delegateAddress.toLowerCase());
         res.json({ delegated: true });
       } catch (err) {
-        logger.error({ err, contractAddress }, 'Backend /delegates failed');
+        logger.error({ err, contractAddress }, 'Backend /delegateMute failed');
         res.status(500).json({ error: err.message });
       }
     }
   );
 
   router.delete(
-    '/delegates',
+    '/delegateMute',
     requireAddresses(['contractAddress', 'priestAddress', 'delegateAddress']),
     (req, res, next) => {
       const record = groups.get(req.body.contractAddress.toLowerCase());

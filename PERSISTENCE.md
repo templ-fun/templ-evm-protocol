@@ -53,7 +53,7 @@ flowchart TD
 
 - POST `/templs`: registers contract → `groupId` and seeds group.
 - POST `/join`: verifies access and adds member to group.
-- POST/DELETE `/delegates`, POST `/mute`: update moderation tables.
+- POST/DELETE `/delegateMute`, POST `/mute`: update moderation tables.
 - Identity and installations are managed by XMTP; membership lives in XMTP, not SQLite.
 - Endpoint specifics in [appendix](PERSISTENCE_APPENDIX.md#data-flow-endpoints).
 
@@ -88,4 +88,3 @@ This section answers common questions about what data is stored and why certain 
   - Use fresh funded wallets when continuity isn't needed.
   - Avoid clearing OPFS or running multiple clients on a page; reload before switching wallets.
   - Backend Node client reuses its local DB; clearing `groups.db` is safe.
-

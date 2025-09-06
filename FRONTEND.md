@@ -46,7 +46,7 @@ To run e2e against a local XMTP node: clone `xmtp-local-node`, run `npm run xmtp
 ## Architecture
 
 - **Wallet connection** via `ethers` and `window.ethereum`.
-- **Default configuration** – priest vote weight and priest weight threshold default to 10.
+- **Default configuration** – all members have 1 vote; no priest weighting.
 - **Governance** – members create proposals and vote from the chat; `watchProposals` updates the UI when events fire. The backend mirrors on‑chain events into the group as JSON so clients see real‑time updates.
 
 ### User flows

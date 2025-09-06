@@ -30,8 +30,8 @@ export async function deployTempl({
   tokenAddress,
   protocolFeeRecipient,
   entryFee,
-  priestVoteWeight = 10,
-  priestWeightThreshold = 10,
+  priestVoteWeight = 1,
+  priestWeightThreshold = 1,
   templArtifact,
   backendUrl = BACKEND_URL,
   txOptions = {}
@@ -99,7 +99,8 @@ export async function deployTempl({
   
   dlog('Syncing conversations to find group', groupId);
   const isFast = (() => { try { return import.meta?.env?.VITE_E2E_DEBUG === '1'; } catch { return false; } })();
-  const group = await waitForConversation({ xmtp, groupId, retries: isFast ? 2 : 6, delayMs: isFast ? 150 : 1000 });
+  // Be more generous in e2e to reduce flakiness on prod XMTP
+  const group = await waitForConversation({ xmtp, groupId, retries: isFast ? 12 : 6, delayMs: isFast ? 500 : 1000 });
   if (!group) {
     console.error('Could not find group after creation; will rely on join step');
     return { contractAddress, group: null, groupId };
@@ -339,7 +340,7 @@ export async function delegateMute({
 }) {
   const message = buildDelegateMessage(contractAddress, delegateAddress);
   const signature = await signer.signMessage(message);
-  const res = await fetch(`${backendUrl}/delegates`, {
+  const res = await fetch(`${backendUrl}/delegateMute`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -352,7 +353,7 @@ export async function delegateMute({
   if (!res.ok) return false;
   const data = await res.json();
   if (!data || typeof data.delegated !== 'boolean') {
-    throw new Error('Invalid /delegates response');
+    throw new Error('Invalid /delegateMute response');
   }
   return data.delegated;
 }

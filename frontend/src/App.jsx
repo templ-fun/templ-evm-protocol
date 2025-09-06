@@ -81,8 +81,7 @@ function App() {
   const [tokenAddress, setTokenAddress] = useState('');
   const [protocolFeeRecipient, setProtocolFeeRecipient] = useState('');
   const [entryFee, setEntryFee] = useState('');
-  const [priestVoteWeight, setPriestVoteWeight] = useState('10');
-  const [priestWeightThreshold, setPriestWeightThreshold] = useState('10');
+  // priest vote weight removed: all members have 1 vote
 
   // joining form
   const [templAddress, setTemplAddress] = useState('');
@@ -311,10 +310,10 @@ function App() {
     if (!ethers.isAddress(tokenAddress)) return alert('Invalid token address');
     if (!ethers.isAddress(protocolFeeRecipient))
       return alert('Invalid protocol fee recipient address');
-    const nums = [entryFee, priestVoteWeight, priestWeightThreshold];
+    const nums = [entryFee];
     if (!nums.every((n) => /^\d+$/.test(n))) return alert('Invalid numeric input');
     try {
-      dlog('[app] deploying templ with', { tokenAddress, protocolFeeRecipient, entryFee, priestVoteWeight, priestWeightThreshold });
+      dlog('[app] deploying templ with', { tokenAddress, protocolFeeRecipient, entryFee });
       const result = await deployTempl({
         ethers,
         xmtp,
@@ -323,8 +322,6 @@ function App() {
         tokenAddress,
         protocolFeeRecipient,
         entryFee,
-        priestVoteWeight,
-        priestWeightThreshold,
         templArtifact
       });
       dlog('[app] deployTempl returned', result);
@@ -520,8 +517,8 @@ function App() {
     }
     async function poll() {
       const fast = import.meta.env?.VITE_E2E_DEBUG === '1';
-      const maxAttempts = fast ? 5 : 120;
-      const delay = fast ? 200 : 1000;
+      const maxAttempts = fast ? 10 : 120;
+      const delay = fast ? 500 : 1000;
       while (!cancelled && attempts < maxAttempts && !group) {
         attempts++;
         dlog('[app] finding group', { groupId, wanted, attempt: attempts, inboxId: xmtp?.inboxId });
@@ -571,7 +568,7 @@ function App() {
         try { await syncXMTP(xmtp); } catch {}
         const convStream = await xmtp.conversations.streamGroups?.();
         const stream = await xmtp.conversations.streamAllMessages?.({ consentStates: ['allowed','unknown','denied'] });
-        const endAt = Date.now() + (import.meta.env?.VITE_E2E_DEBUG === '1' ? 4_000 : 60_000);
+        const endAt = Date.now() + (import.meta.env?.VITE_E2E_DEBUG === '1' ? 10_000 : 60_000);
         const onConversation = async (conv) => {
           if (cancelled || group) return;
           const cid = norm(conv?.id || '');
@@ -1001,8 +998,7 @@ function App() {
               <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Token address" value={tokenAddress} onChange={(e) => setTokenAddress(e.target.value)} />
               <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Protocol fee recipient" value={protocolFeeRecipient} onChange={(e) => setProtocolFeeRecipient(e.target.value)} />
               <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Entry fee" value={entryFee} onChange={(e) => setEntryFee(e.target.value)} />
-              <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Priest vote weight (default 10)" value={priestVoteWeight} onChange={(e) => setPriestVoteWeight(e.target.value)} />
-              <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Priest weight threshold (default 10)" value={priestWeightThreshold} onChange={(e) => setPriestWeightThreshold(e.target.value)} />
+              {/* Priest vote weight removed: all votes are equal */}
               <button className="px-4 py-2 rounded bg-primary text-black font-semibold w-full sm:w-auto" onClick={handleDeploy}>Deploy</button>
             </div>
           </div>

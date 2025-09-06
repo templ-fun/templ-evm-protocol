@@ -118,7 +118,7 @@ In the frontend (with the Priest wallet selected):
    - Token address: paste the `token.target` from step 5
    - Protocol fee recipient: `0x70997970C51812dc3A010C7d01b50e0d17dc79C8` (Hardhat #1)
    - Entry fee: `100` (must be ≥10 and divisible by 10)
-   - Leave vote weights default
+   - Note: voting is 1 member = 1 vote. The proposer auto‑votes YES at creation and voters can change their vote until the deadline.
 4. Click `Deploy`.
 
 You’ll land in `Chat` with the group created. The header shows the contract short address.

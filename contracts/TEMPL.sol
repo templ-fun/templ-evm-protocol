@@ -243,7 +243,7 @@ contract TEMPL is ReentrancyGuard {
     
     /**
      * @notice Create a governance proposal for DAO voting
-     * @dev One active proposal per member allowed
+     * @dev One active proposal per member allowed. Proposer automatically casts a YES vote.
      * @param _title Proposal title
      * @param _description Proposal description
      * @param _callData Function call to execute
@@ -306,7 +306,10 @@ contract TEMPL is ReentrancyGuard {
         proposal.createdAt = block.timestamp;
         proposal.eligibleVoters = memberList.length;
         proposal.executed = false;
-        proposal.yesVotes = 0;
+        // Auto-cast proposer YES vote as first vote
+        proposal.hasVoted[msg.sender] = true;
+        proposal.voteChoice[msg.sender] = true;
+        proposal.yesVotes = 1;
         proposal.noVotes = 0;
         
         hasActiveProposal[msg.sender] = true;
@@ -318,8 +321,8 @@ contract TEMPL is ReentrancyGuard {
     }
     
     /**
-     * @notice Cast vote on an active proposal
-     * @dev Voting power: 1 for members, priestVoteWeight for priest below threshold
+     * @notice Cast or change a vote on an active proposal
+     * @dev Each member has 1 vote. Members can change their vote until the deadline.
      * @param _proposalId Proposal to vote on
      * @param _support Vote choice (true = yes, false = no)
      */
@@ -328,24 +331,35 @@ contract TEMPL is ReentrancyGuard {
         Proposal storage proposal = proposals[_proposalId];
 
         if (block.timestamp >= proposal.endTime) revert TemplErrors.VotingEnded();
-        if (proposal.hasVoted[msg.sender]) revert TemplErrors.AlreadyVoted();
-
         if (members[msg.sender].timestamp >= proposal.createdAt)
             revert TemplErrors.JoinedAfterProposal();
-        
+
+        bool hadVoted = proposal.hasVoted[msg.sender];
+        bool previous = proposal.voteChoice[msg.sender];
+
+        // Set vote state
         proposal.hasVoted[msg.sender] = true;
         proposal.voteChoice[msg.sender] = _support;
-        
-        uint256 voteWeight = 1;
-        if (msg.sender == priest && memberList.length < priestWeightThreshold) {
-            voteWeight = priestVoteWeight;
-        }
-        
-        if (_support) {
-            proposal.yesVotes += voteWeight;
-        } else {
-            proposal.noVotes += voteWeight;
-        }
+
+        if (!hadVoted) {
+            // First-time vote: increment corresponding counter
+            if (_support) {
+                proposal.yesVotes += 1;
+            } else {
+                proposal.noVotes += 1;
+            }
+        } else if (previous != _support) {
+            // Changing vote: move one count from previous bucket to the other
+            if (previous) {
+                // was YES -> now NO
+                proposal.yesVotes -= 1;
+                proposal.noVotes += 1;
+            } else {
+                // was NO -> now YES
+                proposal.noVotes -= 1;
+                proposal.yesVotes += 1;
+            }
+        } // else: same choice again, no-op on tallies
         
         emit VoteCast(_proposalId, msg.sender, _support, block.timestamp);
     }
@@ -805,14 +819,11 @@ contract TEMPL is ReentrancyGuard {
     /**
      * @notice Get voting power for a specific address
      * @param voter Address to check voting weight for
-     * @return Current voting power (0, 1, or priestVoteWeight)
+     * @return Current voting power (0 for non-members, 1 for members)
      */
     function getVoteWeight(address voter) external view returns (uint256) {
         if (!members[voter].purchased) {
             return 0;
-        }
-        if (voter == priest && memberList.length < priestWeightThreshold) {
-            return priestVoteWeight;
         }
         return 1;
     }

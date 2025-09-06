@@ -12,7 +12,7 @@ The backend service uses a SQLite database (`backend/groups.db` by default) to m
 - `mutes(contract TEXT, target TEXT, count INTEGER, until INTEGER, PRIMARY KEY(contract, target))`
   - Stores moderation strikes and mute expiry for each address per TEMPL contract. Written on POST `/mute`.
 - `delegates(contract TEXT, delegate TEXT, PRIMARY KEY(contract, delegate))`
-  - Stores which addresses are delegated moderation powers by the priest. Written on POST/DELETE `/delegates`.
+  - Stores which addresses are delegated moderation powers by the priest. Written on POST/DELETE `/delegateMute`.
 
 ## XMTP Node DB Details
 
@@ -51,7 +51,7 @@ Several HTTP endpoints coordinate how data enters and leaves the system. The ser
   - Adds the member’s inboxId to the group. If `memberInboxId` is provided, it is used directly; otherwise the server resolves via `findInboxIdByIdentifier` and waits for identity readiness before inviting.
   - Re-syncs and sends a `member-joined` message for the UI.
   - Returns `groupId` but does not persist membership to SQLite.
-- **POST/DELETE `/delegates`, POST `/mute`**
+- **POST/DELETE `/delegateMute`, POST `/mute`**
   - Update the SQLite tables as described above.
 - **XMTP Identity, Installations, and Nonce**
   - One inboxId per identity (EOA/SCW) representing the user on XMTP.
@@ -59,4 +59,3 @@ Several HTTP endpoints coordinate how data enters and leaves the system. The ser
   - The signer’s `getIdentifier()` can include a `nonce`. Changing the nonce rotates to a fresh installation under the same inboxId.
   - Node: the DB is a real file; reusing the same `dbEncryptionKey` and inboxId attaches to the existing local database.
   - Browser: the DB is in OPFS; repeated client creation with different nonces can create repeated installations and may conflict with OPFS access handles.
-
