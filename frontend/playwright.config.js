@@ -20,6 +20,7 @@ const BOT_PK = randomPrivKeyHex();
 export default defineConfig({
   // Keep per-test timeout modest; flows should be fast
   timeout: 120 * 1000,
+  outputDir: '../test-results/e2e',
   testDir: './e2e',
   testMatch: /.*\.pw\.spec\.js/,
   fullyParallel: false,
@@ -31,7 +32,7 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:5179',
     trace: 'on-first-retry',
-    video: 'retain-on-failure',
+    video: 'on',
     screenshot: 'only-on-failure',
   },
 
@@ -92,6 +93,7 @@ export default defineConfig({
         DB_PATH: 'e2e-groups.db',
         CLEAR_DB: '1',
         ENABLE_DEBUG_ENDPOINTS: '1',
+        LOG_LEVEL: 'warn',
         XMTP_ENV,
       },
       reuseExistingServer: false,

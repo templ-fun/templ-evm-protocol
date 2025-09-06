@@ -39,10 +39,11 @@ npm --prefix frontend run dev
 npm --prefix frontend test
 npm --prefix frontend run lint
 npm --prefix frontend run build
-npm --prefix frontend test -- src/core-flows.integration.test.js # integration (local Hardhat + backend + XMTP dev)
 npm --prefix frontend run test:e2e                          # end‑to‑end (Playwright)
 ```
 To run e2e against a local XMTP node: clone `xmtp-local-node`, run `npm run xmtp:local:up`, execute tests with `E2E_XMTP_LOCAL=1`, then `npm run xmtp:local:down`.
+
+E2E artifacts (videos, traces, screenshots) are saved under `test-results/e2e/` at the repository root.
 ## Architecture
 
 - **Wallet connection** via `ethers` and `window.ethereum`.

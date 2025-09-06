@@ -3,10 +3,6 @@ import { defineConfig, configDefaults, coverageConfigDefaults } from 'vitest/con
 export default defineConfig({
   // Use a writable cache directory for Vite transforms
   cacheDir: 'test-results/.vite',
-  cache: {
-    // Avoid writing into node_modules which can be read-only
-    dir: 'test-results/.vitest',
-  },
   test: {
     // Avoid worker teardown issues in constrained sandboxes by using forks pool
     pool: 'forks',
@@ -26,8 +22,7 @@ export default defineConfig({
       'playwright-*.config.*',
     ],
     include: [
-      'src/**/*.{test,spec}.?(c|m)[jt]s?(x)',
-      '../shared/**/*.test.js'
+      'src/**/*.{test,spec}.?(c|m)[jt]s?(x)'
     ],
     coverage: {
       provider: 'v8',

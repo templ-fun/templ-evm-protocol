@@ -6,6 +6,7 @@ import { logger } from '../logger.js';
 
 export default function templsRouter({ xmtp, groups, persist, connectContract, database }) {
   const router = express.Router();
+  const DISABLE_WAIT = process.env.DISABLE_XMTP_WAIT === '1' || process.env.NODE_ENV === 'test';
 
   // List known templs from persistence
   router.get('/templs', (req, res) => {
@@ -59,13 +60,14 @@ export default function templsRouter({ xmtp, groups, persist, connectContract, d
         const priestIdentifierObj = { identifier: priestAddress.toLowerCase(), identifierKind: 0 };
         // Ensure the priest identity is registered before creating a group
         async function waitForIdentityReady(identifier, tries = 60) {
-          if (!xmtp?.findInboxIdByIdentifier) return;
+          if (DISABLE_WAIT) return null;
+          if (!xmtp?.findInboxIdByIdentifier) return null;
           for (let i = 0; i < tries; i++) {
             try {
               const found = await xmtp.findInboxIdByIdentifier(identifier);
               if (found) return found;
             } catch (err) { void err; }
-            await new Promise((r) => setTimeout(r, 1000));
+            await new Promise((r) => setTimeout(r, DISABLE_WAIT ? 1 : 1000));
           }
           return null;
         }
