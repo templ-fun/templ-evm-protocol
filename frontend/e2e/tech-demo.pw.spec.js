@@ -103,16 +103,16 @@ test.describe('Tech Demo: Realtime multi-user flow', () => {
     await switchWallet('priest', wallets.priest);
     await page.click('button:has-text("Create")');
     await expect(page.locator('h2:has-text("Create Templ")')).toBeVisible();
-    await expect(page.locator('.status')).toContainText('Messaging client ready', { timeout: 20000 });
+    await expect(page.locator('.status')).toContainText('Messaging client ready', { timeout: 5000 });
     await page.fill('input[placeholder*="Token address"]', tokenAddress);
     await page.fill('input[placeholder*="Protocol fee recipient"]', await wallets.priest.getAddress());
     await page.fill('input[placeholder*="Entry fee"]', '100');
     await page.click('button:has-text("Deploy")');
-    const depInfo = page.locator('[data-testid="deploy-info"]');
-    await expect(depInfo).toBeVisible({ timeout: 30000 });
-    let templAddress = (await depInfo.getAttribute('data-contract-address')) || '';
-    if (!templAddress) {
+    // Resolve contract address deterministically via localStorage (set by the app on deploy)
+    let templAddress = '';
+    for (let i = 0; i < 75 && !templAddress; i++) {
       templAddress = await page.evaluate(() => localStorage.getItem('templ:lastAddress'));
+      if (!templAddress) await page.waitForTimeout(200);
     }
     expect(ethers.isAddress(templAddress)).toBe(true);
 
@@ -164,14 +164,14 @@ test.describe('Tech Demo: Realtime multi-user flow', () => {
     expect(groupId && groupId.length > 0).toBe(true);
     // Discover conversation in browser context if status isn't yet marked connected
     let discovered = false;
-    try { await expect(page.locator('[data-testid="group-connected"]')).toBeVisible({ timeout: 10000 }); discovered = true; } catch {}
+    try { await expect(page.locator('[data-testid="group-connected"]')).toBeVisible({ timeout: 3000 }); discovered = true; } catch {}
     if (!discovered) {
       try {
         discovered = await page.evaluate(async (gid) => {
           if (!window.__xmtpGetById) return false;
-          for (let i = 0; i < 120; i++) {
+          for (let i = 0; i < 5; i++) {
             try { const c = await window.__xmtpGetById(gid); if (c) return true; } catch {}
-            await new Promise(r => setTimeout(r, 1000));
+            await new Promise(r => setTimeout(r, 200));
           }
           return false;
         }, groupId);
@@ -185,7 +185,7 @@ test.describe('Tech Demo: Realtime multi-user flow', () => {
       await switchWallet(label, w, { reload: true });
       // Ensure the app binds to this wallet and creates an XMTP client for it
       try { await page.click('button:has-text("Connect Wallet")'); } catch {}
-      await expect(page.locator('.status')).toContainText('Messaging client ready', { timeout: 60000 });
+      await expect(page.locator('.status')).toContainText('Messaging client ready', { timeout: 5000 });
       // Join via UI (idempotent)
       await page.click('button:has-text("Join")');
       await page.fill('input[placeholder*="Contract address"]', templAddress);
@@ -194,14 +194,14 @@ test.describe('Tech Demo: Realtime multi-user flow', () => {
       await page.click('button:has-text("Chat")');
       // Ensure group discovery before attempting to chat
       let connected = false;
-      try { await expect(page.locator('[data-testid="group-connected"]')).toBeVisible({ timeout: 20000 }); connected = true; } catch {}
+      try { await expect(page.locator('[data-testid="group-connected"]')).toBeVisible({ timeout: 3000 }); connected = true; } catch {}
       if (!connected) {
         try {
           connected = await page.evaluate(async (gid) => {
             if (!window.__xmtpGetById) return false;
-            for (let i = 0; i < 120; i++) {
+            for (let i = 0; i < 5; i++) {
               try { const c = await window.__xmtpGetById(gid); if (c) return true; } catch {}
-              await new Promise(r => setTimeout(r, 1000));
+              await new Promise(r => setTimeout(r, 200));
             }
             return false;
           }, groupId);
@@ -218,36 +218,31 @@ test.describe('Tech Demo: Realtime multi-user flow', () => {
           if (!sent) { await page.waitForTimeout(3000); body = base + ' #' + (i+1); }
         }
         await expect(sent, `${label} message not sent`).toBeTruthy();
-        await expect(page.locator('.messages')).toContainText(message, { timeout: 120000 });
+        await expect(page.locator('.messages')).toContainText(message, { timeout: 5000 });
       }
     }
 
     // Keep this lean for stability: have two members send real GMs via the UI-bound XMTP client
     await joinAndChat('u1', u1, 'GM from u1');
+    await joinAndChat('u2', u2, 'GM from u2');
     await joinAndChat('u3', u3, 'GM from u3');
     // Finally connect a viewer wallet to render (no send)
     await joinAndChat('u5', u5, '', { sendMessage: false });
     // Validate that u5 can render messages authored by others
     await page.click('button:has-text("Chat")');
-    await expect(page.locator('.messages')).toContainText('GM from u1', { timeout: 120000 });
-    await expect(page.locator('.messages')).toContainText('GM from u3', { timeout: 120000 });
+    await expect(page.locator('.messages')).toContainText('GM from u1', { timeout: 5000 });
+    await expect(page.locator('.messages')).toContainText('GM from u3', { timeout: 5000 });
 
-    // First user claims fees (u1)
+    // First user claims fees (u1) via top bar button
     await switchWallet('u1', u1);
     await page.click('button:has-text("Chat")');
-    await page.click('button:has-text("Info")');
-    // Wait for claimable to be calculable
-    const claimAmtInfo = page.locator('[data-testid="claimable-amount-info"]');
-    await expect(claimAmtInfo).toBeVisible({ timeout: 30000 });
-    // Claim if non-zero; if zero, try again after a short delay
-    try {
-      const val = await claimAmtInfo.textContent();
-      if (val && val.trim() !== '0') {
-        await page.click('[data-testid="claim-fees"]');
-      }
-    } catch {}
-    // After claim, the claimable should drop to 0
-    await expect.poll(async () => (await claimAmtInfo.textContent() || '').trim(), { timeout: 45000 }).toBe('0');
+    const claimTop = page.locator('[data-testid="claimable-amount"]');
+    await expect(claimTop).toBeVisible({ timeout: 5000 });
+    let topVal = (await claimTop.textContent() || '').trim();
+    if (topVal !== '0') {
+      try { await page.click('[data-testid="claim-fees-top"]'); } catch {}
+      await expect.poll(async () => (await claimTop.textContent() || '').trim(), { timeout: 10000 }).toBe('0');
+    }
 
     // Propose moving treasury to proposer's wallet (u3) via UI for the demo
     await switchWallet('u3', u3);
@@ -301,14 +296,14 @@ test.describe('Tech Demo: Realtime multi-user flow', () => {
     await switchWallet('priest', wallets.priest);
     await page.click('button:has-text("Chat")');
     let priestDiscovered = false;
-    try { await expect(page.locator('[data-testid="group-connected"]')).toBeVisible({ timeout: 20000 }); priestDiscovered = true; } catch {}
+    try { await expect(page.locator('[data-testid="group-connected"]')).toBeVisible({ timeout: 3000 }); priestDiscovered = true; } catch {}
     if (!priestDiscovered) {
       try {
         priestDiscovered = await page.evaluate(async (gid) => {
           if (!window.__xmtpGetById) return false;
-          for (let i = 0; i < 120; i++) {
+          for (let i = 0; i < 5; i++) {
             try { const c = await window.__xmtpGetById(gid); if (c) return true; } catch {}
-            await new Promise(r => setTimeout(r, 1000));
+            await new Promise(r => setTimeout(r, 200));
           }
           return false;
         }, groupId);
@@ -318,17 +313,17 @@ test.describe('Tech Demo: Realtime multi-user flow', () => {
       const body1 = `Treasury moved! ${Date.now()}`;
       await page.fill('[data-testid="chat-input"]', body1);
       await page.click('[data-testid="chat-send"]');
-      await expect(page.locator('.messages')).toContainText('Treasury moved!', { timeout: 30000 });
+      await expect(page.locator('.messages')).toContainText('Treasury moved!', { timeout: 5000 });
       // Stay on priest for the final capture; GMs have already been sent by other wallets over XMTP
     }
 
     // Final assertion: poll reflects votes (counts from on-chain) and screenshot the final state
-    await expect(page.locator('.chat-item--poll')).toBeVisible({ timeout: 60000 });
-    await expect(page.locator('[data-testid="poll-legend"]')).toContainText('Yes 3 · No 2', { timeout: 60000 });
+    await expect(page.locator('.chat-item--poll')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-testid="poll-legend"]')).toContainText('Yes 3 · No 2', { timeout: 5000 });
     // Confirm message history includes GM texts from multiple users (not from You)
-    await expect(page.locator('.messages')).toContainText('GM from u1', { timeout: 120000 });
-    await expect(page.locator('.messages')).toContainText('GM from u2', { timeout: 120000 });
-    await expect(page.locator('.messages')).toContainText('GM from u3', { timeout: 120000 });
+    await expect(page.locator('.messages')).toContainText('GM from u1', { timeout: 5000 });
+    await expect(page.locator('.messages')).toContainText('GM from u2', { timeout: 5000 });
+    await expect(page.locator('.messages')).toContainText('GM from u3', { timeout: 5000 });
 
     await page.screenshot({ path: 'test-results/tech-demo-complete.png', fullPage: true });
   });

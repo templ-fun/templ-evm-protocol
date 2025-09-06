@@ -23,6 +23,12 @@ const dlog = (...args) => { if (__isDebug) { try { console.log(...args); } catch
  * @param {number} [delayMs=1000] Delay between attempts in ms
  */
 export async function syncXMTP(xmtp, retries = 1, delayMs = 1000) {
+  // In e2e fast mode, avoid long retries
+  try {
+    // @ts-ignore vite env in browser; process.env in node
+    const fast = (import.meta?.env?.VITE_E2E_DEBUG === '1') || (process?.env?.VITE_E2E_DEBUG === '1');
+    if (fast) { retries = Math.min(retries, 2); delayMs = Math.min(delayMs, 200); }
+  } catch {}
   for (let i = 0; i < retries; i++) {
     try { await xmtp?.conversations?.sync?.(); } catch (err) {
       dlog('conversations.sync failed:', err?.message || String(err));
@@ -47,6 +53,12 @@ export async function syncXMTP(xmtp, retries = 1, delayMs = 1000) {
  * @returns {Promise<any|null>} Conversation if found, else null
  */
 export async function waitForConversation({ xmtp, groupId, retries = 60, delayMs = 1000 }) {
+  // Fast mode for tests/dev
+  try {
+    // @ts-ignore
+    const fast = (import.meta?.env?.VITE_E2E_DEBUG === '1') || (process?.env?.VITE_E2E_DEBUG === '1');
+    if (fast) { retries = Math.min(retries, 5); delayMs = Math.min(delayMs, 200); }
+  } catch {}
   const norm = (id) => (id || '').replace(/^0x/i, '');
   const wanted = norm(groupId);
   const group = await waitFor({

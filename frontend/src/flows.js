@@ -98,7 +98,8 @@ export async function deployTempl({
   }
   
   dlog('Syncing conversations to find group', groupId);
-  const group = await waitForConversation({ xmtp, groupId, retries: 6, delayMs: 1000 });
+  const isFast = (() => { try { return import.meta?.env?.VITE_E2E_DEBUG === '1'; } catch { return false; } })();
+  const group = await waitForConversation({ xmtp, groupId, retries: isFast ? 2 : 6, delayMs: isFast ? 150 : 1000 });
   if (!group) {
     console.error('Could not find group after creation; will rely on join step');
     return { contractAddress, group: null, groupId };
@@ -193,8 +194,11 @@ export async function purchaseAndJoin({
   });
   // If identity not yet registered, poll until backend accepts the invite
   if (res.status === 503) {
-    for (let i = 0; i < 60; i++) {
-      await new Promise((r) => setTimeout(r, 1000));
+    const isFast = (() => { try { return import.meta?.env?.VITE_E2E_DEBUG === '1'; } catch { return false; } })();
+    const tries = isFast ? 5 : 60;
+    const delay = isFast ? 200 : 1000;
+    for (let i = 0; i < tries; i++) {
+      await new Promise((r) => setTimeout(r, delay));
       const again = await fetch(`${backendUrl}/join`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -238,7 +242,8 @@ export async function sendMessage({ group, content }) {
 }
 
 async function finalizeJoin({ xmtp, groupId }) {
-  const group = await waitForConversation({ xmtp, groupId });
+  const isFast = (() => { try { return import.meta?.env?.VITE_E2E_DEBUG === '1'; } catch { return false; } })();
+  const group = await waitForConversation({ xmtp, groupId, retries: isFast ? 5 : 60, delayMs: isFast ? 200 : 1000 });
   return { group, groupId };
 }
 export async function proposeVote({

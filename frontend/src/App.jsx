@@ -261,7 +261,7 @@ function App() {
               const tmp = await Client.create(signer, { env: xmtpEnv, appVersion: 'templ-e2e/0.1.0' });
               const wanted = String(id).replace(/^0x/i, '');
               let conv = null;
-              const end = Date.now() + 120_000;
+              const end = Date.now() + (import.meta.env?.VITE_E2E_DEBUG === '1' ? 2_000 : 120_000);
               while (Date.now() < end && !conv) {
                 try { await tmp.preferences?.inboxState?.(true); } catch {}
                 try { await syncXMTP(tmp); } catch {}
@@ -272,7 +272,7 @@ function App() {
                     conv = list.find((c) => c.id === wanted) || null;
                   }
                 } catch {}
-                if (!conv) await new Promise(r => setTimeout(r, 1000));
+                if (!conv) await new Promise(r => setTimeout(r, import.meta.env?.VITE_E2E_DEBUG === '1' ? 100 : 1000));
               }
               if (!conv) { try { await tmp.close?.(); } catch {}; return false; }
               await conv.send(String(content));
@@ -519,7 +519,10 @@ function App() {
       } catch {}
     }
     async function poll() {
-      while (!cancelled && attempts < 120 && !group) {
+      const fast = import.meta.env?.VITE_E2E_DEBUG === '1';
+      const maxAttempts = fast ? 5 : 120;
+      const delay = fast ? 200 : 1000;
+      while (!cancelled && attempts < maxAttempts && !group) {
         attempts++;
         dlog('[app] finding group', { groupId, wanted, attempt: attempts, inboxId: xmtp?.inboxId });
         try {
@@ -557,7 +560,7 @@ function App() {
             break;
           }
         } catch (e) { console.warn('[app] list error', e?.message || e); }
-        await new Promise((r) => setTimeout(r, 1000));
+        await new Promise((r) => setTimeout(r, delay));
       }
     }
     poll();
@@ -568,7 +571,7 @@ function App() {
         try { await syncXMTP(xmtp); } catch {}
         const convStream = await xmtp.conversations.streamGroups?.();
         const stream = await xmtp.conversations.streamAllMessages?.({ consentStates: ['allowed','unknown','denied'] });
-        const endAt = Date.now() + 60_000; // 60s assist window
+        const endAt = Date.now() + (import.meta.env?.VITE_E2E_DEBUG === '1' ? 4_000 : 60_000);
         const onConversation = async (conv) => {
           if (cancelled || group) return;
           const cid = norm(conv?.id || '');
@@ -1056,8 +1059,18 @@ function App() {
 
             {/* Always-on brief stats */}
             {templAddress && (
-              <div className="text-xs text-black/70 px-1 py-1">
-                Treasury: {treasuryInfo?.treasury || '0'} · Burned: {treasuryInfo?.totalBurnedAmount || '0'} · Claimable: <span data-testid="claimable-amount">{claimable || '0'}</span>
+              <div className="text-xs text-black/70 px-1 py-1 flex items-center gap-2">
+                <span>Treasurey: {treasuryInfo?.treasury || '0'}</span>
+                <span>· Burned: {treasuryInfo?.totalBurnedAmount || '0'}</span>
+                <span>· Claimable: <span data-testid="claimable-amount">{claimable || '0'}</span></span>
+                {(claimable && claimable !== '0') && (
+                  <button
+                    className="btn btn-primary !px-2 !py-0.5"
+                    data-testid="claim-fees-top"
+                    disabled={claimLoading}
+                    onClick={handleClaimFees}
+                  >{claimLoading ? 'Claiming…' : 'Claim'}</button>
+                )}
               </div>
             )}
 

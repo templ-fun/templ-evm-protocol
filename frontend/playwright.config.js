@@ -18,9 +18,8 @@ function randomPrivKeyHex() {
 const BOT_PK = randomPrivKeyHex();
 
 export default defineConfig({
-  // Per-test timeout: allow tech-demo to stabilize XMTP + UI
-  // End-to-end flow includes multiple XMTP account bootstraps; allow extra time
-  timeout: 420 * 1000,
+  // Keep per-test timeout modest; flows should be fast
+  timeout: 120 * 1000,
   testDir: './e2e',
   testMatch: /.*\.pw\.spec\.js/,
   fullyParallel: false,
