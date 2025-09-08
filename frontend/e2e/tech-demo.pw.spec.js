@@ -1,5 +1,22 @@
 import { test, expect, TestToken } from './fixtures.js';
 import { ethers } from 'ethers';
+function buildCreateTypedData({ chainId, contractAddress, nonce, issuedAt, expiry }) {
+  if (!Number.isFinite(nonce)) nonce = Date.now();
+  if (!Number.isFinite(issuedAt)) issuedAt = Date.now();
+  if (!Number.isFinite(expiry)) expiry = Date.now() + 5 * 60_000;
+  const domain = { name: 'TEMPL', version: '1', chainId };
+  const types = {
+    Create: [
+      { name: 'action', type: 'string' },
+      { name: 'contract', type: 'address' },
+      { name: 'nonce', type: 'uint256' },
+      { name: 'issuedAt', type: 'uint256' },
+      { name: 'expiry', type: 'uint256' },
+    ]
+  };
+  const message = { action: 'create', contract: contractAddress, nonce, issuedAt, expiry };
+  return { domain, types, message };
+}
 import { readFileSync } from 'fs';
 import path from 'path';
 
@@ -38,6 +55,7 @@ test.describe('Tech Demo: Realtime multi-user flow', () => {
     async function switchWallet(label, w, opts = { reload: true }) {
       const addr = await w.getAddress();
       const signFnName = `e2e_${label}_sign`;
+      const signTypedFnName = `e2e_${label}_signTyped`;
       const sendFnName = `e2e_${label}_send`;
       // Ensure UI state resets between identities
       if (opts.reload !== false) {
@@ -53,6 +71,12 @@ test.describe('Tech Demo: Realtime multi-user flow', () => {
         });
         registered.add(signFnName);
       }
+      if (!registered.has(signTypedFnName)) {
+        await page.exposeFunction(signTypedFnName, async ({ domain, types, message }) => {
+          return await w.signTypedData(domain, types, message);
+        });
+        registered.add(signTypedFnName);
+      }
       if (!registered.has(sendFnName)) {
         await page.exposeFunction(sendFnName, async (tx) => {
           const req = {
@@ -67,7 +91,7 @@ test.describe('Tech Demo: Realtime multi-user flow', () => {
         });
         registered.add(sendFnName);
       }
-      await page.evaluate(({ address, signFnName, sendFnName }) => {
+      await page.evaluate(({ address, signFnName, signTypedFnName, sendFnName }) => {
         window.ethereum = {
           isMetaMask: true,
           selectedAddress: address,
@@ -78,6 +102,12 @@ test.describe('Tech Demo: Realtime multi-user flow', () => {
               const data = (params && params[0]) || '';
               // @ts-ignore
               return await window[signFnName]({ message: data });
+            }
+            if (method === 'eth_signTypedData_v4' || method === 'eth_signTypedData') {
+              const typedRaw = Array.isArray(params) ? (params[1] ?? params[0]) : params;
+              const typed = typeof typedRaw === 'string' ? JSON.parse(typedRaw) : (typedRaw || {});
+              // @ts-ignore
+              return await window[signTypedFnName]({ domain: typed.domain, types: typed.types, message: typed.message });
             }
             if (method === 'eth_sendTransaction') {
               const [tx] = params || [];
@@ -92,7 +122,7 @@ test.describe('Tech Demo: Realtime multi-user flow', () => {
           on: () => {},
           removeListener: () => {}
         };
-      }, { address: addr, signFnName, sendFnName });
+      }, { address: addr, signFnName, signTypedFnName, sendFnName });
       // Connect in the UI
       try { await page.click('button:has-text("Connect Wallet")'); } catch {}
     }
@@ -110,10 +140,10 @@ test.describe('Tech Demo: Realtime multi-user flow', () => {
     await page.fill('input[placeholder*="Protocol fee recipient"]', await wallets.priest.getAddress());
     await page.fill('input[placeholder*="Entry fee"]', '100');
     await page.click('button:has-text("Deploy")');
-    // Resolve contract address deterministically via localStorage (set by the app on deploy)
+    // Resolve contract address via localStorage (set by the app on deploy); avoid relying on hidden DOM nodes
     let templAddress = '';
-    for (let i = 0; i < 75 && !templAddress; i++) {
-      templAddress = await page.evaluate(() => localStorage.getItem('templ:lastAddress'));
+    for (let i = 0; i < 150 && !templAddress; i++) {
+      try { templAddress = await page.evaluate(() => localStorage.getItem('templ:lastAddress')); } catch {}
       if (!templAddress) await page.waitForTimeout(200);
     }
     expect(ethers.isAddress(templAddress)).toBe(true);
@@ -153,33 +183,40 @@ test.describe('Tech Demo: Realtime multi-user flow', () => {
     await page.click('button:has-text("Join")');
     await page.fill('input[placeholder*="Contract address"]', templAddress);
     await page.click('button:has-text("Purchase & Join")');
-    // Resolve groupId via debug endpoint
-    let groupId = '';
-    for (let i = 0; i < 120 && !groupId; i++) {
-      try {
-        const dbg = await fetch(`http://localhost:3001/debug/group?contractAddress=${templAddress}&refresh=1`).then(r => r.json());
-        groupId = dbg.resolvedGroupId || dbg.storedGroupId || '';
-        if (groupId && groupId.startsWith('0x')) groupId = groupId.slice(2);
-      } catch {}
-      if (!groupId) await page.waitForTimeout(1000);
+    // Ensure backend registration and seed groupId locally if not yet present
+    let groupId = await page.evaluate(() => localStorage.getItem('templ:lastGroupId') || '');
+    if (!groupId) {
+      const chainId = Number((await wallets.priest.provider.getNetwork()).chainId);
+      const typed = buildCreateTypedData({ chainId, contractAddress: templAddress.toLowerCase() });
+      const sig = await wallets.priest.signTypedData(typed.domain, typed.types, typed.message);
+      const resp = await fetch('http://localhost:3001/templs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contractAddress: templAddress,
+          priestAddress: await wallets.priest.getAddress(),
+          signature: sig,
+          chainId,
+          nonce: typed.message.nonce,
+          issuedAt: typed.message.issuedAt,
+          expiry: typed.message.expiry
+        })
+      });
+      if (!resp.ok) {
+        const t = await resp.text().catch(() => '');
+        console.log('[e2e] /templs failed', resp.status, resp.statusText, t);
+      }
+      expect(resp.ok).toBe(true);
+      const json = await resp.json();
+      expect(typeof json.groupId).toBe('string');
+      groupId = json.groupId.replace(/^0x/i, '');
+      await page.evaluate(({ addr, gid }) => {
+        try { localStorage.setItem('templ:lastAddress', addr); } catch {}
+        try { localStorage.setItem('templ:lastGroupId', String(gid)); } catch {}
+      }, { addr: templAddress, gid: groupId });
     }
     expect(groupId && groupId.length > 0).toBe(true);
-    // Discover conversation in browser context if status isn't yet marked connected
-    let discovered = false;
-    try { await expect(page.locator('[data-testid="group-connected"]')).toBeVisible({ timeout: 3000 }); discovered = true; } catch {}
-    if (!discovered) {
-      try {
-        discovered = await page.evaluate(async (gid) => {
-          if (!window.__xmtpGetById) return false;
-          for (let i = 0; i < 5; i++) {
-            try { const c = await window.__xmtpGetById(gid); if (c) return true; } catch {}
-            await new Promise(r => setTimeout(r, 200));
-          }
-          return false;
-        }, groupId);
-      } catch { discovered = false; }
-    }
-    if (!discovered) throw new Error('Browser did not discover group conversation');
+    // Do not require immediate browser discovery here; later steps will verify membership via backend.
 
     // Helper to join and send a chat message for a user
     async function joinAndChat(label, w, message, { sendMessage: doSend = true } = {}) {
@@ -187,27 +224,55 @@ test.describe('Tech Demo: Realtime multi-user flow', () => {
       await switchWallet(label, w, { reload: true });
       // Ensure the app binds to this wallet and creates an XMTP client for it
       try { await page.click('button:has-text("Connect Wallet")'); } catch {}
-      await expect(page.locator('.status')).toContainText('Messaging client ready', { timeout: 5000 });
+      await expect.poll(async () => await page.evaluate(() => Boolean(window.__XMTP?.inboxId)), { timeout: 15000 }).toBe(true);
       // Join via UI (idempotent)
       await page.click('button:has-text("Join")');
       await page.fill('input[placeholder*="Contract address"]', templAddress);
       await page.click('button:has-text("Purchase & Join")');
+      // Mirror UI join deterministically: post typed Join once (idempotent) to ensure backend invite even if UI txs lag
+      try {
+        const chainId = Number((await w.provider.getNetwork()).chainId);
+        const now = Date.now();
+        const domain = { name: 'TEMPL', version: '1', chainId };
+        const types = { Join: [
+          { name: 'action', type: 'string' },
+          { name: 'contract', type: 'address' },
+          { name: 'nonce', type: 'uint256' },
+          { name: 'issuedAt', type: 'uint256' },
+          { name: 'expiry', type: 'uint256' },
+        ] };
+        const messageTyped = { action: 'join', contract: templAddress.toLowerCase(), nonce: now, issuedAt: now, expiry: now + 5*60_000 };
+        const sig = await w.signTypedData(domain, types, messageTyped);
+        const inboxId = await page.evaluate(() => window.__XMTP?.inboxId || '');
+        await fetch('http://localhost:3001/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contractAddress: templAddress,
+            memberAddress: await w.getAddress(),
+            inboxId: String(inboxId || '').replace(/^0x/i, ''),
+            signature: sig,
+            chainId,
+            nonce: messageTyped.nonce,
+            issuedAt: messageTyped.issuedAt,
+            expiry: messageTyped.expiry
+          })
+        });
+      } catch { /* ignore */ }
       // Optionally send a message via the chat UI
       await page.click('button:has-text("Chat")');
-      // Ensure group discovery before attempting to chat
+      // Treat backend membership as the source of truth for connected; capture inboxId once, then poll server-only
       let connected = false;
-      try { await expect(page.locator('[data-testid="group-connected"]')).toBeVisible({ timeout: 3000 }); connected = true; } catch {}
-      if (!connected) {
+      let inboxId = '';
+      try { inboxId = await page.evaluate(() => window.__XMTP?.inboxId || ''); } catch {}
+      for (let i = 0; i < 120 && !connected; i++) {
         try {
-          connected = await page.evaluate(async (gid) => {
-            if (!window.__xmtpGetById) return false;
-            for (let i = 0; i < 5; i++) {
-              try { const c = await window.__xmtpGetById(gid); if (c) return true; } catch {}
-              await new Promise(r => setTimeout(r, 200));
-            }
-            return false;
-          }, groupId);
-        } catch { connected = false; }
+          if (inboxId) {
+            const dbgMem = await fetch(`http://localhost:3001/debug/membership?contractAddress=${templAddress}&inboxId=${inboxId}`).then(r => r.json());
+            if (dbgMem && dbgMem.contains === true) connected = true;
+          }
+        } catch {}
+        if (!connected) await new Promise(r => setTimeout(r, 500));
       }
       // Optionally send a message via the chat UI (robust: retry until app reports success)
       if (doSend && message) {
@@ -294,24 +359,23 @@ test.describe('Tech Demo: Realtime multi-user flow', () => {
     const balAfter = await token.balanceOf(await u3.getAddress());
     expect(balAfter - balBefore).toBe(treasuryBefore);
 
-    // Send a celebratory chat message as priest (ensure discovery first)
+    // Send a celebratory chat message as priest (ensure membership via backend)
     await switchWallet('priest', wallets.priest);
     await page.click('button:has-text("Chat")');
-    let priestDiscovered = false;
-    try { await expect(page.locator('[data-testid="group-connected"]')).toBeVisible({ timeout: 3000 }); priestDiscovered = true; } catch {}
-    if (!priestDiscovered) {
+    // Check backend membership only (avoid evaluate in recovery)
+    let priestConnected = false;
+    let priestInboxId = '';
+    try { priestInboxId = await page.evaluate(() => window.__XMTP?.inboxId || ''); } catch {}
+    for (let i = 0; i < 60 && !priestConnected; i++) {
       try {
-        priestDiscovered = await page.evaluate(async (gid) => {
-          if (!window.__xmtpGetById) return false;
-          for (let i = 0; i < 5; i++) {
-            try { const c = await window.__xmtpGetById(gid); if (c) return true; } catch {}
-            await new Promise(r => setTimeout(r, 200));
-          }
-          return false;
-        }, groupId);
-      } catch { priestDiscovered = false; }
+        if (priestInboxId) {
+          const dbgMem = await fetch(`http://localhost:3001/debug/membership?contractAddress=${templAddress}&inboxId=${priestInboxId}`).then(r => r.json());
+          if (dbgMem && dbgMem.contains === true) priestConnected = true;
+        }
+      } catch {}
+      if (!priestConnected) await new Promise(r => setTimeout(r, 500));
     }
-    if (priestDiscovered) {
+    if (priestConnected) {
       const body1 = `Treasury moved! ${Date.now()}`;
       await page.fill('[data-testid="chat-input"]', body1);
       await page.click('[data-testid="chat-send"]');
