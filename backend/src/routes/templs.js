@@ -1,14 +1,18 @@
 import express from 'express';
 import { syncXMTP } from '../../../shared/xmtp.js';
-import { requireAddresses, verifySignature } from '../middleware/validate.js';
-import { waitForInboxReady } from '../xmtp/index.js';
+import { requireAddresses, verifyTypedSignature } from '../middleware/validate.js';
+// import { ethers } from 'ethers';
+import { buildCreateTypedData } from '../../../shared/signing.js';
+import { generateInboxId, getInboxIdForIdentifier } from '@xmtp/node-sdk';
 import { logger } from '../logger.js';
 
-export default function templsRouter({ xmtp, groups, persist, connectContract, database }) {
+export default function templsRouter({ xmtp, groups, persist, connectContract, database, provider }) {
   const router = express.Router();
   const DISABLE_WAIT = process.env.DISABLE_XMTP_WAIT === '1' || process.env.NODE_ENV === 'test';
+  // Optionally attach provider for contract verification if xmtp exposes it in app context
+  // In standalone server we can assign xmtp.provider when creating client; tests may omit.
 
-  // List known templs from persistence
+  // List known templs from persistence (omit groupId unless explicitly requested)
   router.get('/templs', (req, res) => {
     try {
       // If a DB is available, read from it; otherwise enumerate the in-memory map
@@ -32,8 +36,10 @@ export default function templsRouter({ xmtp, groups, persist, connectContract, d
             rows.push({ contract: key, groupId: rec.groupId || rec.group?.id || null, priest: rec.priest || null });
           }
         }
-      } catch (e) { void e; }
-      res.json({ templs: rows });
+      } catch { /* ignore */ }
+      const includeGroupId = String(req.query.include || '') === 'groupId';
+      const payload = rows.map(r => includeGroupId ? r : ({ contract: r.contract, priest: r.priest || null }));
+      res.json({ templs: payload });
     } catch (err) {
       res.status(500).json({ error: err?.message || String(err) });
     }
@@ -42,13 +48,32 @@ export default function templsRouter({ xmtp, groups, persist, connectContract, d
   router.post(
     '/templs',
     requireAddresses(['contractAddress', 'priestAddress']),
-    verifySignature(
-      'priestAddress',
-      (req) => `create:${req.body.contractAddress.toLowerCase()}`
-    ),
+    verifyTypedSignature({
+      database,
+      addressField: 'priestAddress',
+      buildTyped: (req) => {
+        const chainId = Number(req.body?.chainId || 31337);
+        const n = Number(req.body?.nonce);
+        const i = Number(req.body?.issuedAt);
+        const e = Number(req.body?.expiry);
+        const nonce = Number.isFinite(n) ? n : undefined;
+        const issuedAt = Number.isFinite(i) ? i : undefined;
+        const expiry = Number.isFinite(e) ? e : undefined;
+        return buildCreateTypedData({ chainId, contractAddress: req.body.contractAddress.toLowerCase(), nonce, issuedAt, expiry });
+      }
+    }),
     async (req, res) => {
-      const { contractAddress, priestAddress, priestInboxId } = req.body;
+      const { contractAddress, priestAddress } = req.body;
       try {
+        // Optional contract verification (prod): ensure address is a contract when configured
+        if (process.env.REQUIRE_CONTRACT_VERIFY === '1' && provider) {
+          try {
+            const code = await provider.getCode(contractAddress);
+            if (!code || code === '0x') {
+              return res.status(400).json({ error: 'Not a contract' });
+            }
+          } catch { /* ignore in permissive mode */ }
+        }
         // Capture baseline set of server conversations to help identify the new one
         let beforeIds = [];
         try {
@@ -58,122 +83,77 @@ export default function templsRouter({ xmtp, groups, persist, connectContract, d
         } catch (err) { void err; }
         // Prefer identity-based membership (Ethereum = 0) when supported
         const priestIdentifierObj = { identifier: priestAddress.toLowerCase(), identifierKind: 0 };
-        // Ensure the priest identity is registered before creating a group
-        async function waitForIdentityReady(identifier, tries = 60) {
-          if (DISABLE_WAIT) return null;
-          if (!xmtp?.findInboxIdByIdentifier) return null;
-          for (let i = 0; i < tries; i++) {
-            try {
-              const found = await xmtp.findInboxIdByIdentifier(identifier);
-              if (found) return found;
-            } catch (err) { void err; }
-            await new Promise((r) => setTimeout(r, DISABLE_WAIT ? 1 : 1000));
-          }
-          return null;
-        }
-        await waitForIdentityReady(priestIdentifierObj, 60);
 
       // The SDK often reports successful syncs as errors, so capture that case.
       let group;
       try {
-        if (typeof xmtp.conversations.newGroupWithIdentifiers === 'function') {
-          group = await xmtp.conversations.newGroupWithIdentifiers([priestIdentifierObj]);
-        } else if (typeof xmtp.conversations.newGroup === 'function') {
-          // Fallback for test/mocked clients
-          group = await xmtp.conversations.newGroup();
-        } else {
-          throw new Error('XMTP client does not support group creation');
+        // Build initial participant list using inbox IDs as required by node-sdk@4.x
+        // Always include the server's own inboxId. Add priest inboxId if resolvable.
+        const inboxIds = [];
+        if (xmtp?.inboxId) inboxIds.push(xmtp.inboxId);
+        try {
+          const envOpt = /** @type {'local'|'dev'|'production'} */ (
+            ['local','dev','production'].includes(String(process.env.XMTP_ENV)) ? process.env.XMTP_ENV : 'dev'
+          );
+          const priestInboxMaybe = await getInboxIdForIdentifier(priestIdentifierObj, envOpt);
+          inboxIds.push(priestInboxMaybe || generateInboxId(priestIdentifierObj));
+        } catch {
+          try { inboxIds.push(generateInboxId(priestIdentifierObj)); } catch { /* ignore */ }
         }
+        if (!inboxIds.length) {
+          throw new Error('No inboxIds available for group creation');
+        }
+        if (typeof xmtp.conversations.newGroup !== 'function') {
+          throw new Error('XMTP client does not support newGroup(inboxIds)');
+        }
+        group = await xmtp.conversations.newGroup(inboxIds);
       } catch (err) {
-        if (err.message && err.message.includes('succeeded')) {
-          logger.info({ message: err.message }, 'XMTP sync message during group creation - attempting deterministic resolve');
-          try { await syncXMTP(xmtp); } catch (err) { void err; }
+        const msg = String(err?.message || '');
+        logger.warn({ err: msg }, 'Group creation initial attempt failed; attempting recovery');
+        try { await syncXMTP(xmtp); } catch (e) { void e; }
+        // Attempt to resolve the newly created conversation by diffing before/after
+        try {
           const afterList = (await xmtp.conversations.list?.()) ?? [];
           const afterIds = afterList.map((c) => c.id);
-          // Prefer new conversations that appeared since beforeIds snapshot
           const diffIds = afterIds.filter((id) => !beforeIds.includes(id));
           const byDiff = afterList.filter((c) => diffIds.includes(c.id));
-          // Try by name first (if something already set a name)
           const expectedName = `Templ ${contractAddress}`;
           let candidate = byDiff.find((c) => c.name === expectedName) || afterList.find((c) => c.name === expectedName);
-          if (!candidate) {
-            // Fall back to the newest item among the diffs, then overall list
-            candidate = byDiff[byDiff.length - 1] || afterList[afterList.length - 1];
-          }
-          group = candidate;
-          if (!group) {
-            // As a last resort, retry identity-based group creation once.
-            group = await xmtp.conversations.newGroupWithIdentifiers([priestIdentifierObj]);
-          }
-        } else {
+          if (!candidate) candidate = byDiff[byDiff.length - 1] || afterList[afterList.length - 1];
+          if (candidate) group = candidate;
+        } catch (e) { void e; }
+        // If still no group, retry with just the server's inboxId
+        if (!group && typeof xmtp.conversations.newGroup === 'function' && xmtp?.inboxId) {
+          group = await xmtp.conversations.newGroup([xmtp.inboxId]);
+        }
+        if (!group) {
           throw err;
         }
       }
 
-      // Ensure priest is explicitly added by inboxId for deterministic discovery across SDKs
-      try {
-        // Prefer inboxId passed from frontend; else resolve from network
-        let priestInbox = null;
-        if (priestInboxId && typeof priestInboxId === 'string' && priestInboxId.length > 0) {
-          priestInbox = priestInboxId.replace(/^0x/i, '');
-        } else {
-          try {
-            if (typeof xmtp.findInboxIdByIdentifier === 'function') {
-              priestInbox = await xmtp.findInboxIdByIdentifier(priestIdentifierObj);
-            }
-          } catch (e) { void e; }
-        }
-        if (priestInbox && typeof group.addMembers === 'function') {
-          const ready = await waitForInboxReady(priestInbox, 30);
-          logger.info({ priestInboxId: priestInbox, ready }, 'Priest inbox readiness before add');
-          const beforeAgg = xmtp?.debugInformation?.apiAggregateStatistics?.();
-          try {
-            await group.addMembers([priestInbox]);
-            logger.info({ priestInboxId: priestInbox }, 'Added priest by inboxId');
-          } catch (addErr) {
-            const msg = String(addErr?.message || '');
-            // Ignore benign cases like already a member or SDK reporting success as an error
-            if (!msg.includes('already') && !msg.includes('succeeded')) throw addErr;
-          }
-          try {
-            await syncXMTP(xmtp);
-          } catch (e) { logger.warn({ e }, 'Server sync after priest add failed'); }
-          try {
-            const afterAgg = xmtp?.debugInformation?.apiAggregateStatistics?.();
-            logger.info({ beforeAgg, afterAgg }, 'XMTP API stats around priest add');
-          } catch (e) { void e; }
-          try {
-            // Attempt to read members for diagnostics
-            const members = Array.isArray(group.members) ? group.members : [];
-            logger.info({ members }, 'Group members snapshot after priest add');
-          } catch (e) { void e; }
-        }
-      } catch (err) {
-        logger.warn({ err }, 'Unable to explicitly add priest by inboxId');
-      }
+      // Priest is included in newGroup creation via inboxIds; no explicit add required here.
 
-      // Proactively nudge message history so new members can discover the group quickly
+      // Proactively nudge message history so clients can discover the group quickly
       try {
-        await group.send(JSON.stringify({ type: 'templ-created', contract: contractAddress }));
+        if (typeof group.send === 'function') {
+          await group.send(JSON.stringify({ type: 'templ-created', contract: contractAddress }));
+        }
       } catch (err) {
-        logger.warn({ err }, 'Unable to send templ-created message');
+        logger.warn({ msg: 'Unable to send templ-created message', err: String(err?.message || err) });
       }
 
       logger.info({
         contract: contractAddress.toLowerCase(),
         groupId: group.id,
         groupName: group.name,
-        memberCount: group.members?.length
+        // avoid members in logs by default
       }, 'Group created successfully');
 
       // Log member count after creation (expected to be 1 - the server itself)
-      logger.info({
-        memberCount: group.members?.length,
-        members: group.members
-      }, 'Group members after creation');
+      // Skip dumping member arrays in non-debug logs
 
       // Set the group metadata - these may throw sync errors too
-      if (typeof group.updateName === 'function') {
+      if (!DISABLE_WAIT && typeof group.updateName === 'function') {
         try {
           await group.updateName(`Templ ${contractAddress}`);
         } catch (err) {
@@ -184,7 +164,7 @@ export default function templsRouter({ xmtp, groups, persist, connectContract, d
         }
       }
 
-      if (typeof group.updateDescription === 'function') {
+      if (!DISABLE_WAIT && typeof group.updateDescription === 'function') {
         try {
           await group.updateDescription('Private TEMPL group');
         } catch (err) {

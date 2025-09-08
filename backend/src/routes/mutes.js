@@ -1,6 +1,6 @@
 import express from 'express';
-import { requireAddresses, verifySignature } from '../middleware/validate.js';
-import { buildMuteMessage } from '../../../shared/signing.js';
+import { requireAddresses, verifyTypedSignature } from '../middleware/validate.js';
+import { buildMuteTypedData } from '../../../shared/signing.js';
 
 export default function mutesRouter({ groups, database }) {
   const router = express.Router();
@@ -14,10 +14,20 @@ export default function mutesRouter({ groups, database }) {
       req.record = record;
       next();
     },
-    verifySignature(
-      'moderatorAddress',
-      (req) => buildMuteMessage(req.body.contractAddress, req.body.targetAddress)
-    ),
+    verifyTypedSignature({
+      database,
+      addressField: 'moderatorAddress',
+      buildTyped: (req) => {
+        const chainId = Number(req.body?.chainId || 31337);
+        const n = Number(req.body?.nonce);
+        const i = Number(req.body?.issuedAt);
+        const e = Number(req.body?.expiry);
+        const nonce = Number.isFinite(n) ? n : undefined;
+        const issuedAt = Number.isFinite(i) ? i : undefined;
+        const expiry = Number.isFinite(e) ? e : undefined;
+        return buildMuteTypedData({ chainId, contractAddress: req.body.contractAddress.toLowerCase(), targetAddress: req.body.targetAddress.toLowerCase(), nonce, issuedAt, expiry });
+      }
+    }),
     async (req, res) => {
       const { contractAddress, moderatorAddress, targetAddress } = req.body;
       const record = /** @type {any} */ (req.record);

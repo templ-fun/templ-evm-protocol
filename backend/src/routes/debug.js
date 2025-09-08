@@ -31,6 +31,7 @@ export default function debugRouter({ xmtp, groups, lastJoin }) {
           const members = Array.isArray(record.group?.members)
             ? record.group.members
             : [];
+          // Emit members only on debug endpoint; keep as-is
           info.members = members;
           info.contains = who ? members.includes(who) : null;
         } catch (e) {
@@ -108,6 +109,30 @@ export default function debugRouter({ xmtp, groups, lastJoin }) {
       res.json(result);
     } catch (err) {
       logger.error({ err }, 'Debug conversations failed');
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Send a message to a group's conversation for debugging and discovery warmup
+  router.post('/debug/send', async (req, res) => {
+    try {
+      const contractAddress = String(req.body?.contractAddress || '').toLowerCase();
+      const content = String(req.body?.content || '').trim();
+      if (!contractAddress || !content) return res.status(400).json({ error: 'Missing contractAddress or content' });
+      const record = groups.get(contractAddress);
+      if (!record) return res.status(404).json({ error: 'Unknown Templ' });
+      try { await syncXMTP(xmtp); } catch (e) { logger.warn({ err: e?.message || e }); }
+      try {
+        if (!record.group && record.groupId && xmtp?.conversations?.getConversationById) {
+          const maybe = await xmtp.conversations.getConversationById(record.groupId);
+          if (maybe) record.group = maybe;
+        }
+      } catch (e) { logger.warn({ err: e?.message || e }); }
+      if (!record.group) return res.status(500).json({ error: 'Group not resolved' });
+      await record.group.send(content);
+      res.json({ ok: true });
+    } catch (err) {
+      logger.error({ err }, 'Debug send failed');
       res.status(500).json({ error: err.message });
     }
   });

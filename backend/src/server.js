@@ -16,14 +16,14 @@ import mutesRouter from './routes/mutes.js';
 import debugRouter from './routes/debug.js';
 
 import { logger } from './logger.js';
-import { createXmtpWithRotation, waitForInboxReady, XMTP_ENV } from './xmtp/index.js';
+import { createXmtpWithRotation, waitForInboxReady, XMTP_ENV, waitForXmtpClientReady } from './xmtp/index.js';
 
 export { logger, createXmtpWithRotation, waitForInboxReady, XMTP_ENV };
 
 export function createApp(opts) {
   /** @type {{xmtp:any, hasPurchased:(contract:string,member:string)=>Promise<boolean>, connectContract?: (address:string)=>{on: Function}, dbPath?: string, db?: any, rateLimitStore?: import('express-rate-limit').Store}} */
   // @ts-ignore - runtime validation below
-  const { xmtp, hasPurchased, connectContract, dbPath, db, rateLimitStore } =
+  const { xmtp, hasPurchased, connectContract, dbPath, db, rateLimitStore, provider } =
     opts || {};
   const app = express();
   const allowedOrigins =
@@ -50,6 +50,9 @@ export function createApp(opts) {
   );
   database.exec(
     'CREATE TABLE IF NOT EXISTS delegates (contract TEXT, delegate TEXT, PRIMARY KEY(contract, delegate))'
+  );
+  database.exec(
+    'CREATE TABLE IF NOT EXISTS signatures (sig TEXT PRIMARY KEY, usedAt INTEGER)'
   );
 
   function persist(contract, record) {
@@ -78,7 +81,7 @@ export function createApp(opts) {
     }
   })();
 
-  const context = { xmtp, hasPurchased, connectContract, database, groups, persist, lastJoin };
+  const context = { xmtp, hasPurchased, connectContract, database, groups, persist, lastJoin, provider };
 
   app.use(templsRouter(context));
   app.use(joinRouter(context));
@@ -109,10 +112,25 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const provider = new ethers.JsonRpcProvider(RPC_URL);
   const wallet = new ethers.Wallet(BOT_PRIVATE_KEY, provider);
   const envMax = Number(process.env.XMTP_MAX_ATTEMPTS);
-  const xmtp = await createXmtpWithRotation(
-    wallet,
-    Number.isFinite(envMax) && envMax > 0 ? envMax : undefined
-  );
+  let xmtp;
+  const bootTries = Number.isFinite(Number(process.env.XMTP_BOOT_MAX_TRIES))
+    ? Number(process.env.XMTP_BOOT_MAX_TRIES)
+    : 30;
+  for (let i = 1; i <= bootTries; i++) {
+    try {
+      xmtp = await createXmtpWithRotation(
+        wallet,
+        Number.isFinite(envMax) && envMax > 0 ? envMax : undefined
+      );
+      const ready = await waitForXmtpClientReady(xmtp, 30, 500);
+      if (!ready) throw new Error('XMTP client not ready');
+      break;
+    } catch (e) {
+      logger.warn({ attempt: i, err: String(e?.message || e) }, 'XMTP boot not ready; retrying');
+      if (i === bootTries) throw e;
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+  }
   const hasPurchased = async (contractAddress, memberAddress) => {
     const contract = new ethers.Contract(
       contractAddress,
@@ -131,7 +149,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     }
   }
   const rateLimitStore = await createRateLimitStore();
-  const app = createApp({ xmtp, hasPurchased, dbPath, rateLimitStore });
+  const app = createApp({ xmtp, hasPurchased, dbPath, rateLimitStore, provider });
   const port = process.env.PORT || 3001;
   app.listen(port, () => {
     logger.info({ port }, 'TEMPL backend listening');

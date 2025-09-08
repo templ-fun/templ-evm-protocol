@@ -1,12 +1,14 @@
 import express from 'express';
 import { syncXMTP } from '../../../shared/xmtp.js';
-import { requireAddresses, verifySignature } from '../middleware/validate.js';
-import { waitForInboxReady } from '../xmtp/index.js';
+import { requireAddresses, verifyTypedSignature } from '../middleware/validate.js';
+import { buildJoinTypedData } from '../../../shared/signing.js';
+import { waitForInboxReady, XMTP_ENV } from '../xmtp/index.js';
+import { Client as NodeXmtpClient, generateInboxId, getInboxIdForIdentifier } from '@xmtp/node-sdk';
 import { logger } from '../logger.js';
 
-export default function joinRouter({ xmtp, groups, hasPurchased, lastJoin }) {
+export default function joinRouter({ xmtp, groups, hasPurchased, lastJoin, database }) {
   const router = express.Router();
-  const DISABLE_WAIT = process.env.DISABLE_XMTP_WAIT === '1' || process.env.NODE_ENV === 'test';
+  // (no DISABLE_WAIT flags here; production-safe logic below)
 
   router.post(
     '/join',
@@ -17,12 +19,22 @@ export default function joinRouter({ xmtp, groups, hasPurchased, lastJoin }) {
       req.record = record;
       next();
     },
-    verifySignature(
-      'memberAddress',
-      (req) => `join:${req.body.contractAddress.toLowerCase()}`
-    ),
+    verifyTypedSignature({
+      database,
+      addressField: 'memberAddress',
+      buildTyped: (req) => {
+        const chainId = Number(req.body?.chainId || 31337);
+        const n = Number(req.body?.nonce);
+        const i = Number(req.body?.issuedAt);
+        const e = Number(req.body?.expiry);
+        const nonce = Number.isFinite(n) ? n : undefined;
+        const issuedAt = Number.isFinite(i) ? i : undefined;
+        const expiry = Number.isFinite(e) ? e : undefined;
+        return buildJoinTypedData({ chainId, contractAddress: req.body.contractAddress.toLowerCase(), nonce, issuedAt, expiry });
+      }
+    }),
     async (req, res) => {
-      const { contractAddress, memberAddress, memberInboxId } = req.body;
+      const { contractAddress, memberAddress } = req.body;
       const record = /** @type {any} */ (req.record);
       let purchased;
       try {
@@ -35,29 +47,129 @@ export default function joinRouter({ xmtp, groups, hasPurchased, lastJoin }) {
       try {
         // Resolve member inboxId and add explicitly by inboxId for maximum compatibility
         const memberIdentifier = { identifier: memberAddress.toLowerCase(), identifierKind: 0 };
-        async function waitForInboxId(identifier, tries = 180) {
-          if (DISABLE_WAIT) return null;
-          if (!xmtp?.findInboxIdByIdentifier) return null;
+        // If the client provided a candidate inboxId (its own), prefer it
+        let providedInboxId = null;
+        try {
+          const raw = String(req.body?.inboxId || req.body?.memberInboxId || '').trim();
+          if (raw && /^[0-9a-fA-F]+$/i.test(raw)) providedInboxId = raw.replace(/^0x/i, '');
+        } catch { /* ignore */ }
+        async function waitForInboxId(identifier, tries = 180, allowDeterministic = false) {
+          const envOpt = /** @type {'local'|'dev'|'production'} */ (
+            ['local','dev','production'].includes(String(XMTP_ENV)) ? XMTP_ENV : 'dev'
+          );
+          const delayMs = envOpt === 'local' ? 200 : 1000;
           for (let i = 0; i < tries; i++) {
+            // Prefer resolving through the server's XMTP client if available (works with test doubles)
             try {
-              const found = await xmtp.findInboxIdByIdentifier(identifier);
+              if (typeof xmtp?.findInboxIdByIdentifier === 'function') {
+                const local = await xmtp.findInboxIdByIdentifier(identifier);
+                if (local) return local;
+              }
+            } catch { /* ignore */ }
+            // Fallback to SDK helper that queries XMTP network mapping
+            try {
+              const found = await getInboxIdForIdentifier(identifier, envOpt);
               if (found) return found;
-            } catch (e) { void e; }
-            await new Promise((r) => setTimeout(r, DISABLE_WAIT ? 1 : 1000));
+            } catch { /* ignore */ }
+            await new Promise((r) => setTimeout(r, delayMs));
+          }
+          if (allowDeterministic) {
+            try { return generateInboxId(identifier); } catch { /* ignore */ }
           }
           return null;
         }
-        // Prefer inboxId provided by client; else wait until identity is visible on the network
-        let inboxId = null;
-        if (memberInboxId && typeof memberInboxId === 'string' && memberInboxId.length > 0) {
-          inboxId = String(memberInboxId).replace(/^0x/i, '');
-        } else {
-          inboxId = await waitForInboxId(memberIdentifier, 180);
+        // Ensure we have a fresh group handle
+        try {
+          if ((!record.group || !record.group.id) && record.groupId && xmtp?.conversations?.getConversationById) {
+            const maybe = await xmtp.conversations.getConversationById(record.groupId);
+            if (maybe) record.group = maybe;
+          }
+        } catch (e) { logger.warn({ err: e?.message || e }, 'Rehydrate group failed'); }
+        // Choose inboxId: prefer the client-provided inboxId if available
+        let inboxId = providedInboxId;
+        const allowDeterministic = ['local'].includes(String(XMTP_ENV)) || process.env.NODE_ENV === 'test';
+        if (!inboxId) {
+          inboxId = await waitForInboxId(memberIdentifier, allowDeterministic ? 30 : 180, allowDeterministic);
         }
         if (!inboxId) {
           return res.status(503).json({ error: 'Member identity not registered yet; retry shortly' });
         }
-        // Linearize against identity readiness on XMTP infra
+        // On local/dev, also ensure the target installation has at least one visible installation record
+        try {
+          const envOpt = /** @type {'local'|'dev'|'production'} */ (
+            ['local','dev','production'].includes(String(XMTP_ENV)) ? XMTP_ENV : 'dev'
+          );
+          const max = envOpt === 'local' ? 40 : 60;
+          const delay = envOpt === 'local' ? 150 : 500;
+          /** @type {string[]} */
+          let candidateInstallationIds = [];
+          /** @type {any} */
+          let lastInboxState = null;
+          for (let i = 0; i < max; i++) {
+            try {
+              if (typeof NodeXmtpClient.inboxStateFromInboxIds === 'function') {
+                const states = await NodeXmtpClient.inboxStateFromInboxIds([inboxId], envOpt);
+                const s = Array.isArray(states) && states[0] ? states[0] : null;
+                lastInboxState = s;
+                const hasInst = !!(s && Array.isArray(s.installations) && s.installations.length > 0);
+                try {
+                  candidateInstallationIds = Array.isArray(s?.installations)
+                    ? s.installations.map((inst) => String(inst && inst.id || '')).filter(Boolean)
+                    : [];
+                } catch { /* ignore */ }
+                if (hasInst) break;
+              } else {
+                break;
+              }
+            } catch {/* ignore */}
+            await new Promise((r) => setTimeout(r, delay));
+          }
+          // If we discovered installation IDs, optionally gate on key package readiness
+          try {
+            if (candidateInstallationIds.length && typeof xmtp?.getKeyPackageStatusesForInstallationIds === 'function') {
+              /** @type {Record<string, any>} */
+              let lastStatuses = {};
+              for (let i = 0; i < Math.min(max, 60); i++) {
+                try {
+                  const statusMap = await xmtp.getKeyPackageStatusesForInstallationIds(candidateInstallationIds);
+                  lastStatuses = statusMap || {};
+                  const ids = Object.keys(statusMap || {});
+                  const ready = ids.some((id) => {
+                    const st = statusMap[id];
+                    if (!st) return false;
+                    // Treat presence of lifetime.notAfter as readiness; if available, ensure it's in the future
+                    const na = /** @type {any} */ (st).lifetime?.notAfter;
+                    const nb = /** @type {any} */ (st).lifetime?.notBefore;
+                    if (typeof na === 'bigint' || typeof na === 'number') {
+                      const now = BigInt(Math.floor(Date.now() / 1000));
+                      const notAfter = BigInt(na);
+                      const notBefore = nb != null ? BigInt(nb) : now - 1n;
+                      return notBefore <= now && now < notAfter;
+                    }
+                    // Fallback: consider any status entry as a positive signal
+                    return true;
+                  });
+                  if (ready) break;
+                } catch { /* ignore */ }
+                await new Promise((r) => setTimeout(r, delay));
+              }
+              // Attach a compact snapshot for debugging via /debug/last-join
+              try {
+                lastJoin.at = Date.now();
+                lastJoin.payload = lastJoin.payload || {};
+                lastJoin.payload.keyPackageProbe = {
+                  installationIds: candidateInstallationIds,
+                  statuses: Object.keys(lastStatuses || {}),
+                };
+                lastJoin.payload.inboxStateProbe = {
+                  installationCount: Array.isArray(lastInboxState?.installations) ? lastInboxState.installations.length : null,
+                  identifierCount: Array.isArray(lastInboxState?.identifiers) ? lastInboxState.identifiers.length : null,
+                };
+              } catch { /* ignore */ }
+            }
+          } catch { /* ignore */ }
+        } catch {/* ignore */}
+        // Linearize against identity readiness on XMTP infra for whichever inboxId we use
         const ready = await waitForInboxReady(inboxId, 60);
         logger.info({ inboxId, ready }, 'Member inbox readiness before add');
         const beforeAgg = xmtp?.debugInformation?.apiAggregateStatistics?.();
@@ -84,9 +196,24 @@ export default function joinRouter({ xmtp, groups, hasPurchased, lastJoin }) {
         try {
           await syncXMTP(xmtp);
           logger.info('Server conversations synced after join');
+          try {
+            if (record.group?.sync) await record.group.sync();
+          } catch { /* ignore */ }
         } catch (err) {
           logger.warn({ err }, 'Server sync after join failed');
         }
+        // Wait until the member appears in the group's member list (ensures welcome processed)
+        try {
+          const env = String(XMTP_ENV || 'dev');
+          const max = env === 'local' ? 30 : 60;
+          const delay = env === 'local' ? 150 : 500;
+          for (let i = 0; i < max; i++) {
+            try { await record.group?.sync?.(); } catch { /* ignore */ }
+            const members = Array.isArray(record.group?.members) ? record.group.members : [];
+            if (members.includes(inboxId)) break;
+            await new Promise((r) => setTimeout(r, delay));
+          }
+        } catch { /* ignore */ }
         try {
           lastJoin.at = Date.now();
           lastJoin.payload = { joinMeta };
@@ -97,12 +224,28 @@ export default function joinRouter({ xmtp, groups, hasPurchased, lastJoin }) {
             lastJoin.payload.beforeAgg = beforeAgg;
           } catch (e) { void e; }
         } catch (e) { void e; }
-        try {
-          const members = Array.isArray(record.group?.members) ? record.group.members : [];
-          logger.info({ members }, 'Group members snapshot after member add');
-        } catch (e) { void e; }
+        // Avoid logging member arrays by default, and nudge metadata to produce a fresh commit
         try { if (typeof record.group.sync === 'function') await record.group.sync(); } catch (err) { void err; }
         try { await record.group.send(JSON.stringify({ type: 'member-joined', address: memberAddress })); } catch (err) { void err; }
+        try {
+          if (typeof record.group.updateDescription === 'function') {
+            await record.group.updateDescription('Member joined');
+          }
+        } catch (err) {
+          // Some SDKs report successful syncs as errors; ignore benign cases
+          if (!String(err?.message || '').includes('succeeded')) { /* ignore other errors */ }
+        }
+        // Also bump the name to ensure a commit is produced across SDK versions
+        try {
+          if (typeof record.group.updateName === 'function') {
+            await record.group.updateName(`Templ ${contractAddress}`);
+          }
+        } catch (err) {
+          if (!String(err?.message || '').includes('succeeded')) { /* ignore */ }
+        }
+        // Final sync to ensure the warm message and membership are visible network-wide before responding
+        try { await syncXMTP(xmtp); } catch { /* ignore */ }
+        try { if (typeof record.group.sync === 'function') await record.group.sync(); } catch { /* ignore */ }
         res.json({ groupId: record.group.id });
       } catch (err) {
         logger.error({ err, contractAddress }, 'Join failed');

@@ -1,6 +1,6 @@
 import express from 'express';
-import { requireAddresses, verifySignature } from '../middleware/validate.js';
-import { buildDelegateMessage } from '../../../shared/signing.js';
+import { requireAddresses, verifyTypedSignature } from '../middleware/validate.js';
+import { buildDelegateTypedData } from '../../../shared/signing.js';
 import { logger } from '../logger.js';
 
 export default function delegatesRouter({ groups, database }) {
@@ -15,11 +15,21 @@ export default function delegatesRouter({ groups, database }) {
       req.record = record;
       next();
     },
-    verifySignature(
-      'priestAddress',
-      (req) => buildDelegateMessage(req.body.contractAddress, req.body.delegateAddress),
-      'Only priest can delegate'
-    ),
+    verifyTypedSignature({
+      database,
+      addressField: 'priestAddress',
+      buildTyped: (req) => {
+        const chainId = Number(req.body?.chainId || 31337);
+        const n = Number(req.body?.nonce);
+        const i = Number(req.body?.issuedAt);
+        const e = Number(req.body?.expiry);
+        const nonce = Number.isFinite(n) ? n : undefined;
+        const issuedAt = Number.isFinite(i) ? i : undefined;
+        const expiry = Number.isFinite(e) ? e : undefined;
+        return buildDelegateTypedData({ chainId, contractAddress: req.body.contractAddress.toLowerCase(), delegateAddress: req.body.delegateAddress.toLowerCase(), nonce, issuedAt, expiry });
+      },
+      errorMessage: 'Only priest can delegate'
+    }),
     (req, res) => {
       const { contractAddress, priestAddress, delegateAddress } = req.body;
       const record = /** @type {any} */ (req.record);
@@ -49,11 +59,21 @@ export default function delegatesRouter({ groups, database }) {
       req.record = record;
       next();
     },
-    verifySignature(
-      'priestAddress',
-      (req) => buildDelegateMessage(req.body.contractAddress, req.body.delegateAddress),
-      'Only priest can delegate'
-    ),
+    verifyTypedSignature({
+      database,
+      addressField: 'priestAddress',
+      buildTyped: (req) => {
+        const chainId = Number(req.body?.chainId || 31337);
+        const n = Number(req.body?.nonce);
+        const i = Number(req.body?.issuedAt);
+        const e = Number(req.body?.expiry);
+        const nonce = Number.isFinite(n) ? n : undefined;
+        const issuedAt = Number.isFinite(i) ? i : undefined;
+        const expiry = Number.isFinite(e) ? e : undefined;
+        return buildDelegateTypedData({ chainId, contractAddress: req.body.contractAddress.toLowerCase(), delegateAddress: req.body.delegateAddress.toLowerCase(), nonce, issuedAt, expiry });
+      },
+      errorMessage: 'Only priest can delegate'
+    }),
     (req, res) => {
       const { contractAddress, priestAddress, delegateAddress } = req.body;
       const record = /** @type {any} */ (req.record);

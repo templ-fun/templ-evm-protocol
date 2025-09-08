@@ -5,6 +5,9 @@ import path from 'path';
 import os from 'os';
 import { makeApp, wallets } from './helpers.js';
 
+// Load typed-data builders once for this module
+const { buildCreateTypedData, buildJoinTypedData } = await import('../../shared/signing.js');
+
 const addresses = {
   contract: '0x0000000000000000000000000000000000000001',
   priest: wallets.priest.address,
@@ -23,41 +26,43 @@ test('reloads groups from disk on restart', async () => {
 
   const xmtp1 = { 
     inboxId: 'test-inbox-id',
-    conversations: { newGroup: async () => fakeGroup } 
+    conversations: { newGroup: async (inboxIds) => { void inboxIds; return fakeGroup; } }
   };
   const hasPurchased = async () => true;
 
   let app = makeApp({ xmtp: xmtp1, hasPurchased, dbPath });
-  const createSig = await wallets.priest.signMessage(
-    `create:${addresses.contract}`
-  );
+  const createTyped = buildCreateTypedData({ chainId: 31337, contractAddress: addresses.contract });
+  const createSig = await wallets.priest.signTypedData(createTyped.domain, createTyped.types, createTyped.message);
   await request(app)
     .post('/templs')
+    .set('x-insecure-sig', '1')
     .send({
       contractAddress: addresses.contract,
       priestAddress: addresses.priest,
-      signature: createSig
+      signature: createSig,
+      chainId: 31337
     })
     .expect(200);
   await app.close();
 
   const xmtp2 = { 
     inboxId: 'test-inbox-id',
-    conversations: { getConversationById: async () => fakeGroup } 
+    conversations: { getConversationById: async () => fakeGroup },
+    findInboxIdByIdentifier: async () => 'test-inbox-id'
   };
   app = makeApp({ xmtp: xmtp2, hasPurchased, dbPath });
   await new Promise((r) => setTimeout(r, 10));
 
-  const joinSig = await wallets.member.signMessage(
-    `join:${addresses.contract}`
-  );
+  const joinTyped = buildJoinTypedData({ chainId: 31337, contractAddress: addresses.contract });
+  const joinSig = await wallets.member.signTypedData(joinTyped.domain, joinTyped.types, joinTyped.message);
   await request(app)
     .post('/join')
+    .set('x-insecure-sig', '1')
     .send({
       contractAddress: addresses.contract,
       memberAddress: addresses.member,
       signature: joinSig,
-      memberInboxId: 'test-inbox-id'
+      chainId: 31337
     })
     .expect(200, { groupId: fakeGroup.id });
   await app.close();
@@ -87,13 +92,16 @@ test('returns 500 when persistence fails', async () => {
 
   const app = makeApp({ xmtp, hasPurchased, db: failingDb });
 
-  const sig = await wallets.priest.signMessage(`create:${addresses.contract}`);
+  const createTyped2 = buildCreateTypedData({ chainId: 31337, contractAddress: addresses.contract });
+  const sig = await wallets.priest.signTypedData(createTyped2.domain, createTyped2.types, createTyped2.message);
   await request(app)
     .post('/templs')
+    .set('x-insecure-sig', '1')
     .send({
       contractAddress: addresses.contract,
       priestAddress: addresses.priest,
-      signature: sig
+      signature: sig,
+      chainId: 31337
     })
     .expect(500);
   await app.close();

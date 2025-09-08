@@ -34,7 +34,7 @@ export async function waitForInboxReady(inboxId, tries = 60) {
   return Boolean(result);
 }
 
-export async function createXmtpWithRotation(wallet, maxAttempts = 100000000) {
+export async function createXmtpWithRotation(wallet, maxAttempts = 20) {
   const dbEncryptionKey = new Uint8Array(32);
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const xmtpSigner = {
@@ -82,4 +82,36 @@ export async function createXmtpWithRotation(wallet, maxAttempts = 100000000) {
     }
   }
   throw new Error('Unable to register XMTP client after nonce rotation');
+}
+
+// Wait for the XMTP client to be able to talk to the network deterministically.
+export async function waitForXmtpClientReady(xmtp, tries = 30, delayMs = 500) {
+  const env = process.env.XMTP_ENV || 'dev';
+  return Boolean(await waitFor({
+    tries,
+    delayMs,
+    check: async () => {
+      try { await xmtp?.preferences?.inboxState?.(true); } catch { /* ignore */ }
+      try { await xmtp?.conversations?.sync?.(); } catch { /* ignore */ }
+      try {
+        // Attempt a lightweight API call via debug info or list
+        const agg = await xmtp?.debugInformation?.apiAggregateStatistics?.();
+        if (typeof agg === 'string' && agg.includes('Api Stats')) return true;
+      } catch { /* ignore */ }
+      try {
+        const list = await xmtp?.conversations?.list?.({ consentStates: ['allowed','unknown','denied'] });
+        if (Array.isArray(list)) return true;
+      } catch { /* ignore */ }
+      // As a last resort, try the static inboxId mapping endpoint
+      try {
+        const id = String(xmtp?.inboxId || '').replace(/^0x/i, '');
+        if (id && typeof Client.inboxStateFromInboxIds === 'function') {
+          const envOpt = /** @type {any} */ (['local','dev','production'].includes(env) ? env : 'dev');
+          const states = await Client.inboxStateFromInboxIds([id], envOpt);
+          if (Array.isArray(states)) return true;
+        }
+      } catch { /* ignore */ }
+      return false;
+    }
+  }));
 }
