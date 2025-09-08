@@ -9,8 +9,6 @@ async function main() {
   const PROTOCOL_FEE_RECIPIENT = process.env.PROTOCOL_FEE_RECIPIENT;
   const TOKEN_ADDRESS = process.env.TOKEN_ADDRESS;
   const ENTRY_FEE = process.env.ENTRY_FEE;
-  const PRIEST_VOTE_WEIGHT = process.env.PRIEST_VOTE_WEIGHT || 10;
-  const PRIEST_WEIGHT_THRESHOLD = process.env.PRIEST_WEIGHT_THRESHOLD || 10;
 
   if (!TOKEN_ADDRESS) {
     throw new Error("TOKEN_ADDRESS not set in environment");
@@ -33,8 +31,7 @@ async function main() {
   console.log("Priest Address (Voting Weight):", PRIEST_ADDRESS);
   console.log("Protocol Fee Recipient:", PROTOCOL_FEE_RECIPIENT);
   console.log("Token Address:", TOKEN_ADDRESS);
-  console.log("Priest Vote Weight:", PRIEST_VOTE_WEIGHT);
-  console.log("Priest Weight Threshold:", PRIEST_WEIGHT_THRESHOLD, "members");
+  // Uniform one address = one vote; legacy weighting removed
   
   const thirtyPercent = (entryFee * 30n) / 100n;
   const tenPercent = (entryFee * 10n) / 100n;
@@ -64,9 +61,7 @@ async function main() {
     PRIEST_ADDRESS,
     PROTOCOL_FEE_RECIPIENT,
     TOKEN_ADDRESS,
-    ENTRY_FEE,
-    PRIEST_VOTE_WEIGHT,
-    PRIEST_WEIGHT_THRESHOLD
+    ENTRY_FEE
   );
   
   await contract.waitForDeployment();
@@ -106,8 +101,6 @@ async function main() {
     protocolFeeRecipient: PROTOCOL_FEE_RECIPIENT,
     tokenAddress: TOKEN_ADDRESS,
     entryFee: ENTRY_FEE,
-    priestVoteWeight: PRIEST_VOTE_WEIGHT,
-    priestWeightThreshold: PRIEST_WEIGHT_THRESHOLD,
     deployedAt: new Date().toISOString(),
     deployer: deployer.address,
     transactionHash: contract.deploymentTransaction().hash,
@@ -137,16 +130,14 @@ async function main() {
           PRIEST_ADDRESS,
           PROTOCOL_FEE_RECIPIENT,
           TOKEN_ADDRESS,
-          ENTRY_FEE,
-          PRIEST_VOTE_WEIGHT,
-          PRIEST_WEIGHT_THRESHOLD
+          ENTRY_FEE
         ],
       });
       console.log("✅ Contract verified on Basescan");
     } catch (error) {
       console.log("❌ Verification failed:", error.message);
       console.log("You can verify manually with:");
-      console.log(`npx hardhat verify --network base ${contractAddress} ${PRIEST_ADDRESS} ${PROTOCOL_FEE_RECIPIENT} ${TOKEN_ADDRESS} ${ENTRY_FEE} ${PRIEST_VOTE_WEIGHT} ${PRIEST_WEIGHT_THRESHOLD}`);
+      console.log(`npx hardhat verify --network base ${contractAddress} ${PRIEST_ADDRESS} ${PROTOCOL_FEE_RECIPIENT} ${TOKEN_ADDRESS} ${ENTRY_FEE}`);
     }
   }
   

@@ -262,9 +262,7 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
                 priest.address,
                 priest.address, // protocolFeeRecipient
                 await token.getAddress(),
-                ODD_FEE,
-                10, // priestVoteWeight
-                10  // priestWeightThreshold
+                ODD_FEE
             );
             await oddTempl.waitForDeployment();
 

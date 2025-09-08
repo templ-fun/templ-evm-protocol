@@ -115,9 +115,7 @@ describe("updateConfigDAO", function () {
             priest.address,
             priest.address,
             await token0.getAddress(),
-            100,
-            10,
-            10
+            100
         );
         await templ2.waitForDeployment();
 
@@ -205,4 +203,3 @@ describe("updateConfigDAO", function () {
         );
     });
 });
-

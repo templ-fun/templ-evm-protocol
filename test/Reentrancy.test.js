@@ -25,9 +25,7 @@ describe("Reentrancy protection", function () {
         priest.address,
         priest.address,
         await token.getAddress(),
-        ENTRY_FEE,
-        10,
-        10
+        ENTRY_FEE
       );
       await templ.waitForDeployment();
 
@@ -70,9 +68,7 @@ describe("Reentrancy protection", function () {
         priest.address,
         priest.address,
         await token.getAddress(),
-        ENTRY_FEE,
-        10,
-        10
+        ENTRY_FEE
       );
       await templ.waitForDeployment();
 
@@ -95,4 +91,3 @@ describe("Reentrancy protection", function () {
     });
   });
 });
-

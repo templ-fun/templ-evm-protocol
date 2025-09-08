@@ -45,7 +45,6 @@ runp \
   "npm --prefix frontend run lint"
 
 phase "Phase 4: frontend e2e"
-npm --prefix frontend run test:e2e
+E2E_XMTP_LOCAL=1 npm --prefix frontend run test:e2e
 
 echo "[test:all] Completed in $(( $(date +%s) - START_TS ))s"
-

@@ -49,9 +49,7 @@ describe("TEMPL Contract with DAO Governance", function () {
                     priest.address,
                     priest.address,
                     await token.getAddress(),
-                    invalidFee,
-                    10,
-                    10
+                    invalidFee
                 )
             ).to.be.revertedWithCustomError(TEMPL, "InvalidEntryFee");
         });
@@ -847,9 +845,7 @@ describe("TEMPL Contract with DAO Governance", function () {
                 priest.address,
                 priest.address, // protocolFeeRecipient
                 await token.getAddress(),
-                10, // Minimum allowed
-                10, // priestVoteWeight
-                10  // priestWeightThreshold
+                10 // Minimum allowed
             ]);
 
             await token.connect(user1).approve(await minTempl.getAddress(), 10);
@@ -865,9 +861,7 @@ describe("TEMPL Contract with DAO Governance", function () {
                 priest.address,
                 priest.address, // protocolFeeRecipient
                 await token.getAddress(),
-                9, // Below minimum
-                10, // priestVoteWeight
-                10  // priestWeightThreshold
+                9 // Below minimum
             )).to.be.revertedWithCustomError(factory, "EntryFeeTooSmall");
         });
 

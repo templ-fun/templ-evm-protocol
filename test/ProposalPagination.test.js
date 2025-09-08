@@ -9,15 +9,9 @@ describe("TEMPL - Proposal Pagination", function () {
   let owner, priest, user1, user2, user3, user4, user5;
   let accounts;
   const ENTRY_FEE = ethers.parseEther("100");
-  const PRIEST_VOTE_WEIGHT = 10;
-  const PRIEST_WEIGHT_THRESHOLD = 10;
 
   beforeEach(async function () {
-    ({ templ, token, accounts } = await deployTempl({
-      entryFee: ENTRY_FEE,
-      priestVoteWeight: PRIEST_VOTE_WEIGHT,
-      priestWeightThreshold: PRIEST_WEIGHT_THRESHOLD,
-    }));
+    ({ templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE }));
     [owner, priest, user1, user2, user3, user4, user5] = accounts;
 
     const users = [priest, user1, user2, user3, user4, user5];
