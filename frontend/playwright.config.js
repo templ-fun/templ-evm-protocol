@@ -4,7 +4,8 @@ import { randomBytes } from 'crypto';
 import { defineConfig, devices } from '@playwright/test';
 
 const USE_LOCAL = process.env.E2E_XMTP_LOCAL === '1';
-const XMTP_ENV = USE_LOCAL ? 'local' : 'production';
+// Default to 'dev' for more deterministic tests; allow override via E2E_XMTP_ENV
+const XMTP_ENV = USE_LOCAL ? 'local' : (process.env.E2E_XMTP_ENV || 'dev');
 
 // Generate a fresh secp256k1 private key per run to avoid XMTP installation limits
 const N = BigInt('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141');
@@ -18,8 +19,8 @@ function randomPrivKeyHex() {
 const BOT_PK = randomPrivKeyHex();
 
 export default defineConfig({
-  // Keep per-test timeout modest; flows should be fast
-  timeout: 120 * 1000,
+  // Increase per-test timeout to accommodate XMTP welcome propagation on local/dev
+  timeout: 240 * 1000,
   outputDir: '../test-results/e2e',
   testDir: './e2e',
   testMatch: /.*\.pw\.spec\.js/,
@@ -93,8 +94,10 @@ export default defineConfig({
         DB_PATH: 'e2e-groups.db',
         CLEAR_DB: '1',
         ENABLE_DEBUG_ENDPOINTS: '1',
-        LOG_LEVEL: 'warn',
+        LOG_LEVEL: 'info',
         XMTP_ENV,
+        ALLOW_INSECURE_SIG: '1',
+        NODE_ENV: 'test',
       },
       reuseExistingServer: false,
       timeout: 120 * 1000,

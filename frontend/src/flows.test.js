@@ -17,7 +17,6 @@ import {
   fetchActiveMutes
 } from './flows.js';
 import { BACKEND_URL } from './config.js';
-import { buildDelegateMessage, buildMuteMessage } from '../../shared/signing.js';
 import {
   mockFetchSuccess,
   mockFetchFailure,
@@ -78,24 +77,26 @@ describe('templ flows', () => {
       '0xfee',
       '0xdef',
       BigInt(1),
-      BigInt(1),
-      BigInt(1),
       {}
     );
-    expect(signer.signMessage).toHaveBeenCalledWith('create:0xdead');
+    expect(signer.signTypedData).toHaveBeenCalled();
     expect(globalThis.fetch).toHaveBeenCalledWith(
       `${BACKEND_URL}/templs`,
       expect.objectContaining({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contractAddress: '0xDeAd',
-          priestAddress: '0xabc',
-          priestInboxId: 'inbox-1',
-          signature: 'sig'
-        })
+        // Include typed-signature timing fields
+        body: expect.stringContaining('"contractAddress":"0xDeAd"')
       })
     );
+    // Also assert presence of critical fields without exact values
+    const fetchArgs = /** @type {[string, any]} */ (globalThis.fetch.mock.calls[0]);
+    expect(fetchArgs[1].body).toContain('"priestAddress":"0xabc"');
+    expect(fetchArgs[1].body).toContain('"signature":"sig"');
+    expect(fetchArgs[1].body).toContain('"chainId":31337');
+    expect(fetchArgs[1].body).toContain('"nonce":');
+    expect(fetchArgs[1].body).toContain('"issuedAt":');
+    expect(fetchArgs[1].body).toContain('"expiry":');
     expect(result).toEqual({ contractAddress: '0xDeAd', group: { id: 'group-1', consentState: 'allowed' }, groupId: 'group-1' });
   });
 
@@ -180,7 +181,7 @@ describe('templ flows', () => {
     });
 
     expect(templContract.purchaseAccess).toHaveBeenCalled();
-    expect(signer.signMessage).toHaveBeenCalledWith('join:0xtempl');
+    expect(signer.signTypedData).toHaveBeenCalled();
     expect(result).toEqual({ group: { id: 'group-2', consentState: 'allowed' }, groupId: 'group-2' });
   });
 
@@ -349,22 +350,26 @@ describe('templ flows', () => {
       priestAddress: '0xPriest',
       delegateAddress: '0xDel'
     });
-    expect(signer.signMessage).toHaveBeenCalledWith(
-      buildDelegateMessage('0xTempl', '0xDel')
-    );
+    expect(signer.signTypedData).toHaveBeenCalled();
     expect(globalThis.fetch).toHaveBeenCalledWith(
       `${BACKEND_URL}/delegateMute`,
       expect.objectContaining({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contractAddress: '0xTempl',
-          priestAddress: '0xPriest',
-          delegateAddress: '0xDel',
-          signature: 'sig'
-        })
+        body: expect.any(String)
       })
     );
+    {
+      const args = /** @type {[string, any]} */ (globalThis.fetch.mock.calls[0]);
+      expect(args[1].body).toContain('"contractAddress":"0xTempl"');
+      expect(args[1].body).toContain('"priestAddress":"0xPriest"');
+      expect(args[1].body).toContain('"delegateAddress":"0xDel"');
+      expect(args[1].body).toContain('"signature":"sig"');
+      expect(args[1].body).toContain('"chainId":31337');
+      expect(args[1].body).toContain('"nonce":');
+      expect(args[1].body).toContain('"issuedAt":');
+      expect(args[1].body).toContain('"expiry":');
+    }
     expect(result).toBe(true);
   });
 
@@ -387,22 +392,26 @@ describe('templ flows', () => {
       moderatorAddress: '0xMod',
       targetAddress: '0xTar'
     });
-    expect(signer.signMessage).toHaveBeenCalledWith(
-      buildMuteMessage('0xTempl', '0xTar')
-    );
+    expect(signer.signTypedData).toHaveBeenCalled();
     expect(globalThis.fetch).toHaveBeenCalledWith(
       `${BACKEND_URL}/mute`,
       expect.objectContaining({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contractAddress: '0xTempl',
-          moderatorAddress: '0xMod',
-          targetAddress: '0xTar',
-          signature: 'sig'
-        })
+        body: expect.any(String)
       })
     );
+    {
+      const args = /** @type {[string, any]} */ (globalThis.fetch.mock.calls[0]);
+      expect(args[1].body).toContain('"contractAddress":"0xTempl"');
+      expect(args[1].body).toContain('"moderatorAddress":"0xMod"');
+      expect(args[1].body).toContain('"targetAddress":"0xTar"');
+      expect(args[1].body).toContain('"signature":"sig"');
+      expect(args[1].body).toContain('"chainId":31337');
+      expect(args[1].body).toContain('"nonce":');
+      expect(args[1].body).toContain('"issuedAt":');
+      expect(args[1].body).toContain('"expiry":');
+    }
     expect(result).toBe(123);
   });
 
