@@ -23,8 +23,7 @@ contract TEMPL is ReentrancyGuard {
     uint256 public memberPoolBalance;
     bool public paused;
     
-    uint256 public immutable priestVoteWeight;
-    uint256 public immutable priestWeightThreshold;
+    // Legacy: priest weighting removed; uniform one-address-one-vote
     
     struct Member {
         bool purchased;
@@ -150,21 +149,18 @@ contract TEMPL is ReentrancyGuard {
      * @param _protocolFeeRecipient Receives 10% protocol fee
      * @param _token ERC20 token for membership payments
      * @param _entryFee Membership cost (minimum 10 and divisible by 10)
-     * @param _priestVoteWeight Vote multiplier for priest
-     * @param _priestWeightThreshold Member count when priest advantage expires
+     * Legacy vote-weight parameters removed; all members have 1 vote.
      */
     constructor(
         address _priest,
         address _protocolFeeRecipient,
         address _token,
-        uint256 _entryFee,
-        uint256 _priestVoteWeight,
-        uint256 _priestWeightThreshold
+        uint256 _entryFee
     ) {
         if (_priest == address(0) || _protocolFeeRecipient == address(0) || _token == address(0)) {
             revert TemplErrors.InvalidRecipient();
         }
-        if (_entryFee == 0 || _priestVoteWeight == 0 || _priestWeightThreshold == 0) {
+        if (_entryFee == 0) {
             revert TemplErrors.AmountZero();
         }
         if (_entryFee < 10) revert TemplErrors.EntryFeeTooSmall();
@@ -174,8 +170,6 @@ contract TEMPL is ReentrancyGuard {
         protocolFeeRecipient = _protocolFeeRecipient;
         accessToken = _token;
         entryFee = _entryFee;
-        priestVoteWeight = _priestVoteWeight;
-        priestWeightThreshold = _priestWeightThreshold;
         paused = false;
     }
 
