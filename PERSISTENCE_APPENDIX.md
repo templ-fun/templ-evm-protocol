@@ -40,15 +40,15 @@ The Browser SDK stores its SQLite database inside the Origin Private File System
 Several HTTP endpoints coordinate how data enters and leaves the system. The server writes to SQLite when groups are registered and updates moderation tables for delegate or mute actions. XMTP identity resolution and membership are managed by the XMTP network, not the backend database.
 
 - **POST `/templs` (create/register a TEMPL group)**
-  - Verifies the priest’s signature `create:<contract>`.
-  - Creates a new XMTP group with the priest. If `priestInboxId` is provided it is used; otherwise the server resolves the inbox on the XMTP network via `findInboxIdByIdentifier` and waits for identity readiness before inviting.
+  - Verifies the priest’s EIP‑712 signature (action `create`).
+  - Creates a new XMTP group and resolves the priest inbox from the network via `findInboxIdByIdentifier`, waiting for readiness before inviting (client-supplied inboxIds are ignored).
   - Optionally sets group metadata (name/description), tolerating the SDK’s “success reported as error” edge cases.
   - Sends a warm-up message to introduce initial activity.
   - Persists `{ contract, groupId, priest }` to SQLite and to the in-memory cache.
 - **POST `/join` (purchase check + add member to XMTP group)**
-  - Verifies `join:<contract>` signature.
+  - Verifies EIP‑712 typed signature for `{ action:'join', contract, nonce, issuedAt, expiry }` and rejects replays.
   - Validates `hasAccess` against the contract (on-chain read via ethers).
-  - Adds the member’s inboxId to the group. If `memberInboxId` is provided, it is used directly; otherwise the server resolves via `findInboxIdByIdentifier` and waits for identity readiness before inviting.
+  - Adds the member’s inboxId to the group, resolving it via `findInboxIdByIdentifier` and waiting for identity readiness before inviting (client-provided inboxIds are ignored).
   - Re-syncs and sends a `member-joined` message for the UI.
   - Returns `groupId` but does not persist membership to SQLite.
 - **POST/DELETE `/delegateMute`, POST `/mute`**

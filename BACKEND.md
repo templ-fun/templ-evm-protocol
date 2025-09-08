@@ -19,6 +19,7 @@ npm --prefix backend install
 | `ALLOWED_ORIGINS` | Comma-separated CORS origins | `http://localhost:5173` |
 | `ENABLE_DEBUG_ENDPOINTS` | Expose debug endpoints when set to `1` | `0` |
 | `XMTP_ENV` | XMTP network (`dev`, `production`, `local`) | `dev` |
+| `REQUIRE_CONTRACT_VERIFY` | When `1`, `/templs` verifies target is a deployed contract | `0` |
 
 ### Optional variables
 
@@ -122,7 +123,8 @@ When `ENABLE_DEBUG_ENDPOINTS=1`, these endpoints assist tests and local debuggin
 See the [E2E Environments](./README.md#E2E-Environments) section of the README for full setup details. In short, setting `E2E_XMTP_LOCAL=1` starts `xmtp-local-node` and sets `XMTP_ENV=local`; otherwise Playwright runs against XMTP production with a random `BOT_PRIVATE_KEY`.
 
 ## Security considerations
-- The service trusts the provided wallet address; production deployments should authenticate requests.
+- All state-changing endpoints require EIP‑712 typed signatures (with `chainId`, `nonce`, `issuedAt`, `expiry`). The backend verifies signatures and enforces replay protection by recording used signatures in SQLite.
+- The service resolves XMTP inboxIds server-side; client-provided inboxIds are ignored.
 - The bot key must be stored securely; compromise allows muting or invitation of arbitrary members.
 - Governance events are forwarded to the group chat; untrusted RPC data could mislead voters.
 - RPC responses are assumed honest; use a trusted provider.

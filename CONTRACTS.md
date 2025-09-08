@@ -32,7 +32,7 @@ sequenceDiagram
 ```
 
 ## DAO governance
-- One member, one vote. The priest has `PRIEST_VOTE_WEIGHT` until membership exceeds `PRIEST_WEIGHT_THRESHOLD`.
+- One member, one vote. Note: `PRIEST_VOTE_WEIGHT` and `PRIEST_WEIGHT_THRESHOLD` are legacy constructor parameters and are not used in vote tallying in this version.
 - Each member may have only one active proposal.
 - Voting period: 7–30 days (`0` defaults to 7).
 - Any address can execute a passed proposal; execution is atomic.
@@ -42,6 +42,8 @@ sequenceDiagram
   - `updateConfigDAO(address,uint256)`
   - `withdrawTreasuryDAO(address,uint256,string)`
   - `withdrawAllTreasuryDAO(address,string)`
+  - `withdrawTokenDAO(address,address,uint256,string)`
+  - `withdrawETHDAO(address,uint256,string)`
   - `sweepMemberRewardRemainderDAO(address)`
   Arbitrary external calls are disabled for security.
 
@@ -58,8 +60,6 @@ The deployment script accepts the following environment variables (the priest de
 | `PROTOCOL_FEE_RECIPIENT` | Recipient of protocol fee | Required |
 | `TOKEN_ADDRESS` | ERC20 token used for membership fees | Required |
 | `ENTRY_FEE` | Membership cost in wei (≥10 and divisible by 10) | Required |
-| `PRIEST_VOTE_WEIGHT` | Priest voting weight | Optional (default 10) |
-| `PRIEST_WEIGHT_THRESHOLD` | Member count at which priest loses extra weight | Optional (default 10) |
 | `PRIVATE_KEY` | Deployer wallet key | Required |
 | `RPC_URL` | Base network RPC endpoint | Required |
 | `BASESCAN_API_KEY` | BaseScan API key for verification | Optional |
@@ -74,6 +74,7 @@ fee split divides evenly. This requirement is enforced in the
 - Contract code is immutable after deployment.
 - ERC20 used for entry fees maintains expected behavior.
 - Off‑chain actors broadcast transactions honestly.
+ - Access token must be standard ERC‑20 without transfer fees/taxes; deflationary tokens are not supported by the current purchase flow (which pulls and redistributes fixed split amounts).
 
 ## Invariants
 - Membership supply limited by entry fee cost.

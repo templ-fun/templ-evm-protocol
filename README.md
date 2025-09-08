@@ -135,7 +135,7 @@ Core flows include TEMPL creation, paid onboarding, chat, moderation, proposal d
 ## Security considerations
 
 - Proposal execution is restricted to an allowlist of safe DAO actions; arbitrary external calls are disabled.
- - The backend owns the XMTP group. The priest does not control membership directly; actions are mediated via the backend’s bot, which verifies on‑chain purchase. See BACKEND.md for API auth and rate‑limit details.
+- The backend owns the XMTP group. The priest does not control membership directly; actions are mediated via the backend’s bot, which verifies on‑chain purchase. API requests are authenticated via EIP‑712 typed signatures with expiry and server‑side replay protection. See BACKEND.md for details.
  - XMTP dev network has a 10‑installation limit per inbox and 256 total actions limit per inbox (install and revoke each count as 1 action). Tests rotate wallets or reuse local XMTP databases to avoid hitting this limit.
  - For auditors: CONTRACTS.md documents all custom errors, events, invariants, fee splits, and DAO constraints. The Hardhat test suite covers these invariants; Slither reports are part of CI.
 

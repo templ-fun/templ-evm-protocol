@@ -52,7 +52,7 @@ flowchart TD
 ```
 
 - POST `/templs`: registers contract → `groupId` and seeds group.
-- POST `/join`: verifies access and adds member to group.
+- POST `/join`: verifies access and adds member to group. The server derives inboxIds from the member address; client-provided inboxIds are ignored.
 - POST/DELETE `/delegateMute`, POST `/mute`: update moderation tables.
 - Identity and installations are managed by XMTP; membership lives in XMTP, not SQLite.
 - Endpoint specifics in [appendix](PERSISTENCE_APPENDIX.md#data-flow-endpoints).
