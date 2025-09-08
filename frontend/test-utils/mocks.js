@@ -1,7 +1,8 @@
 import { vi } from 'vitest';
 
 export const createSignerMock = (sig = 'sig') => ({
-  signMessage: vi.fn().mockResolvedValue(sig)
+  signMessage: vi.fn().mockResolvedValue(sig),
+  signTypedData: vi.fn().mockResolvedValue(sig)
 });
 
 export const createXMTPMock = ({ inboxId = 'inbox-1' } = {}) => ({
