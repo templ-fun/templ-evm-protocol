@@ -59,24 +59,33 @@ export async function waitForConversation({ xmtp, groupId, retries = 60, delayMs
     const fast = (import.meta?.env?.VITE_E2E_DEBUG === '1') || (process?.env?.VITE_E2E_DEBUG === '1');
     if (fast) { retries = Math.min(retries, 5); delayMs = Math.min(delayMs, 200); }
   } catch {}
-  const norm = (id) => (id || '').replace(/^0x/i, '');
-  const wanted = norm(groupId);
+  const norm = (id) => (id || '').toString();
+  const wantedRaw = norm(groupId);
+  const wantedNo0x = wantedRaw.replace(/^0x/i, '');
+  const wanted0x = wantedRaw.startsWith('0x') ? wantedRaw : `0x${wantedNo0x}`;
   const group = await waitFor({
     tries: retries,
     delayMs,
     check: async () => {
       await syncXMTP(xmtp);
       let conv = null;
-      try {
-        conv = await xmtp?.conversations?.getConversationById?.(wanted);
-      } catch (err) {
-        dlog('getConversationById failed:', err?.message || String(err));
+      // Try with exact, 0x-prefixed, and non-0x forms for maximum compatibility
+      for (const candidate of [wantedRaw, wanted0x, wantedNo0x]) {
+        if (conv) break;
+        try {
+          conv = await xmtp?.conversations?.getConversationById?.(candidate);
+        } catch (err) {
+          dlog('getConversationById failed:', err?.message || String(err));
+        }
       }
       if (!conv) {
         try {
-          const conversations = await xmtp?.conversations?.list?.({ consentStates: ['allowed','unknown','denied'] }) || [];
+          const conversations = await xmtp?.conversations?.list?.({ consentStates: ['allowed','unknown','denied'], conversationType: 1 /* Group */ }) || [];
           dlog(`Sync attempt: Found ${conversations.length} conversations; firstIds=`, conversations.slice(0,3).map(c => c.id));
-          conv = conversations.find(c => c.id === wanted) || null;
+          conv = conversations.find(c => {
+            const cid = String(c.id);
+            return cid === wantedRaw || cid === wanted0x || cid === wantedNo0x || `0x${cid}` === wanted0x || cid.replace(/^0x/i,'') === wantedNo0x;
+          }) || null;
         } catch (err) {
           dlog('list conversations failed:', err?.message || String(err));
         }
