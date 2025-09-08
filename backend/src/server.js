@@ -34,8 +34,11 @@ export function createApp(opts) {
   app.use(express.json());
   app.use(helmet());
   const store = rateLimitStore ?? new MemoryStore();
-  const limiter = rateLimit({ windowMs: 60_000, max: 100, store });
-  app.use(limiter);
+  // In tests/e2e runs we disable rate limiting to avoid 429s during heavy polling
+  if (process.env.NODE_ENV !== 'test') {
+    const limiter = rateLimit({ windowMs: 60_000, max: 100, store });
+    app.use(limiter);
+  }
 
   const groups = new Map();
   const lastJoin = { at: 0, payload: null };
