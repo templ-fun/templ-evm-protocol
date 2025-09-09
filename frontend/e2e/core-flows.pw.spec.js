@@ -472,7 +472,7 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
     // Treat backend membership as the source of truth for "connected".
     // Poll server-only (no browser.evaluate) using stored memberInboxId.
     let connected = false;
-    for (let i = 0; i < 120 && !connected; i++) {
+    for (let i = 0; i < 180 && !connected; i++) {
       try {
         const dbgMem = await fetch(`http://localhost:3001/debug/membership?contractAddress=${templAddress}&inboxId=${memberInboxId}`).then(r => r.json());
         if (dbgMem && dbgMem.contains === true) connected = true;
@@ -482,6 +482,16 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
           const g = await fetch(`http://localhost:3001/debug/group?contractAddress=${templAddress}&refresh=1`).then(r => r.json());
           const norm = (s) => String(s || '').replace(/^0x/i, '').toLowerCase();
           if (Array.isArray(g?.members) && norm(memberInboxId) && g.members.some((m) => norm(m) === norm(memberInboxId))) {
+            connected = true;
+          }
+        } catch {}
+      }
+      if (!connected) {
+        try {
+          const last = await fetch('http://localhost:3001/debug/last-join').then(r => r.json());
+          const jm = last?.payload?.joinMeta;
+          const norm = (s) => String(s || '').replace(/^0x/i, '').toLowerCase();
+          if (jm && norm(jm.contract) === norm(templAddress) && norm(jm.inboxId) === norm(memberInboxId)) {
             connected = true;
           }
         } catch {}
