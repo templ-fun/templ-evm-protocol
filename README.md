@@ -147,12 +147,28 @@ sequenceDiagram
 
 Core flows include TEMPL creation, paid onboarding, chat, moderation, proposal drafting, voting, and execution.
 
-## Security considerations
+## Security & Hardening
 
-- Proposal execution is restricted to an allowlist of safe DAO actions; arbitrary external calls are disabled.
-- The backend owns the XMTP group. The priest does not control membership directly; actions are mediated via the backend’s bot, which verifies on‑chain purchase. API requests are authenticated via EIP‑712 typed signatures with expiry and server‑side replay protection. In production (or when `REQUIRE_CONTRACT_VERIFY=1`), the backend verifies the contract code, enforces `chainId` consistency, and checks that the on‑chain `priest` equals the signing address on `/templs`. See BACKEND.md for details.
-- XMTP dev network has a 10‑installation limit per inbox and 256 total actions limit per inbox (install and revoke each count as 1 action). Tests rotate wallets or reuse local XMTP databases to avoid hitting this limit.
-- For auditors: CONTRACTS.md documents all custom errors, events, invariants, fee splits, and DAO constraints. The Hardhat test suite covers these invariants; Slither reports are part of CI.
+- Contracts
+  - Proposal execution is restricted to an allowlist of safe DAO actions; arbitrary external calls are disabled.
+  - Token changes require zero treasury, zero member pool balance, and zero remainder to prevent cross‑token accounting.
+  - Voting is one member‑one vote; proposer auto‑YES, votes are changeable until deadline; anti‑flash rule enforces join before proposal.
+  - Footgun: the DAO can withdraw tokens, including pool funds; doing so may prevent members from claiming pending rewards. UIs should warn.
+- Backend API
+  - EIP‑712 typed signatures must include `{ action, contract, nonce, issuedAt, expiry, chainId, server }`.
+  - Bind signatures to your deployment by setting a shared server id: `BACKEND_SERVER_ID` and `VITE_BACKEND_SERVER_ID` must match.
+  - Server enforces replay protection (SQLite `signatures` table). In production (or when `REQUIRE_CONTRACT_VERIFY=1`), the server verifies contract code, chainId, and that on‑chain `priest()` equals the signing address on `/templs`.
+  - Debug endpoints are disabled by default; when enabled, they are restricted to localhost.
+  - CORS must be set via `ALLOWED_ORIGINS` for standalone deployments.
+  - Rate‑limit store defaults to in‑memory; optionally use Redis via `RATE_LIMIT_STORE=redis`.
+- Data at rest
+  - XMTP Node DB is SQLCipher‑encrypted; provide `BACKEND_DB_ENC_KEY` (32‑byte hex). The server refuses to boot without it in production.
+  - Browser DB lives in OPFS (not encrypted); avoid multiple clients per page to prevent access‑handle contention.
+- Operational notes
+  - Do not use test‑only shortcuts in production (e.g., `x-insecure-sig` header, `DISABLE_XMTP_WAIT`).
+  - XMTP dev network caps installs at 10 per inbox and ~256 total actions; tests rotate wallets or reuse local DBs to avoid the cap.
+  - RPC responses are assumed honest; use a trusted provider.
+  - For auditors: see CONTRACTS.md for custom errors, events, invariants, fee splits, and DAO constraints. CI runs tests and Slither.
 
 
 ## E2E Environments
