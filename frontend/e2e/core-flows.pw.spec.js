@@ -654,6 +654,8 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
       await tx.wait();
       const templFinal = new ethers.Contract(templAddress, templAbi, wallets.priest);
       expect(await templFinal.paused()).toBe(true);
+
+      // (extra actions such as reprice and disband are covered in contract/integration tests)
       
       // Core Flow 8: Priest Muting (bonus - we are the priest)
       console.log('Core Flow 8: Priest Muting');

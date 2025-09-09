@@ -257,5 +257,57 @@ describe('core flows e2e', () => {
       txOptions: { nonce: priestNonce++ }
     });
     expect(await templ.paused()).toBe(true);
+
+    // Reprice entry fee via proposal (integration)
+    const iface2 = new ethers.Interface(templArtifact.abi);
+    const newFee = ethers.parseUnits('200', 18);
+    const cd2 = iface2.encodeFunctionData('updateConfigDAO', [ethers.ZeroAddress, newFee]);
+    await proposeVote({
+      ethers,
+      signer: memberSigner,
+      templAddress,
+      templArtifact,
+      title: 'reprice',
+      description: 'set to 200',
+      callData: cd2,
+      votingPeriod: 7 * 24 * 60 * 60,
+      txOptions: { nonce: memberNonce++ }
+    });
+    await voteOnProposal({
+      ethers,
+      signer: memberSigner,
+      templAddress,
+      templArtifact,
+      proposalId: 1,
+      support: true,
+      txOptions: { nonce: memberNonce++ }
+    });
+    await provider.send('evm_increaseTime', [7 * 24 * 60 * 60]);
+    await provider.send('evm_mine', []);
+    await executeProposal({ ethers, signer: priestSigner, templAddress, templArtifact, proposalId: 1, txOptions: { nonce: priestNonce++ } });
+    expect(await templ.entryFee()).toEqual(newFee);
+
+    // Disband treasury: allocate equally to all members (integration)
+    const tBefore = await templ.treasuryBalance();
+    if (tBefore > 0n) {
+      const i3 = new ethers.Interface(templArtifact.abi);
+      const cd3 = i3.encodeFunctionData('disbandTreasuryDAO', []);
+      await proposeVote({
+        ethers,
+        signer: memberSigner,
+        templAddress,
+        templArtifact,
+        title: 'disband',
+        description: 'split',
+        callData: cd3,
+        votingPeriod: 7 * 24 * 60 * 60,
+        txOptions: { nonce: memberNonce++ }
+      });
+      await voteOnProposal({ ethers, signer: memberSigner, templAddress, templArtifact, proposalId: 2, support: true, txOptions: { nonce: memberNonce++ } });
+      await provider.send('evm_increaseTime', [7 * 24 * 60 * 60]);
+      await provider.send('evm_mine', []);
+      await executeProposal({ ethers, signer: priestSigner, templAddress, templArtifact, proposalId: 2, txOptions: { nonce: priestNonce++ } });
+      expect(await templ.treasuryBalance()).toBe(0n);
+    }
   }, 120000);
 });
