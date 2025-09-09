@@ -133,7 +133,7 @@ flowchart LR
     C -->|call allowlisted action| C
 ```
 
-- Only pause/unpause, fee repricing, and treasury transfers are permitted. Token changes and arbitrary ERC-20/ETH withdrawals are disabled; member pool funds cannot be moved.
+- Only pause/unpause, fee repricing, and transfers of assets held by the contract are permitted. Token changes remain disabled, and member pool funds cannot be moved.
 - Arbitrary external calls are disabled.
 
 End-to-end proposal lifecycle (sequence):
@@ -156,6 +156,7 @@ sequenceDiagram
 ```
 
 ## Proposal lifecycle with treasury movement
+Tokens or ETH may be donated to the contract by transferring them to its address; proposals can later withdraw these assets.
 ```mermaid
 sequenceDiagram
     participant M as Member
@@ -164,7 +165,7 @@ sequenceDiagram
     participant X as XMTP
     participant T as Treasury
     participant R as Recipient
-    M->>C: createProposal(withdrawTreasuryDAO(R, amount))
+    M->>C: createProposal(withdrawTreasuryDAO(token, R, amount))
     C-->>B: ProposalCreated(id,...)
     B->>X: send {type:"proposal", id, ...}
     M->>C: vote(id, support)
@@ -203,8 +204,8 @@ Backend resolves inboxIds from the XMTP network via `findInboxIdByIdentifier` an
 - Proposal actions are restricted to an allowlist enforced at creation and execution:
   - `setPausedDAO(bool)`
   - `updateConfigDAO(address,uint256)` — entry fee only
-  - `withdrawTreasuryDAO(address,uint256,string)`
-  - `withdrawAllTreasuryDAO(address,string)`
+  - `withdrawTreasuryDAO(address,address,uint256,string)`
+  - `withdrawAllTreasuryDAO(address,address,string)`
 - Voting: 1 vote per member; no priest bonus weighting.
 - Anti‑flash: voters must have joined before `proposal.createdAt`.
 - Majority: `yesVotes > noVotes`, anyone may execute after `endTime`.

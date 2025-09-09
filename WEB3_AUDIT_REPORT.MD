@@ -9,7 +9,7 @@
 The contracts implement a DAO-governed membership system with treasury management. Tests and static analysis were executed on the unmodified contracts and all tests passed. Slither reported informational findings around timestamp usage, low-level calls, and naming conventions. No critical vulnerabilities were identified in automated analysis; manual review found areas for improvement described below.
 
 ### Medium
-1. Treasury withdrawals depend solely on DAO access control – `withdrawTreasuryDAO` and `withdrawAllTreasuryDAO` transfer treasury funds via proposals; access is constrained by the allowlist. Reentrancy protection is applied to proposal execution (and is also used on purchase and claims).
+1. Treasury withdrawals depend solely on DAO access control – `withdrawTreasuryDAO` and `withdrawAllTreasuryDAO` transfer any assets held by the contract via proposals; access is constrained by the allowlist. Reentrancy protection is applied to proposal execution (and is also used on purchase and claims).
 
 2. Timestamp-based logic – Voting windows and proposal timing rely on `block.timestamp`, which can be slightly manipulated by miners.
 
@@ -44,7 +44,7 @@ The contracts implement a DAO-governed membership system with treasury managemen
 - Member pool distribution:
   - On each new member (except the very first), `cumulativeMemberRewards` increases by `30% / (members.length - 1)`, with integer remainder carried in `memberRewardRemainder`.
   - Each member has `memberRewardSnapshot`; `claimMemberPool()` pays `accrued - snapshot` and updates snapshot.
-  - Sweeping the member pool and arbitrary ERC‑20/ETH withdrawals are disabled; DAO can only move the TEMPL treasury.
+  - Sweeping the member pool is disabled; the DAO can move the TEMPL treasury and any tokens or ETH held by the contract via proposals.
 
 ### Reentrancy and State Integrity
 - `nonReentrant` guard applied to `purchaseAccess`, `executeProposal`, and `claimMemberPool`.

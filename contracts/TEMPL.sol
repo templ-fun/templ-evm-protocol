@@ -110,6 +110,7 @@ contract TEMPL is ReentrancyGuard {
     
     event TreasuryAction(
         uint256 indexed proposalId,
+        address indexed token,
         address indexed recipient,
         uint256 amount,
         string description
@@ -178,7 +179,7 @@ contract TEMPL is ReentrancyGuard {
         paused = false;
     }
 
-    /// @notice Allow contract to receive ETH
+    /// @notice Accept ETH donations or direct transfers
     receive() external payable {}
     
     /**
@@ -429,54 +430,81 @@ contract TEMPL is ReentrancyGuard {
     }
     
     /**
-     * @notice Withdraw funds from DAO treasury (proposal required)
-     * @param recipient Address to receive treasury funds
-     * @param amount Token amount to withdraw
+     * @notice Withdraw assets held by this contract (proposal required)
+     * @dev Enables the DAO to move entry-fee treasury or tokens/ETH donated via direct transfer
+     * @param token Asset to withdraw (address(0) for ETH)
+     * @param recipient Address to receive assets
+     * @param amount Amount to withdraw
      * @param reason Withdrawal explanation
      */
     function withdrawTreasuryDAO(
+        address token,
         address recipient,
         uint256 amount,
         string memory reason
     ) external onlyDAO {
         if (recipient == address(0)) revert TemplErrors.InvalidRecipient();
         if (amount == 0) revert TemplErrors.AmountZero();
-        if (amount > treasuryBalance) revert TemplErrors.InsufficientTreasuryBalance();
 
         uint256 proposalId = executingProposalId;
         if (proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
 
-        treasuryBalance -= amount;
+        if (token == accessToken) {
+            if (amount > treasuryBalance) revert TemplErrors.InsufficientTreasuryBalance();
+            treasuryBalance -= amount;
+            IERC20(accessToken).safeTransfer(recipient, amount);
+        } else if (token == address(0)) {
+            if (amount > address(this).balance) revert TemplErrors.InsufficientTreasuryBalance();
+            (bool success, ) = payable(recipient).call{value: amount}("");
+            if (!success) revert TemplErrors.ProposalExecutionFailed();
+        } else {
+            if (amount > IERC20(token).balanceOf(address(this))) {
+                revert TemplErrors.InsufficientTreasuryBalance();
+            }
+            IERC20(token).safeTransfer(recipient, amount);
+        }
 
-        emit TreasuryAction(proposalId, recipient, amount, reason);
-
-        IERC20(accessToken).safeTransfer(recipient, amount);
+        emit TreasuryAction(proposalId, token, recipient, amount, reason);
     }
-    
+
     /**
-     * @notice Withdraw entire treasury balance (proposal required)
-     * @param recipient Address to receive all treasury funds
+     * @notice Withdraw entire balance of a token or ETH held by the contract (proposal required)
+     * @dev Covers entry-fee treasury and any donated assets
+     * @param token Asset to withdraw (address(0) for ETH)
+     * @param recipient Address to receive assets
      * @param reason Withdrawal explanation
      */
     function withdrawAllTreasuryDAO(
+        address token,
         address recipient,
         string memory reason
     ) external onlyDAO {
         if (recipient == address(0)) revert TemplErrors.InvalidRecipient();
-        if (treasuryBalance == 0) revert TemplErrors.NoTreasuryFunds();
 
         uint256 proposalId = executingProposalId;
         if (proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
 
-        uint256 amount = treasuryBalance;
-        treasuryBalance = 0;
+        uint256 amount;
+        if (token == accessToken) {
+            if (treasuryBalance == 0) revert TemplErrors.NoTreasuryFunds();
+            amount = treasuryBalance;
+            treasuryBalance = 0;
+            IERC20(accessToken).safeTransfer(recipient, amount);
+        } else if (token == address(0)) {
+            amount = address(this).balance;
+            if (amount == 0) revert TemplErrors.NoTreasuryFunds();
+            (bool success, ) = payable(recipient).call{value: amount}("");
+            if (!success) revert TemplErrors.ProposalExecutionFailed();
+        } else {
+            amount = IERC20(token).balanceOf(address(this));
+            if (amount == 0) revert TemplErrors.NoTreasuryFunds();
+            IERC20(token).safeTransfer(recipient, amount);
+        }
 
-        emit TreasuryAction(proposalId, recipient, amount, reason);
-
-        IERC20(accessToken).safeTransfer(recipient, amount);
+        emit TreasuryAction(proposalId, token, recipient, amount, reason);
     }
 
-    // Governance can only move the TEMPL treasury (accessToken)
+    // Governance can move any assets held by the contract
     
     /**
      * @notice Update contract configuration via DAO proposal

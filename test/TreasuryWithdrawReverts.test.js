@@ -27,6 +27,7 @@ describe("Treasury Withdrawal Reverts", function () {
     describe("withdrawTreasuryDAO", function () {
         it("should revert with InvalidRecipient", async function () {
             const callData = encodeWithdrawTreasuryDAO(
+                token.target,
                 ethers.ZeroAddress,
                 ethers.parseUnits("1", 18),
                 "Invalid"
@@ -51,6 +52,7 @@ describe("Treasury Withdrawal Reverts", function () {
 
         it("should revert with AmountZero", async function () {
             const callData = encodeWithdrawTreasuryDAO(
+                token.target,
                 user1.address,
                 0,
                 "Zero"
@@ -76,6 +78,7 @@ describe("Treasury Withdrawal Reverts", function () {
         it("should revert with InsufficientTreasuryBalance", async function () {
             const treasury = await templ.treasuryBalance();
             const callData = encodeWithdrawTreasuryDAO(
+                token.target,
                 user1.address,
                 treasury + 1n,
                 "Too much"
@@ -102,6 +105,7 @@ describe("Treasury Withdrawal Reverts", function () {
     describe("withdrawAllTreasuryDAO", function () {
         it("should revert with InvalidRecipient", async function () {
             const callData = encodeWithdrawAllTreasuryDAO(
+                token.target,
                 ethers.ZeroAddress,
                 "Invalid"
             );
@@ -125,6 +129,7 @@ describe("Treasury Withdrawal Reverts", function () {
 
         it("should revert with NoTreasuryFunds", async function () {
             const callData = encodeWithdrawAllTreasuryDAO(
+                token.target,
                 user1.address,
                 "Valid"
             );

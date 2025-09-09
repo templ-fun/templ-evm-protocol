@@ -5,7 +5,7 @@ See the [README](./README.md#architecture) for a system overview; this document 
 
 ## Economic model
 - **30% Burn** – sent to `0xdead`.
-- **30% Treasury** – DAO controlled, released via proposals.
+- **30% Treasury** – DAO controlled, released via proposals. Tokens or ETH sent directly to the contract are also held for governance.
 - **30% Member pool** – accrued for existing members (`n - 1`) to claim via `claimMemberPool`.
 - **10% Protocol fee** – forwarded to a fixed recipient.
 
@@ -20,7 +20,7 @@ updates their snapshot. Unclaimed rewards continue to accumulate until claimed.
 
 See the sequence diagram below for deposit, snapshot, and claim.
 
-Note: Governance can move only the TEMPL treasury (30% access token split); it cannot withdraw from the member pool or arbitrary token/ETH.
+Note: Anyone may donate tokens or ETH by transferring them to the contract. Governance can move the TEMPL treasury and any donated assets; it cannot withdraw from the member pool.
 
 ```mermaid
 sequenceDiagram
@@ -41,8 +41,8 @@ sequenceDiagram
 - Internal calls use `_executeCall` to invoke an allowlist of DAO functions during proposal execution. The allowlist is restricted to:
   - `setPausedDAO(bool)` — pause/unpause joining
   - `updateConfigDAO(address,uint256)` — reprice joining fee only; token changes revert with `TokenChangeDisabled`
-  - `withdrawTreasuryDAO(address,uint256,string)` — move a portion of the treasury
-  - `withdrawAllTreasuryDAO(address,string)` — move the entire treasury
+  - `withdrawTreasuryDAO(address,address,uint256,string)` — move a portion of any asset (token or ETH)
+  - `withdrawAllTreasuryDAO(address,address,string)` — move the entire balance of a specified asset
   Arbitrary external calls are disabled for security.
 
 ### Anti‑attack checks

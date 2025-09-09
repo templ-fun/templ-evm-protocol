@@ -5,18 +5,18 @@ function encodeSetPausedDAO(paused) {
   return iface.encodeFunctionData("setPausedDAO", [paused]);
 }
 
-function encodeWithdrawTreasuryDAO(recipient, amount, reason) {
+function encodeWithdrawTreasuryDAO(token, recipient, amount, reason) {
   const iface = new ethers.Interface([
-    "function withdrawTreasuryDAO(address,uint256,string)"
+    "function withdrawTreasuryDAO(address,address,uint256,string)"
   ]);
-  return iface.encodeFunctionData("withdrawTreasuryDAO", [recipient, amount, reason]);
+  return iface.encodeFunctionData("withdrawTreasuryDAO", [token, recipient, amount, reason]);
 }
 
-function encodeWithdrawAllTreasuryDAO(recipient, reason) {
+function encodeWithdrawAllTreasuryDAO(token, recipient, reason) {
   const iface = new ethers.Interface([
-    "function withdrawAllTreasuryDAO(address,string)"
+    "function withdrawAllTreasuryDAO(address,address,string)"
   ]);
-  return iface.encodeFunctionData("withdrawAllTreasuryDAO", [recipient, reason]);
+  return iface.encodeFunctionData("withdrawAllTreasuryDAO", [token, recipient, reason]);
 }
 
 function encodeUpdateConfigDAO(token, entryFee) {
