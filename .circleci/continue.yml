@@ -96,14 +96,17 @@ workflows:
   all_tests:
     jobs:
       - contracts:
-        branches:
-          only:
-            - main
+          filters:
+            branches:
+              only:
+                - main
       - slither:
-        branches:
-          only:
-            - main
+          filters:
+            branches:
+              only:
+                - main
       - app:
-        branches:
-          only:
-            - main
+          filters:
+            branches:
+              only:
+                - main
