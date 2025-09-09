@@ -6,8 +6,6 @@ const {
     encodeSetPausedDAO,
     encodeWithdrawTreasuryDAO,
     encodeWithdrawAllTreasuryDAO,
-    encodeWithdrawTokenDAO,
-    encodeWithdrawETHDAO,
     encodeUpdateConfigDAO,
 } = require("./utils/callDataBuilders");
 

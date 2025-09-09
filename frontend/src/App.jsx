@@ -68,7 +68,10 @@ function App() {
   const [proposeOpen, setProposeOpen] = useState(false);
   const [proposeTitle, setProposeTitle] = useState('');
   const [proposeDesc, setProposeDesc] = useState('');
-  const [proposeAction, setProposeAction] = useState('none'); // none | pause | unpause | sweepPoolToMe
+  const [proposeAction, setProposeAction] = useState('none'); // none | pause | unpause | moveTreasuryToMe | reprice
+  const [proposeFee, setProposeFee] = useState('');
+  const [currentFee, setCurrentFee] = useState(null);
+  const [tokenDecimals, setTokenDecimals] = useState(null);
   const [toast, setToast] = useState('');
   const messagesRef = useRef(null);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -111,6 +114,46 @@ function App() {
       }
     } catch {}
   };
+
+  // Fetch entry fee and token decimals for display in reprice UI
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        if (!templAddress || !ethers.isAddress(templAddress)) return;
+        if (!signer) return;
+        const providerOrSigner = signer;
+        const c = new ethers.Contract(templAddress, templArtifact.abi, providerOrSigner);
+        let tokenAddr;
+        let fee;
+        try {
+          const cfg = await c.getConfig();
+          tokenAddr = cfg[0];
+          fee = BigInt(cfg[1] ?? 0n);
+        } catch {
+          tokenAddr = await c.accessToken();
+          fee = BigInt(await c.entryFee());
+        }
+        let dec = null;
+        try {
+          const erc20 = new ethers.Contract(tokenAddr, ['function decimals() view returns (uint8)'], providerOrSigner);
+          dec = Number(await erc20.decimals());
+        } catch { dec = null; }
+        if (!cancelled) {
+          setCurrentFee(fee.toString());
+          setTokenDecimals(dec);
+        }
+      } catch {}
+    })();
+    return () => { cancelled = true; };
+  }, [signer, templAddress]);
+
+  // Prefill reprice with current fee when toggled on
+  useEffect(() => {
+    if (proposeAction === 'reprice' && !proposeFee && currentFee) {
+      setProposeFee(String(currentFee));
+    }
+  }, [proposeAction, currentFee, proposeFee]);
 
   async function connectWallet() {
     if (!window.ethereum) return;
@@ -1450,13 +1493,18 @@ function App() {
                 <button className={`btn ${proposeAction==='pause'?'btn-primary':''}`} onClick={() => setProposeAction('pause')}>Pause DAO</button>
                 <button className={`btn ${proposeAction==='unpause'?'btn-primary':''}`} onClick={() => setProposeAction('unpause')}>Unpause DAO</button>
                 <button className={`btn ${proposeAction==='moveTreasuryToMe'?'btn-primary':''}`} onClick={() => setProposeAction('moveTreasuryToMe')}>Move Treasury To Me</button>
-                <button className={`btn ${proposeAction==='sweepPoolToMe'?'btn-primary':''}`} onClick={() => setProposeAction('sweepPoolToMe')}>Sweep Full Pool → Me</button>
+                <button className={`btn ${proposeAction==='reprice'?'btn-primary':''}`} onClick={() => setProposeAction('reprice')}>Reprice Entry Fee</button>
                 <button className={`btn ${proposeAction==='none'?'btn-primary':''}`} onClick={() => setProposeAction('none')}>Custom/None</button>
               </div>
-              <div className="text-xs text-black/60">Tip: Pause/Unpause encodes the call data automatically.</div>
-              {proposeAction === 'sweepPoolToMe' && (
-                <div className="text-xs text-red-600 mt-1">
-                  Warning: This proposal encodes <code>sweepMemberRewardRemainderDAO(recipient)</code> and will drain the ENTIRE member pool balance to your address. Members with pending rewards will lose the ability to claim. Proceed only if you intend to empty the pool.
+              <div className="text-xs text-black/60">Tip: Pause/Unpause and Move Treasury encode the call data automatically. Reprice expects a new fee in raw token units.</div>
+              {proposeAction === 'reprice' && (
+                <div className="text-xs text-black/80 mt-1 flex flex-col gap-2">
+                  <div className="flex gap-2 items-center">
+                    <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="New Entry Fee (raw units)" value={proposeFee} onChange={(e) => setProposeFee(e.target.value)} />
+                  </div>
+                  <div className="text-xs text-black/60">
+                    Current fee: {currentFee ?? '…'}{typeof tokenDecimals === 'number' ? ` (decimals ${tokenDecimals})` : ''}
+                  </div>
                 </div>
               )}
             </div>
@@ -1478,13 +1526,13 @@ function App() {
                       callData = iface.encodeFunctionData('withdrawAllTreasuryDAO', [me, 'Tech demo payout']);
                       if (!proposeTitle) setProposeTitle('Move Treasury to me');
                     } catch {}
-                  } else if (proposeAction === 'sweepPoolToMe') {
+                  } else if (proposeAction === 'reprice') {
                     try {
-                      const me = await signer.getAddress();
-                      const iface = new ethers.Interface(['function sweepMemberRewardRemainderDAO(address recipient)']);
-                      callData = iface.encodeFunctionData('sweepMemberRewardRemainderDAO', [me]);
-                      if (!proposeTitle) setProposeTitle('Sweep Member Pool (full) to me');
-                      if (!proposeDesc) setProposeDesc('Drains the entire member pool balance to the proposer');
+                      const newFee = BigInt(String(proposeFee || '0'));
+                      const iface = new ethers.Interface(['function updateConfigDAO(address _token, uint256 _entryFee)']);
+                      callData = iface.encodeFunctionData('updateConfigDAO', [ethers.ZeroAddress, newFee]);
+                      if (!proposeTitle) setProposeTitle('Reprice Entry Fee');
+                      if (!proposeDesc) setProposeDesc(`Set new entry fee to ${String(newFee)}`);
                     } catch {}
                   }
                   await proposeVote({ ethers, signer, templAddress, templArtifact, title: proposeTitle || 'Untitled', description: (proposeDesc || proposeTitle || 'Proposal'), callData });
@@ -1492,6 +1540,7 @@ function App() {
                   setProposeTitle('');
                   setProposeDesc('');
                   setProposeAction('none');
+                  setProposeFee('');
                   pushStatus('✅ Proposal submitted');
                 } catch (err) {
                   alert('Proposal failed: ' + (err?.message || String(err)));

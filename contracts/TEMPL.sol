@@ -417,10 +417,7 @@ contract TEMPL is ReentrancyGuard {
             selector == this.setPausedDAO.selector ||
             selector == this.updateConfigDAO.selector ||
             selector == this.withdrawTreasuryDAO.selector ||
-            selector == this.withdrawAllTreasuryDAO.selector ||
-            selector == this.withdrawTokenDAO.selector ||
-            selector == this.withdrawETHDAO.selector ||
-            selector == this.sweepMemberRewardRemainderDAO.selector
+            selector == this.withdrawAllTreasuryDAO.selector
         );
     }
     
@@ -472,54 +469,7 @@ contract TEMPL is ReentrancyGuard {
         IERC20(accessToken).safeTransfer(recipient, amount);
     }
 
-    /**
-     * @notice Withdraw arbitrary ERC20 tokens sent to the contract (proposal required)
-     * @param token ERC20 token address to withdraw
-     * @param recipient Address to receive tokens
-     * @param amount Token amount to withdraw
-     * @param reason Withdrawal explanation
-     */
-    function withdrawTokenDAO(
-        address token,
-        address recipient,
-        uint256 amount,
-        string memory reason
-    ) external onlyDAO {
-        if (token == address(0) || recipient == address(0)) revert TemplErrors.InvalidRecipient();
-        if (amount == 0) revert TemplErrors.AmountZero();
-        if (IERC20(token).balanceOf(address(this)) < amount) revert TemplErrors.InsufficientBalance();
-
-        uint256 proposalId = executingProposalId;
-        if (proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
-
-        emit TreasuryAction(proposalId, recipient, amount, reason);
-
-        IERC20(token).safeTransfer(recipient, amount);
-    }
-
-    /**
-     * @notice Withdraw ETH sent directly to the contract (proposal required)
-     * @param recipient Address to receive ETH
-     * @param amount ETH amount to withdraw
-     * @param reason Withdrawal explanation
-     */
-    function withdrawETHDAO(
-        address recipient,
-        uint256 amount,
-        string memory reason
-    ) external onlyDAO {
-        if (recipient == address(0)) revert TemplErrors.InvalidRecipient();
-        if (amount == 0) revert TemplErrors.AmountZero();
-        if (address(this).balance < amount) revert TemplErrors.InsufficientBalance();
-
-        uint256 proposalId = executingProposalId;
-        if (proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
-
-        emit TreasuryAction(proposalId, recipient, amount, reason);
-
-        (bool success, ) = payable(recipient).call{value: amount}("");
-        if (!success) revert TemplErrors.ProposalExecutionFailed();
-    }
+    // Removed: withdrawTokenDAO and withdrawETHDAO — governance can only move the TEMPL treasury (accessToken)
 
     // executeDAO and arbitrary external call support removed for security hardening
     
@@ -529,14 +479,9 @@ contract TEMPL is ReentrancyGuard {
      * @param _entryFee New entry fee amount (or 0 to keep current)
      */
     function updateConfigDAO(address _token, uint256 _entryFee) external onlyDAO {
-        if (_token != address(0)) {
-            if (_token != accessToken) {
-                // Prevent token changes while any balances remain, including member remainders
-                if (treasuryBalance > 0 || memberPoolBalance > 0 || memberRewardRemainder > 0) {
-                    revert TemplErrors.NonZeroBalances();
-                }
-                accessToken = _token;
-            }
+        // Token changes are no longer permitted via governance. Only repricing is allowed.
+        if (_token != address(0) && _token != accessToken) {
+            revert TemplErrors.TokenChangeDisabled();
         }
         if (_entryFee > 0) {
             if (_entryFee < 10) revert TemplErrors.EntryFeeTooSmall();
@@ -589,18 +534,7 @@ contract TEMPL is ReentrancyGuard {
         emit MemberPoolClaimed(msg.sender, claimable, block.timestamp);
     }
 
-    /**
-     * @notice Sweep remaining member pool balance to a specified recipient
-     * @param recipient Address to receive the swept remainder
-     */
-    function sweepMemberRewardRemainderDAO(address recipient) external onlyDAO {
-        if (recipient == address(0)) revert TemplErrors.InvalidRecipient();
-        uint256 amount = memberPoolBalance;
-        if (amount == 0) revert TemplErrors.AmountZero();
-        memberPoolBalance = 0;
-        memberRewardRemainder = 0;
-        IERC20(accessToken).safeTransfer(recipient, amount);
-    }
+    // Removed: sweepMemberRewardRemainderDAO — member pool sweep is no longer a supported governance action
     
     /**
      * @notice Get comprehensive proposal information

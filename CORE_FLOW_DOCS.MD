@@ -133,7 +133,7 @@ flowchart LR
     C -->|call allowlisted action| C
 ```
 
-- Only pause/unpause, config updates, and treasury transfers are permitted.
+- Only pause/unpause, fee repricing, and treasury transfers are permitted. Token changes, arbitrary ERC-20/ETH withdrawals, and member pool sweeps are disabled.
 - Arbitrary external calls are disabled.
 
 End-to-end proposal lifecycle (sequence):
@@ -202,12 +202,9 @@ Backend resolves inboxIds from the XMTP network via `findInboxIdByIdentifier` an
 ## Governance Allowlist & Rules
 - Proposal actions are restricted to an allowlist enforced at creation and execution:
   - `setPausedDAO(bool)`
-  - `updateConfigDAO(address,uint256)`
+  - `updateConfigDAO(address,uint256)` — entry fee only
   - `withdrawTreasuryDAO(address,uint256,string)`
   - `withdrawAllTreasuryDAO(address,string)`
-  - `withdrawTokenDAO(address,address,uint256,string)`
-  - `withdrawETHDAO(address,uint256,string)`
-  - `sweepMemberRewardRemainderDAO(address)`
 - Voting: 1 vote per member; no priest bonus weighting.
 - Anti‑flash: voters must have joined before `proposal.createdAt`.
 - Majority: `yesVotes > noVotes`, anyone may execute after `endTime`.

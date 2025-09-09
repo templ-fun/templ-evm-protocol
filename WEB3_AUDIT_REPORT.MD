@@ -30,7 +30,7 @@ The contracts implement a DAO-governed membership system with treasury managemen
 
 ### Governance Surface
 - Proposal creation restricts `callData` to an allowlist at two layers:
-  - At creation: `createProposal` extracts the selector and reverts unless it matches one of `{setPausedDAO, updateConfigDAO, withdrawTreasuryDAO, withdrawAllTreasuryDAO, sweepMemberRewardRemainderDAO, withdrawTokenDAO, withdrawETHDAO}`.
+  - At creation: `createProposal` extracts the selector and reverts unless it matches one of `{setPausedDAO, updateConfigDAO, withdrawTreasuryDAO, withdrawAllTreasuryDAO}`. Token changes via `updateConfigDAO` revert with `TokenChangeDisabled`.
   - At execution: `_executeCall` enforces the same allowlist prior to a `call` to `address(this)`.
 - Single active proposal per member enforced; executed/expired proposals clear the active flag.
 - Voting rules:
@@ -44,7 +44,7 @@ The contracts implement a DAO-governed membership system with treasury managemen
 - Member pool distribution:
   - On each new member (except the very first), `cumulativeMemberRewards` increases by `30% / (members.length - 1)`, with integer remainder carried in `memberRewardRemainder`.
   - Each member has `memberRewardSnapshot`; `claimMemberPool()` pays `accrued - snapshot` and updates snapshot.
-  - DAO can sweep remaining pool to a recipient via `sweepMemberRewardRemainderDAO`.
+  - Sweeping the member pool and arbitrary ERC‑20/ETH withdrawals are disabled; DAO can only move the TEMPL treasury.
 
 ### Reentrancy and State Integrity
 - `nonReentrant` guard applied to `purchaseAccess`, `executeProposal`, and `claimMemberPool`.

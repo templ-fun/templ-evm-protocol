@@ -49,3 +49,8 @@
 - Real ERC‑20: e2e deploys the actual `TestToken` artifact and calls ERC‑20 `approve` + `TEMPL#purchaseAccess` on Hardhat.
 - Group discovery: the app renders chat as soon as `groupId` is known and keeps syncing to find the XMTP group; the backend also sends a welcome message to “warm” the conversation.
 - Accounts: backend bot uses a random bot key; e2e wallets rotate to avoid nonce/installation collisions.
+
+## Best Pratices
+
+- Use `npm run test:all` to make sure the entire project works after doing code changes
+- Don't leave comments about previous implementations that were removed

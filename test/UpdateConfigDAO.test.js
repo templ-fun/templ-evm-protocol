@@ -5,7 +5,6 @@ const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
 const {
     encodeUpdateConfigDAO,
     encodeWithdrawAllTreasuryDAO,
-    encodeSweepMemberRewardRemainderDAO,
 } = require("./utils/callDataBuilders");
 
 describe("updateConfigDAO", function () {
@@ -14,7 +13,6 @@ describe("updateConfigDAO", function () {
 
     let templ;
     let token;
-    let newToken;
     let member;
     let priest;
     let accounts;
@@ -22,12 +20,6 @@ describe("updateConfigDAO", function () {
     beforeEach(async function () {
         ({ templ, token, accounts, priest } = await deployTempl({ entryFee: ENTRY_FEE }));
         [, , member] = accounts;
-
-        const Token = await ethers.getContractFactory(
-            "contracts/mocks/TestToken.sol:TestToken"
-        );
-        newToken = await Token.deploy("New Token", "NEW", 18);
-        await newToken.waitForDeployment();
 
         await mintToUsers(token, [member], TOKEN_SUPPLY);
         await purchaseAccess(templ, token, [member]);
@@ -77,15 +69,16 @@ describe("updateConfigDAO", function () {
             .to.be.revertedWithCustomError(templ, "InvalidEntryFee");
     });
 
-    it("reverts when balances are non-zero", async function () {
+    it("reverts on token change attempts (token change disabled)", async function () {
+        const fakeToken = accounts[9];
         const callData = encodeUpdateConfigDAO(
-            await newToken.getAddress(),
+            fakeToken.address,
             0
         );
 
         await templ.connect(member).createProposal(
-            "Change Token",
-            "switch token",
+            "Try Token Change",
+            "should revert",
             callData,
             7 * 24 * 60 * 60
         );
@@ -95,111 +88,6 @@ describe("updateConfigDAO", function () {
         await ethers.provider.send("evm_mine");
 
         await expect(templ.executeProposal(0))
-            .to.be.revertedWithCustomError(templ, "NonZeroBalances");
-    });
-
-    it("allows update after sweeping remainder", async function () {
-        const [priest, m1, m2, m3, m4, m5] = await ethers.getSigners();
-
-        // Deploy tokens with 0 decimals to force remainder
-        const Token = await ethers.getContractFactory(
-            "contracts/mocks/TestToken.sol:TestToken"
-        );
-        const token0 = await Token.deploy("Test Token", "TEST", 0);
-        await token0.waitForDeployment();
-        const newToken0 = await Token.deploy("New Token", "NEW", 0);
-        await newToken0.waitForDeployment();
-
-        const TEMPL = await ethers.getContractFactory("TEMPL");
-        const templ2 = await TEMPL.deploy(
-            priest.address,
-            priest.address,
-            await token0.getAddress(),
-            100
-        );
-        await templ2.waitForDeployment();
-
-        const members = [m1, m2, m3, m4, m5];
-        await mintToUsers(token0, members, 1000);
-        await purchaseAccess(templ2, token0, members, 100);
-
-        // First four members claim their rewards
-        for (const m of members.slice(0, 4)) {
-            const claimable = await templ2.getClaimablePoolAmount(m.address);
-            if (claimable > 0n) {
-                await templ2.connect(m).claimMemberPool();
-            }
-        }
-
-        // Empty the treasury so only member pool remainder remains
-        const withdrawCalldata = encodeWithdrawAllTreasuryDAO(
-            priest.address,
-            "sweep"
-        );
-        await templ2.connect(m1).createProposal(
-            "Withdraw Treasury",
-            "desc",
-            withdrawCalldata,
-            7 * 24 * 60 * 60
-        );
-        await templ2.connect(m1).vote(0, true);
-        await templ2.connect(m2).vote(0, true);
-        await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
-        await ethers.provider.send("evm_mine");
-        await templ2.executeProposal(0);
-
-        // Attempt config update - should revert due to remainder
-        const updateCalldata = encodeUpdateConfigDAO(
-            await newToken0.getAddress(),
-            0
-        );
-        await templ2.connect(m1).createProposal(
-            "Change Token",
-            "desc",
-            updateCalldata,
-            7 * 24 * 60 * 60
-        );
-        await templ2.connect(m1).vote(1, true);
-        await templ2.connect(m2).vote(1, true);
-        await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
-        await ethers.provider.send("evm_mine");
-        await expect(templ2.executeProposal(1))
-            .to.be.revertedWithCustomError(templ2, "NonZeroBalances");
-
-        // Sweep remainder to priest
-        const sweepCalldata = encodeSweepMemberRewardRemainderDAO(
-            priest.address
-        );
-        await templ2.connect(m1).createProposal(
-            "Sweep Remainder",
-            "desc",
-            sweepCalldata,
-            7 * 24 * 60 * 60
-        );
-        await templ2.connect(m1).vote(2, true);
-        await templ2.connect(m2).vote(2, true);
-        await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
-        await ethers.provider.send("evm_mine");
-        await templ2.executeProposal(2);
-
-        expect(await templ2.memberRewardRemainder()).to.equal(0);
-        expect(await templ2.memberPoolBalance()).to.equal(0);
-
-        // Config update should now succeed
-        await templ2.connect(m1).createProposal(
-            "Change Token 2",
-            "desc",
-            updateCalldata,
-            7 * 24 * 60 * 60
-        );
-        await templ2.connect(m1).vote(3, true);
-        await templ2.connect(m2).vote(3, true);
-        await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
-        await ethers.provider.send("evm_mine");
-        await templ2.executeProposal(3);
-
-        expect(await templ2.accessToken()).to.equal(
-            await newToken0.getAddress()
-        );
+            .to.be.revertedWithCustomError(templ, "TokenChangeDisabled");
     });
 });

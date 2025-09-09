@@ -151,10 +151,9 @@ Core flows include TEMPL creation, paid onboarding, chat, moderation, proposal d
 
 - Contracts
   - Proposal execution is restricted to an allowlist of safe DAO actions; arbitrary external calls are disabled.
-  - Token changes require zero treasury, zero member pool balance, and zero remainder to prevent cross‑token accounting.
+  - Governance is simplified to only three actions: move treasury (withdraw treasury token), pause/unpause joining, and reprice the entry fee. Token changes are disabled.
   - Voting is one member‑one vote; proposer auto‑YES, votes are changeable until deadline; anti‑flash rule enforces join before proposal.
-  - Footgun: the DAO can withdraw tokens, including pool funds; doing so may prevent members from claiming pending rewards. In particular, `sweepMemberRewardRemainderDAO(address)` drains the full member pool balance (not just rounding remainder). UIs should warn clearly.
-  - Caution: `withdrawTokenDAO(address,address,uint256,string)` can transfer arbitrary ERC‑20 tokens from the contract, including the access token. Withdrawing the access token can deplete the actual funds backing `treasuryBalance`/`memberPoolBalance` tracking and cause member claims to revert until replenished. Treat this as a powerful DAO action and warn in UIs.
+  - Footgun mitigated: sweeping the member pool and arbitrary token/ETH withdrawals are no longer supported by governance. The DAO can only move the TEMPL treasury (the access token accounted in `treasuryBalance`).
 - Backend API
   - EIP‑712 typed signatures must include `{ action, contract, nonce, issuedAt, expiry, chainId, server }`.
   - Bind signatures to your deployment by setting a shared server id: `BACKEND_SERVER_ID` and `VITE_BACKEND_SERVER_ID` must match.

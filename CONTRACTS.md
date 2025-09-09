@@ -20,9 +20,7 @@ updates their snapshot. Unclaimed rewards continue to accumulate until claimed.
 
 See the sequence diagram below for deposit, snapshot, and claim.
 
-Note: The function `sweepMemberRewardRemainderDAO(address)` transfers the entire `memberPoolBalance` to the recipient when executed via a passed proposal. Despite the name, it is not limited to the rounding remainder; it drains the full pool and resets both `memberPoolBalance` and the tracked remainder to zero. UIs should reflect this clearly.
-
-Additionally, `withdrawTokenDAO(address token,address recipient,uint256 amount,string reason)` allows the DAO to transfer arbitrary ERC‑20s from the contract, including the access token. Withdrawing the access token can deplete the actual funds backing internal `treasuryBalance`/`memberPoolBalance` tracking and cause member claims to revert until replenished. Treat this as a powerful DAO action; UIs should warn clearly and operators should exercise care.
+Note: Governance no longer supports sweeping the member pool or arbitrary token/ETH withdrawals. The DAO can only move the TEMPL treasury (30% access token split) and cannot drain the member pool via governance.
 
 ```mermaid
 sequenceDiagram
@@ -40,15 +38,11 @@ sequenceDiagram
 - Each member may have only one active proposal.
 - Voting period: 7–30 days (`0` defaults to 7).
 - Any address can execute a passed proposal; execution is atomic.
-- Internal calls use `_executeCall` to invoke an allowlist of DAO functions during proposal execution.
-- Proposals are restricted to the following actions only:
-  - `setPausedDAO(bool)`
-  - `updateConfigDAO(address,uint256)`
-  - `withdrawTreasuryDAO(address,uint256,string)`
-  - `withdrawAllTreasuryDAO(address,string)`
-  - `withdrawTokenDAO(address,address,uint256,string)`
-  - `withdrawETHDAO(address,uint256,string)`
-  - `sweepMemberRewardRemainderDAO(address)` – sweeps the entire member pool balance (naming is historical; drains full `memberPoolBalance`, not just rounding remainder)
+- Internal calls use `_executeCall` to invoke an allowlist of DAO functions during proposal execution. The allowlist is restricted to:
+  - `setPausedDAO(bool)` — pause/unpause joining
+  - `updateConfigDAO(address,uint256)` — reprice joining fee only; token changes revert with `TokenChangeDisabled`
+  - `withdrawTreasuryDAO(address,uint256,string)` — move a portion of the treasury
+  - `withdrawAllTreasuryDAO(address,string)` — move the entire treasury
   Arbitrary external calls are disabled for security.
 
 ### Anti‑attack checks

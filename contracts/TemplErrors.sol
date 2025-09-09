@@ -68,4 +68,6 @@ library TemplErrors {
     error InvalidSender();
     /// @notice Thrown when provided call data does not match an allowed function signature.
     error InvalidCallData();
+    /// @notice Thrown when attempting to change the access token via governance.
+    error TokenChangeDisabled();
 }
