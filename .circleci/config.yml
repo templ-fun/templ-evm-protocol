@@ -8,12 +8,12 @@ orbs:
 
 workflows:
   jobs:
-    - path-filtering/filter:
-        name: check-paths
-        base-revision: main
-        config-path: .circleci/continue.yml
-        mapping: |
-          contracts/.* run_contracts true
-          test/.* run_contracts true
-          backend/.* run_app true
-          frontend/.* run_app true
+    path-filtering/filter:
+      name: check-paths
+      base-revision: main
+      config-path: .circleci/continue.yml
+      mapping: |
+        contracts/.* run_contracts true
+        test/.* run_contracts true
+        backend/.* run_app true
+        frontend/.* run_app true
