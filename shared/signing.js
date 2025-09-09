@@ -170,7 +170,7 @@ export function buildMuteTypedData({ chainId, contractAddress, targetAddress, no
   return { domain, types, primaryType: 'Mute', message };
 }
 
-// Backwards-compatible string builders (deprecated). Not used by default flows.
+// String builders retained for compatibility; default flows use typed data.
 export function buildDelegateMessage(contract, delegate) {
   return `delegate:${contract.toLowerCase()}:${delegate.toLowerCase()}`;
 }

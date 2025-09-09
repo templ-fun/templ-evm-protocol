@@ -1202,7 +1202,7 @@ function App() {
           />
         )}
 
-        {/* Contract info block removed from main view; accessible via Info drawer in Chat */}
+        {/* Contract info block accessible via Info drawer in Chat */}
 
         {/* Routes */}
         {path === '/' && (

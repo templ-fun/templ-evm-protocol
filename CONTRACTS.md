@@ -20,7 +20,7 @@ updates their snapshot. Unclaimed rewards continue to accumulate until claimed.
 
 See the sequence diagram below for deposit, snapshot, and claim.
 
-Note: Governance no longer supports sweeping the member pool or arbitrary token/ETH withdrawals. The DAO can only move the TEMPL treasury (30% access token split) and cannot drain the member pool via governance.
+Note: Governance can move only the TEMPL treasury (30% access token split); it cannot withdraw from the member pool or arbitrary token/ETH.
 
 ```mermaid
 sequenceDiagram

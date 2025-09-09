@@ -154,7 +154,7 @@ contract TEMPL is ReentrancyGuard {
      * @param _protocolFeeRecipient Receives 10% protocol fee
      * @param _token ERC20 token for membership payments
      * @param _entryFee Membership cost (minimum 10 and divisible by 10)
-     * Legacy vote-weight parameters removed; all members have 1 vote.
+     * All members have 1 vote.
      */
     constructor(
         address _priest,
@@ -476,9 +476,7 @@ contract TEMPL is ReentrancyGuard {
         IERC20(accessToken).safeTransfer(recipient, amount);
     }
 
-    // Removed: withdrawTokenDAO and withdrawETHDAO — governance can only move the TEMPL treasury (accessToken)
-
-    // executeDAO and arbitrary external call support removed for security hardening
+    // Governance can only move the TEMPL treasury (accessToken)
     
     /**
      * @notice Update contract configuration via DAO proposal
@@ -486,7 +484,7 @@ contract TEMPL is ReentrancyGuard {
      * @param _entryFee New entry fee amount (or 0 to keep current)
      */
     function updateConfigDAO(address _token, uint256 _entryFee) external onlyDAO {
-        // Token changes are no longer permitted via governance. Only repricing is allowed.
+        // Token changes via governance are disabled; only repricing is allowed.
         if (_token != address(0) && _token != accessToken) {
             revert TemplErrors.TokenChangeDisabled();
         }
@@ -570,8 +568,6 @@ contract TEMPL is ReentrancyGuard {
         emit MemberPoolClaimed(msg.sender, claimable, block.timestamp);
     }
 
-    // Removed: sweepMemberRewardRemainderDAO — member pool sweep is no longer a supported governance action
-    
     /**
      * @notice Get comprehensive proposal information
      * @param _proposalId Proposal ID to query
