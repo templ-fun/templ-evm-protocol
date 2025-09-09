@@ -259,15 +259,7 @@ contract TEMPL is ReentrancyGuard {
         assembly {
             selector := mload(add(_callData, 32))
         }
-        bool allowed = (
-            selector == this.setPausedDAO.selector ||
-            selector == this.updateConfigDAO.selector ||
-            selector == this.withdrawTreasuryDAO.selector ||
-            selector == this.withdrawAllTreasuryDAO.selector ||
-            selector == this.withdrawTokenDAO.selector ||
-            selector == this.withdrawETHDAO.selector ||
-            selector == this.sweepMemberRewardRemainderDAO.selector
-        );
+        bool allowed = _isAllowedSelector(selector);
         if (!allowed) revert TemplErrors.InvalidCallData();
         
         if (hasActiveProposal[msg.sender]) {
@@ -402,15 +394,7 @@ contract TEMPL is ReentrancyGuard {
         }
 
         // Allow only specific DAO functions to be executed by proposals
-        bool allowed = (
-            selector == this.setPausedDAO.selector ||
-            selector == this.updateConfigDAO.selector ||
-            selector == this.withdrawTreasuryDAO.selector ||
-            selector == this.withdrawAllTreasuryDAO.selector ||
-            selector == this.withdrawTokenDAO.selector ||
-            selector == this.withdrawETHDAO.selector ||
-            selector == this.sweepMemberRewardRemainderDAO.selector
-        );
+        bool allowed = _isAllowedSelector(selector);
 
         if (!allowed) {
             revert TemplErrors.InvalidCallData();
@@ -427,6 +411,18 @@ contract TEMPL is ReentrancyGuard {
             }
         }
         return returnData;
+    }
+
+    function _isAllowedSelector(bytes4 selector) internal view returns (bool) {
+        return (
+            selector == this.setPausedDAO.selector ||
+            selector == this.updateConfigDAO.selector ||
+            selector == this.withdrawTreasuryDAO.selector ||
+            selector == this.withdrawAllTreasuryDAO.selector ||
+            selector == this.withdrawTokenDAO.selector ||
+            selector == this.withdrawETHDAO.selector ||
+            selector == this.sweepMemberRewardRemainderDAO.selector
+        );
     }
     
     /**

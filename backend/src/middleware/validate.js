@@ -10,7 +10,8 @@ import { ethers } from 'ethers';
  * @returns {import('express').RequestHandler}
  */
 export function verifyTypedSignature({ database, addressField, buildTyped, errorMessage = 'Bad signature' }) {
-  const isTest = process.env.NODE_ENV === 'test' || process.env.ALLOW_INSECURE_SIG === '1' || process.env.DISABLE_XMTP_WAIT === '1';
+  // Only allow insecure shortcuts in NODE_ENV=test or when explicitly opted-in.
+  const isTest = process.env.NODE_ENV === 'test' || process.env.ALLOW_INSECURE_SIG === '1';
   let insertSig = null;
   let hasSig = null;
   try {
@@ -20,7 +21,13 @@ export function verifyTypedSignature({ database, addressField, buildTyped, error
     }
   } catch { /* ignore - fallback to no-op replay checks */ }
   return function (req, res, next) {
-    if (req.get && req.get('x-insecure-sig') === '1') return next();
+    // Allow explicit test-time bypass via header only in test/dev contexts
+    try {
+      const allowByHeader = (process.env.NODE_ENV === 'test' || process.env.ALLOW_INSECURE_SIG === '1' || process.env.DISABLE_XMTP_WAIT === '1') && process.env.NODE_ENV !== 'production';
+      if (allowByHeader && req.get && req.get('x-insecure-sig') === '1') {
+        return next();
+      }
+    } catch { /* ignore */ }
     try {
       const address = String(req.body?.[addressField] || '').toLowerCase();
       const signature = String(req.body?.signature || '');

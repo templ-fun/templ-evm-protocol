@@ -66,7 +66,8 @@ export default function templsRouter({ xmtp, groups, persist, connectContract, d
       const { contractAddress, priestAddress } = req.body;
       try {
         // Optional contract verification (prod): ensure address is a contract when configured
-        if (process.env.REQUIRE_CONTRACT_VERIFY === '1' && provider) {
+        const requireVerify = process.env.REQUIRE_CONTRACT_VERIFY === '1' || process.env.NODE_ENV === 'production';
+        if (requireVerify && provider) {
           try {
             const code = await provider.getCode(contractAddress);
             if (!code || code === '0x') {
@@ -96,9 +97,16 @@ export default function templsRouter({ xmtp, groups, persist, connectContract, d
             ['local','dev','production'].includes(String(process.env.XMTP_ENV)) ? process.env.XMTP_ENV : 'dev'
           );
           const priestInboxMaybe = await getInboxIdForIdentifier(priestIdentifierObj, envOpt);
-          inboxIds.push(priestInboxMaybe || generateInboxId(priestIdentifierObj));
+          if (priestInboxMaybe) {
+            inboxIds.push(priestInboxMaybe);
+          } else {
+            // Only allow deterministic generation in local/test to avoid accidental mismatches in dev/prod
+            if (envOpt === 'local' || process.env.NODE_ENV === 'test') {
+              try { inboxIds.push(generateInboxId(priestIdentifierObj)); } catch { /* ignore */ }
+            }
+          }
         } catch {
-          try { inboxIds.push(generateInboxId(priestIdentifierObj)); } catch { /* ignore */ }
+          // ignore resolution errors silently
         }
         if (!inboxIds.length) {
           throw new Error('No inboxIds available for group creation');

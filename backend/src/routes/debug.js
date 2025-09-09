@@ -8,6 +8,16 @@ import { logger } from '../logger.js';
 export default function debugRouter({ xmtp, groups, lastJoin }) {
   const router = express.Router();
 
+  // Restrict debug endpoints to localhost by default for safety
+  router.use((req, res, next) => {
+    try {
+      const ip = req.ip || req.connection?.remoteAddress || '';
+      const ok = ip === '127.0.0.1' || ip === '::1' || ip.endsWith('127.0.0.1') || ip.startsWith('::ffff:127.0.0.1');
+      if (!ok) return res.status(403).json({ error: 'Debug endpoints restricted to localhost' });
+    } catch { /* ignore */ }
+    next();
+  });
+
   router.get(
     '/debug/membership',
     requireAddresses(['contractAddress'], 'Invalid contractAddress'),

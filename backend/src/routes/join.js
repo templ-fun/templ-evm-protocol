@@ -45,9 +45,8 @@ export default function joinRouter({ xmtp, groups, hasPurchased, lastJoin, datab
       }
       if (!purchased) return res.status(403).json({ error: 'Access not purchased' });
       try {
-        // Resolve member inboxId and add explicitly by inboxId for maximum compatibility
+        // Resolve member inboxId via network; never trust client-provided ids blindly.
         const memberIdentifier = { identifier: memberAddress.toLowerCase(), identifierKind: 0 };
-        // If the client provided a candidate inboxId (its own), prefer it
         let providedInboxId = null;
         try {
           const raw = String(req.body?.inboxId || req.body?.memberInboxId || '').trim();
@@ -57,7 +56,10 @@ export default function joinRouter({ xmtp, groups, hasPurchased, lastJoin, datab
           const envOpt = /** @type {'local'|'dev'|'production'} */ (
             ['local','dev','production'].includes(String(XMTP_ENV)) ? XMTP_ENV : 'dev'
           );
-          const delayMs = envOpt === 'local' ? 200 : 1000;
+          // In tests, collapse retries aggressively to avoid long hangs
+          const isTest = process.env.NODE_ENV === 'test' || process.env.DISABLE_XMTP_WAIT === '1';
+          const delayMs = envOpt === 'local' ? 200 : (isTest ? 150 : 1000);
+          tries = isTest ? Math.min(tries, 8) : tries;
           for (let i = 0; i < tries; i++) {
             // Prefer resolving through the server's XMTP client if available (works with test doubles)
             try {
@@ -85,12 +87,19 @@ export default function joinRouter({ xmtp, groups, hasPurchased, lastJoin, datab
             if (maybe) record.group = maybe;
           }
         } catch (e) { logger.warn({ err: e?.message || e }, 'Rehydrate group failed'); }
-        // Choose inboxId: prefer the client-provided inboxId if available
-        let inboxId = providedInboxId;
+        // Resolve inboxId from network; only accept providedInboxId if it matches resolution
         const allowDeterministic = ['local'].includes(String(XMTP_ENV)) || process.env.NODE_ENV === 'test';
-        if (!inboxId) {
-          inboxId = await waitForInboxId(memberIdentifier, allowDeterministic ? 30 : 180, allowDeterministic);
+        const resolvedInboxId = await waitForInboxId(memberIdentifier, allowDeterministic ? 30 : 180, allowDeterministic);
+        let inboxId = resolvedInboxId;
+        if (!inboxId && allowDeterministic) {
+          inboxId = providedInboxId || null;
         }
+        // If both are present and mismatch, ignore the provided one
+        try {
+          if (resolvedInboxId && providedInboxId && String(resolvedInboxId).toLowerCase() !== String(providedInboxId).toLowerCase()) {
+            // prefer resolved; do nothing (overwrites above)
+          }
+        } catch { /* ignore */ }
         if (!inboxId) {
           return res.status(503).json({ error: 'Member identity not registered yet; retry shortly' });
         }
@@ -170,7 +179,8 @@ export default function joinRouter({ xmtp, groups, hasPurchased, lastJoin, datab
           } catch { /* ignore */ }
         } catch {/* ignore */}
         // Linearize against identity readiness on XMTP infra for whichever inboxId we use
-        const ready = await waitForInboxReady(inboxId, 60);
+        const readyTries = (process.env.NODE_ENV === 'test' || process.env.DISABLE_XMTP_WAIT === '1') ? 2 : 60;
+        const ready = await waitForInboxReady(inboxId, readyTries);
         logger.info({ inboxId, ready }, 'Member inbox readiness before add');
         const beforeAgg = xmtp?.debugInformation?.apiAggregateStatistics?.();
         const joinMeta = { contract: contractAddress.toLowerCase(), member: memberAddress.toLowerCase(), inboxId, serverInboxId: xmtp?.inboxId || null, groupId: record.group?.id || record.groupId || null };
@@ -202,11 +212,12 @@ export default function joinRouter({ xmtp, groups, hasPurchased, lastJoin, datab
         } catch (err) {
           logger.warn({ err }, 'Server sync after join failed');
         }
-        // Wait until the member appears in the group's member list (ensures welcome processed)
+        // Wait until the member appears in the group's member list (bounded in tests)
         try {
           const env = String(XMTP_ENV || 'dev');
-          const max = env === 'local' ? 30 : 60;
-          const delay = env === 'local' ? 150 : 500;
+          const isTest = process.env.NODE_ENV === 'test' || process.env.DISABLE_XMTP_WAIT === '1';
+          const max = isTest ? 3 : (env === 'local' ? 30 : 60);
+          const delay = isTest ? 100 : (env === 'local' ? 150 : 500);
           for (let i = 0; i < max; i++) {
             try { await record.group?.sync?.(); } catch { /* ignore */ }
             const members = Array.isArray(record.group?.members) ? record.group.members : [];
