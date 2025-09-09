@@ -20,6 +20,8 @@ updates their snapshot. Unclaimed rewards continue to accumulate until claimed.
 
 See the sequence diagram below for deposit, snapshot, and claim.
 
+Note: The function `sweepMemberRewardRemainderDAO(address)` transfers the entire `memberPoolBalance` to the recipient when executed via a passed proposal. Despite the name, it is not limited to the rounding remainder; it drains the full pool and resets both `memberPoolBalance` and the tracked remainder to zero. UIs should reflect this clearly.
+
 ```mermaid
 sequenceDiagram
     participant NewMember
@@ -44,7 +46,7 @@ sequenceDiagram
   - `withdrawAllTreasuryDAO(address,string)`
   - `withdrawTokenDAO(address,address,uint256,string)`
   - `withdrawETHDAO(address,uint256,string)`
-  - `sweepMemberRewardRemainderDAO(address)`
+  - `sweepMemberRewardRemainderDAO(address)` – sweeps the entire member pool balance (naming is historical; drains full `memberPoolBalance`, not just rounding remainder)
   Arbitrary external calls are disabled for security.
 
 ### Anti‑attack checks

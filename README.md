@@ -153,7 +153,7 @@ Core flows include TEMPL creation, paid onboarding, chat, moderation, proposal d
   - Proposal execution is restricted to an allowlist of safe DAO actions; arbitrary external calls are disabled.
   - Token changes require zero treasury, zero member pool balance, and zero remainder to prevent cross‑token accounting.
   - Voting is one member‑one vote; proposer auto‑YES, votes are changeable until deadline; anti‑flash rule enforces join before proposal.
-  - Footgun: the DAO can withdraw tokens, including pool funds; doing so may prevent members from claiming pending rewards. UIs should warn.
+  - Footgun: the DAO can withdraw tokens, including pool funds; doing so may prevent members from claiming pending rewards. In particular, `sweepMemberRewardRemainderDAO(address)` drains the full member pool balance (not just rounding remainder). UIs should warn clearly.
 - Backend API
   - EIP‑712 typed signatures must include `{ action, contract, nonce, issuedAt, expiry, chainId, server }`.
   - Bind signatures to your deployment by setting a shared server id: `BACKEND_SERVER_ID` and `VITE_BACKEND_SERVER_ID` must match.
@@ -172,8 +172,8 @@ Core flows include TEMPL creation, paid onboarding, chat, moderation, proposal d
 
 
 ## E2E Environments
-- Default: XMTP production
-  - Playwright sets `XMTP_ENV=production` for backend, `VITE_XMTP_ENV=production` for frontend
+- Default: XMTP dev
+  - Playwright sets `XMTP_ENV=dev` for backend and `VITE_XMTP_ENV=dev` for frontend by default. Override with `E2E_XMTP_ENV=production` if you want to target production.
 - Local XMTP: set `E2E_XMTP_LOCAL=1`
   - Playwright starts `xmtp-local-node`, sets `XMTP_ENV=local` and `VITE_XMTP_ENV=local`
   - Local-only repro tests are enabled
