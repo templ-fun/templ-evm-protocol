@@ -142,6 +142,7 @@ describe("TEMPL Contract with DAO Governance", function () {
 
         it("Should allow creating a proposal to withdraw treasury funds", async function () {
             const callData = encodeWithdrawTreasuryDAO(
+                token.target,
                 treasury.address,
                 ethers.parseUnits("1", 18),
                 "Move funds"
@@ -158,6 +159,7 @@ describe("TEMPL Contract with DAO Governance", function () {
 
         it("Should allow creating a proposal to withdraw all treasury funds", async function () {
             const callData = encodeWithdrawAllTreasuryDAO(
+                token.target,
                 treasury.address,
                 "Drain treasury"
             );
@@ -248,6 +250,7 @@ describe("TEMPL Contract with DAO Governance", function () {
 
             // Create a proposal
             const callData = encodeWithdrawTreasuryDAO(
+                token.target,
                 treasury.address,
                 ethers.parseUnits("10", 18),
                 "Test withdrawal"
@@ -347,6 +350,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             // Create treasury withdrawal proposal
             const withdrawAmount = ethers.parseUnits("10", 18);
             const callData = encodeWithdrawTreasuryDAO(
+                token.target,
                 treasury.address,
                 withdrawAmount,
                 "Test withdrawal"
@@ -387,6 +391,7 @@ describe("TEMPL Contract with DAO Governance", function () {
         it("Should not execute failed proposals", async function () {
             // Create proposal
             const callData = encodeWithdrawTreasuryDAO(
+                token.target,
                 treasury.address,
                 ethers.parseUnits("10", 18),
                 "Test"
@@ -523,6 +528,7 @@ describe("TEMPL Contract with DAO Governance", function () {
         it("Should prevent direct treasury withdrawal by priest", async function () {
             // Priest cannot call withdrawTreasuryDAO directly
             await expect(templ.connect(priest).withdrawTreasuryDAO(
+                token.target,
                 priest.address,
                 ethers.parseUnits("10", 18),
                 "Unauthorized"
@@ -531,6 +537,7 @@ describe("TEMPL Contract with DAO Governance", function () {
 
         it("Should prevent direct treasury withdrawal by members", async function () {
             await expect(templ.connect(user1).withdrawTreasuryDAO(
+                token.target,
                 user1.address,
                 ethers.parseUnits("10", 18),
                 "Unauthorized"
@@ -540,6 +547,7 @@ describe("TEMPL Contract with DAO Governance", function () {
         it("Should prevent direct full treasury withdrawal", async function () {
             await expect(
                 templ.connect(priest).withdrawAllTreasuryDAO(
+                    token.target,
                     priest.address,
                     "Unauthorized"
                 )
@@ -552,6 +560,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             const withdrawAmount = treasuryBalance / 2n; // Half of treasury
 
             const callData = encodeWithdrawTreasuryDAO(
+                token.target,
                 treasury.address,
                 withdrawAmount,
                 "Approved withdrawal"
@@ -889,6 +898,7 @@ describe("TEMPL Contract with DAO Governance", function () {
 
         it("Should execute withdrawAllTreasuryDAO through proposal", async function () {
             const callData = encodeWithdrawAllTreasuryDAO(
+                token.target,
                 treasury.address,
                 "Empty treasury"
             );
@@ -997,6 +1007,7 @@ describe("TEMPL Contract with DAO Governance", function () {
 
             // User 1 creates proposal
             const callData = encodeWithdrawTreasuryDAO(
+                token.target,
                 treasury.address,
                 ethers.parseUnits("10", 18),
                 "Community fund"

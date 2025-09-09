@@ -40,6 +40,7 @@ describe("Voting Eligibility Based on Join Time", function () {
 
             // Member 1 creates proposal
             const callData = encodeWithdrawTreasuryDAO(
+                token.target,
                 member1.address,
                 ethers.parseUnits("10", 18),
                 "Test"
@@ -86,6 +87,7 @@ describe("Voting Eligibility Based on Join Time", function () {
 
             // Create proposal
             const callData = encodeWithdrawTreasuryDAO(
+                token.target,
                 member1.address,
                 ethers.parseUnits("10", 18),
                 "Test"
@@ -191,6 +193,7 @@ describe("Voting Eligibility Based on Join Time", function () {
 
             // Create contentious proposal where member2 would vote no
             const callData = encodeWithdrawTreasuryDAO(
+                token.target,
                 member1.address, // Only benefits member1
                 ethers.parseUnits("50", 18),
                 "Selfish withdrawal"

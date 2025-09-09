@@ -70,6 +70,7 @@ function App() {
   const [proposeDesc, setProposeDesc] = useState('');
   const [proposeAction, setProposeAction] = useState('none'); // none | pause | unpause | moveTreasuryToMe | reprice
   const [proposeFee, setProposeFee] = useState('');
+  const [proposeToken, setProposeToken] = useState('');
   const [currentFee, setCurrentFee] = useState(null);
   const [tokenDecimals, setTokenDecimals] = useState(null);
   const [toast, setToast] = useState('');
@@ -1508,6 +1509,14 @@ function App() {
                   </div>
                 </div>
               )}
+              {proposeAction === 'moveTreasuryToMe' && (
+                <div className="text-xs text-black/80 mt-1 flex flex-col gap-2">
+                  <div className="flex gap-2 items-center">
+                    <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Token address or ETH" value={proposeToken} onChange={(e) => setProposeToken(e.target.value)} />
+                  </div>
+                  <div className="text-xs text-black/60">Leave blank to use entry fee token.</div>
+                </div>
+              )}
             </div>
             <div className="modal__footer">
               <button className="btn" onClick={() => setProposeOpen(false)}>Cancel</button>
@@ -1523,8 +1532,17 @@ function App() {
                   } else if (proposeAction === 'moveTreasuryToMe') {
                     try {
                       const me = await signer.getAddress();
-                      const iface = new ethers.Interface(['function withdrawAllTreasuryDAO(address recipient, string reason)']);
-                      callData = iface.encodeFunctionData('withdrawAllTreasuryDAO', [me, 'Tech demo payout']);
+                      const templ = new ethers.Contract(templAddress, templArtifact.abi, signer);
+                      let tokenAddr;
+                      if (!proposeToken.trim()) {
+                        tokenAddr = await templ.accessToken();
+                      } else if (proposeToken.trim().toLowerCase() === 'eth') {
+                        tokenAddr = ethers.ZeroAddress;
+                      } else {
+                        tokenAddr = proposeToken.trim();
+                      }
+                      const iface = new ethers.Interface(['function withdrawAllTreasuryDAO(address token, address recipient, string reason)']);
+                      callData = iface.encodeFunctionData('withdrawAllTreasuryDAO', [tokenAddr, me, 'Tech demo payout']);
                       if (!proposeTitle) setProposeTitle('Move Treasury to me');
                     } catch {}
                   } else if (proposeAction === 'reprice') {
@@ -1549,6 +1567,7 @@ function App() {
                   setProposeDesc('');
                   setProposeAction('none');
                   setProposeFee('');
+                  setProposeToken('');
                   pushStatus('✅ Proposal submitted');
                 } catch (err) {
                   alert('Proposal failed: ' + (err?.message || String(err)));

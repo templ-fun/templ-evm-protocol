@@ -27,6 +27,7 @@ describe("Vote reverts", function () {
 
     it("reverts when voting after endTime", async function () {
         const callData = encodeWithdrawTreasuryDAO(
+            token.target,
             member1.address,
             ethers.parseUnits("10", 18),
             "Test"
