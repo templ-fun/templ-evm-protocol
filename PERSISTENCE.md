@@ -1,6 +1,6 @@
 # Persistence Overview
 
-This document outlines where TEMPL persists state, the storage technologies in play, and how data flows through the system. Detailed explanations live in [`PERSISTENCE_APPENDIX.md`](PERSISTENCE_APPENDIX.md).
+This document outlines where TEMPL persists state, the storage technologies in play, and how data flows through the system. It consolidates all persistence details into a single reference.
 
 | Storage          | Location                                            | Encryption                   | Usage                                            |
 | ---------------- | --------------------------------------------------- | ---------------------------- | ------------------------------------------------ |
@@ -20,29 +20,48 @@ graph LR
   XMTPNetwork --- XMTPOpfs
 ```
 
-## Backend DB
+## Backend DB (SQLite)
 
-- SQLite file `backend/groups.db` (override with `DB_PATH`).
-- Stores contract → `groupId` mappings and moderation data.
-- Mirror `groups` table in an in-memory `Map()` for quick boot.
-- See [appendix details](PERSISTENCE_APPENDIX.md#backend-db-details) for schema.
+- Default file: `backend/groups.db` (override with `DB_PATH`).
+- Purpose: maps on‑chain TEMPL contracts to XMTP `groupId`, and stores moderation state.
+- Startup: the `groups` table is mirrored to an in‑memory `Map()` so the server can restore groups on boot.
+
+### Tables
+
+- `groups(contract TEXT PRIMARY KEY, groupId TEXT, priest TEXT)`
+  - Maps on‑chain contract → XMTP group id and priest EOA.
+  - Written on POST `/templs`; re‑read on server boot.
+- `mutes(contract TEXT, target TEXT, count INTEGER, until INTEGER, PRIMARY KEY(contract, target))`
+  - Moderation strikes and mute expiry per address per contract; written on POST `/mute`.
+- `delegates(contract TEXT, delegate TEXT, PRIMARY KEY(contract, delegate))`
+  - Delegated moderation rights; written on POST/DELETE `/delegateMute`.
+- `signatures(sig TEXT PRIMARY KEY, usedAt INTEGER)`
+  - Server‑side replay protection store for typed signatures.
 
 ## XMTP Node DB
 
-- SQLCipher DB `xmtp-<env>-<inboxId>.db3` stored in process working dir.
+- File: `xmtp-<env>-<inboxId>.db3` in the server working directory.
+- Encryption: SQLCipher; key supplied by `dbEncryptionKey`.
 - Holds client identity, installation info, and conversation metadata.
-- Reused across runs with the same `dbEncryptionKey`.
-- The server derives a 32-byte key from `BACKEND_DB_ENC_KEY` (if set) or from the bot private key and `XMTP_ENV`. Provide `BACKEND_DB_ENC_KEY` in production to avoid weak defaults.
-- Identity model details in [appendix](PERSISTENCE_APPENDIX.md#xmtp-node-db-details).
+- Reused across runs for the same inboxId when opened with the same `dbEncryptionKey`.
+- Key material derivation:
+  - Production: supply `BACKEND_DB_ENC_KEY` (32‑byte hex). The server refuses to boot without it.
+  - Dev/Test fallback: derived from bot private key + environment. Do not use in production.
+
+### XMTP identity model (Node)
+
+- `inboxId`: stable per identity (EOA/SCW) on XMTP.
+- Installations: devices/agents attached to an inbox; XMTP dev network caps installs at 10.
+- Installation rotation: changing the signer nonce (in `getIdentifier`) rotates installations under the same inboxId.
+- Local DB reuse: opening the same inboxId with the same `dbEncryptionKey` re‑attaches to the same SQLCipher DB.
 
 ## XMTP Browser DB
 
-- Browser SDK stores DB in OPFS as `xmtp-<env>-<inboxId>.db3`.
-- OPFS files are unencrypted and use exclusive access handles.
-- Avoid concurrent clients or rapid client teardown to prevent handle contention.
-- Additional notes in [appendix](PERSISTENCE_APPENDIX.md#xmtp-browser-db-details).
+- Storage: OPFS (`xmtp-<env>-<inboxId>.db3` per origin). Not host‑visible; not encrypted.
+- OPFS uses exclusive “synchronous access handles.” Multiple handles or rapid client churn can trigger `NoModificationAllowedError: createSyncAccessHandle`.
+- Guidance: run a single client per page, avoid frequent teardown, and reuse a stable installation where possible.
 
-## Data Flows
+## Data Flows & Endpoints
 
 ```mermaid
 flowchart TD
@@ -52,11 +71,21 @@ flowchart TD
     nodeDB <--> browserDB[("XMTP Browser DB")]
 ```
 
-- POST `/templs`: registers contract → `groupId` and seeds group.
-- POST `/join`: verifies access and adds member to group. The server derives inboxIds from the member address; client-provided inboxIds are ignored.
-- POST/DELETE `/delegateMute`, POST `/mute`: update moderation tables.
-- Identity and installations are managed by XMTP; membership lives in XMTP, not SQLite.
-- Endpoint specifics in [appendix](PERSISTENCE_APPENDIX.md#data-flow-endpoints).
+- POST `/templs` (create/register a TEMPL group)
+  - Verifies priest EIP‑712 signature (`action: 'create'`, with chainId, nonce, issuedAt, expiry, server).
+  - Optionally verifies on‑chain `priest()` and code when `REQUIRE_CONTRACT_VERIFY=1` (or in production).
+  - Resolves priest inbox via XMTP, waits for readiness, and creates the group; sends a warm “templ-created” message.
+  - Persists `{ contract, groupId, priest }` to SQLite + in‑memory cache.
+- POST `/join` (purchase check + invite member)
+  - Verifies member EIP‑712 signature (`action: 'join'`, with chainId, nonce, issuedAt, expiry, server) and rejects replays.
+  - Calls on‑chain `hasAccess(member)`; rejects when false.
+  - Resolves member inboxId via XMTP network; ignores arbitrary client‑supplied inboxIds unless running local test fallback.
+  - Adds the member to the group; re‑syncs and sends a warm “member-joined” message; returns `groupId`.
+- POST/DELETE `/delegateMute` (delegate moderation)
+  - Priest EIP‑712 signature (`action: 'delegateMute'`) controls rows in the `delegates` table.
+- POST `/mute` (escalating mute)
+  - Priest or delegate EIP‑712 signature (`action: 'mute'`) records escalating `count` and `until` in `mutes`.
+- Identity and membership live in XMTP; SQLite stores group mapping and moderation state but not membership or messages.
 
 ## FAQ
 
@@ -81,11 +110,8 @@ This section answers common questions about what data is stored and why certain 
 
 ### E2E tests
 
-- Browser SDK in Chromium; earlier nonce rotation with fixed Hardhat accounts and storage clearing caused:
-  - `10/10 installations reached` errors.
-  - OPFS `createSyncAccessHandle` contention.
-- **Mitigations**
-  - Persist a nonce per wallet to reuse installations and OPFS DB.
-  - Use fresh funded wallets when continuity isn't needed.
-  - Avoid clearing OPFS or running multiple clients on a page; reload before switching wallets.
-  - Backend Node client reuses its local DB; clearing `groups.db` is safe.
+- Browser SDK in Chromium; watch for XMTP dev installation caps and OPFS handle contention.
+- Mitigations:
+  - Use fresh funded wallets and reuse OPFS DBs when possible.
+  - Avoid multiple browser clients for the same inbox on a single page.
+  - Backend Node client reuses its local SQLCipher DB; clearing `groups.db` is safe.
