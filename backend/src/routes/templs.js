@@ -1,7 +1,7 @@
 import express from 'express';
 import { syncXMTP } from '../../../shared/xmtp.js';
 import { requireAddresses, verifyTypedSignature } from '../middleware/validate.js';
-// import { ethers } from 'ethers';
+import { ethers } from 'ethers';
 import { buildCreateTypedData } from '../../../shared/signing.js';
 import { generateInboxId, getInboxIdForIdentifier } from '@xmtp/node-sdk';
 import { logger } from '../logger.js';
@@ -65,15 +65,39 @@ export default function templsRouter({ xmtp, groups, persist, connectContract, d
     async (req, res) => {
       const { contractAddress, priestAddress } = req.body;
       try {
-        // Optional contract verification (prod): ensure address is a contract when configured
+        // Optional contract + priest verification (prod): ensure address is a contract and priest matches on-chain when configured
         const requireVerify = process.env.REQUIRE_CONTRACT_VERIFY === '1' || process.env.NODE_ENV === 'production';
-        if (requireVerify && provider) {
+        if (requireVerify) {
+          if (!provider) {
+            return res.status(500).json({ error: 'Verification required but no provider configured' });
+          }
+          // ChainId consistency check with the typed data
+          try {
+            const net = await provider.getNetwork();
+            const expected = Number(net.chainId);
+            const provided = Number(req.body?.chainId);
+            if (Number.isFinite(provided) && provided !== expected) {
+              return res.status(400).json({ error: 'ChainId mismatch' });
+            }
+          } catch { /* ignore minor network fetching errors */ }
           try {
             const code = await provider.getCode(contractAddress);
             if (!code || code === '0x') {
               return res.status(400).json({ error: 'Not a contract' });
             }
-          } catch { /* ignore in permissive mode */ }
+          } catch {
+            return res.status(400).json({ error: 'Unable to verify contract' });
+          }
+          try {
+            const contract = new ethers.Contract(contractAddress, ['function priest() view returns (address)'], provider);
+            const onchainPriest = (await contract.priest())?.toLowerCase?.();
+            if (onchainPriest !== priestAddress.toLowerCase()) {
+              return res.status(403).json({ error: 'Priest does not match on-chain' });
+            }
+          } catch {
+            // If ABI mismatch or method missing, treat as non-TEMPL and reject
+            return res.status(400).json({ error: 'Unable to verify priest on-chain' });
+          }
         }
         // Capture baseline set of server conversations to help identify the new one
         let beforeIds = [];
@@ -160,8 +184,9 @@ export default function templsRouter({ xmtp, groups, persist, connectContract, d
       // Log member count after creation (expected to be 1 - the server itself)
       // Skip dumping member arrays in non-debug logs
 
-      // Set the group metadata - these may throw sync errors too
-      if (!DISABLE_WAIT && typeof group.updateName === 'function') {
+      // Optionally set the group metadata - gated by XMTP_METADATA_UPDATES
+      const META_UPDATES = process.env.XMTP_METADATA_UPDATES !== '0';
+      if (META_UPDATES && !DISABLE_WAIT && typeof group.updateName === 'function') {
         try {
           await group.updateName(`Templ ${contractAddress}`);
         } catch (err) {
@@ -172,7 +197,7 @@ export default function templsRouter({ xmtp, groups, persist, connectContract, d
         }
       }
 
-      if (!DISABLE_WAIT && typeof group.updateDescription === 'function') {
+      if (META_UPDATES && !DISABLE_WAIT && typeof group.updateDescription === 'function') {
         try {
           await group.updateDescription('Private TEMPL group');
         } catch (err) {

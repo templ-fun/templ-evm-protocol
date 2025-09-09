@@ -6,7 +6,7 @@ import { waitForInboxReady, XMTP_ENV } from '../xmtp/index.js';
 import { Client as NodeXmtpClient, generateInboxId, getInboxIdForIdentifier } from '@xmtp/node-sdk';
 import { logger } from '../logger.js';
 
-export default function joinRouter({ xmtp, groups, hasPurchased, lastJoin, database }) {
+export default function joinRouter({ xmtp, groups, hasPurchased, lastJoin, database, provider }) {
   const router = express.Router();
   // (no DISABLE_WAIT flags here; production-safe logic below)
 
@@ -44,6 +44,22 @@ export default function joinRouter({ xmtp, groups, hasPurchased, lastJoin, datab
         return res.status(500).json({ error: 'Purchase check failed' });
       }
       if (!purchased) return res.status(403).json({ error: 'Access not purchased' });
+      // Optional chainId and code verification in production/strict mode
+      try {
+        const requireVerify = process.env.REQUIRE_CONTRACT_VERIFY === '1' || process.env.NODE_ENV === 'production';
+        if (requireVerify && provider) {
+          const net = await provider.getNetwork();
+          const expected = Number(net.chainId);
+          const provided = Number(req.body?.chainId);
+          if (Number.isFinite(provided) && provided !== expected) {
+            return res.status(400).json({ error: 'ChainId mismatch' });
+          }
+          const code = await provider.getCode(contractAddress);
+          if (!code || code === '0x') {
+            return res.status(400).json({ error: 'Not a contract' });
+          }
+        }
+      } catch {/* ignore minor verification errors */}
       try {
         // Resolve member inboxId via network; never trust client-provided ids blindly.
         const memberIdentifier = { identifier: memberAddress.toLowerCase(), identifierKind: 0 };
@@ -245,21 +261,24 @@ export default function joinRouter({ xmtp, groups, hasPurchased, lastJoin, datab
         // Avoid logging member arrays by default, and nudge metadata to produce a fresh commit
         try { if (typeof record.group.sync === 'function') await record.group.sync(); } catch (err) { void err; }
         try { await record.group.send(JSON.stringify({ type: 'member-joined', address: memberAddress })); } catch (err) { void err; }
-        try {
-          if (typeof record.group.updateDescription === 'function') {
-            await record.group.updateDescription('Member joined');
+        const META_UPDATES = process.env.XMTP_METADATA_UPDATES !== '0';
+        if (META_UPDATES) {
+          try {
+            if (typeof record.group.updateDescription === 'function') {
+              await record.group.updateDescription('Member joined');
+            }
+          } catch (err) {
+            // Some SDKs report successful syncs as errors; ignore benign cases
+            if (!String(err?.message || '').includes('succeeded')) { /* ignore other errors */ }
           }
-        } catch (err) {
-          // Some SDKs report successful syncs as errors; ignore benign cases
-          if (!String(err?.message || '').includes('succeeded')) { /* ignore other errors */ }
-        }
-        // Also bump the name to ensure a commit is produced across SDK versions
-        try {
-          if (typeof record.group.updateName === 'function') {
-            await record.group.updateName(`Templ ${contractAddress}`);
+          // Also bump the name to ensure a commit is produced across SDK versions
+          try {
+            if (typeof record.group.updateName === 'function') {
+              await record.group.updateName(`Templ ${contractAddress}`);
+            }
+          } catch (err) {
+            if (!String(err?.message || '').includes('succeeded')) { /* ignore */ }
           }
-        } catch (err) {
-          if (!String(err?.message || '').includes('succeeded')) { /* ignore */ }
         }
         // Final sync to ensure the warm message and membership are visible network-wide before responding
         try { await syncXMTP(xmtp); } catch { /* ignore */ }

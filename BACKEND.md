@@ -20,6 +20,9 @@ npm --prefix backend install
 | `ENABLE_DEBUG_ENDPOINTS` | Expose debug endpoints when set to `1` | `0` |
 | `XMTP_ENV` | XMTP network (`dev`, `production`, `local`) | `dev` |
 | `REQUIRE_CONTRACT_VERIFY` | When `1`, `/templs` verifies target is a deployed contract | `0` |
+| `BACKEND_DB_ENC_KEY` | 32-byte hex string to encrypt the XMTP Node DB; if omitted, a key is derived from the bot private key and env | — |
+| `XMTP_BOOT_MAX_TRIES` | Max boot retries for XMTP client initialization | `30` |
+| `XMTP_METADATA_UPDATES` | Set to `0` to skip name/description updates on groups | `1` |
 
 ### Optional variables
 
@@ -38,6 +41,10 @@ Startup fails without `RPC_URL` or `BOT_PRIVATE_KEY`.
 `XMTP_ENV` selects the network (`dev`, `production`, `local`).
 `ALLOWED_ORIGINS` configures CORS (default `http://localhost:5173`).
 `LOG_LEVEL` controls Pino verbosity (default `info`).
+When `REQUIRE_CONTRACT_VERIFY=1` (or `NODE_ENV=production`), the server requires a provider and will:
+  - Verify contract code is deployed at `contractAddress`.
+  - Ensure the typed `chainId` matches the provider’s `chainId`.
+  - Check that `priestAddress` equals `await contract.priest()` on-chain when creating groups.
 
 ### Rate limiting
 
@@ -85,6 +92,7 @@ sequenceDiagram
 
     C->>B: POST /templs
     B->>CHAIN: verify contract
+    B->>CHAIN: verify priest/address/chain (prod)
     B->>X: create group
     X-->>B: groupId
     B-->>C: groupId
@@ -110,6 +118,7 @@ sequenceDiagram
 - Client uses `appVersion` for diagnostics.
 - Invitations require real inboxIds; the server resolves them and waits for visibility before inviting.
 - After creation or join it syncs and records XMTP stats.
+- The XMTP Node DB uses SQLCipher with a 32-byte key. Provide `BACKEND_DB_ENC_KEY` or a key is derived from the bot private key and environment; avoid zero-keys in production.
 
 ### Debug endpoints
 When `ENABLE_DEBUG_ENDPOINTS=1`, these endpoints assist tests and local debugging:

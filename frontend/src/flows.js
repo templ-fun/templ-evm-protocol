@@ -272,10 +272,13 @@ export async function purchaseAndJoin({
   }
   const groupId = String(data.groupId);
   dlog('purchaseAndJoin: backend returned groupId=', data.groupId);
-  // Optional diagnostics: verify membership server-side when debug endpoints are enabled
+  // Optional diagnostics: verify membership server-side when explicitly enabled
   try {
-    const dbg = await fetch(`${backendUrl}/debug/membership?contractAddress=${templAddress}&inboxId=${memberInboxId || ''}`).then(r => r.json());
-    dlog('purchaseAndJoin: server membership snapshot', dbg);
+    // @ts-ignore
+    if (import.meta?.env?.VITE_ENABLE_BACKEND_FALLBACK === '1') {
+      const dbg = await fetch(`${backendUrl}/debug/membership?contractAddress=${templAddress}&inboxId=${memberInboxId || ''}`).then(r => r.json());
+      dlog('purchaseAndJoin: server membership snapshot', dbg);
+    }
   } catch {}
   return await finalizeJoin({ xmtp, groupId });
 }

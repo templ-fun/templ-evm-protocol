@@ -35,7 +35,27 @@ export async function waitForInboxReady(inboxId, tries = 60) {
 }
 
 export async function createXmtpWithRotation(wallet, maxAttempts = 20) {
-  const dbEncryptionKey = new Uint8Array(32);
+  // Derive a stable 32-byte SQLCipher key for the XMTP Node DB.
+  // Priority: explicit BACKEND_DB_ENC_KEY (hex) -> keccak256(privateKey + env) -> zero key (last resort)
+  let dbEncryptionKey;
+  try {
+    const explicit = process.env.BACKEND_DB_ENC_KEY;
+    if (explicit && /^0x?[0-9a-fA-F]{64}$/.test(String(explicit))) {
+      const hex = explicit.startsWith('0x') ? explicit : `0x${explicit}`;
+      dbEncryptionKey = ethers.getBytes(hex);
+    } else if (wallet?.privateKey) {
+      const env = String(process.env.XMTP_ENV || 'dev');
+      const material = ethers.concat([ethers.getBytes(wallet.privateKey), ethers.toUtf8Bytes(`:${env}:templ-db-key`) ]);
+      const keyHex = ethers.keccak256(material);
+      dbEncryptionKey = ethers.getBytes(keyHex);
+    } else {
+      // Fallback zeroed key (not recommended); logged for visibility
+      logger.warn('Using fallback zeroed dbEncryptionKey; set BACKEND_DB_ENC_KEY for security');
+      dbEncryptionKey = new Uint8Array(32);
+    }
+  } catch {
+    dbEncryptionKey = new Uint8Array(32);
+  }
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const xmtpSigner = {
       type: 'EOA',

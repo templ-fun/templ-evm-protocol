@@ -96,7 +96,6 @@ export default defineConfig({
         ENABLE_DEBUG_ENDPOINTS: '1',
         LOG_LEVEL: 'info',
         XMTP_ENV,
-        ALLOW_INSECURE_SIG: '1',
         NODE_ENV: 'test',
       },
       reuseExistingServer: false,

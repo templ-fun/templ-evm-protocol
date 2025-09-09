@@ -32,6 +32,7 @@ graph LR
 - SQLCipher DB `xmtp-<env>-<inboxId>.db3` stored in process working dir.
 - Holds client identity, installation info, and conversation metadata.
 - Reused across runs with the same `dbEncryptionKey`.
+- The server derives a 32-byte key from `BACKEND_DB_ENC_KEY` (if set) or from the bot private key and `XMTP_ENV`. Provide `BACKEND_DB_ENC_KEY` in production to avoid weak defaults.
 - Identity model details in [appendix](PERSISTENCE_APPENDIX.md#xmtp-node-db-details).
 
 ## XMTP Browser DB

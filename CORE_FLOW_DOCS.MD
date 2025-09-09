@@ -26,10 +26,11 @@ The backend bot creates and owns the XMTP group when a TEMPL is deployed.
 flowchart LR
     F[Frontend] -->|deploy contract| C[Contract]
     F -->|POST /templs| B[Backend]
+    B -->|verify priest/chain (prod)| CHAIN
     B -->|newGroup| X[XMTP]
 ```
 
-- Frontend posts `{contract}`; backend resolves the priest inbox from the network, creates the group, adds the priest, and stores the `groupId`.
+- Frontend posts `{contract}`; backend verifies the contract and on-chain priest in production, resolves the priest inbox from the network, creates the group, adds the priest, and stores the `groupId`.
 
 ## 2. Pay-to-join
 Members sign a join message, and the backend verifies purchase before inviting them.

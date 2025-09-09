@@ -90,6 +90,10 @@ Minimal local setup requires only a handful of variables:
 | `PRIVATE_KEY` | Deployer wallet key for contract deployments | `.env` |
 | `BOT_PRIVATE_KEY` | XMTP bot wallet key | `backend/.env` |
 | `ALLOWED_ORIGINS` | Comma-separated frontend origins allowed to call the backend | `backend/.env` |
+| `BACKEND_DB_ENC_KEY` | 32-byte hex key to encrypt XMTP Node DB (overrides derived key) | `backend/.env` |
+| `XMTP_BOOT_MAX_TRIES` | Max boot retries for XMTP client initialization | `backend/.env` |
+| `REQUIRE_CONTRACT_VERIFY` | When `1` or in production, backend verifies contract code and on‑chain priest | `backend/.env` |
+| `XMTP_METADATA_UPDATES` | Set to `0` to skip name/description updates on XMTP groups | `backend/.env` |
 
 See [BACKEND.md#environment-variables](./BACKEND.md#environment-variables) and [CONTRACTS.md#configuration](./CONTRACTS.md#configuration) for complete lists.
 
@@ -97,7 +101,7 @@ See [BACKEND.md#environment-variables](./BACKEND.md#environment-variables) and [
 1. Create a `.env` file in the project root for deployment scripts and a `backend/.env` for the bot. Required variables are documented in [CONTRACTS.md#configuration](./CONTRACTS.md#configuration) and [BACKEND.md#environment-variables](./BACKEND.md#environment-variables).
 2. Run the full test suite and Slither analysis.
 3. Deploy with `scripts/deploy.js` and record the contract address and XMTP group ID.
-4. Host the backend bot and set `ALLOWED_ORIGINS` to the permitted frontend URL(s).
+4. Host the backend bot and set `ALLOWED_ORIGINS` to the permitted frontend URL(s). In production, contract address is verified on‑chain and the `priest` address must match the deployed contract.
 5. Build the frontend (`npm --prefix frontend run build`) and serve the static files.
 
 ## Core flows
@@ -135,9 +139,9 @@ Core flows include TEMPL creation, paid onboarding, chat, moderation, proposal d
 ## Security considerations
 
 - Proposal execution is restricted to an allowlist of safe DAO actions; arbitrary external calls are disabled.
-- The backend owns the XMTP group. The priest does not control membership directly; actions are mediated via the backend’s bot, which verifies on‑chain purchase. API requests are authenticated via EIP‑712 typed signatures with expiry and server‑side replay protection. See BACKEND.md for details.
- - XMTP dev network has a 10‑installation limit per inbox and 256 total actions limit per inbox (install and revoke each count as 1 action). Tests rotate wallets or reuse local XMTP databases to avoid hitting this limit.
- - For auditors: CONTRACTS.md documents all custom errors, events, invariants, fee splits, and DAO constraints. The Hardhat test suite covers these invariants; Slither reports are part of CI.
+- The backend owns the XMTP group. The priest does not control membership directly; actions are mediated via the backend’s bot, which verifies on‑chain purchase. API requests are authenticated via EIP‑712 typed signatures with expiry and server‑side replay protection. In production (or when `REQUIRE_CONTRACT_VERIFY=1`), the backend verifies the contract code, enforces `chainId` consistency, and checks that the on‑chain `priest` equals the signing address on `/templs`. See BACKEND.md for details.
+- XMTP dev network has a 10‑installation limit per inbox and 256 total actions limit per inbox (install and revoke each count as 1 action). Tests rotate wallets or reuse local XMTP databases to avoid hitting this limit.
+- For auditors: CONTRACTS.md documents all custom errors, events, invariants, fee splits, and DAO constraints. The Hardhat test suite covers these invariants; Slither reports are part of CI.
 
 
 ## E2E Environments

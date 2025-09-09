@@ -699,10 +699,11 @@ function App() {
         } catch (e) { console.warn('[app] list error', e?.message || e); }
         await new Promise((r) => setTimeout(r, delay));
       }
-      // As a last resort in e2e debug mode, consider server-confirmed membership as connected to unblock tests
+      // Optional last-resort fallback using backend debug membership (disabled by default)
       try {
         // @ts-ignore
-        if (!group && import.meta?.env?.VITE_E2E_DEBUG === '1' && !cancelled) {
+        const enableBackendFallback = import.meta?.env?.VITE_ENABLE_BACKEND_FALLBACK === '1';
+        if (!group && enableBackendFallback && !cancelled) {
           const inboxId = xmtp?.inboxId?.replace?.(/^0x/i, '') || '';
           if (inboxId && templAddress) {
             const dbg = await fetch(`${BACKEND_URL}/debug/membership?contractAddress=${templAddress}&inboxId=${inboxId}`).then(r => r.json()).catch(() => null);
