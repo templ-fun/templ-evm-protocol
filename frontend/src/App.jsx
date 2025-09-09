@@ -85,7 +85,7 @@ function App() {
   const [tokenAddress, setTokenAddress] = useState('');
   const [protocolFeeRecipient, setProtocolFeeRecipient] = useState('');
   const [entryFee, setEntryFee] = useState('');
-  // priest vote weight removed: all members have 1 vote
+  // Governance: all members have 1 vote
 
   // joining form
   const [templAddress, setTemplAddress] = useState('');
@@ -1187,7 +1187,7 @@ function App() {
               <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Token address" value={tokenAddress} onChange={(e) => setTokenAddress(e.target.value)} />
               <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Protocol fee recipient" value={protocolFeeRecipient} onChange={(e) => setProtocolFeeRecipient(e.target.value)} />
               <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Entry fee" value={entryFee} onChange={(e) => setEntryFee(e.target.value)} />
-              {/* Priest vote weight removed: all votes are equal */}
+                {/* Governance: all votes are equal */}
               <button className="px-4 py-2 rounded bg-primary text-black font-semibold w-full sm:w-auto" onClick={handleDeploy}>Deploy</button>
             </div>
           </div>

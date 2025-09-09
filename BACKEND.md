@@ -23,6 +23,7 @@ npm --prefix backend install
 | `BACKEND_DB_ENC_KEY` | 32-byte hex string to encrypt the XMTP Node DB; if omitted, a key is derived from the bot private key and env | — |
 | `XMTP_BOOT_MAX_TRIES` | Max boot retries for XMTP client initialization | `30` |
 | `XMTP_METADATA_UPDATES` | Set to `0` to skip name/description updates on groups | `1` |
+| `BACKEND_SERVER_ID` | String identifier included in EIP‑712 messages; must match frontend `VITE_BACKEND_SERVER_ID` | — |
 
 ### Optional variables
 
@@ -137,3 +138,9 @@ See the [E2E Environments](./README.md#E2E-Environments) section of the README f
 - The bot key must be stored securely; compromise allows muting or invitation of arbitrary members.
 - Governance events are forwarded to the group chat; untrusted RPC data could mislead voters.
 - RPC responses are assumed honest; use a trusted provider.
+
+### Production Checklist
+- `NODE_ENV=production` and `REQUIRE_CONTRACT_VERIFY=1` (enforce chainId/code/priest checks).
+- `BACKEND_DB_ENC_KEY` must be set (32‑byte hex) to encrypt the XMTP Node DB. The server refuses to boot without it in production.
+- Set and align `BACKEND_SERVER_ID` with `VITE_BACKEND_SERVER_ID` so signatures are bound to this server.
+- Do not enable any test‑only shortcuts in production (e.g., `x-insecure-sig` header, `DISABLE_XMTP_WAIT`).

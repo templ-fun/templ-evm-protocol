@@ -32,7 +32,7 @@ sequenceDiagram
 ```
 
 ## DAO governance
-- One member, one vote. Note: `PRIEST_VOTE_WEIGHT` and `PRIEST_WEIGHT_THRESHOLD` are legacy constructor parameters and are not used in vote tallying in this version.
+- One member, one vote.
 - Each member may have only one active proposal.
 - Voting period: 7–30 days (`0` defaults to 7).
 - Any address can execute a passed proposal; execution is atomic.

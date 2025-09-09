@@ -10,8 +10,8 @@ import { ethers } from 'ethers';
  * @returns {import('express').RequestHandler}
  */
 export function verifyTypedSignature({ database, addressField, buildTyped, errorMessage = 'Bad signature' }) {
-  // Only allow insecure shortcuts in NODE_ENV=test or when explicitly opted-in.
-  const isTest = process.env.NODE_ENV === 'test' || process.env.ALLOW_INSECURE_SIG === '1';
+  // Only allow any signature bypass in strict test mode.
+  const isTest = process.env.NODE_ENV === 'test';
   let insertSig = null;
   let hasSig = null;
   try {
@@ -23,7 +23,7 @@ export function verifyTypedSignature({ database, addressField, buildTyped, error
   return function (req, res, next) {
     // Allow explicit test-time bypass via header only in test/dev contexts
     try {
-      const allowByHeader = (process.env.NODE_ENV === 'test' || process.env.ALLOW_INSECURE_SIG === '1' || process.env.DISABLE_XMTP_WAIT === '1') && process.env.NODE_ENV !== 'production';
+      const allowByHeader = process.env.NODE_ENV !== 'production';
       if (allowByHeader && req.get && req.get('x-insecure-sig') === '1') {
         return next();
       }

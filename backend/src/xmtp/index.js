@@ -49,7 +49,11 @@ export async function createXmtpWithRotation(wallet, maxAttempts = 20) {
       const keyHex = ethers.keccak256(material);
       dbEncryptionKey = ethers.getBytes(keyHex);
     } else {
-      // Fallback zeroed key (not recommended); logged for visibility
+      // In production, do not allow zero-key fallback
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('BACKEND_DB_ENC_KEY required in production');
+      }
+      // Fallback zeroed key in non-prod; logged for visibility only
       logger.warn('Using fallback zeroed dbEncryptionKey; set BACKEND_DB_ENC_KEY for security');
       dbEncryptionKey = new Uint8Array(32);
     }

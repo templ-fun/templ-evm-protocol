@@ -28,10 +28,10 @@ async function main() {
   console.log("========================================");
   console.log("Deploying TEMPL Contract");
   console.log("========================================");
-  console.log("Priest Address (Voting Weight):", PRIEST_ADDRESS);
+  console.log("Priest Address:", PRIEST_ADDRESS);
   console.log("Protocol Fee Recipient:", PROTOCOL_FEE_RECIPIENT);
   console.log("Token Address:", TOKEN_ADDRESS);
-  // Uniform one address = one vote; legacy weighting removed
+  // Governance: one address = one vote
   
   const thirtyPercent = (entryFee * 30n) / 100n;
   const tenPercent = (entryFee * 10n) / 100n;

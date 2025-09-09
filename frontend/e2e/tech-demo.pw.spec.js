@@ -9,12 +9,13 @@ function buildCreateTypedData({ chainId, contractAddress, nonce, issuedAt, expir
     Create: [
       { name: 'action', type: 'string' },
       { name: 'contract', type: 'address' },
+      { name: 'server', type: 'string' },
       { name: 'nonce', type: 'uint256' },
       { name: 'issuedAt', type: 'uint256' },
       { name: 'expiry', type: 'uint256' },
     ]
   };
-  const message = { action: 'create', contract: contractAddress, nonce, issuedAt, expiry };
+  const message = { action: 'create', contract: contractAddress, server: 'templ-dev', nonce, issuedAt, expiry };
   return { domain, types, message };
 }
 import { readFileSync } from 'fs';
@@ -237,11 +238,12 @@ test.describe('Tech Demo: Realtime multi-user flow', () => {
         const types = { Join: [
           { name: 'action', type: 'string' },
           { name: 'contract', type: 'address' },
+          { name: 'server', type: 'string' },
           { name: 'nonce', type: 'uint256' },
           { name: 'issuedAt', type: 'uint256' },
           { name: 'expiry', type: 'uint256' },
         ] };
-        const messageTyped = { action: 'join', contract: templAddress.toLowerCase(), nonce: now, issuedAt: now, expiry: now + 5*60_000 };
+        const messageTyped = { action: 'join', contract: templAddress.toLowerCase(), server: 'templ-dev', nonce: now, issuedAt: now, expiry: now + 5*60_000 };
         const sig = await w.signTypedData(domain, types, messageTyped);
         const inboxId = await page.evaluate(() => window.__XMTP?.inboxId || '');
         await fetch('http://localhost:3001/join', {

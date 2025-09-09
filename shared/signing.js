@@ -6,6 +6,24 @@
  * do not include a verifyingContract so the domain binds to chain and app name.
  */
 
+function getServerId() {
+  try {
+    // Browser (Vite)
+    // @ts-ignore
+    const env = import.meta?.env;
+    // @ts-ignore
+    const v = env?.VITE_BACKEND_SERVER_ID;
+    if (typeof v === 'string' && v.trim().length > 0) return v.trim();
+  } catch {}
+  try {
+    // Node (or any JS env with process on globalThis)
+    const g = /** @type {any} */ (globalThis);
+    const v = g?.process?.env?.BACKEND_SERVER_ID;
+    if (typeof v === 'string' && v.trim().length > 0) return v.trim();
+  } catch {}
+  return 'templ-dev';
+}
+
 /**
  * Build EIP-712 typed data for creating a TEMPL group.
  * @param {object} p
@@ -24,6 +42,7 @@ export function buildCreateTypedData({ chainId, contractAddress, nonce, issuedAt
     Create: [
       { name: 'action', type: 'string' },
       { name: 'contract', type: 'address' },
+      { name: 'server', type: 'string' },
       { name: 'nonce', type: 'uint256' },
       { name: 'issuedAt', type: 'uint256' },
       { name: 'expiry', type: 'uint256' },
@@ -32,6 +51,7 @@ export function buildCreateTypedData({ chainId, contractAddress, nonce, issuedAt
   const message = {
     action: 'create',
     contract: contractAddress,
+    server: getServerId(),
     nonce,
     issuedAt,
     expiry,
@@ -57,6 +77,7 @@ export function buildJoinTypedData({ chainId, contractAddress, nonce, issuedAt, 
     Join: [
       { name: 'action', type: 'string' },
       { name: 'contract', type: 'address' },
+      { name: 'server', type: 'string' },
       { name: 'nonce', type: 'uint256' },
       { name: 'issuedAt', type: 'uint256' },
       { name: 'expiry', type: 'uint256' },
@@ -65,6 +86,7 @@ export function buildJoinTypedData({ chainId, contractAddress, nonce, issuedAt, 
   const message = {
     action: 'join',
     contract: contractAddress,
+    server: getServerId(),
     nonce,
     issuedAt,
     expiry,
@@ -92,6 +114,7 @@ export function buildDelegateTypedData({ chainId, contractAddress, delegateAddre
       { name: 'action', type: 'string' },
       { name: 'contract', type: 'address' },
       { name: 'delegate', type: 'address' },
+      { name: 'server', type: 'string' },
       { name: 'nonce', type: 'uint256' },
       { name: 'issuedAt', type: 'uint256' },
       { name: 'expiry', type: 'uint256' },
@@ -101,6 +124,7 @@ export function buildDelegateTypedData({ chainId, contractAddress, delegateAddre
     action: 'delegateMute',
     contract: contractAddress,
     delegate: delegateAddress,
+    server: getServerId(),
     nonce,
     issuedAt,
     expiry,
@@ -128,6 +152,7 @@ export function buildMuteTypedData({ chainId, contractAddress, targetAddress, no
       { name: 'action', type: 'string' },
       { name: 'contract', type: 'address' },
       { name: 'target', type: 'address' },
+      { name: 'server', type: 'string' },
       { name: 'nonce', type: 'uint256' },
       { name: 'issuedAt', type: 'uint256' },
       { name: 'expiry', type: 'uint256' },
@@ -137,6 +162,7 @@ export function buildMuteTypedData({ chainId, contractAddress, targetAddress, no
     action: 'mute',
     contract: contractAddress,
     target: targetAddress,
+    server: getServerId(),
     nonce,
     issuedAt,
     expiry,

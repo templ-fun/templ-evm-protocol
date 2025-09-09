@@ -91,6 +91,7 @@ export default defineConfig({
         BOT_PRIVATE_KEY: BOT_PK,
         PORT: '3001',
         ALLOWED_ORIGINS: 'http://localhost:5179',
+        BACKEND_SERVER_ID: 'templ-dev',
         DB_PATH: 'e2e-groups.db',
         CLEAR_DB: '1',
         ENABLE_DEBUG_ENDPOINTS: '1',
@@ -107,6 +108,7 @@ export default defineConfig({
       env: {
         VITE_E2E_DEBUG: '1',
         VITE_XMTP_ENV: XMTP_ENV,
+        VITE_BACKEND_SERVER_ID: 'templ-dev',
         VITE_ENABLE_BACKEND_FALLBACK: '0',
       },
       reuseExistingServer: false,

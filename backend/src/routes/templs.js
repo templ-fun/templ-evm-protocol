@@ -138,12 +138,19 @@ export default function templsRouter({ xmtp, groups, persist, connectContract, d
         if (typeof xmtp.conversations.newGroup !== 'function') {
           throw new Error('XMTP client does not support newGroup(inboxIds)');
         }
-        group = await xmtp.conversations.newGroup(inboxIds);
+        if (DISABLE_WAIT) {
+          const timeoutMs = 3000;
+          const to = new Promise((_, rej) => setTimeout(() => rej(new Error('newGroup timed out')), timeoutMs));
+          // Race newGroup against a short timeout in tests to avoid long hangs
+          group = await Promise.race([xmtp.conversations.newGroup(inboxIds), to]);
+        } else {
+          group = await xmtp.conversations.newGroup(inboxIds);
+        }
       } catch (err) {
         const msg = String(err?.message || '');
         logger.warn({ err: msg }, 'Group creation initial attempt failed; attempting recovery');
         try { await syncXMTP(xmtp); } catch (e) { void e; }
-        // Attempt to resolve the newly created conversation by diffing before/after
+        // Attempt to resolve the newly created conversation by diffing before/after and matching the expected name only
         try {
           const afterList = (await xmtp.conversations.list?.()) ?? [];
           const afterIds = afterList.map((c) => c.id);
@@ -151,7 +158,6 @@ export default function templsRouter({ xmtp, groups, persist, connectContract, d
           const byDiff = afterList.filter((c) => diffIds.includes(c.id));
           const expectedName = `Templ ${contractAddress}`;
           let candidate = byDiff.find((c) => c.name === expectedName) || afterList.find((c) => c.name === expectedName);
-          if (!candidate) candidate = byDiff[byDiff.length - 1] || afterList[afterList.length - 1];
           if (candidate) group = candidate;
         } catch (e) { void e; }
         // If still no group, retry with just the server's inboxId

@@ -23,7 +23,6 @@ contract TEMPL is ReentrancyGuard {
     uint256 public memberPoolBalance;
     bool public paused;
     
-    // Legacy: priest weighting removed; uniform one-address-one-vote
     
     struct Member {
         bool purchased;
@@ -145,7 +144,7 @@ contract TEMPL is ReentrancyGuard {
     
     /**
      * @dev Constructor sets immutable parameters
-     * @param _priest Temple creator with enhanced voting weight until threshold
+     * @param _priest Temple creator address
      * @param _protocolFeeRecipient Receives 10% protocol fee
      * @param _token ERC20 token for membership payments
      * @param _entryFee Membership cost (minimum 10 and divisible by 10)
@@ -532,7 +531,8 @@ contract TEMPL is ReentrancyGuard {
     function updateConfigDAO(address _token, uint256 _entryFee) external onlyDAO {
         if (_token != address(0)) {
             if (_token != accessToken) {
-                if (treasuryBalance > 0 || memberPoolBalance > 0) {
+                // Prevent token changes while any balances remain, including member remainders
+                if (treasuryBalance > 0 || memberPoolBalance > 0 || memberRewardRemainder > 0) {
                     revert TemplErrors.NonZeroBalances();
                 }
                 accessToken = _token;

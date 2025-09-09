@@ -94,6 +94,7 @@ Minimal local setup requires only a handful of variables:
 | `XMTP_BOOT_MAX_TRIES` | Max boot retries for XMTP client initialization | `backend/.env` |
 | `REQUIRE_CONTRACT_VERIFY` | When `1` or in production, backend verifies contract code and on‑chain priest | `backend/.env` |
 | `XMTP_METADATA_UPDATES` | Set to `0` to skip name/description updates on XMTP groups | `backend/.env` |
+| `BACKEND_SERVER_ID` | String identifier bound into EIP‑712 signatures (must match frontend’s `VITE_BACKEND_SERVER_ID`) | `backend/.env` |
 
 See [BACKEND.md#environment-variables](./BACKEND.md#environment-variables) and [CONTRACTS.md#configuration](./CONTRACTS.md#configuration) for complete lists.
 
@@ -103,6 +104,16 @@ See [BACKEND.md#environment-variables](./BACKEND.md#environment-variables) and [
 3. Deploy with `scripts/deploy.js` and record the contract address and XMTP group ID.
 4. Host the backend bot and set `ALLOWED_ORIGINS` to the permitted frontend URL(s). In production, contract address is verified on‑chain and the `priest` address must match the deployed contract.
 5. Build the frontend (`npm --prefix frontend run build`) and serve the static files.
+
+### Production Configuration
+- Set `NODE_ENV=production` for the backend. In this mode, signature bypass headers are disabled and `/templs` chain/priest checks are enforced when `REQUIRE_CONTRACT_VERIFY=1` (recommended).
+- Provide `BACKEND_DB_ENC_KEY` (32‑byte hex). The backend will refuse to boot without it in production.
+- Bind signatures to your deployment by setting a shared server id:
+  - Backend: `BACKEND_SERVER_ID="templ-prod-<region>"`
+  - Frontend: `VITE_BACKEND_SERVER_ID="templ-prod-<region>"`
+  These values are included in the EIP‑712 messages and must match; this prevents signatures from being replayed against a different server.
+-
+Do not use test‑only flags in production (`x-insecure-sig` header, `DISABLE_XMTP_WAIT`).
 
 ## Core flows
 

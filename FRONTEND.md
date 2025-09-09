@@ -47,7 +47,7 @@ E2E artifacts (videos, traces, screenshots) are saved under `test-results/e2e/` 
 ## Architecture
 
 - **Wallet connection** via `ethers` and `window.ethereum`.
-- **Default configuration** – all members have 1 vote; no priest weighting.
+- **Default configuration** – all members have 1 vote.
 - **Governance** – members create proposals and vote from the chat; `watchProposals` updates the UI when events fire. The backend mirrors on‑chain events into the group as JSON so clients see real‑time updates.
 
 ### User flows

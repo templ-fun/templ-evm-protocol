@@ -112,6 +112,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   if (!BOT_PRIVATE_KEY) {
     throw new Error('Missing BOT_PRIVATE_KEY environment variable');
   }
+  if (process.env.NODE_ENV === 'production' && !process.env.BACKEND_DB_ENC_KEY) {
+    throw new Error('BACKEND_DB_ENC_KEY required in production');
+  }
   const provider = new ethers.JsonRpcProvider(RPC_URL);
   const wallet = new ethers.Wallet(BOT_PRIVATE_KEY, provider);
   const envMax = Number(process.env.XMTP_MAX_ATTEMPTS);
