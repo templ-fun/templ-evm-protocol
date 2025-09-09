@@ -178,26 +178,26 @@ sequenceDiagram
 
 ## Backend Endpoints & Signatures
 - POST `/templs` – create group for a deployed TEMPL
-  - Signature: EIP‑712 typed data `{ action:'create', contract, nonce, issuedAt, expiry }` signed by priest EOA.
+  - Signature: EIP‑712 typed data `{ action:'create', contract, server, nonce, issuedAt, expiry }` signed by priest EOA.
   - Body: `{ contractAddress, priestAddress, signature, chainId }`
   - Response: `{ groupId }`
 - POST `/join` – verify purchase and invite member
-  - Signature: EIP‑712 `{ action:'join', contract, nonce, issuedAt, expiry }` signed by member EOA.
-  - Body: `{ contractAddress, memberAddress, signature, chainId }`
+  - Signature: EIP‑712 `{ action:'join', contract, server, nonce, issuedAt, expiry }` signed by member EOA.
+  - Body: `{ contractAddress, memberAddress, signature, chainId, inboxId? }` (`inboxId` is ignored in normal environments; local/test fallback may use it deterministically when network resolution is unavailable.)
   - Response: `{ groupId }` or HTTP 503 until identity is visible on XMTP.
 - POST `/delegateMute` – grant mute rights
-  - Signature: EIP‑712 `{ action:'delegateMute', contract, delegate, nonce, issuedAt, expiry }` signed by priest EOA.
+  - Signature: EIP‑712 `{ action:'delegateMute', contract, delegate, server, nonce, issuedAt, expiry }` signed by priest EOA.
   - Body: `{ contractAddress, priestAddress, delegateAddress, signature, chainId }`
   - Response: `{ delegated: true }`
 - DELETE `/delegateMute` – revoke mute rights (same signature fields).
   - `{ delegated: false }` on success.
 - POST `/mute` – escalate mute for a target
-  - Signature: EIP‑712 `{ action:'mute', contract, target, nonce, issuedAt, expiry }` signed by priest or a delegate.
+  - Signature: EIP‑712 `{ action:'mute', contract, target, server, nonce, issuedAt, expiry }` signed by priest or a delegate.
   - Response: `{ mutedUntil }` (ms since epoch; 0 means permanent after 5th strike).
 - GET `/mutes?contractAddress=...` – list active mutes: `{ mutes: [{ address, count, until }] }`
 - Debug (when `ENABLE_DEBUG_ENDPOINTS=1`): `/debug/group`, `/debug/conversations`, `/debug/membership`, `/debug/last-join`, `/debug/inbox-state`.
 
-Backend resolves inboxIds from the XMTP network via `findInboxIdByIdentifier` and waits for identity readiness before `addMembers`. Client-supplied inboxIds are ignored.
+Backend resolves inboxIds from the XMTP network via `findInboxIdByIdentifier` and waits for identity readiness before `addMembers`. In normal environments, client‑supplied inboxIds are ignored. In local/test fallback modes (e.g., during E2E runs), the server may deterministically accept a provided inboxId or generate one when network resolution is unavailable, to keep tests moving.
 
 ## Governance Allowlist & Rules
 - Proposal actions are restricted to an allowlist enforced at creation and execution:
@@ -205,6 +205,8 @@ Backend resolves inboxIds from the XMTP network via `findInboxIdByIdentifier` an
   - `updateConfigDAO(address,uint256)`
   - `withdrawTreasuryDAO(address,uint256,string)`
   - `withdrawAllTreasuryDAO(address,string)`
+  - `withdrawTokenDAO(address,address,uint256,string)`
+  - `withdrawETHDAO(address,uint256,string)`
   - `sweepMemberRewardRemainderDAO(address)`
 - Voting: 1 vote per member; no priest bonus weighting.
 - Anti‑flash: voters must have joined before `proposal.createdAt`.

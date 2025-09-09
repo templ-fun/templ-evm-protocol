@@ -111,6 +111,10 @@ sequenceDiagram
     C->>B: POST /join
     B->>CHAIN: hasAccess?
     CHAIN-->>B: true
+    alt production/strict mode
+      B->>CHAIN: verify chainId matches provider
+      B->>CHAIN: verify code deployed at contractAddress
+    end
     B->>X: invite member
     B-->>C: 200 OK
 ```
@@ -134,7 +138,7 @@ See the [E2E Environments](./README.md#E2E-Environments) section of the README f
 
 ## Security considerations
 - All state-changing endpoints require EIP‑712 typed signatures (with `chainId`, `nonce`, `issuedAt`, `expiry`). The backend verifies signatures and enforces replay protection by recording used signatures in SQLite.
-- The service resolves XMTP inboxIds server-side; client-provided inboxIds are ignored.
+- The service resolves XMTP inboxIds server-side; client-provided inboxIds are ignored in normal environments. In local/test fallback modes (e.g., E2E), if network resolution is unavailable the server may deterministically accept a provided inboxId or generate one to keep tests moving.
 - The bot key must be stored securely; compromise allows muting or invitation of arbitrary members.
 - Governance events are forwarded to the group chat; untrusted RPC data could mislead voters.
 - RPC responses are assumed honest; use a trusted provider.

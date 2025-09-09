@@ -22,6 +22,8 @@ See the sequence diagram below for deposit, snapshot, and claim.
 
 Note: The function `sweepMemberRewardRemainderDAO(address)` transfers the entire `memberPoolBalance` to the recipient when executed via a passed proposal. Despite the name, it is not limited to the rounding remainder; it drains the full pool and resets both `memberPoolBalance` and the tracked remainder to zero. UIs should reflect this clearly.
 
+Additionally, `withdrawTokenDAO(address token,address recipient,uint256 amount,string reason)` allows the DAO to transfer arbitrary ERC‑20s from the contract, including the access token. Withdrawing the access token can deplete the actual funds backing internal `treasuryBalance`/`memberPoolBalance` tracking and cause member claims to revert until replenished. Treat this as a powerful DAO action; UIs should warn clearly and operators should exercise care.
+
 ```mermaid
 sequenceDiagram
     participant NewMember
@@ -82,6 +84,9 @@ fee split divides evenly. This requirement is enforced in the
 - Membership supply limited by entry fee cost.
 - Proposal execution is all‑or‑nothing.
 - Treasury transfers only happen via approved proposals.
+
+Field notes
+- `eligibleVoters` recorded at proposal creation is informational and not used in execution checks; the execution rule is simple majority (`yesVotes > noVotes`) after `endTime`.
 
 ## Failure modes
 - Token depeg or liquidity loss.

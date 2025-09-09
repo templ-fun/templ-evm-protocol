@@ -154,6 +154,7 @@ Core flows include TEMPL creation, paid onboarding, chat, moderation, proposal d
   - Token changes require zero treasury, zero member pool balance, and zero remainder to prevent cross‑token accounting.
   - Voting is one member‑one vote; proposer auto‑YES, votes are changeable until deadline; anti‑flash rule enforces join before proposal.
   - Footgun: the DAO can withdraw tokens, including pool funds; doing so may prevent members from claiming pending rewards. In particular, `sweepMemberRewardRemainderDAO(address)` drains the full member pool balance (not just rounding remainder). UIs should warn clearly.
+  - Caution: `withdrawTokenDAO(address,address,uint256,string)` can transfer arbitrary ERC‑20 tokens from the contract, including the access token. Withdrawing the access token can deplete the actual funds backing `treasuryBalance`/`memberPoolBalance` tracking and cause member claims to revert until replenished. Treat this as a powerful DAO action and warn in UIs.
 - Backend API
   - EIP‑712 typed signatures must include `{ action, contract, nonce, issuedAt, expiry, chainId, server }`.
   - Bind signatures to your deployment by setting a shared server id: `BACKEND_SERVER_ID` and `VITE_BACKEND_SERVER_ID` must match.
@@ -161,6 +162,8 @@ Core flows include TEMPL creation, paid onboarding, chat, moderation, proposal d
   - Debug endpoints are disabled by default; when enabled, they are restricted to localhost.
   - CORS must be set via `ALLOWED_ORIGINS` for standalone deployments.
   - Rate‑limit store defaults to in‑memory; optionally use Redis via `RATE_LIMIT_STORE=redis`.
+- Identity resolution
+  - The backend resolves XMTP inboxIds server‑side and waits for visibility before inviting. Client‑supplied inboxIds are ignored in normal environments. In local/test fallback modes (e.g., E2E), if network resolution is unavailable the server may deterministically accept a provided inboxId or generate one to keep tests moving.
 - Data at rest
   - XMTP Node DB is SQLCipher‑encrypted; provide `BACKEND_DB_ENC_KEY` (32‑byte hex). The server refuses to boot without it in production.
   - Browser DB lives in OPFS (not encrypted); avoid multiple clients per page to prevent access‑handle contention.
