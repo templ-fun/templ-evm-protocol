@@ -2,7 +2,10 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
 const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
-const { encodeWithdrawTreasuryDAO } = require("./utils/callDataBuilders");
+const {
+  encodeWithdrawTreasuryDAO,
+  encodeWithdrawAllTreasuryDAO,
+} = require("./utils/callDataBuilders");
 
 describe("Treasury withdrawals for arbitrary assets", function () {
   let templ;
@@ -73,5 +76,54 @@ describe("Treasury withdrawals for arbitrary assets", function () {
     await templ.executeProposal(0);
     const after = await ethers.provider.getBalance(member2.address);
     expect(after - before).to.equal(DONATED_AMOUNT);
+  });
+
+  it("should withdraw all donated ETH", async function () {
+    const callData = encodeWithdrawAllTreasuryDAO(
+      ethers.ZeroAddress,
+      member1.address,
+      "withdraw all donated ETH"
+    );
+
+    await templ
+      .connect(member1)
+      .createProposal("Withdraw All ETH", "test", callData, 7 * 24 * 60 * 60);
+
+    await templ.connect(member1).vote(0, true);
+    await templ.connect(member2).vote(0, true);
+
+    await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
+    await ethers.provider.send("evm_mine");
+
+    const before = await ethers.provider.getBalance(member1.address);
+    await templ.executeProposal(0);
+    const after = await ethers.provider.getBalance(member1.address);
+    expect(after - before).to.equal(DONATED_AMOUNT);
+    expect(await ethers.provider.getBalance(await templ.getAddress())).to.equal(0);
+  });
+
+  it("should withdraw all donated ERC20 tokens", async function () {
+    const callData = encodeWithdrawAllTreasuryDAO(
+      otherToken.target,
+      member2.address,
+      "withdraw all donated ERC20"
+    );
+
+    await templ
+      .connect(member1)
+      .createProposal("Withdraw All ERC20", "test", callData, 7 * 24 * 60 * 60);
+
+    await templ.connect(member1).vote(0, true);
+    await templ.connect(member2).vote(0, true);
+
+    await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
+    await ethers.provider.send("evm_mine");
+
+    const before = await otherToken.balanceOf(member2.address);
+    await templ.executeProposal(0);
+    expect(await otherToken.balanceOf(member2.address)).to.equal(
+      before + DONATED_AMOUNT
+    );
+    expect(await otherToken.balanceOf(await templ.getAddress())).to.equal(0);
   });
 });
