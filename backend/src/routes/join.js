@@ -38,7 +38,6 @@ export default function joinRouter({ xmtp, groups, hasPurchased, lastJoin, datab
       const record = /** @type {any} */ (req.record);
       let purchased;
       try {
-        // Snapshot removal: no longer needed with identity-based add
         purchased = await hasPurchased(contractAddress, memberAddress);
       } catch {
         return res.status(500).json({ error: 'Purchase check failed' });

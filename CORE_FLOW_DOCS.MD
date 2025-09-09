@@ -133,7 +133,7 @@ flowchart LR
     C -->|call allowlisted action| C
 ```
 
-- Only pause/unpause, fee repricing, and treasury transfers are permitted. Token changes, arbitrary ERC-20/ETH withdrawals, and member pool sweeps are disabled.
+- Only pause/unpause, fee repricing, and treasury transfers are permitted. Token changes and arbitrary ERC-20/ETH withdrawals are disabled; member pool funds cannot be moved.
 - Arbitrary external calls are disabled.
 
 End-to-end proposal lifecycle (sequence):

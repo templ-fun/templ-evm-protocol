@@ -419,5 +419,4 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
         });
     });
 
-    // Removed: DAO sweep impact tests — sweeping the member pool is no longer supported
 });

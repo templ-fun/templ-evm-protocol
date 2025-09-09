@@ -460,7 +460,6 @@ describe("TEMPL Contract with DAO Governance", function () {
             expect(await templ.entryFee()).to.equal(newFee);
         });
 
-        // Removed: executeDAO arbitrary external call tests for security hardening
 
         it("Should execute pause/unpause proposal", async function () {
             const callData = encodeSetPausedDAO(true);
@@ -547,7 +546,6 @@ describe("TEMPL Contract with DAO Governance", function () {
             ).to.be.revertedWithCustomError(templ, "NotDAO");
         });
 
-        // Removed: direct executeDAO calls test (function removed)
 
         it("Should only allow treasury withdrawal through passed proposals", async function () {
             const treasuryBalance = await templ.treasuryBalance();
@@ -915,9 +913,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             expect(await token.balanceOf(treasury.address)).to.equal(treasuryBefore);
         });
 
-        // Removed: executeDAO invalid target test (function removed)
-
-        // Removed: executeDAO transfer accessToken test (function removed)
+        
     });
 
     describe("Comprehensive View Functions", function () {
