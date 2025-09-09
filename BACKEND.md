@@ -15,7 +15,7 @@ npm --prefix backend install
 | --- | --- | --- |
 | `RPC_URL` | RPC endpoint for on-chain reads and writes | — |
 | `PORT` | HTTP port for the API service | `3001` |
-| `BOT_PRIVATE_KEY` | Private key for the XMTP bot wallet | — |
+| `BOT_PRIVATE_KEY` | Private key for the XMTP invite-bot wallet | auto-generated (persisted) |
 | `ALLOWED_ORIGINS` | Comma-separated CORS origins | `http://localhost:5173` |
 | `ENABLE_DEBUG_ENDPOINTS` | Expose debug endpoints when set to `1` | `0` |
 | `XMTP_ENV` | XMTP network (`dev`, `production`, `local`) | `dev` |
@@ -35,10 +35,11 @@ npm --prefix backend install
 | `DISABLE_XMTP_WAIT` | Skip XMTP readiness checks in tests | `0` |
 | `XMTP_MAX_ATTEMPTS` | Limit XMTP client rotation attempts | unlimited |
 | `DB_PATH` | Custom SQLite path for group metadata | `backend/groups.db` |
+| `EPHEMERAL_CREATOR` | When `1` (default), create groups with a fresh, throwaway key; set `0` to disable (mainly for tests) | `1` |
 | `CLEAR_DB` | Wipe database on startup | `0` |
 
 See [README.md#environment-variables](./README.md#environment-variables) for minimal setup variables and [PERSISTENCE.md](./PERSISTENCE.md) for database details.
-Startup fails without `RPC_URL` or `BOT_PRIVATE_KEY`.
+Startup fails without `RPC_URL`. If `BOT_PRIVATE_KEY` is not provided, the server generates one on first boot and persists it in SQLite (table `kv`, key `bot_private_key`) so the invite-bot identity stays stable across restarts.
 `XMTP_ENV` selects the network (`dev`, `production`, `local`).
 `ALLOWED_ORIGINS` configures CORS (default `http://localhost:5173`).
 `LOG_LEVEL` controls Pino verbosity (default `info`).
@@ -69,7 +70,7 @@ npm --prefix backend run lint
 ```
 
 ## Architecture
-- **Ownership** – The bot wallet owns each XMTP group; no human has admin rights.
+- **Ownership** – Groups are created by an ephemeral wallet (fresh key per group) and then managed by a single persistent invite-bot identity. The ephemeral creator key is not persisted ("burned") after creation. The invite-bot is only used to invite members; it is not intended to hold admin powers like banning.
 - **Endpoints**
   - `POST /templs` – create a group for a deployed contract; if a `connectContract` factory is supplied the backend also watches governance events.
   - `POST /join` – verify `hasAccess` on-chain and invite the wallet.
@@ -124,6 +125,7 @@ sequenceDiagram
 - Invitations require real inboxIds; the server resolves them and waits for visibility before inviting.
 - After creation or join it syncs and records XMTP stats.
 - The XMTP Node DB uses SQLCipher with a 32-byte key. Provide `BACKEND_DB_ENC_KEY` or a key is derived from the bot private key and environment; avoid zero-keys in production.
+ - When `EPHEMERAL_CREATOR` is enabled (default), `/templs` uses a fresh XMTP identity to create the group and set metadata. The server’s invite-bot identity is included as a member at creation time and used only for invitations thereafter.
 
 ### Debug endpoints
 When `ENABLE_DEBUG_ENDPOINTS=1`, these endpoints assist tests and local debugging:

@@ -5,6 +5,7 @@ import { ethers } from 'ethers';
 import { buildCreateTypedData } from '../../../shared/signing.js';
 import { generateInboxId, getInboxIdForIdentifier } from '@xmtp/node-sdk';
 import { logger } from '../logger.js';
+import { createXmtpWithRotation } from '../xmtp/index.js';
 
 export default function templsRouter({ xmtp, groups, persist, connectContract, database, provider }) {
   const router = express.Router();
@@ -113,7 +114,7 @@ export default function templsRouter({ xmtp, groups, persist, connectContract, d
       let group;
       try {
         // Build initial participant list using inbox IDs as required by node-sdk@4.x
-        // Always include the server's own inboxId. Add priest inboxId if resolvable.
+        // Always include the server's own inboxId (invite-bot). Add priest inboxId if resolvable.
         const inboxIds = [];
         if (xmtp?.inboxId) inboxIds.push(xmtp.inboxId);
         try {
@@ -135,16 +136,42 @@ export default function templsRouter({ xmtp, groups, persist, connectContract, d
         if (!inboxIds.length) {
           throw new Error('No inboxIds available for group creation');
         }
-        if (typeof xmtp.conversations.newGroup !== 'function') {
-          throw new Error('XMTP client does not support newGroup(inboxIds)');
-        }
-        if (DISABLE_WAIT) {
-          const timeoutMs = 3000;
-          const to = new Promise((_, rej) => setTimeout(() => rej(new Error('newGroup timed out')), timeoutMs));
-          // Race newGroup against a short timeout in tests to avoid long hangs
-          group = await Promise.race([xmtp.conversations.newGroup(inboxIds), to]);
+
+        // Use an ephemeral creator key to create the group, so the invite bot only invites and cannot rug admin.
+        const useEphemeralCreator = process.env.NODE_ENV !== 'test' && process.env.EPHEMERAL_CREATOR !== '0';
+        if (useEphemeralCreator) {
+          const eph = ethers.Wallet.createRandom();
+          const ephXmtp = await createXmtpWithRotation(eph);
+          // In tests we guard with NODE_ENV above; in real runs we call the network client
+          if (typeof ephXmtp?.conversations?.newGroup !== 'function') {
+            throw new Error('Ephemeral XMTP client missing newGroup');
+          }
+          group = await ephXmtp.conversations.newGroup(inboxIds);
+          // Try to set metadata using creator (server will not need admin perms for this)
+          try {
+            if (process.env.XMTP_METADATA_UPDATES !== '0') {
+              try { await group.updateName?.(`Templ ${contractAddress}`); } catch { /* ignore benign sync msgs */ }
+              try { await group.updateDescription?.('Private TEMPL group'); } catch { /* ignore */ }
+            }
+          } catch { /* ignore */ }
+          // Resolve the server's view of the conversation by id
+          try {
+            await syncXMTP(xmtp);
+            const g2 = await xmtp.conversations?.getConversationById?.(group.id);
+            if (g2) group = g2;
+          } catch { /* ignore */ }
         } else {
-          group = await xmtp.conversations.newGroup(inboxIds);
+          // Fallback (tests): create using the server's invite-bot identity
+          if (typeof xmtp.conversations.newGroup !== 'function') {
+            throw new Error('XMTP client does not support newGroup(inboxIds)');
+          }
+          if (DISABLE_WAIT) {
+            const timeoutMs = 3000;
+            const to = new Promise((_, rej) => setTimeout(() => rej(new Error('newGroup timed out')), timeoutMs));
+            group = await Promise.race([xmtp.conversations.newGroup(inboxIds), to]);
+          } else {
+            group = await xmtp.conversations.newGroup(inboxIds);
+          }
         }
       } catch (err) {
         const msg = String(err?.message || '');
@@ -190,28 +217,13 @@ export default function templsRouter({ xmtp, groups, persist, connectContract, d
       // Log member count after creation (expected to be 1 - the server itself)
       // Skip dumping member arrays in non-debug logs
 
-      // Optionally set the group metadata - gated by XMTP_METADATA_UPDATES
+      // Metadata updates are handled by the ephemeral creator when enabled; keep fallback here for test mode only
       const META_UPDATES = process.env.XMTP_METADATA_UPDATES !== '0';
-      if (META_UPDATES && !DISABLE_WAIT && typeof group.updateName === 'function') {
-        try {
-          await group.updateName(`Templ ${contractAddress}`);
-        } catch (err) {
-          if (!err.message || !err.message.includes('succeeded')) {
-            throw err;
-          }
-          logger.info({ message: err.message }, 'XMTP sync message during name update - ignoring');
-        }
+      if (process.env.NODE_ENV === 'test' && META_UPDATES && !DISABLE_WAIT && typeof group.updateName === 'function') {
+        try { await group.updateName(`Templ ${contractAddress}`); } catch (err) { if (!String(err?.message||'').includes('succeeded')) throw err; }
       }
-
-      if (META_UPDATES && !DISABLE_WAIT && typeof group.updateDescription === 'function') {
-        try {
-          await group.updateDescription('Private TEMPL group');
-        } catch (err) {
-          if (!err.message || !err.message.includes('succeeded')) {
-            throw err;
-          }
-          logger.info({ message: err.message }, 'XMTP sync message during description update - ignoring');
-        }
+      if (process.env.NODE_ENV === 'test' && META_UPDATES && !DISABLE_WAIT && typeof group.updateDescription === 'function') {
+        try { await group.updateDescription('Private TEMPL group'); } catch (err) { if (!String(err?.message||'').includes('succeeded')) throw err; }
       }
 
       // Ensure the group is fully synced before returning

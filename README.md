@@ -88,9 +88,10 @@ Minimal local setup requires only a handful of variables:
 | --- | --- | --- |
 | `RPC_URL` | RPC endpoint for Base network | `.env`, `backend/.env` |
 | `PRIVATE_KEY` | Deployer wallet key for contract deployments | `.env` |
-| `BOT_PRIVATE_KEY` | XMTP bot wallet key | `backend/.env` |
+| `BOT_PRIVATE_KEY` | XMTP invite-bot wallet key (auto-generated if omitted) | `backend/.env` |
 | `ALLOWED_ORIGINS` | Comma-separated frontend origins allowed to call the backend | `backend/.env` |
 | `BACKEND_DB_ENC_KEY` | 32-byte hex key to encrypt XMTP Node DB (overrides derived key) | `backend/.env` |
+| `EPHEMERAL_CREATOR` | Use a fresh, throwaway key to create groups (default) | `backend/.env` |
 | `XMTP_BOOT_MAX_TRIES` | Max boot retries for XMTP client initialization | `backend/.env` |
 | `REQUIRE_CONTRACT_VERIFY` | When `1` or in production, backend verifies contract code and on‑chain priest | `backend/.env` |
 | `XMTP_METADATA_UPDATES` | Set to `0` to skip name/description updates on XMTP groups | `backend/.env` |
@@ -108,6 +109,7 @@ See [BACKEND.md#environment-variables](./BACKEND.md#environment-variables) and [
 ### Production Configuration
 - Set `NODE_ENV=production` for the backend. In this mode, signature bypass headers are disabled and `/templs` chain/priest checks are enforced when `REQUIRE_CONTRACT_VERIFY=1` (recommended).
 - Provide `BACKEND_DB_ENC_KEY` (32‑byte hex). The backend will refuse to boot without it in production.
+- If `BOT_PRIVATE_KEY` is omitted, the backend generates one and stores it in the SQLite DB (table `kv`, key `bot_private_key`) so the invite-bot identity remains stable.
 - Bind signatures to your deployment by setting a shared server id:
   - Backend: `BACKEND_SERVER_ID="templ-prod-<region>"`
   - Frontend: `VITE_BACKEND_SERVER_ID="templ-prod-<region>"`

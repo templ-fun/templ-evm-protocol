@@ -105,18 +105,48 @@ export function createApp(opts) {
 // Boot the standalone server when executed directly
 if (import.meta.url === `file://${process.argv[1]}`) {
   dotenv.config();
-  const { RPC_URL, BOT_PRIVATE_KEY } = process.env;
+  const { RPC_URL } = process.env;
   if (!RPC_URL) {
     throw new Error('Missing RPC_URL environment variable');
-  }
-  if (!BOT_PRIVATE_KEY) {
-    throw new Error('Missing BOT_PRIVATE_KEY environment variable');
   }
   if (process.env.NODE_ENV === 'production' && !process.env.BACKEND_DB_ENC_KEY) {
     throw new Error('BACKEND_DB_ENC_KEY required in production');
   }
   const provider = new ethers.JsonRpcProvider(RPC_URL);
-  const wallet = new ethers.Wallet(BOT_PRIVATE_KEY, provider);
+  // Determine DB path early (used to persist bot key)
+  const dbPathEnv = process.env.DB_PATH;
+  const defaultDbPath = new URL('../groups.db', import.meta.url).pathname;
+  const dbPath = dbPathEnv || defaultDbPath;
+  // Optionally wipe database before reading bot key (e2e/dev only)
+  if (dbPath && process.env.CLEAR_DB === '1') {
+    try { fs.rmSync(dbPath, { force: true }); } catch (e) { logger.warn({ err: e?.message || e }); }
+  }
+  // Generate or load a persistent bot private key tied to this server instance.
+  let botPrivateKey = process.env.BOT_PRIVATE_KEY;
+  try {
+    const db = new Database(dbPath);
+    try { db.exec('CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT)'); } catch { /* ignore */ }
+    if (!botPrivateKey) {
+      try {
+        const row = db.prepare('SELECT value FROM kv WHERE key = ?').get('bot_private_key');
+        if (row && row.value) {
+          botPrivateKey = String(row.value);
+        }
+      } catch { /* ignore */ }
+    }
+    if (!botPrivateKey) {
+      // Create a fresh key and persist it so the "invite bot" is stable across restarts
+      const w = ethers.Wallet.createRandom();
+      botPrivateKey = w.privateKey;
+      try { db.prepare('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)').run('bot_private_key', botPrivateKey); } catch { /* ignore */ }
+      logger.info('Generated and persisted new invite-bot key');
+    }
+    try { db.close(); } catch { /* ignore */ }
+  } catch (e) {
+    // Fall back to env-only key if DB init fails
+    if (!botPrivateKey) throw e;
+  }
+  const wallet = new ethers.Wallet(botPrivateKey, provider);
   const envMax = Number(process.env.XMTP_MAX_ATTEMPTS);
   let xmtp;
   const bootTries = Number.isFinite(Number(process.env.XMTP_BOOT_MAX_TRIES))
@@ -145,15 +175,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     );
     return contract.hasAccess(memberAddress);
   };
-  // Optional: use an ephemeral DB path for e2e to avoid stale group mappings
-  const dbPath = process.env.DB_PATH;
-  if (dbPath && process.env.CLEAR_DB === '1') {
-    try {
-      fs.rmSync(dbPath, { force: true });
-    } catch (e) {
-      logger.warn({ err: e?.message || e });
-    }
-  }
+  // Pass dbPath through to createApp for group mappings and moderation state
   const rateLimitStore = await createRateLimitStore();
   const app = createApp({ xmtp, hasPurchased, dbPath, rateLimitStore, provider });
   const port = process.env.PORT || 3001;

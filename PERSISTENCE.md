@@ -4,7 +4,7 @@ This document outlines where TEMPL persists state, the storage technologies in p
 
 | Storage          | Location                                            | Encryption                   | Usage                                            |
 | ---------------- | --------------------------------------------------- | ---------------------------- | ------------------------------------------------ |
-| Backend DB       | `backend/groups.db` (override with `DB_PATH`)       | none                         | Maps contracts to XMTP `groupId` and moderation  |
+| Backend DB       | `backend/groups.db` (override with `DB_PATH`)       | none                         | Maps contracts to XMTP `groupId` and moderation; stores invite-bot key |
 | XMTP Node DB     | `xmtp-<env>-<inboxId>.db3` in process CWD           | SQLCipher via `dbEncryptionKey` | Client identity and conversation metadata   |
 | XMTP Browser DB  | OPFS `xmtp-<env>-<inboxId>.db3` per origin          | none                         | Browser client identity and metadata             |
 
@@ -25,6 +25,7 @@ graph LR
 - Default file: `backend/groups.db` (override with `DB_PATH`).
 - Purpose: maps on‑chain TEMPL contracts to XMTP `groupId`, and stores moderation state.
 - Startup: the `groups` table is mirrored to an in‑memory `Map()` so the server can restore groups on boot.
+ - Invite‑bot key: on first boot without `BOT_PRIVATE_KEY`, the backend generates and persists a private key under `kv.bot_private_key` so the invite‑bot identity remains stable across restarts.
 
 ### Tables
 
@@ -37,6 +38,8 @@ graph LR
   - Delegated moderation rights; written on POST/DELETE `/delegateMute`.
 - `signatures(sig TEXT PRIMARY KEY, usedAt INTEGER)`
   - Server‑side replay protection store for typed signatures.
+ - `kv(key TEXT PRIMARY KEY, value TEXT)`
+   - Generic key–value store; the backend saves the persistent invite‑bot private key here under `key = 'bot_private_key'` when no `BOT_PRIVATE_KEY` env is provided.
 
 ## XMTP Node DB
 

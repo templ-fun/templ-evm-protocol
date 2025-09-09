@@ -19,9 +19,8 @@ function randomPrivKeyHex() {
 const BOT_PK = randomPrivKeyHex();
 
 export default defineConfig({
-  // Increase per-test timeout to accommodate XMTP welcome propagation on local/dev
   timeout: 240 * 1000,
-  outputDir: '../test-results/e2e',
+  outputDir: './test-results',
   testDir: './e2e',
   testMatch: /.*\.pw\.spec\.js/,
   fullyParallel: false,
@@ -49,6 +48,7 @@ export default defineConfig({
         }
       },
     },
+    // TODO: This should be enabled when real UI design begins, right now our UI exists only to prove the idea works and has no design
     // {
     //   name: 'tech-demo-mobile',
     //   use: {
@@ -65,7 +65,7 @@ export default defineConfig({
   ],
 
   webServer: [
-    // Optional: start XMTP local node via docker-compose if requested
+    // Optional: start XMTP local node via docker-compose, helps debug app <-> xmtp node behavior
     ...(USE_LOCAL
       ? [{
           command: './up',
