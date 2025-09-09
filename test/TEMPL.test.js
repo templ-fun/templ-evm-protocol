@@ -51,6 +51,30 @@ describe("TEMPL Contract with DAO Governance", function () {
                 )
             ).to.be.revertedWithCustomError(TEMPL, "InvalidEntryFee");
         });
+
+        it("Should revert when required address is zero", async function () {
+            const TEMPL = await ethers.getContractFactory("TEMPL");
+            await expect(
+                TEMPL.deploy(
+                    ethers.ZeroAddress,
+                    priest.address,
+                    await token.getAddress(),
+                    ENTRY_FEE
+                )
+            ).to.be.revertedWithCustomError(TEMPL, "InvalidRecipient");
+        });
+
+        it("Should revert when entry fee is zero", async function () {
+            const TEMPL = await ethers.getContractFactory("TEMPL");
+            await expect(
+                TEMPL.deploy(
+                    priest.address,
+                    priest.address,
+                    await token.getAddress(),
+                    0
+                )
+            ).to.be.revertedWithCustomError(TEMPL, "AmountZero");
+        });
     });
 
     describe("Access Purchase with 30/30/30/10 Split", function () {
@@ -191,6 +215,19 @@ describe("TEMPL Contract with DAO Governance", function () {
                 cd3,
                 31 * 24 * 60 * 60 // 31 days (too long)
             )).to.be.revertedWithCustomError(templ, "VotingPeriodTooLong");
+        });
+
+        it("Should default to standard voting period when none provided", async function () {
+            const cd = encodeSetPausedDAO(false);
+            await templ.connect(user1).createProposal(
+                "Default period",
+                "Uses default",
+                cd,
+                0
+            );
+            const proposal = await templ.proposals(0);
+            const defaultPeriod = await templ.DEFAULT_VOTING_PERIOD();
+            expect(proposal.endTime - proposal.createdAt).to.equal(defaultPeriod);
         });
 
         it("Should require non-empty title", async function () {
@@ -956,6 +993,10 @@ describe("TEMPL Contract with DAO Governance", function () {
             expect(config.purchases).to.equal(1);
             expect(config.treasury).to.be.gt(0);
             expect(config.pool).to.be.gt(0);
+        });
+
+        it("Should return 0 claimable for non-members", async function () {
+            expect(await templ.getClaimablePoolAmount(user2.address)).to.equal(0);
         });
 
         it("Should track total values correctly", async function () {

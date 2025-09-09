@@ -97,8 +97,37 @@ describe("Treasury Withdrawal Reverts", function () {
             await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
             await ethers.provider.send("evm_mine");
 
-            await expect(templ.executeProposal(0))
-                .to.be.revertedWithCustomError(templ, "InsufficientTreasuryBalance");
+        await expect(templ.executeProposal(0))
+            .to.be.revertedWithCustomError(templ, "InsufficientTreasuryBalance");
+        });
+
+        it("should revert for non-held token balance", async function () {
+            const OtherToken = await ethers.getContractFactory("TestToken");
+            const otherToken = await OtherToken.deploy("Other", "OTH", 18);
+
+            const callData = encodeWithdrawTreasuryDAO(
+                otherToken.target,
+                user1.address,
+                1n,
+                "No balance"
+            );
+
+            await templ.connect(user1).createProposal(
+                "Withdraw other token",
+                "should fail",
+                callData,
+                7 * 24 * 60 * 60
+            );
+
+            await templ.connect(user1).vote(0, true);
+            await templ.connect(user2).vote(0, true);
+            await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
+            await ethers.provider.send("evm_mine");
+
+            await expect(templ.executeProposal(0)).to.be.revertedWithCustomError(
+                templ,
+                "InsufficientTreasuryBalance"
+            );
         });
     });
 
@@ -163,6 +192,32 @@ describe("Treasury Withdrawal Reverts", function () {
             await ethers.provider.send("evm_mine");
 
             await expect(templ.executeProposal(1))
+                .to.be.revertedWithCustomError(templ, "NoTreasuryFunds");
+        });
+
+        it("should revert when withdrawing all of a token with zero balance", async function () {
+            const OtherToken = await ethers.getContractFactory("TestToken");
+            const otherToken = await OtherToken.deploy("Other", "OTH", 18);
+
+            const callData = encodeWithdrawAllTreasuryDAO(
+                otherToken.target,
+                user1.address,
+                "no balance"
+            );
+
+            await templ.connect(user1).createProposal(
+                "Withdraw absent token",
+                "nothing to withdraw",
+                callData,
+                7 * 24 * 60 * 60
+            );
+
+            await templ.connect(user1).vote(0, true);
+            await templ.connect(user2).vote(0, true);
+            await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
+            await ethers.provider.send("evm_mine");
+
+            await expect(templ.executeProposal(0))
                 .to.be.revertedWithCustomError(templ, "NoTreasuryFunds");
         });
     });
