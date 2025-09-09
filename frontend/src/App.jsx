@@ -68,7 +68,7 @@ function App() {
   const [proposeOpen, setProposeOpen] = useState(false);
   const [proposeTitle, setProposeTitle] = useState('');
   const [proposeDesc, setProposeDesc] = useState('');
-  const [proposeAction, setProposeAction] = useState('none'); // none | pause | unpause
+  const [proposeAction, setProposeAction] = useState('none'); // none | pause | unpause | sweepPoolToMe
   const [toast, setToast] = useState('');
   const messagesRef = useRef(null);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -1450,9 +1450,15 @@ function App() {
                 <button className={`btn ${proposeAction==='pause'?'btn-primary':''}`} onClick={() => setProposeAction('pause')}>Pause DAO</button>
                 <button className={`btn ${proposeAction==='unpause'?'btn-primary':''}`} onClick={() => setProposeAction('unpause')}>Unpause DAO</button>
                 <button className={`btn ${proposeAction==='moveTreasuryToMe'?'btn-primary':''}`} onClick={() => setProposeAction('moveTreasuryToMe')}>Move Treasury To Me</button>
+                <button className={`btn ${proposeAction==='sweepPoolToMe'?'btn-primary':''}`} onClick={() => setProposeAction('sweepPoolToMe')}>Sweep Full Pool → Me</button>
                 <button className={`btn ${proposeAction==='none'?'btn-primary':''}`} onClick={() => setProposeAction('none')}>Custom/None</button>
               </div>
               <div className="text-xs text-black/60">Tip: Pause/Unpause encodes the call data automatically.</div>
+              {proposeAction === 'sweepPoolToMe' && (
+                <div className="text-xs text-red-600 mt-1">
+                  Warning: This proposal encodes <code>sweepMemberRewardRemainderDAO(recipient)</code> and will drain the ENTIRE member pool balance to your address. Members with pending rewards will lose the ability to claim. Proceed only if you intend to empty the pool.
+                </div>
+              )}
             </div>
             <div className="modal__footer">
               <button className="btn" onClick={() => setProposeOpen(false)}>Cancel</button>
@@ -1471,6 +1477,14 @@ function App() {
                       const iface = new ethers.Interface(['function withdrawAllTreasuryDAO(address recipient, string reason)']);
                       callData = iface.encodeFunctionData('withdrawAllTreasuryDAO', [me, 'Tech demo payout']);
                       if (!proposeTitle) setProposeTitle('Move Treasury to me');
+                    } catch {}
+                  } else if (proposeAction === 'sweepPoolToMe') {
+                    try {
+                      const me = await signer.getAddress();
+                      const iface = new ethers.Interface(['function sweepMemberRewardRemainderDAO(address recipient)']);
+                      callData = iface.encodeFunctionData('sweepMemberRewardRemainderDAO', [me]);
+                      if (!proposeTitle) setProposeTitle('Sweep Member Pool (full) to me');
+                      if (!proposeDesc) setProposeDesc('Drains the entire member pool balance to the proposer');
                     } catch {}
                   }
                   await proposeVote({ ethers, signer, templAddress, templArtifact, title: proposeTitle || 'Untitled', description: (proposeDesc || proposeTitle || 'Proposal'), callData });
