@@ -214,7 +214,7 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
 
     // Get deployed contract address via light DOM marker or localStorage (whichever appears first)
     const depInfo = page.locator('[data-testid="deploy-info"]');
-    for (let i = 0; i < 150 && !templAddress; i++) { // up to ~30s
+    for (let i = 0; i < 60 && !templAddress; i++) { // trimmed retries
       try {
         if (await depInfo.count() > 0 && await depInfo.isVisible()) {
           templAddress = (await depInfo.getAttribute('data-contract-address')) || '';
@@ -378,7 +378,7 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
         memberInboxId = String(inboxId || '');
         dbg('DEBUG member browser inboxId before join:', inboxId);
         const env = process.env.E2E_XMTP_LOCAL === '1' ? 'local' : 'dev';
-        for (let i = 0; i < 15; i++) {
+        for (let i = 0; i < 5; i++) {
           try {
             const resp = await fetch(`http://localhost:3001/debug/inbox-state?inboxId=${inboxId}&env=${env}`).then(r => r.json());
             dbg('DEBUG /debug/inbox-state:', resp);
@@ -425,7 +425,7 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
     }
     // Resolve groupId robustly from backend debug if UI hasn't populated yet
     let groupId = '';
-    for (let i = 0; i < 60 && !groupId; i++) {
+    for (let i = 0; i < 20 && !groupId; i++) {
       try {
         const dbgJoin = await fetch(`http://localhost:3001/debug/group?contractAddress=${templAddress}&refresh=1`).then(r => r.json());
         dbg('DEBUG after join (pre-UI):', dbgJoin);
@@ -458,7 +458,7 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
       dbg('DEBUG /debug/membership after join:', dbg3);
       // Wait until backend records a successful join (last-join payload) to linearize addMembers completion
       let dbg4;
-      for (let i = 0; i < 60; i++) {
+      for (let i = 0; i < 10; i++) {
         try {
           dbg4 = await fetch('http://localhost:3001/debug/last-join').then(r => r.json());
           dbg('DEBUG /debug/last-join:', dbg4);
@@ -472,7 +472,7 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
     // Treat backend membership as the source of truth for "connected".
     // Poll server-only (no browser.evaluate) using stored memberInboxId.
     let connected = false;
-    for (let i = 0; i < 180 && !connected; i++) {
+    for (let i = 0; i < 40 && !connected; i++) {
       try {
         const dbgMem = await fetch(`http://localhost:3001/debug/membership?contractAddress=${templAddress}&inboxId=${memberInboxId}`).then(r => r.json());
         if (dbgMem && dbgMem.contains === true) connected = true;

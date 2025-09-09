@@ -142,7 +142,7 @@ test.describe('Tech Demo: Realtime multi-user flow', () => {
     await page.click('button:has-text("Deploy")');
     // Resolve contract address via localStorage (set by the app on deploy); avoid relying on hidden DOM nodes
     let templAddress = '';
-    for (let i = 0; i < 150 && !templAddress; i++) {
+    for (let i = 0; i < 60 && !templAddress; i++) {
       try { templAddress = await page.evaluate(() => localStorage.getItem('templ:lastAddress')); } catch {}
       if (!templAddress) await page.waitForTimeout(200);
     }
@@ -265,7 +265,7 @@ test.describe('Tech Demo: Realtime multi-user flow', () => {
       let connected = false;
       let inboxId = '';
       try { inboxId = await page.evaluate(() => window.__XMTP?.inboxId || ''); } catch {}
-      for (let i = 0; i < 120 && !connected; i++) {
+      for (let i = 0; i < 40 && !connected; i++) {
         try {
           if (inboxId) {
             const dbgMem = await fetch(`http://localhost:3001/debug/membership?contractAddress=${templAddress}&inboxId=${inboxId}`).then(r => r.json());
@@ -279,7 +279,7 @@ test.describe('Tech Demo: Realtime multi-user flow', () => {
         const base = `${message} ${Date.now()}`;
         let body = base;
         // Try to send up to 5 times, verifying via DOM render (not status)
-        for (let i = 0; i < 5; i++) {
+        for (let i = 0; i < 2; i++) {
           await page.fill('[data-testid="chat-input"]', body);
           await page.click('[data-testid="chat-send"]');
           // Accept either immediate render or render after a short delay
@@ -378,7 +378,7 @@ test.describe('Tech Demo: Realtime multi-user flow', () => {
     let priestConnected = false;
     let priestInboxId = '';
     try { priestInboxId = await page.evaluate(() => window.__XMTP?.inboxId || ''); } catch {}
-    for (let i = 0; i < 60 && !priestConnected; i++) {
+    for (let i = 0; i < 20 && !priestConnected; i++) {
       try {
         if (priestInboxId) {
           const dbgMem = await fetch(`http://localhost:3001/debug/membership?contractAddress=${templAddress}&inboxId=${priestInboxId}`).then(r => r.json());
