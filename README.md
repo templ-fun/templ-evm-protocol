@@ -43,6 +43,10 @@ Use the docs below to dive into each component:
 - [PERSISTENCE.md](./PERSISTENCE.md) – data storage and XMTP DBs
 - [WEB3_AUDIT_REPORT.MD](./WEB3_AUDIT_REPORT.MD) – web3 audit summary
  - [TEST_LOCALLY.md](./TEST_LOCALLY.md) – fast local end‑to‑end setup
+ 
+## Prerequisites
+- Node `22.18.0` (enforced via `engines` in `package.json`).
+- After `npm install`, enable hooks with `npm run prepare` (Husky).
   
 ## Monorepo Structure
 - `contracts/` – Hardhat + Solidity 0.8.23
@@ -79,6 +83,12 @@ Use the docs below to dive into each component:
    npm --prefix frontend run dev
    ```
    The backend expects environment variables like `BOT_PRIVATE_KEY`, `RPC_URL`, and `ALLOWED_ORIGINS` in `backend/.env`. See [BACKEND.md](./BACKEND.md) and [FRONTEND.md](./FRONTEND.md) for details.
+
+## Commands
+- Contracts: `npm run compile`, `npm test`, `npm run node`, `npm run deploy:local`, `npm run slither`
+- Backend: `npm --prefix backend start`, `npm --prefix backend test`, `npm --prefix backend run lint[:fix]`
+- Frontend: `npm --prefix frontend run dev`, `npm --prefix frontend test`, `npm --prefix frontend run test:e2e`, `npm --prefix frontend run build`, `npm --prefix frontend run preview`
+- Integration (end‑to‑end core flows): `npm --prefix frontend run test -- src/core-flows.integration.test.js`
 
 ## Environment Variables
 
@@ -148,6 +158,13 @@ sequenceDiagram
 ```
 
 Core flows include TEMPL creation, paid onboarding, chat, moderation, proposal drafting, voting, and execution.
+
+## XMTP Essentials
+- Environments: set `XMTP_ENV`/`VITE_XMTP_ENV` to `dev`, `production`, or `local`.
+- Identity: messages route to an `inboxId` with multiple installations (devices/agents). XMTP dev caps installs at 10 per inbox.
+- Databases: Node client DB is SQLCipher‑encrypted (see `BACKEND_DB_ENC_KEY`); browser DB lives in OPFS per origin (not encrypted). See [PERSISTENCE.md](./PERSISTENCE.md).
+- Discovery: after joins/creation, clients sync conversations; the backend may send a small warm message to help discovery.
+- Resolution: the backend resolves inboxIds from the network and ignores client‑supplied ids except in explicit local/test fallback modes.
 
 ## Security & Hardening
 

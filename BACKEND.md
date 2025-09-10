@@ -1,6 +1,6 @@
 # TEMPL Backend
 
-See the [README](./README.md#architecture) for how the backend fits into TEMPL; this document covers setup, configuration, and operations.
+See the [README](./README.md#architecture) for how the backend fits into TEMPL and the flows in [CORE_FLOW_DOCS.MD](./CORE_FLOW_DOCS.MD); this document covers setup, configuration, and operations.
 
 ## Setup
 Install dependencies:
@@ -80,6 +80,7 @@ npm --prefix backend run lint
   - `GET /mutes` – list active mutes for a contract so the frontend can hide messages.
 - **Dependencies** – XMTP JS SDK and an on-chain provider; event watching requires a `connectContract` factory.
 - **Persistence** – group metadata persists to a SQLite database at `backend/groups.db` (or a custom path via `createApp({ dbPath })` in tests). The database is read on startup and updated when groups change; back it up to avoid losing state.
+ - **On‑chain surface** – proposal allowlist and events are defined in the contracts. See [CONTRACTS.md](./CONTRACTS.md#dao-governance) for allowed actions and events mirrored into chat.
 
 ### Endpoint flows
 
