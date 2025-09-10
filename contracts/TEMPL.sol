@@ -6,16 +6,10 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {TemplErrors} from "./TemplErrors.sol";
 
-/**
- * @title TEMPL - Token Entry Management Protocol with DAO Governance
- * @notice Decentralized membership system with autonomous treasury management
- * @dev Fee distribution: 30% burn, 30% DAO treasury, 30% member pool, 10% protocol
- */
 contract TEMPL is ReentrancyGuard {
     using SafeERC20 for IERC20;
     using TemplErrors for *;
 
-    // Constants for fee split (must sum to 100)
     uint256 private constant BURN_BP = 30;
     uint256 private constant TREASURY_BP = 30;
     uint256 private constant MEMBER_POOL_BP = 30;
@@ -50,9 +44,7 @@ contract TEMPL is ReentrancyGuard {
         address proposer;
         string title;
         string description;
-        bytes callData; // kept for compatibility/UX; decoded fields below are source of truth
         Action action;
-        // Decoded parameters (used based on action)
         address token;
         address recipient;
         uint256 amount;
@@ -68,35 +60,7 @@ contract TEMPL is ReentrancyGuard {
         mapping(address => bool) hasVoted;
         mapping(address => bool) voteChoice;
     }
-    
-    function _populateProposalParams(Proposal storage p, bytes calldata cd) internal {
-        bytes4 selector = bytes4(cd[0:4]);
-        if (selector == this.setPausedDAO.selector) {
-            if (cd.length != 4 + 32) revert TemplErrors.InvalidCallData();
-            bool pausedVal = abi.decode(cd[4:], (bool));
-            p.action = Action.SetPaused;
-            p.paused = pausedVal;
-        } else if (selector == this.updateConfigDAO.selector) {
-            if (cd.length != 4 + 64) revert TemplErrors.InvalidCallData();
-            (p.token, p.newEntryFee) = abi.decode(cd[4:], (address, uint256));
-            p.action = Action.UpdateConfig;
-        } else if (selector == this.withdrawTreasuryDAO.selector) {
-            if (cd.length < 4 + 160) revert TemplErrors.InvalidCallData();
-            (p.token, p.recipient, p.amount, p.reason) = abi.decode(cd[4:], (address, address, uint256, string));
-            p.action = Action.WithdrawTreasury;
-        } else if (selector == this.withdrawAllTreasuryDAO.selector) {
-            if (cd.length < 4 + 128) revert TemplErrors.InvalidCallData();
-            (p.token, p.recipient, p.reason) = abi.decode(cd[4:], (address, address, string));
-            p.action = Action.WithdrawAllTreasury;
-        } else if (selector == this.disbandTreasuryDAO.selector) {
-            if (cd.length != 4) revert TemplErrors.InvalidCallData();
-            p.action = Action.DisbandTreasury;
-        } else {
-            revert TemplErrors.InvalidCallData();
-        }
-    }
 
-    // no longer needed: calldata can be range-sliced directly
     uint256 public proposalCount;
     mapping(uint256 => Proposal) public proposals;
     mapping(address => uint256) public activeProposalId;
@@ -105,7 +69,6 @@ contract TEMPL is ReentrancyGuard {
     uint256 public constant MIN_VOTING_PERIOD = 7 days;
     uint256 public constant MAX_VOTING_PERIOD = 30 days;
 
-    // Governance actions supported by the DAO
     enum Action {
         SetPaused,
         UpdateConfig,
@@ -237,7 +200,7 @@ contract TEMPL is ReentrancyGuard {
         if (m.purchased) revert TemplErrors.AlreadyPurchased();
 
         uint256 burnAmount = (entryFee * BURN_BP) / 100;
-        uint256 toContract = (entryFee * (TREASURY_BP + MEMBER_POOL_BP)) / 100; // 60%
+        uint256 toContract = (entryFee * (TREASURY_BP + MEMBER_POOL_BP)) / 100;
         uint256 protocolAmount = (entryFee * PROTOCOL_BP) / 100;
 
         if (IERC20(accessToken).balanceOf(msg.sender) < entryFee) revert TemplErrors.InsufficientBalance();
@@ -250,7 +213,7 @@ contract TEMPL is ReentrancyGuard {
         totalPurchases++;
 
         if (memberList.length > 1) {
-            uint256 totalRewards = ((entryFee * MEMBER_POOL_BP) / 100) + memberRewardRemainder; // 30% + remainder
+            uint256 totalRewards = ((entryFee * MEMBER_POOL_BP) / 100) + memberRewardRemainder;
             uint256 rewardPerMember = totalRewards / (memberList.length - 1);
             memberRewardRemainder = totalRewards % (memberList.length - 1);
             cumulativeMemberRewards += rewardPerMember;
@@ -258,7 +221,7 @@ contract TEMPL is ReentrancyGuard {
 
         m.rewardSnapshot = cumulativeMemberRewards;
 
-        uint256 thirtyPercent = (entryFee * 30) / 100; // retained for totals/events clarity
+        uint256 thirtyPercent = (entryFee * 30) / 100;
         treasuryBalance += thirtyPercent;
         memberPoolBalance += thirtyPercent;
         totalBurned += burnAmount;
@@ -267,11 +230,8 @@ contract TEMPL is ReentrancyGuard {
         totalToProtocol += protocolAmount;
 
         IERC20 token = IERC20(accessToken);
-        // 30% burn
         token.safeTransferFrom(msg.sender, DEAD_ADDRESS, burnAmount);
-        // 60% to contract (30% treasury + 30% member pool)
         token.safeTransferFrom(msg.sender, address(this), toContract);
-        // 10% to protocol fee recipient
         token.safeTransferFrom(msg.sender, protocolFeeRecipient, protocolAmount);
         
         emit AccessPurchased(
@@ -287,25 +247,13 @@ contract TEMPL is ReentrancyGuard {
         );
     }
     
-    /**
-     * @notice Create a governance proposal for DAO voting
-     * @dev One active proposal per member allowed. Proposer automatically casts a YES vote.
-     * @param _title Proposal title
-     * @param _description Proposal description
-     * @param _callData Function call to execute
-     * @param _votingPeriod Voting duration in seconds
-     * @return proposalId Proposal identifier
-     */
-    function createProposal(
+    function _createBaseProposal(
         string memory _title,
         string memory _description,
-        bytes calldata _callData,
         uint256 _votingPeriod
-    ) external onlyMember returns (uint256) {
+    ) internal returns (uint256 proposalId, Proposal storage proposal) {
         if (bytes(_title).length == 0) revert TemplErrors.TitleRequired();
         if (bytes(_description).length == 0) revert TemplErrors.DescriptionRequired();
-        if (_callData.length == 0) revert TemplErrors.CallDataRequired();
-        if (_callData.length < 4) revert TemplErrors.CallDataTooShort();
         if (hasActiveProposal[msg.sender]) {
             uint256 existingId = activeProposalId[msg.sender];
             Proposal storage existingProposal = proposals[existingId];
@@ -316,39 +264,98 @@ contract TEMPL is ReentrancyGuard {
                 activeProposalId[msg.sender] = 0;
             }
         }
-        
-        uint256 period = _votingPeriod;
-        if (period == 0) {
-            period = DEFAULT_VOTING_PERIOD;
-        }
+        uint256 period = _votingPeriod == 0 ? DEFAULT_VOTING_PERIOD : _votingPeriod;
         if (period < MIN_VOTING_PERIOD) revert TemplErrors.VotingPeriodTooShort();
         if (period > MAX_VOTING_PERIOD) revert TemplErrors.VotingPeriodTooLong();
-        
-        uint256 proposalId = proposalCount++;
-        Proposal storage proposal = proposals[proposalId];
-        
+        proposalId = proposalCount++;
+        proposal = proposals[proposalId];
         proposal.id = proposalId;
         proposal.proposer = msg.sender;
         proposal.title = _title;
         proposal.description = _description;
-        proposal.callData = _callData;
-        _populateProposalParams(proposal, _callData);
         proposal.endTime = block.timestamp + period;
         proposal.createdAt = block.timestamp;
         proposal.eligibleVoters = memberList.length;
         proposal.executed = false;
-        // Auto-cast proposer YES vote as first vote
         proposal.hasVoted[msg.sender] = true;
         proposal.voteChoice[msg.sender] = true;
         proposal.yesVotes = 1;
         proposal.noVotes = 0;
-        
         hasActiveProposal[msg.sender] = true;
         activeProposalId[msg.sender] = proposalId;
-        
         emit ProposalCreated(proposalId, msg.sender, _title, proposal.endTime);
-        
-        return proposalId;
+    }
+
+    function createProposalSetPaused(
+        string memory _title,
+        string memory _description,
+        bool _paused,
+        uint256 _votingPeriod
+    ) external onlyMember returns (uint256) {
+        (uint256 id, Proposal storage p) = _createBaseProposal(_title, _description, _votingPeriod);
+        p.action = Action.SetPaused;
+        p.paused = _paused;
+        return id;
+    }
+
+    function createProposalUpdateConfig(
+        string memory _title,
+        string memory _description,
+        uint256 _newEntryFee,
+        uint256 _votingPeriod
+    ) external onlyMember returns (uint256) {
+        if (_newEntryFee > 0) {
+            if (_newEntryFee < 10) revert TemplErrors.EntryFeeTooSmall();
+            if (_newEntryFee % 10 != 0) revert TemplErrors.InvalidEntryFee();
+        }
+        (uint256 id, Proposal storage p) = _createBaseProposal(_title, _description, _votingPeriod);
+        p.action = Action.UpdateConfig;
+        p.newEntryFee = _newEntryFee;
+        return id;
+    }
+
+    function createProposalWithdrawTreasury(
+        string memory _title,
+        string memory _description,
+        address _token,
+        address _recipient,
+        uint256 _amount,
+        string memory _reason,
+        uint256 _votingPeriod
+    ) external onlyMember returns (uint256) {
+        (uint256 id, Proposal storage p) = _createBaseProposal(_title, _description, _votingPeriod);
+        p.action = Action.WithdrawTreasury;
+        p.token = _token;
+        p.recipient = _recipient;
+        p.amount = _amount;
+        p.reason = _reason;
+        return id;
+    }
+
+    function createProposalWithdrawAllTreasury(
+        string memory _title,
+        string memory _description,
+        address _token,
+        address _recipient,
+        string memory _reason,
+        uint256 _votingPeriod
+    ) external onlyMember returns (uint256) {
+        (uint256 id, Proposal storage p) = _createBaseProposal(_title, _description, _votingPeriod);
+        p.action = Action.WithdrawAllTreasury;
+        p.token = _token;
+        p.recipient = _recipient;
+        p.reason = _reason;
+        return id;
+    }
+
+    function createProposalDisbandTreasury(
+        string memory _title,
+        string memory _description,
+        uint256 _votingPeriod
+    ) external onlyMember returns (uint256) {
+        (uint256 id, Proposal storage p) = _createBaseProposal(_title, _description, _votingPeriod);
+        p.action = Action.DisbandTreasury;
+        return id;
     }
     
     /**
@@ -368,29 +375,24 @@ contract TEMPL is ReentrancyGuard {
         bool hadVoted = proposal.hasVoted[msg.sender];
         bool previous = proposal.voteChoice[msg.sender];
 
-        // Set vote state
         proposal.hasVoted[msg.sender] = true;
         proposal.voteChoice[msg.sender] = _support;
 
         if (!hadVoted) {
-            // First-time vote: increment corresponding counter
             if (_support) {
                 proposal.yesVotes += 1;
             } else {
                 proposal.noVotes += 1;
             }
         } else if (previous != _support) {
-            // Changing vote: move one count from previous bucket to the other
             if (previous) {
-                // was YES -> now NO
                 proposal.yesVotes -= 1;
                 proposal.noVotes += 1;
             } else {
-                // was NO -> now YES
                 proposal.noVotes -= 1;
                 proposal.yesVotes += 1;
             }
-        } // else: same choice again, no-op on tallies
+        }
         
         emit VoteCast(_proposalId, msg.sender, _support, block.timestamp);
     }
@@ -417,7 +419,6 @@ contract TEMPL is ReentrancyGuard {
             activeProposalId[proposerAddr] = 0;
         }
 
-        // Execute the decoded action with stored parameters
         if (proposal.action == Action.SetPaused) {
             _setPaused(proposal.paused);
         } else if (proposal.action == Action.UpdateConfig) {
@@ -433,8 +434,6 @@ contract TEMPL is ReentrancyGuard {
         emit ProposalExecuted(_proposalId, true, hex"");
     }
 
-    // (legacy decoder removed; decoding occurs in createProposal)
-    
     /**
      * @notice Withdraw assets held by this contract (proposal required)
      * @dev Enables the DAO to move entry-fee treasury or tokens/ETH donated via direct transfer
