@@ -35,6 +35,7 @@ Key Invariants and Assumptions
 Summary of Findings
 - No critical or high-severity issues found in the intended threat model (typed governance; no arbitrary execution).
 - M‑1 fixed in code and covered by tests; M‑2 remains a design caveat.
+- L‑2, L‑3, L‑4 fixed in code (removal of unused fields, invalid action revert, optimized active proposals).
 - Several low/informational observations and gas notes.
 - Test coverage is broad and exercises the core flows, edge cases, reentrancy protections, and accessToken donations.
 
@@ -65,23 +66,17 @@ Findings
 - Impact: Low — edge-case mismatch between intent and implementation; tests note the scenario but do not enforce equality behavior.
 - Recommendation: If intended to allow “same-second” joiners, change to `>` instead of `>=`. Otherwise, update docs/tests to explicitly state equal timestamps are ineligible.
 
-[L‑2] Unused fields: `eligibleVoters`, `memberIndex`
-- Location: `contracts/TEMPL.sol:58`, `contracts/TEMPL.sol:37`
-- Description: These fields are currently not consumed by any on-chain logic. This is not unsafe, but adds maintenance surface.
-- Impact: Low — readability/maintenance.
-- Recommendation: Remove or document intended future use.
+[L‑2] Unused fields: `eligibleVoters`, `memberIndex` (Resolved)
+- Change: Removed `eligibleVoters` from the `Proposal` struct and the `memberIndex` mapping; also removed the associated writes. These were unused and only added surface/ABI bloat via the public getter of `proposals`.
+- Impact: Low — no behavior change. Public getter for `proposals` returns a shorter tuple; named fields still accessible for those used in tests/UI.
 
-[L‑3] Executing with an invalid `action` becomes a no-op (theoretically unreachable)
-- Location: `contracts/TEMPL.sol:422`–`433`
-- Description: If `proposal.action` somehow holds an unmapped value, `executeProposal` marks the proposal as executed and emits, but performs no state change. In production this is unreachable because only typed creators set `action`. A test harness can force it.
-- Impact: Low — no practical risk under current interface.
-- Recommendation: Consider adding an `else revert TemplErrors.InvalidCallData()` (or a new error) to assert type safety.
+[L‑3] Executing with an invalid `action` becomes a no-op (Resolved)
+- Change: Added an explicit `else revert TemplErrors.InvalidCallData()` branch in `executeProposal` to assert type safety if an unmapped enum is ever forced (e.g., via a harness).
+- Impact: Low — improves defensive programming with no functional change under normal usage.
 
-[L‑4] `getActiveProposals()` iterates all proposals twice
-- Location: `contracts/TEMPL.sol:667`–`685`, `678`–`682`
-- Description: Two loops over `proposalCount` to size and then populate the array. Read-only, but O(n) twice.
-- Impact: Low — view-only gas in RPC context; mitigated by the presence of `getActiveProposalsPaginated`.
-- Recommendation: Keep the paginated function as the primary UI path; document that `getActiveProposals()` is for small counts/testing.
+[L‑4] `getActiveProposals()` iterates all proposals twice (Resolved)
+- Change: Replaced with a single-pass approach using a temporary array and a final copy sized to `count`.
+- Impact: Low — marginal view-time optimization; aligns with the paginated approach.
 
 [Info‑1] Governance can move any asset; pause only affects purchases
 - Location: Multiple; pause gating at `contracts/TEMPL.sol:198`
@@ -201,7 +196,7 @@ The notes below traverse the file top-to-bottom, focusing on correctness, safety
   - UI getters: `getTreasuryInfo()`/`getConfig()` now compute treasury as `balanceOf(this) - memberPoolBalance` (never negative), so donations are reflected.
 - contracts/TEMPL.sol:622–646 — `getProposal()` view: returns a consolidated view plus a computed `passed` flag.
 - contracts/TEMPL.sol:655–660 — `hasVoted()` view.
-- contracts/TEMPL.sol:667–685 — `getActiveProposals()` view (see [L‑4]).
+- contracts/TEMPL.sol:667–685 — `getActiveProposals()` view optimized to a single pass (L‑4 resolved).
 - contracts/TEMPL.sol:694–732 — `getActiveProposalsPaginated()` view: more gas-efficient; enforces `1..100` `limit` and returns `hasMore`.
 - contracts/TEMPL.sol:739–824 — Read-only helpers for membership, treasury info, config, member count, and voting weight (uniform 1 per member).
 

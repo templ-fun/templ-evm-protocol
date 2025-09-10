@@ -34,7 +34,6 @@ contract TEMPL is ReentrancyGuard {
 
     mapping(address => Member) public members;
     address[] public memberList;
-    mapping(address => uint256) public memberIndex;
     mapping(address => uint256) public memberPoolClaims;
     uint256 public cumulativeMemberRewards;
     uint256 public memberRewardRemainder;
@@ -55,7 +54,6 @@ contract TEMPL is ReentrancyGuard {
         uint256 noVotes;
         uint256 endTime;
         uint256 createdAt;
-        uint256 eligibleVoters;
         bool executed;
         mapping(address => bool) hasVoted;
         mapping(address => bool) voteChoice;
@@ -208,7 +206,6 @@ contract TEMPL is ReentrancyGuard {
         m.purchased = true;
         m.timestamp = block.timestamp;
         m.block = block.number;
-        memberIndex[msg.sender] = memberList.length;
         memberList.push(msg.sender);
         totalPurchases++;
 
@@ -275,7 +272,6 @@ contract TEMPL is ReentrancyGuard {
         proposal.description = _description;
         proposal.endTime = block.timestamp + period;
         proposal.createdAt = block.timestamp;
-        proposal.eligibleVoters = memberList.length;
         proposal.executed = false;
         proposal.hasVoted[msg.sender] = true;
         proposal.voteChoice[msg.sender] = true;
@@ -429,6 +425,8 @@ contract TEMPL is ReentrancyGuard {
             _withdrawAllTreasury(proposal.token, proposal.recipient, proposal.reason, _proposalId);
         } else if (proposal.action == Action.DisbandTreasury) {
             _disbandTreasury(_proposalId);
+        } else {
+            revert TemplErrors.InvalidCallData();
         }
 
         emit ProposalExecuted(_proposalId, true, hex"");
@@ -679,22 +677,20 @@ contract TEMPL is ReentrancyGuard {
      * @return Array of active proposal IDs
      */
     function getActiveProposals() external view returns (uint256[] memory) {
-        uint256 activeCount = 0;
-        
-        for (uint256 i = 0; i < proposalCount; i++) {
+        uint256 pc = proposalCount;
+        uint256[] memory temp = new uint256[](pc);
+        uint256 count = 0;
+
+        for (uint256 i = 0; i < pc; i++) {
             if (block.timestamp < proposals[i].endTime && !proposals[i].executed) {
-                activeCount++;
+                temp[count++] = i;
             }
         }
-        uint256[] memory activeIds = new uint256[](activeCount);
-        uint256 index = 0;
-        
-        for (uint256 i = 0; i < proposalCount; i++) {
-            if (block.timestamp < proposals[i].endTime && !proposals[i].executed) {
-                activeIds[index++] = i;
-            }
+
+        uint256[] memory activeIds = new uint256[](count);
+        for (uint256 j = 0; j < count; j++) {
+            activeIds[j] = temp[j];
         }
-        
         return activeIds;
     }
     
