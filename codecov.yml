@@ -22,3 +22,5 @@ flags:
   frontend:
     paths:
       - frontend/coverage
+ignore:
+  - "contracts/mocks/**"
