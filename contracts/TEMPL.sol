@@ -419,7 +419,7 @@ contract TEMPL is ReentrancyGuard {
         return returnData;
     }
 
-    function _isAllowedSelector(bytes4 selector) internal view returns (bool) {
+    function _isAllowedSelector(bytes4 selector) internal pure returns (bool) {
         return (
             selector == this.setPausedDAO.selector ||
             selector == this.updateConfigDAO.selector ||
