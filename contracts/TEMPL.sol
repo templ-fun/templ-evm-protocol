@@ -502,8 +502,16 @@ contract TEMPL is ReentrancyGuard {
         if (amount == 0) revert TemplErrors.AmountZero();
 
         if (token == accessToken) {
-            if (amount > treasuryBalance) revert TemplErrors.InsufficientTreasuryBalance();
-            treasuryBalance -= amount;
+            // Available treasury is total accessToken balance minus member pool obligations
+            uint256 current = IERC20(accessToken).balanceOf(address(this));
+            if (current <= memberPoolBalance) revert TemplErrors.InsufficientTreasuryBalance();
+            uint256 available = current - memberPoolBalance;
+            if (amount > available) revert TemplErrors.InsufficientTreasuryBalance();
+
+            // Reduce tracked treasuryBalance by the portion covered by fees (do not underflow)
+            uint256 fromFees = amount <= treasuryBalance ? amount : treasuryBalance;
+            treasuryBalance -= fromFees;
+
             IERC20(accessToken).safeTransfer(recipient, amount);
         } else if (token == address(0)) {
             if (amount > address(this).balance) revert TemplErrors.InsufficientTreasuryBalance();
@@ -525,9 +533,15 @@ contract TEMPL is ReentrancyGuard {
         if (recipient == address(0)) revert TemplErrors.InvalidRecipient();
         uint256 amount;
         if (token == accessToken) {
-            if (treasuryBalance == 0) revert TemplErrors.NoTreasuryFunds();
-            amount = treasuryBalance;
-            treasuryBalance = 0;
+            // Withdraw all available accessToken that is not reserved for the member pool
+            uint256 current = IERC20(accessToken).balanceOf(address(this));
+            if (current <= memberPoolBalance) revert TemplErrors.NoTreasuryFunds();
+            amount = current - memberPoolBalance;
+
+            // Reduce tracked treasury by the portion covered by fees
+            uint256 fromFees = amount <= treasuryBalance ? amount : treasuryBalance;
+            treasuryBalance -= fromFees;
+
             IERC20(accessToken).safeTransfer(recipient, amount);
         } else if (token == address(0)) {
             amount = address(this).balance;
@@ -773,8 +787,11 @@ contract TEMPL is ReentrancyGuard {
         uint256 totalProtocolFees,
         address protocolAddress
     ) {
+        // UI-facing treasury: current accessToken balance minus member pool obligations (cannot be negative)
+        uint256 current = IERC20(accessToken).balanceOf(address(this));
+        uint256 available = current > memberPoolBalance ? current - memberPoolBalance : 0;
         return (
-            treasuryBalance,
+            available,
             memberPoolBalance,
             totalToTreasury,
             totalBurned,
@@ -800,7 +817,9 @@ contract TEMPL is ReentrancyGuard {
         uint256 treasury,
         uint256 pool
     ) {
-        return (accessToken, entryFee, paused, totalPurchases, treasuryBalance, memberPoolBalance);
+        uint256 current = IERC20(accessToken).balanceOf(address(this));
+        uint256 available = current > memberPoolBalance ? current - memberPoolBalance : 0;
+        return (accessToken, entryFee, paused, totalPurchases, available, memberPoolBalance);
     }
     
     /**

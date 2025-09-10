@@ -2,8 +2,8 @@
   "_format": "hh-sol-cache-2",
   "files": {
     "/Users/worms/Documents/templ/contracts/TEMPL.sol": {
-      "lastModificationDate": 1757473583858,
-      "contentHash": "4eb3bbbea3bc6ec86cc672576c4a4300",
+      "lastModificationDate": 1757511166270,
+      "contentHash": "9336e8b8e1fc3bed43526c034bb18e61",
       "sourceName": "contracts/TEMPL.sol",
       "solcConfig": {
         "version": "0.8.23",
