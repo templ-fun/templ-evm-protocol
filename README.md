@@ -161,7 +161,7 @@ Core flows include TEMPL creation, paid onboarding, chat, moderation, proposal d
 
 ## XMTP Essentials
 - Environments: set `XMTP_ENV`/`VITE_XMTP_ENV` to `dev`, `production`, or `local`.
-- Identity: messages route to an `inboxId` with multiple installations (devices/agents). XMTP dev caps installs at 10 per inbox.
+- Identity: messages route to an `inboxId` with multiple installations (devices/agents). XMTP caps installs at 10 per inbox. Install/Revoke count as inbox action and each inbox has only 256 actions before it requires rotation by increasing the nounce of the transaction.
 - Databases: Node client DB is SQLCipher‑encrypted (see `BACKEND_DB_ENC_KEY`); browser DB lives in OPFS per origin (not encrypted). See [PERSISTENCE.md](./PERSISTENCE.md).
 - Discovery: after joins/creation, clients sync conversations; the backend may send a small warm message to help discovery.
 - Resolution: the backend resolves inboxIds from the network and ignores client‑supplied ids except in explicit local/test fallback modes.

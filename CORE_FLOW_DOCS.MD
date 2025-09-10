@@ -26,7 +26,7 @@ The backend bot creates and owns the XMTP group when a TEMPL is deployed.
 flowchart LR
     F[Frontend] -->|deploy contract| C[Contract]
     F -->|POST /templs| B[Backend]
-    B -->|verify priest/chain (prod)| CHAIN
+    B -->|verify priest and chain in prod| CHAIN[Blockchain]
     B -->|newGroup| X[XMTP]
 ```
 
