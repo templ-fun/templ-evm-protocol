@@ -43,6 +43,7 @@ sequenceDiagram
   - `updateConfigDAO(address,uint256)` — reprice joining fee only; token changes revert with `TokenChangeDisabled`
   - `withdrawTreasuryDAO(address,address,uint256,string)` — move a portion of any asset (token or ETH)
   - `withdrawAllTreasuryDAO(address,address,string)` — move the entire balance of a specified asset
+  - `disbandTreasuryDAO()` — allocate the entire treasury equally to all members by moving it into the member pool accounting
   Arbitrary external calls are disabled for security.
 
 ### Anti‑attack checks
@@ -65,8 +66,7 @@ The deployment script accepts the following environment variables (the priest de
 More context appears in [README.md#environment-variables](README.md#environment-variables).
 
 `ENTRY_FEE` must be at least 10 and a multiple of 10 so the 30/30/30/10
-fee split divides evenly. This requirement is enforced in the
-[constructor check](contracts/TEMPL.sol#L208-L210).
+fee split divides evenly. This requirement is enforced by constructor validations.
 
 ## Trust assumptions
 - Contract code is immutable after deployment.

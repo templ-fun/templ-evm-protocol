@@ -30,7 +30,7 @@ The contracts implement a DAO-governed membership system with treasury managemen
 
 ### Governance Surface
 - Proposal creation restricts `callData` to an allowlist at two layers:
-  - At creation: `createProposal` extracts the selector and reverts unless it matches one of `{setPausedDAO, updateConfigDAO, withdrawTreasuryDAO, withdrawAllTreasuryDAO}`. Token changes via `updateConfigDAO` revert with `TokenChangeDisabled`.
+  - At creation: `createProposal` extracts the selector and reverts unless it matches one of `{setPausedDAO, updateConfigDAO, withdrawTreasuryDAO, withdrawAllTreasuryDAO, disbandTreasuryDAO}`. Token changes via `updateConfigDAO` revert with `TokenChangeDisabled`.
   - At execution: `_executeCall` enforces the same allowlist prior to a `call` to `address(this)`.
 - Single active proposal per member enforced; executed/expired proposals clear the active flag.
 - Voting rules:
