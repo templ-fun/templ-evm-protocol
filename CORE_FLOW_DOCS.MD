@@ -20,7 +20,7 @@ Components and message flows powering TEMPL's core protocol.
 
 Legend: F=Frontend, B=Backend, C=Contract, X=XMTP, D=SQLite, M=Member, P=Priest.
 
-## 1. Templ creation
+## 1. TEMPL creation
 The backend bot creates and owns the XMTP group when a TEMPL is deployed.
 ```mermaid
 flowchart LR

@@ -1,6 +1,6 @@
 # TEMPL Frontend
 
-See the [README](./README.md#architecture) for how the frontend fits into TEMPL; this doc covers local development and testing.
+See the [README](./README.md#architecture) for how the frontend fits into TEMPL and the flows in [CORE_FLOW_DOCS.MD](./CORE_FLOW_DOCS.MD); this doc covers local development and testing.
 
 ## Prerequisites
 
@@ -24,6 +24,7 @@ Global variables such as `RPC_URL` live in the project `.env`; see the [README's
 | `VITE_XMTP_ENV` | XMTP environment for the Browser SDK (`local`, `dev`, `production`). Defaults to `dev` on `localhost`/`127.0.0.1` and `production` elsewhere. | `dev` (localhost) / `production` |
 | `VITE_E2E_DEBUG` | Enables debug helpers (`window.__XMTP`, etc.) during E2E runs. | `0` |
 | `E2E_XMTP_LOCAL` | When `1`, Playwright E2E tests connect to a local XMTP node instead of production. | `0` |
+| `VITE_BACKEND_SERVER_ID` | String identifier that must match the backend `BACKEND_SERVER_ID` to bind EIP‑712 signatures to your deployment. | — |
 
 ## Development
 
@@ -49,6 +50,8 @@ E2E artifacts (videos, traces, screenshots) are saved under `test-results/e2e/` 
 - **Wallet connection** via `ethers` and `window.ethereum`.
 - **Default configuration** – all members have 1 vote.
 - **Governance** – members create proposals and vote from the chat; `watchProposals` updates the UI when events fire. The backend mirrors on‑chain events into the group as JSON so clients see real‑time updates. The UI supports the core DAO actions: pause/unpause, move treasury (partial or full), disband treasury to the member pool, and reprice the entry fee.
+
+See backend endpoints in [BACKEND.md](./BACKEND.md#architecture) for `POST /templs`, `POST /join`, `POST/DELETE /delegateMute`, `POST /mute`, and `GET /mutes`.
 
 ### User flows
 

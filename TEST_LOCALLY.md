@@ -1,6 +1,7 @@
 # Test Locally (Fast Path)
 
 This guide spins up a full local stack (Hardhat + backend + frontend) and lets you use pre‑generated wallets in MetaMask to act as the priest and a member. It uses Hardhat’s default accounts; never reuse these keys on real networks.
+You can run against XMTP dev (default) or optionally a local XMTP node.
 
 ## Prerequisites
 
@@ -36,6 +37,8 @@ npm --prefix backend start
 
 The backend listens on `http://localhost:3001`.
 
+Tip: to target a local XMTP node instead of dev, set `XMTP_ENV=local` in `backend/.env` and start a local node as described in `xmtp-local-node/README.md`.
+
 ## 3) Start the frontend (Vite dev)
 
 Terminal C:
@@ -47,6 +50,7 @@ npm --prefix frontend run dev
 Open `http://localhost:5173` in your browser.
 
 Tip: the app defaults to XMTP dev when running on `localhost`.
+To target a local XMTP node instead, set `VITE_XMTP_ENV=local` in `frontend/.env`.
 
 ## 4) Generate fresh wallets (avoid XMTP install caps)
 
