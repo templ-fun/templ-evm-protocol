@@ -328,33 +328,48 @@ export async function proposeVote({
     return await tx.wait();
   }
   if (callData) {
-    const sig = callData.slice(0, 10).toLowerCase();
-    const sel = (name) => new ethers.Interface([`function ${name}`]).getFunction(name).selector.toLowerCase();
-    if (sig === sel('setPausedDAO(bool)')) {
-      const [paused] = new ethers.Interface(['function setPausedDAO(bool)']).decodeFunctionData('setPausedDAO', callData);
-      const tx = await contract.createProposalSetPaused(title, description, paused, votingPeriod, txOptions);
-      return await tx.wait();
+    const hasInterface = !!(ethers && typeof ethers.Interface === 'function');
+    const fallbackCreate = async () => {
+      if (typeof contract.createProposal === 'function') {
+        const tx = await contract.createProposal(title, description, callData, votingPeriod, txOptions);
+        return await tx.wait();
+      }
+      throw new Error('Unsupported callData');
+    };
+    if (!hasInterface) {
+      return await fallbackCreate();
     }
-    if (sig === sel('withdrawTreasuryDAO(address,address,uint256,string)')) {
-      const [token, recipient, amount, reason] = new ethers.Interface(['function withdrawTreasuryDAO(address,address,uint256,string)']).decodeFunctionData('withdrawTreasuryDAO', callData);
-      const tx = await contract.createProposalWithdrawTreasury(title, description, token, recipient, amount, reason, votingPeriod, txOptions);
-      return await tx.wait();
+    try {
+      const sig = callData.slice(0, 10).toLowerCase();
+      const sel = (name) => new ethers.Interface([`function ${name}`]).getFunction(name).selector.toLowerCase();
+      if (sig === sel('setPausedDAO(bool)')) {
+        const [paused] = new ethers.Interface(['function setPausedDAO(bool)']).decodeFunctionData('setPausedDAO', callData);
+        const tx = await contract.createProposalSetPaused(title, description, paused, votingPeriod, txOptions);
+        return await tx.wait();
+      }
+      if (sig === sel('withdrawTreasuryDAO(address,address,uint256,string)')) {
+        const [token, recipient, amount, reason] = new ethers.Interface(['function withdrawTreasuryDAO(address,address,uint256,string)']).decodeFunctionData('withdrawTreasuryDAO', callData);
+        const tx = await contract.createProposalWithdrawTreasury(title, description, token, recipient, amount, reason, votingPeriod, txOptions);
+        return await tx.wait();
+      }
+      if (sig === sel('withdrawAllTreasuryDAO(address,address,string)')) {
+        const [token, recipient, reason] = new ethers.Interface(['function withdrawAllTreasuryDAO(address,address,string)']).decodeFunctionData('withdrawAllTreasuryDAO', callData);
+        const tx = await contract.createProposalWithdrawAllTreasury(title, description, token, recipient, reason, votingPeriod, txOptions);
+        return await tx.wait();
+      }
+      if (sig === sel('updateConfigDAO(address,uint256)')) {
+        const [, newEntryFee] = new ethers.Interface(['function updateConfigDAO(address,uint256)']).decodeFunctionData('updateConfigDAO', callData);
+        const tx = await contract.createProposalUpdateConfig(title, description, newEntryFee, votingPeriod, txOptions);
+        return await tx.wait();
+      }
+      if (sig === sel('disbandTreasuryDAO()')) {
+        const tx = await contract.createProposalDisbandTreasury(title, description, votingPeriod, txOptions);
+        return await tx.wait();
+      }
+      return await fallbackCreate();
+    } catch {
+      return await fallbackCreate();
     }
-    if (sig === sel('withdrawAllTreasuryDAO(address,address,string)')) {
-      const [token, recipient, reason] = new ethers.Interface(['function withdrawAllTreasuryDAO(address,address,string)']).decodeFunctionData('withdrawAllTreasuryDAO', callData);
-      const tx = await contract.createProposalWithdrawAllTreasury(title, description, token, recipient, reason, votingPeriod, txOptions);
-      return await tx.wait();
-    }
-    if (sig === sel('updateConfigDAO(address,uint256)')) {
-      const [, newEntryFee] = new ethers.Interface(['function updateConfigDAO(address,uint256)']).decodeFunctionData('updateConfigDAO', callData);
-      const tx = await contract.createProposalUpdateConfig(title, description, newEntryFee, votingPeriod, txOptions);
-      return await tx.wait();
-    }
-    if (sig === sel('disbandTreasuryDAO()')) {
-      const tx = await contract.createProposalDisbandTreasury(title, description, votingPeriod, txOptions);
-      return await tx.wait();
-    }
-    throw new Error('Unsupported callData');
   }
   throw new Error('proposeVote: provide either action or callData');
 }
