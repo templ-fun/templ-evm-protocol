@@ -1,228 +1,222 @@
-TEMPL Smart Contract Audit
+## TEMPL Smart Contract Audit
 
 Date: 2025-09-10
-Audited by: Codex CLI Assistant
+Auditor: Codex CLI (OpenAI)
+Scope: `contracts/TEMPL.sol` (Solidity 0.8.23) with accompanying errors lib and tests
+Commit: 6e66cb8ddc1c1b3473355ba8606ca4b09e7e4e7e
 
-Scope
-- Contracts: `contracts/TEMPL.sol`, `contracts/TemplErrors.sol`
-- Mocks used for tests: `contracts/mocks/*.sol` (read for test context only)
-- Tests: all files under `test/`
+### Executive Summary
 
-Methodology
-- Manual, line-by-line review of `contracts/TEMPL.sol` and auxiliary errors library.
-- Review of the complete Hardhat test-suite to understand intended invariants and assess coverage.
-- Attempted static analysis with Slither using provided config. Slither compilation failed under direct Solc invocation due to a “Stack too deep” error when compiling the single file outside Hardhat (suggest enabling `viaIR` when running Slither separately). All tests were executed locally via `npm test` and passed (132 tests).
+- Overall security posture: strong. The contract follows prudent patterns (typed governance proposals, nonReentrant external entry points, SafeERC20 for transfers, explicit access controls) and is accompanied by comprehensive tests (132 passing) that meaningfully exercise reentrancy, treasury accounting, voting eligibility, pagination, and wrapper behaviors.
+- Critical/High severity issues: none found.
+- Medium severity issues: none found.
+- Low/Informational issues: a few minor observations and best‑practice recommendations (see Findings).
+- Tests: comprehensive and passing locally (`npx hardhat test`), including adversarial mocks for reentrancy and proposal flows. Treasury math is validated with invariant‑style checks.
 
-System Overview
-TEMPL is a DAO-governed membership contract where users pay an ERC‑20 `accessToken` `entryFee` to join. Each purchase distributes:
-- 30%: burned to a dead address
-- 30%: added to DAO treasury (`treasuryBalance`)
-- 30%: added to a member reward pool (`memberPoolBalance`) and virtually accrued to existing members using a snapshot mechanism
-- 10%: protocol fee sent to `protocolFeeRecipient`
+### In-Scope Artifacts
 
-Members have 1 vote each. Proposals are “typed” (no arbitrary calldata) and mapped via an enum to internal actions:
-- Set pause flag
-- Update config (only fee; token changes disabled)
-- Withdraw (part or all) of treasury assets (ERC‑20 or ETH)
-- Disband treasury: move entire treasury to the member pool and split equally via the snapshot system
+- contracts/TEMPL.sol
+- contracts/TemplErrors.sol
+- contracts/mocks/* (used by tests)
+- hardhat.config.js (compiler/version settings)
+- test/*.test.js (behavioral and adversarial test suites)
 
-Key Invariants and Assumptions
-- Access token is a standard, non-rebasing, non-fee-on-transfer ERC‑20 (OpenZeppelin-compatible semantics). Using deflationary/rebasing tokens can break accounting.
-- `accessToken` is immutable once set at construction time; governance cannot change it.
-- All token transfers rely on OZ `SafeERC20` wrappers.
-- Reentrancy is blocked on state-changing functions that transfer tokens.
+Notes: This audit focuses primarily on the TEMPL contract and the correctness and completeness of its tests, per the request.
 
-Summary of Findings
-- No critical or high-severity issues found in the intended threat model (typed governance; no arbitrary execution).
-- M‑1 fixed in code and covered by tests; M‑2 remains a design caveat.
-- L‑2, L‑3, L‑4 fixed in code (removal of unused fields, invalid action revert, optimized active proposals).
-- Several low/informational observations and gas notes.
-- Test coverage is broad and exercises the core flows, edge cases, reentrancy protections, and accessToken donations.
+### Methodology
 
-Severity Definitions
-- Critical: Loss of funds or permanent system compromise under expected assumptions.
-- High: Fund impact or control loss requiring uncommon preconditions.
-- Medium: Meaningful risk under plausible conditions or foot-guns that can lock funds.
-- Low: Edge-case misbehavior, missing checks, or DoS with limited impact.
-- Info: Clarity/maintainability/test coverage/gas optimizations.
+- Manual, line‑by‑line code review of `contracts/TEMPL.sol` and `contracts/TemplErrors.sol`.
+- Reasoning about invariants, attack surface, and failure modes.
+- Review of test coverage and adversarial scenarios.
+- Local execution of the Hardhat test suite.
 
+### System Overview
 
-Findings
+TEMPL is a membership contract where users purchase access with an ERC‑20 token. Each purchase splits the entry fee into 30% burned, 30% to a tracked treasury, 30% to a member pool (to be claimed by existing members), and 10% to the protocol fee recipient. Governance is member‑based with one vote per member. Proposals are typed (not arbitrary calldata) and, upon passage, can:
 
-[M‑1] AccessToken donations could become stranded (Resolved)
-- Resolution: For the `accessToken`, withdrawals now operate on `available = balanceOf(this) - memberPoolBalance` so donations are withdrawable while the member pool is always preserved. The legacy `treasuryBalance` tracker is reduced only for the portion covered by fee-sourced funds (never below zero).
-- UI: `getTreasuryInfo()` and `getConfig()` now report `treasury` as `max(balanceOf(this) - memberPoolBalance, 0)`, ensuring donations appear in UI.
-- Tests: Added two cases covering partial and full withdrawals of donated accessToken while keeping `memberPoolBalance` intact.
+- Pause/unpause purchases
+- Update the entry fee (token change is disabled post‑deploy)
+- Withdraw treasury/donations (a specific token/ETH or all of a token) with protections to preserve the member pool reserves
+- Disband the treasury by allocating it to the member pool equally across members
 
-[M‑2] Incompatibility with fee-on-transfer/rebasing tokens can break accounting
-- Location: `contracts/TEMPL.sol:198`–`248`
-- Description: The contract assumes standard ERC‑20 semantics. If the access token charges a transfer fee or rebases, the three `safeTransferFrom` calls may deliver fewer/more tokens than expected without reverting, breaking invariants (e.g., `treasuryBalance + memberPoolBalance` exceeding the real token balance).
-- Impact: Medium — incorrect internal balances; later claims/withdraws can revert or underflow if the physical balance is smaller than tracked balances.
-- Recommendation: Enforce standard token behavior by either documenting the requirement (strongly) or adding pre/post balance checks in `purchaseAccess()` to assert exact amounts are received/burned. If discrepancies are detected, revert to protect invariants.
+Key design choices that reduce risk:
 
-[L‑1] Voting eligibility equality semantics may exclude “same-second” joiners
-- Location: `contracts/TEMPL.sol:371`–`373`
-- Description: The check `members[msg.sender].timestamp >= proposal.createdAt` rejects voters whose `timestamp == createdAt`. If proposals and joins occur within the same second, a legitimate pre-proposal joiner in the same block/second may be unable to vote.
-- Impact: Low — edge-case mismatch between intent and implementation; tests note the scenario but do not enforce equality behavior.
-- Recommendation: If intended to allow “same-second” joiners, change to `>` instead of `>=`. Otherwise, update docs/tests to explicitly state equal timestamps are ineligible.
+- Typed proposal creation functions instead of arbitrary function execution
+- `onlyDAO` wrappers callable only by `address(this)`, thus gating execution to passed proposals
+- `nonReentrant` on all state‑changing external entry points (`purchaseAccess`, `executeProposal`, `claimMemberPool`)
+- `SafeERC20` for all token transfers
+- Treasury accounting that preserves the member pool’s reserved balance
 
-[L‑2] Unused fields: `eligibleVoters`, `memberIndex` (Resolved)
-- Change: Removed `eligibleVoters` from the `Proposal` struct and the `memberIndex` mapping; also removed the associated writes. These were unused and only added surface/ABI bloat via the public getter of `proposals`.
-- Impact: Low — no behavior change. Public getter for `proposals` returns a shorter tuple; named fields still accessible for those used in tests/UI.
+### Threat Model & Assumptions
 
-[L‑3] Executing with an invalid `action` becomes a no-op (Resolved)
-- Change: Added an explicit `else revert TemplErrors.InvalidCallData()` branch in `executeProposal` to assert type safety if an unmapped enum is ever forced (e.g., via a harness).
-- Impact: Low — improves defensive programming with no functional change under normal usage.
+- ERC‑20 tokens may be non‑standard or malicious (hence SafeERC20 usage is important). A malicious token can still attempt reentrancy via callbacks; nonReentrancy guards mitigate this.
+- Governance is one‑person‑one‑vote for members; proposer auto‑votes “yes”.
+- The `protocolFeeRecipient` is immutable post‑deployment.
+- The access token address is immutable post‑deployment (token change disabled by governance).
+- Time‑based behavior relies on `block.timestamp` which can be miner‑skewed by ~seconds but is standard for voting windows.
 
-[L‑4] `getActiveProposals()` iterates all proposals twice (Resolved)
-- Change: Replaced with a single-pass approach using a temporary array and a final copy sized to `count`.
-- Impact: Low — marginal view-time optimization; aligns with the paginated approach.
+## Findings
 
-[Info‑1] Governance can move any asset; pause only affects purchases
-- Location: Multiple; pause gating at `contracts/TEMPL.sol:198`
-- Note: `setPausedDAO` does not block governance or claiming (intended). Call out explicitly in docs to avoid confusion.
+No critical or high severity issues were found. The following minor observations and recommendations are provided for hardening and clarity.
 
-[Info‑2] Reentrancy coverage is solid
-- Locations:
-  - `purchaseAccess()` and `claimMemberPool()` guarded with `nonReentrant`.
-  - `executeProposal()` is `nonReentrant`; underlying transfers in withdraw/disband paths cannot reenter governance flow.
-- Tests confirm reentrancy protection using a purpose-built reentrant token.
+1) Voting eligibility strictly excludes same‑timestamp joiners (Low/UX)
+- Code: `contracts/TEMPL.sol:368-369`
+  - `if (members[msg.sender].timestamp >= proposal.createdAt) revert TemplErrors.JoinedAfterProposal();`
+- Impact: If a member joins in the same timestamp as proposal creation (e.g., same block second), they are ineligible to vote even though they did not join “after”. This is more of a UX/policy nuance than a security risk.
+- Recommendation: Consider changing `>=` to `>` so that addresses with identical timestamps (same second) are allowed to vote. This aligns with the test commentary about “same block” expectations.
 
-[Info‑3] Token change disabled in governance
-- Location: `contracts/TEMPL.sol:545`–`552`
-- Note: Deliberate safety constraint; documented by custom error. Good pattern.
+2) Non‑paginated active proposals function can be expensive (Informational)
+- Code: `contracts/TEMPL.sol:679-695`
+- Impact: `getActiveProposals()` traverses the full `proposalCount`. It’s `view`, so off‑chain it’s fine, but on‑chain callers could hit gas limits as the proposal set grows.
+- Recommendation: Prefer `getActiveProposalsPaginated` for all on‑chain or gas‑sensitive use. Keep the warning comment; ensure UIs only call the paginated variant.
 
-[Info‑4] Arithmetic safety and rounding
-- Solidity ^0.8.23; division rounding is consistently handled via `memberRewardRemainder`. The snapshot pattern prevents double-claiming and accounts for indivisible “dust”. Tests exercise distribution and rounding thoroughly.
+3) Burning by transfer to a dead address (Informational)
+- Code: `contracts/TEMPL.sol:230`
+- Impact: “Burn” relies on sending to `0x...dEaD` rather than using a token’s `burn` interface. For most ERC‑20s, this is acceptable; some exotic tokens could theoretically recover balances or behave oddly.
+- Recommendation: Document this assumption in `CONTRACTS.md`. If targeting specific tokens that support `burn`, consider allowing an optional burn‑interface path.
 
-[Gas] Minor opportunities (non-functional)
-- Use `unchecked { ++i; }` in tight internal loops (view functions) where overflow is impossible.
-- Cache storage reads in views when looping (e.g., `proposalCount` and `proposals[i]`).
-- Consider consolidating the two loops in `getActiveProposals()` into one with a temporary dynamic array and a final copy (already used in paginated).
+4) Entry fee divisibility constraint depends on token decimals (Informational)
+- Code: enforced across constructor and `_updateConfig()` (`contracts/TEMPL.sol:179-181`, `contracts/TEMPL.sol:560-563`)
+- Impact: The “divisible by 10” check enforces round splits for integer math in smallest units. With non‑18‑decimals tokens, this policy is still safe but arbitrary.
+- Recommendation: Current tests validate edge cases. Keep as is if intended; otherwise consider making the rule explicit in docs (e.g., designed for 18‑decimals tokens) or make the constraint configurable at deploy time.
 
+5) View functions compute “UI‑facing” treasury as current accessToken minus pool (Informational)
+- Code: `contracts/TEMPL.sol:786-796`, `contracts/TEMPL.sol:816-819`
+- Impact: ETH and other ERC‑20 donations are not included in `treasury` output of `getTreasuryInfo()/getConfig()`. This is by design (only accessToken “treasury” is reported), but UIs should be aware.
+- Recommendation: Document the meaning of “treasury” in both functions. Consider a separate view that enumerates balances of all tokens and ETH held by the contract.
 
-Test Suite Assessment
-- Command run: `npm test` — 130 tests passing locally.
-- Coverage highlights:
-  - Happy-path and revert-path testing for purchases, voting, proposal creation, execution, and pausing.
-  - Treasury withdrawals for ETH and arbitrary ERC‑20 (including `withdrawAll`) and their revert conditions.
-  - Member pool distribution, rounding edge-cases, claim accounting, and pool balance integrity.
-  - Reentrancy tests for both `purchaseAccess` and `claimMemberPool` using a malicious ERC‑20.
-  - Governance wrappers (`onlyDAO`) are covered via a harness.
-  - Pagination and active proposal filtering tested under multiple scenarios.
-- Note: There is no direct test for “donation of `accessToken`” (Finding M‑1). Consider adding coverage to capture and validate the proposed behavior fix.
+6) Non‑critical centralization/immutability note (Informational)
+- Code: `protocolFeeRecipient` is immutable (`contracts/TEMPL.sol:20`) and cannot be changed.
+- Impact: If the recipient needs to rotate keys, a new deployment would be required.
+- Recommendation: If operationally useful, expose a governance‑controlled way to update the fee recipient in a future version. Not a vulnerability.
 
+## Test Review & Results
 
-Line-by-Line Notes (contracts/TEMPL.sol)
-The notes below traverse the file top-to-bottom, focusing on correctness, safety, and intent. Trivial syntactic lines (e.g., braces) are omitted.
+- Command executed: `npx hardhat test` — 132 passing tests locally.
+- Notable coverage:
+  - Reentrancy attempts via malicious token callbacks (purchase and claims) → correctly reverted due to `ReentrancyGuard`.
+  - Treasury accounting across mixed scenarios (fees vs. donations, withdraw vs. withdrawAll) including preservation of member pool reserve and correct reduction of tracked `treasuryBalance`.
+  - Voting rules (join time eligibility, proposer auto‑vote, vote flipping, ties fail, execution gating, min/max/default voting periods).
+  - Governance wrappers (`onlyDAO`) validated via self‑call harness and typed proposal creation compatibility layer.
+  - Pagination logic for active proposals.
+  - Member pool distribution invariants and rounding behavior.
 
-- contracts/TEMPL.sol:1 — SPDX identifier present (MIT). Good.
-- contracts/TEMPL.sol:2 — `pragma ^0.8.23`; uses built-in overflow checks. Good.
-- contracts/TEMPL.sol:4–6 — Imports OZ `IERC20`, `SafeERC20`, and `ReentrancyGuard`. Good choices.
-- contracts/TEMPL.sol:7 — Imports shared custom errors library `TemplErrors`.
-- contracts/TEMPL.sol:9 — `TEMPL` extends `ReentrancyGuard`.
-- contracts/TEMPL.sol:10–11 — `using SafeERC20` and `using TemplErrors`.
-- contracts/TEMPL.sol:13–16 — Split constants: 30/30/30/10. Fixed percentages; not configurable (simplifies audits and removes governance risk of fee changes to allocations).
-- contracts/TEMPL.sol:17 — `DEAD_ADDRESS` set to 0x...dEaD (widely used burn sink). Many tokens consider it irrecoverable. OK.
-- contracts/TEMPL.sol:19–25 — Immutable roles (`priest`, `protocolFeeRecipient`, `accessToken`), mutable `entryFee`, and accounting state (`treasuryBalance`, `memberPoolBalance`, `paused`). Straightforward.
-- contracts/TEMPL.sol:28–33 — `Member` struct: purchase flag, timestamps, and `rewardSnapshot` (snapshot pattern used for pool accrual). Sound approach.
-- contracts/TEMPL.sol:35–41 — Member accounting: `members`, `memberList`, `memberIndex` (unused), `memberPoolClaims`, `cumulativeMemberRewards`, `memberRewardRemainder`. Remainder mechanism prevents truncation loss.
-- contracts/TEMPL.sol:42–62 — `Proposal` struct: metadata, typed action parameters, vote tallies, timings, and nested mappings for votes. Clean separation; avoids arbitrary `call`.
-- contracts/TEMPL.sol:64–71 — Proposal registry, single-active tracking per proposer, voting period bounds. Reasonable defaults: min=7 days (same as default), max=30 days.
-- contracts/TEMPL.sol:72–78 — Enum of allowable actions (typed governance). Prevents arbitrary execution. Good.
-- contracts/TEMPL.sol:80–85 — Totals for auditability (burned/treasury/pool/protocol). Useful for invariants.
-- contracts/TEMPL.sol:86–139 — Events are comprehensive and indexed appropriately.
-- contracts/TEMPL.sol:141–159 — Modifiers:
-  - `onlyMember`: guards member-only endpoints.
-  - `onlyDAO`: restricts to `address(this)`; used for governance wrappers.
-  - `notSelf`: prevents the DAO calling `purchaseAccess`.
-  - `whenNotPaused`: restricts membership purchases only.
-- contracts/TEMPL.sol:169–189 — Constructor validations: non-zero addresses, non-zero and constrained fee (>=10 and %10==0). Sets immutables and initial state. Good.
-- contracts/TEMPL.sol:191–192 — `receive()` allows ETH donations (no fallback). OK.
-- contracts/TEMPL.sol:198–248 — `purchaseAccess()`:
-  - Guards: `whenNotPaused`, `notSelf`, `nonReentrant`.
-  - Checks: already purchased; `balanceOf` >= `entryFee`.
-  - Accounting updates: mark purchase, timestamps, membership index/list, increment `totalPurchases`.
-  - Pool accrual: if >1 member, compute `(30% of fee + previous remainder)` split across previous members; update `cumulativeMemberRewards` and carry forward remainder.
-  - Snapshot: new member’s `rewardSnapshot` set after accrual, preventing retroactive reward claim.
-  - Update aggregates and balances; compute `thirtyPercent` once; update totals.
-  - Transfers (OZ SafeERC20): burn 30% to dead address; send 60% to contract; send 10% to protocol.
-  - Emits `AccessPurchased` with detailed meta.
-  - Notes:
-    - Assumes non-deflationary ERC‑20 (Finding M‑2).
-    - If transfer fee is charged, internal balances will be wrong.
-- contracts/TEMPL.sol:250–287 — `_createBaseProposal()`:
-  - Validates title/description; enforces single-active-proposal per proposer, clearing stale trackers if expired/executed.
-  - Voting period clamped to [MIN, MAX] with default of 7 days.
-  - Initializes proposal, auto-YES votes for proposer, sets `eligibleVoters` snapshot (not used elsewhere), and marks active.
-  - Emits `ProposalCreated`.
-- contracts/TEMPL.sol:289–359 — Typed proposal creators; each sets the `action` and stores parameters. Fee validation for update path keeps constraints at creation time.
-- contracts/TEMPL.sol:361–398 — `vote()`:
-  - Guards: `onlyMember`; checks proposal exists and `block.timestamp < endTime`.
-  - Eligibility: rejects voters with `members[msg.sender].timestamp >= createdAt` (see Finding L‑1 for equality semantics).
-  - Handles first vote vs. change-of-vote correctly, adjusting tallies idempotently.
-  - Emits `VoteCast`.
-- contracts/TEMPL.sol:405–435 — `executeProposal()`:
-  - Guard: proposal exists, voting period ended, not executed, and simple majority (`yes > no`).
-  - Clears active-proposal tracker for proposer.
-  - Dispatches to internal implementation based on `action` (no arbitrary call).
-  - Emits `ProposalExecuted`.
-  - Note: Unmapped `action` becomes a no-op (Finding L‑3; unreachable in practice).
-- contracts/TEMPL.sol:438–467 — External governance-only wrappers (`onlyDAO`) for withdrawing assets and updating config; these delegate to internal functions.
-- contracts/TEMPL.sol:493–517 — `_withdrawTreasury()` (internal):
-  - Validates non-zero recipient and non-zero amount.
-  - For the `accessToken`, caps by `available = balanceOf(this) - memberPoolBalance`; reduces legacy `treasuryBalance` by the fee-covered portion (clamped). Transfers via `safeTransfer`.
-  - For ETH, uses `.call{value: amount}("")` and reverts on failure.
-  - For other ERC‑20s, caps by full token balance and transfers.
+Overall, the test suite meaningfully exercises both the happy paths and adversarial edges.
+
+## Invariants & Accounting Notes
+
+- Member pool preservation: Withdrawals of the `accessToken` never deplete the portion reserved for the member pool (`memberPoolBalance`). Functions compute “available” as `balanceOf(this) - memberPoolBalance` and guard against underflow (`contracts/TEMPL.sol:503-507`, `contracts/TEMPL.sol:534-537`).
+- Tracked treasury: `treasuryBalance` tracks fees from purchases. When withdrawing `accessToken`, it is reduced by `min(amount, treasuryBalance)`. Donations can be withdrawn even if they exceed tracked fees; the tracker falls to zero but member pool is preserved (`contracts/TEMPL.sol:509-513`, `contracts/TreasuryWithdrawAssets.test.js`).
+- Member pool distribution: On each new member after the first, the 30% pool share plus any `memberRewardRemainder` is evenly allocated to existing members via `cumulativeMemberRewards`, with remainder rolled forward (`contracts/TEMPL.sol:212-219`). Claims are the delta between `cumulativeMemberRewards` and a member’s snapshot (`contracts/TEMPL.sol:594-602`), bounded by `memberPoolBalance - memberRewardRemainder` to ensure reserves for rounding (“dust”) (`contracts/TEMPL.sol:610-611`).
+- Reentrancy: All external functions that move funds or mutate state in sensitive contexts are `nonReentrant` (`purchaseAccess`, `claimMemberPool`, `executeProposal`). Internal calls perform checks‑effects‑interactions; token transfers use SafeERC20.
+
+## Line‑By‑Line Review (contracts/TEMPL.sol)
+
+Top of file
+- 1-2: SPDX and pragma 0.8.23 (automatic overflow checks active).
+- 4-7: Imports OpenZeppelin IERC20, SafeERC20, ReentrancyGuard, and local error library.
+- 9: Contract `TEMPL` inherits `ReentrancyGuard`.
+- 10-11: Using directives, including the custom errors library for reverts.
+- 13-17: Basis point constants for fee splits; dead address constant for burn.
+
+Immutable addresses & config/state
+- 19-25: Immutable `priest`, `protocolFeeRecipient`, `accessToken`; mutable `entryFee`, treasury/pool balances; `paused` flag.
+
+Members and rewards
+- 28-33: `Member` struct includes purchase flag, join timestamp and block, and `rewardSnapshot` for pool claims.
+- 35-39: Mappings and counters for members, pool claims, cumulative rewards, and remainder.
+
+Governance structures
+- 41-60: `Proposal` struct stores metadata and typed action parameters; mappings track voter participation and choice.
+- 62-68: Proposal indexing and voting period constraints.
+- 70-76: Typed `Action` enum enumerates allowed governance actions (no arbitrary calls).
+
+Accounting totals
+- 78-82: Totals for audits/analytics: purchases, burned, to treasury/pool/protocol.
+
+Events
+- 84-137: Rich event set for purchases, claims, proposal changes, treasury actions, and config updates.
+
+Modifiers
+- 139-157: `onlyMember`, `onlyDAO` (contract‑only), `notSelf` (blocks DAO calling `purchaseAccess`), and `whenNotPaused`.
+
+Constructor & ETH receiver
+- 167-187: Constructor validates non‑zero addresses and fee constraints; sets immutables and initial state. Entry fee must be ≥10 and divisible by 10.
+- 189-190: `receive()` accepts ETH donations directly.
+
+Membership purchase
+- 196-245: `purchaseAccess()` (nonReentrant, paused check, and `notSelf`).
+  - 204: Extra balance pre‑check; SafeERC20 transfers will still revert if allowance is insufficient.
+  - 206-211: Mark membership; record time/block; push into `memberList`; increment totalPurchases.
+  - 212-219: For N>1 members: allocate the pool’s 30% share to existing members via `cumulativeMemberRewards`, rolling forward remainder.
+  - 221-227: Update tracked balances and totals.
+  - 229-233: SafeERC20 transfer pattern: burn (dead address) + contract + protocol recipient.
+  - Emits `AccessPurchased` with amounts and metadata.
+
+Base proposal creation
+- 247-283: `_createBaseProposal()` validates title/description; enforces one active proposal per account (resets when previous ended or executed); applies min/max/default voting periods; auto‑votes yes for proposer; sets active flags; emits `ProposalCreated`.
+
+Typed proposal creation
+- 285-355: `createProposalSetPaused`, `createProposalUpdateConfig` (validates new fee if provided), `createProposalWithdrawTreasury`, `createProposalWithdrawAllTreasury`, `createProposalDisbandTreasury`.
+
+Voting
+- 363-394: `vote()` (onlyMember). Validates proposal, voting window, and join‑time eligibility (`>=` comparison; see Finding 1). Supports vote flipping with proper tallies; emits `VoteCast`.
+
+Execution
+- 401-433: `executeProposal()` (nonReentrant). Validates voting finished, not already executed, and yes>no. Marks executed, clears active flag for proposer, dispatches to the typed internal implementation, emits `ProposalExecuted`.
+
+DAO‑only wrappers
+- 443-465: `withdrawTreasuryDAO()` / `withdrawAllTreasuryDAO()` — external `onlyDAO` wrappers around internal implementations.
+- 474-489: `updateConfigDAO()` / `setPausedDAO()` / `disbandTreasuryDAO()` similarly gate governance changes.
+
+Internal implementations
+- 492-523: `_withdrawTreasury()` handles three cases:
+  - accessToken: compute available = current bal − memberPoolBalance; ensure sufficient; reduce tracked `treasuryBalance` by `min(amount, treasuryBalance)`; transfer out.
+  - ETH: check balance, transfer via `.call`, revert on failure.
+  - other ERC‑20: ensure balance, SafeERC20 transfer.
   - Emits `TreasuryAction`.
-- contracts/TEMPL.sol:519–543 — `_withdrawAllTreasury()`:
-  - `accessToken`: withdraws all `available = balanceOf(this) - memberPoolBalance`; reduces legacy `treasuryBalance` by the fee-covered portion.
-  - ETH/other ERC‑20s: moves full address balance and reverts when zero.
-  - Emits `TreasuryAction`.
-- contracts/TEMPL.sol:545–553 — `_updateConfig()`: token change disabled; validates fees when non-zero and emits `ConfigUpdated`.
-- contracts/TEMPL.sol:555–558 — `_setPaused()` with event.
-- contracts/TEMPL.sol:560–575 — `_disbandTreasury()`:
-  - Moves entire `treasuryBalance` to `memberPoolBalance` and zeroes treasury.
-  - Splits equally: updates `cumulativeMemberRewards` by `treasury / n`, carries `remainder` into `memberRewardRemainder`.
-  - Emits `TreasuryDisbanded`.
-- contracts/TEMPL.sol:582–590 — `getClaimablePoolAmount()`: returns `cumulative - snapshot` for members; 0 for non-members.
-- contracts/TEMPL.sol:595–608 — `claimMemberPool()`:
-  - Guards: `onlyMember`, `nonReentrant`.
-  - Computes `claimable`; requires `claimable > 0` and that `memberPoolBalance - memberRewardRemainder >= claimable`.
-  - Advances snapshot, accrues to `memberPoolClaims`, reduces `memberPoolBalance`, and transfers tokens.
-  - Emits `MemberPoolClaimed`.
-  - Note: The check ensures reserved remainder is never paid out.
-  
-  - UI getters: `getTreasuryInfo()`/`getConfig()` now compute treasury as `balanceOf(this) - memberPoolBalance` (never negative), so donations are reflected.
-- contracts/TEMPL.sol:622–646 — `getProposal()` view: returns a consolidated view plus a computed `passed` flag.
-- contracts/TEMPL.sol:655–660 — `hasVoted()` view.
-- contracts/TEMPL.sol:667–685 — `getActiveProposals()` view optimized to a single pass (L‑4 resolved).
-- contracts/TEMPL.sol:694–732 — `getActiveProposalsPaginated()` view: more gas-efficient; enforces `1..100` `limit` and returns `hasMore`.
-- contracts/TEMPL.sol:739–824 — Read-only helpers for membership, treasury info, config, member count, and voting weight (uniform 1 per member).
+- 525-555: `_withdrawAllTreasury()` mirrors above but withdraws the full available for the chosen asset; for accessToken it preserves the pool reserve and reduces `treasuryBalance` by the portion covered by fees; emits `TreasuryAction`.
+- 557-565: `_updateConfig()` — token change disabled after deploy; updates entry fee if >0 with same divisibility/min checks; emits `ConfigUpdated`.
+- 567-570: `_setPaused()` — toggles pause; emits `ContractPaused`.
+- 572-587: `_disbandTreasury()` — moves entire tracked `treasuryBalance` to the member pool, evenly allocates via `cumulativeMemberRewards` with remainder; ensures non‑zero treasury and at least one member; emits `TreasuryDisbanded`.
 
+Pool accounting & claims
+- 594-602: `getClaimablePoolAmount()` — returns delta of accrual vs. snapshot if member.
+- 607-620: `claimMemberPool()` (nonReentrant) — validates non‑zero claimable and pool has enough distributable (excludes `memberRewardRemainder`), updates snapshot/claims/pool balance, transfers tokens, and emits `MemberPoolClaimed`.
 
-TemplErrors Review (contracts/TemplErrors.sol)
-- Custom errors are clearly named and comprehensive. Several are legacy to older designs (e.g., `CallDataRequired`, `CallDataTooShort`, `InvalidCallData`) but harmless to retain.
-- Good separation as a library to allow `using TemplErrors for *;` and avoid namespace clashes.
+Views & helpers
+- 634-657: `getProposal()` — full proposal data; computes `passed` as `time>=end && yes>no`.
+- 667-672: `hasVoted()` — returns vote status for `_voter`.
+- 679-695: `getActiveProposals()` — unpaginated; see Findings.
+- 704-742: `getActiveProposalsPaginated()` — efficient paginated query with `limit` guard.
+- 749-751: `hasAccess()` — simple membership status.
+- 760-767: `getPurchaseDetails()` — returns purchase metadata.
+- 778-797: `getTreasuryInfo()` — “UI‑facing” treasury equals current accessToken minus member pool; returns totals and protocol recipient.
+- 808-819: `getConfig()` — returns core config and “UI‑facing” treasury/pool metrics.
+- 825-827: `getMemberCount()` — returns `memberList.length`.
+- 834-839: `getVoteWeight()` — 1 for members, 0 for non‑members.
 
+## Additional Observations
 
-Recommendations Summary
-1) Done: AccessToken donation handling (M‑1) fixed with available-balance calculation and UI getters updated; tests added.
-2) Enforce standard token behavior in `purchaseAccess()` (M‑2) or document/guard against deflationary/rebasing tokens via balance-delta assertions.
-3) Decide and document the intended equality semantics for voting eligibility (L‑1); optionally update the comparison.
-4) Consider removing/documenting unused fields (`eligibleVoters`, `memberIndex`) (L‑2).
-5) Optionally assert a default case in `executeProposal()` (L‑3) for future-proofing.
-6) Prefer `getActiveProposalsPaginated()` in UIs; keep `getActiveProposals()` for small counts/testing (L‑4).
+- Governance hardening: The typed action model plus `onlyDAO` wrappers effectively remove arbitrary `delegatecall/call` risk that is common in generic governance executors.
+- Reentrancy: Non‑reentrancy on external entry points, plus use of SafeERC20 and effects‑then‑interactions pattern, provides solid protection. Tests demonstrate reentrancy attempts fail as expected.
+- Storage growth: `memberList` grows monotonically. This is acceptable given it is only used for counts and distribution math; there are no iteration‑heavy on‑chain loops over `memberList`.
+- Time checks: Using `block.timestamp` is standard; note miners can skew within seconds. For governance windows on the order of days, this is acceptable.
 
+## Recommendations (Non‑Blocking)
 
-Appendix: Static Analysis
-- `npm run slither` (project script) attempted to run Slither directly on `contracts/TEMPL.sol`. Compilation failed with Solc “Stack too deep” under single-file direct invocation.
-- Suggest configuring Slither to use Hardhat’s compile artifacts or enabling the compiler `viaIR` path with optimizer when running Slither outside Hardhat.
+- Voting equality nuance: Consider allowing same‑timestamp joiners to vote by changing `>=` to `>` (see Finding 1) if this matches product intent.
+- Treasury introspection: Optionally add a view that reports balances for ETH and arbitrary ERC‑20s held by the contract for richer UI/ops visibility.
+- Document token assumptions: Clarify behavior around burning by dead address and the entry fee divisibility rule in `CONTRACTS.md`.
+- Consider event indexing: Current events are sufficiently indexed for typical analytics. If UIs need reverse lookups by recipient or token, additional indexes can be added.
 
+## Tests & Tooling
 
-Appendix: Test Results Snapshot
-- Local run: `npm test` — 132 passing tests.
-- Notable suites: reentrancy, treasury withdrawals (ERC‑20/ETH and reverts), pool distribution and rounding, governance wrappers, pagination, eligibility rules, pause behavior, invariants, plus accessToken donation withdrawals while preserving the member pool and dynamic UI treasury computation.
+- Compiler: Solidity 0.8.23, viaIR enabled, optimizer runs=200 (good defaults).
+- Tests: Run with Hardhat; comprehensive unit tests present in `test/` with mocks for reentrancy and DAO harness. All tests passed locally (132 passing).
+- Static analysis: Slither config is present; consider integrating it in CI. No critical anti‑patterns were apparent during manual review.
 
-Final Assessment
-The contract set presents a solid, typed-governance design with a clear fee split, robust reentrancy protection, and strong test coverage. The two medium risks identified are straightforward to mitigate with small, well-scoped changes. With those addressed and explicit documentation of token assumptions, the contract is well-positioned for deployment.
+## Conclusion
+
+The TEMPL contract is well‑structured with a strong security posture, clear accounting invariants, and comprehensive tests. No critical or high‑severity issues were identified. The minor issues and recommendations above are non‑blocking and focus on UX clarity and further hardening/documentation.
+
