@@ -134,6 +134,7 @@ When `ENABLE_DEBUG_ENDPOINTS=1`, these endpoints assist tests and local debuggin
 - `GET /debug/membership?contractAddress=<addr>&inboxId=<id>` – whether server group view contains `inboxId`.
 - `GET /debug/last-join` – last join metadata.
 - `GET /debug/inbox-state?inboxId=<id>&env=<local|dev|production>` – raw XMTP inbox state.
+ - `POST /debug/send` – send a free‑form message to a group's conversation (for discovery warmup and diagnostics).
 
 #### Running against a local XMTP node
 See the [E2E Environments](./README.md#E2E-Environments) section of the README for full setup details. In short, setting `E2E_XMTP_LOCAL=1` starts `xmtp-local-node` and sets `XMTP_ENV=local`; otherwise Playwright runs against XMTP production with a random `BOT_PRIVATE_KEY`.
@@ -149,4 +150,9 @@ See the [E2E Environments](./README.md#E2E-Environments) section of the README f
 - `NODE_ENV=production` and `REQUIRE_CONTRACT_VERIFY=1` (enforce chainId/code/priest checks).
 - `BACKEND_DB_ENC_KEY` must be set (32‑byte hex) to encrypt the XMTP Node DB. The server refuses to boot without it in production.
 - Set and align `BACKEND_SERVER_ID` with `VITE_BACKEND_SERVER_ID` so signatures are bound to this server.
+### Additional endpoints
+
+- `GET /templs` – list known TEMPLs from persistence. Returns `{ templs: [{ contract, priest } ...] }` by default; add `?include=groupId` to include `groupId` in each record.
+
+### Debug endpoints
 - Do not enable any test‑only shortcuts in production (e.g., `x-insecure-sig` header, `DISABLE_XMTP_WAIT`).

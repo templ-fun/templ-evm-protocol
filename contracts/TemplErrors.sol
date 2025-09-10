@@ -32,8 +32,6 @@ library TemplErrors {
     error InvalidProposal();
     /// @notice Thrown when attempting to vote after a proposal's voting period has ended.
     error VotingEnded();
-    /// @notice Thrown when a voter attempts to vote more than once.
-    error AlreadyVoted();
     /// @notice Thrown when a voter joined after the proposal was created.
     error JoinedAfterProposal();
     /// @notice Thrown when trying to execute logic before voting has ended.

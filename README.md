@@ -153,9 +153,9 @@ Core flows include TEMPL creation, paid onboarding, chat, moderation, proposal d
 
 - Contracts
   - Proposal execution is restricted to an allowlist of safe DAO actions; arbitrary external calls are disabled.
-  - Governance is simplified to only three actions: move treasury (withdraw treasury token), pause/unpause joining, and reprice the entry fee. Token changes are disabled.
+  - Governance actions are allowlisted to: pause/unpause (`setPausedDAO`), reprice entry fee only (`updateConfigDAO` with token changes disabled), move treasury in part (`withdrawTreasuryDAO`) or in full (`withdrawAllTreasuryDAO`), and disband treasury into the member pool (`disbandTreasuryDAO`).
   - Voting is one member‑one vote; proposer auto‑YES, votes are changeable until deadline; anti‑flash rule enforces join before proposal.
-  - Governance can only move the TEMPL treasury (the access token accounted in `treasuryBalance`); member pool funds and arbitrary token/ETH withdrawals are disallowed.
+  - Governance may move the access‑token treasury and any tokens or ETH held by the contract (including donations) via proposals. The member pool cannot be withdrawn; it is only claimable by members. Arbitrary external calls remain disabled.
 - Backend API
   - EIP‑712 typed signatures must include `{ action, contract, nonce, issuedAt, expiry, chainId, server }`.
   - Bind signatures to your deployment by setting a shared server id: `BACKEND_SERVER_ID` and `VITE_BACKEND_SERVER_ID` must match.
@@ -189,6 +189,10 @@ Core flows include TEMPL creation, paid onboarding, chat, moderation, proposal d
 - `GET /debug/membership?contractAddress=<addr>&inboxId=<id>`
 - `GET /debug/last-join`
 - `GET /debug/inbox-state?inboxId=<id>&env=production`
+ - `POST /debug/send` – send a free‑form message to a group conversation for discovery warmup
+
+Additional listing helper:
+- `GET /templs` – lists known TEMPLs `{ templs: [...] }`. Use `?include=groupId` to include `groupId` in the response objects.
 
 ## Troubleshooting test:all
 - If backend tests appear to “hang”, ensure network gating isn’t blocking. The backend skips XMTP readiness checks in test mode by default. You can also set `DISABLE_XMTP_WAIT=1` for the backend during tests.
