@@ -21,7 +21,8 @@
     "test:all": "./scripts/test-all.sh",
     "xmtp:local:up": "bash -lc 'cd xmtp-local-node && ./up'",
     "xmtp:local:down": "bash -lc 'cd xmtp-local-node && ./down'",
-    "gen:wallets": "node scripts/gen-wallets.js"
+    "gen:wallets": "node scripts/gen-wallets.js",
+    "docs:contracts": "node scripts/generate-docs.js"
   },
   "keywords": [
     "solidity",

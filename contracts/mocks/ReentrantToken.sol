@@ -19,28 +19,29 @@ contract ReentrantToken is ERC20 {
     address public templ;
     Callback public callback;
 
+    /// @dev Construct reentrant test token
     constructor(string memory name_, string memory symbol_)
         ERC20(name_, symbol_)
     {}
-
+    /// @notice Set the target TEMPL contract address
     function setTempl(address _templ) external {
         templ = _templ;
     }
-
+    /// @notice Configure which callback (if any) to trigger
     function setCallback(Callback _callback) external {
         callback = _callback;
     }
-
+    /// @notice Mint tokens for testing
     function mint(address to, uint256 amount) external {
         _mint(to, amount);
     }
-
+    /// @notice Helper to join TEMPL by minting and approving tokens
     function joinTempl(uint256 amount) external {
         _mint(address(this), amount);
         _approve(address(this), templ, amount);
         ITempl(templ).purchaseAccess();
     }
-
+    /// @inheritdoc ERC20
     function transferFrom(address from, address to, uint256 value) public override returns (bool) {
         bool success = super.transferFrom(from, to, value);
         if (callback == Callback.Purchase) {
@@ -48,7 +49,7 @@ contract ReentrantToken is ERC20 {
         }
         return success;
     }
-
+    /// @inheritdoc ERC20
     function transfer(address to, uint256 value) public override returns (bool) {
         bool success = super.transfer(to, value);
         if (callback == Callback.Claim) {
@@ -57,4 +58,3 @@ contract ReentrantToken is ERC20 {
         return success;
     }
 }
-

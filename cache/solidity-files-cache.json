@@ -2,8 +2,8 @@
   "_format": "hh-sol-cache-2",
   "files": {
     "/Users/worms/Documents/templ/contracts/TEMPL.sol": {
-      "lastModificationDate": 1757605540376,
-      "contentHash": "58071b1b5ca4aeebef98bd78fe6b65fe",
+      "lastModificationDate": 1757626067699,
+      "contentHash": "e25fb4156eb3b4e6e28e43f4d9aa1ecd",
       "sourceName": "contracts/TEMPL.sol",
       "solcConfig": {
         "version": "0.8.23",
@@ -503,8 +503,8 @@
       ]
     },
     "/Users/worms/Documents/templ/contracts/mocks/TestToken.sol": {
-      "lastModificationDate": 1757015452741,
-      "contentHash": "0539a5fc42f4aae46c8469208cacc0f5",
+      "lastModificationDate": 1757626179420,
+      "contentHash": "b9ae338bd3680c5232379925e377b75c",
       "sourceName": "contracts/mocks/TestToken.sol",
       "solcConfig": {
         "version": "0.8.23",
@@ -542,8 +542,8 @@
       ]
     },
     "/Users/worms/Documents/templ/contracts/mocks/ReentrantToken.sol": {
-      "lastModificationDate": 1757015452741,
-      "contentHash": "1304676b176c31269e29e3d6c02a3203",
+      "lastModificationDate": 1757626187303,
+      "contentHash": "17cd09873f94a2df78ca8bddfc7814bc",
       "sourceName": "contracts/mocks/ReentrantToken.sol",
       "solcConfig": {
         "version": "0.8.23",
@@ -582,8 +582,8 @@
       ]
     },
     "/Users/worms/Documents/templ/contracts/mocks/PurchaseCaller.sol": {
-      "lastModificationDate": 1757015452740,
-      "contentHash": "9d80ab5184536b98fc0b17c42814724f",
+      "lastModificationDate": 1757626190848,
+      "contentHash": "c8f234e4ff7a410f398d09b63425de11",
       "sourceName": "contracts/mocks/PurchaseCaller.sol",
       "solcConfig": {
         "version": "0.8.23",
@@ -620,8 +620,8 @@
       ]
     },
     "/Users/worms/Documents/templ/contracts/mocks/DaoCallerHarness.sol": {
-      "lastModificationDate": 1757472541523,
-      "contentHash": "432d53d5e8042f32921ec33b80a6e08a",
+      "lastModificationDate": 1757626174923,
+      "contentHash": "74ca4a48420c300b52e14a474532e18c",
       "sourceName": "contracts/mocks/DaoCallerHarness.sol",
       "solcConfig": {
         "version": "0.8.23",
