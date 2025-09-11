@@ -10,8 +10,7 @@ import { ethers } from 'ethers';
  * @returns {import('express').RequestHandler}
  */
 export function verifyTypedSignature({ database, addressField, buildTyped, errorMessage = 'Bad signature' }) {
-  // Only allow any signature bypass in strict test mode.
-  const isTest = process.env.NODE_ENV === 'test';
+  // Strict verification path; no header-based bypass in any environment.
   let insertSig = null;
   let hasSig = null;
   try {
@@ -21,23 +20,15 @@ export function verifyTypedSignature({ database, addressField, buildTyped, error
     }
   } catch { /* ignore - fallback to no-op replay checks */ }
   return function (req, res, next) {
-    // Allow explicit test-time bypass via header only in test/dev contexts
-    try {
-      const allowByHeader = process.env.NODE_ENV !== 'production';
-      if (allowByHeader && req.get && req.get('x-insecure-sig') === '1') {
-        return next();
-      }
-    } catch { /* ignore */ }
     try {
       const address = String(req.body?.[addressField] || '').toLowerCase();
       const signature = String(req.body?.signature || '');
-      if ((!address || !signature) && isTest) return next();
+      // Require both address and signature in all environments
       if (!address || !signature) return res.status(403).json({ error: errorMessage });
       let domain, types, message;
       try {
         ({ domain, types, message } = buildTyped(req));
       } catch {
-        if (isTest) return next();
         throw new Error('bad typed');
       }
       // Basic expiry check if present
@@ -54,10 +45,6 @@ export function verifyTypedSignature({ database, addressField, buildTyped, error
       try { insertSig?.run?.(signature, Date.now()); } catch { /* ignore */ }
       next();
     } catch {
-      if (isTest) {
-        // In test mode, allow fallback to avoid brittle signature coupling in unit tests.
-        return next();
-      }
       return res.status(403).json({ error: errorMessage });
     }
   };

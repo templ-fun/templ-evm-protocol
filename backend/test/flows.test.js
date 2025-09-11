@@ -390,7 +390,6 @@ test('join returns 503 when member identity is missing', async () => {
     global.setTimeout = (fn, ms, ...args) => originalSetTimeout(fn, 0, ...args);
     await request(app)
       .post('/join')
-      .set('x-insecure-sig', '1')
       .send({
         contractAddress: addresses.contract,
         memberAddress: addresses.member,
@@ -481,13 +480,15 @@ test('only authorized addresses can mute members', async () => {
   muteSig = await wallets.priest.signTypedData(mtyped0.domain, mtyped0.types, mtyped0.message);
   const resp = await request(app)
     .post('/mute')
-    .set('x-insecure-sig', '1')
     .send({
       contractAddress: addresses.contract,
       moderatorAddress: addresses.priest,
       targetAddress: addresses.member,
       signature: muteSig,
-      chainId: 31337
+      chainId: 31337,
+      nonce: mtyped0.message.nonce,
+      issuedAt: mtyped0.message.issuedAt,
+      expiry: mtyped0.message.expiry
     })
     .expect(200);
 
@@ -535,7 +536,6 @@ test('priest can delegate mute power', async () => {
   let delSig = await wallets.priest.signTypedData(dtyped0.domain, dtyped0.types, dtyped0.message);
   await request(app)
     .post('/delegateMute')
-    .set('x-insecure-sig', '1')
     .send({
       contractAddress: addresses.contract,
       priestAddress: addresses.priest,
@@ -552,7 +552,6 @@ test('priest can delegate mute power', async () => {
   const muteSig = await wallets.delegate.signTypedData(mtyped2.domain, mtyped2.types, mtyped2.message);
   await request(app)
     .post('/mute')
-    .set('x-insecure-sig', '1')
     .send({
       contractAddress: addresses.contract,
       moderatorAddress: addresses.delegate,
@@ -569,7 +568,6 @@ test('priest can delegate mute power', async () => {
   delSig = await wallets.priest.signTypedData(dtyped0.domain, dtyped0.types, dtyped0.message);
   await request(app)
     .delete('/delegateMute')
-    .set('x-insecure-sig', '1')
     .send({
       contractAddress: addresses.contract,
       priestAddress: addresses.priest,
@@ -730,7 +728,6 @@ test('mute durations escalate', async () => {
   let muteSig = await wallets.priest.signTypedData(mtyped4.domain, mtyped4.types, mtyped4.message);
   const first = await request(app)
     .post('/mute')
-    .set('x-insecure-sig', '1')
     .send({
       contractAddress: addresses.contract,
       moderatorAddress: addresses.priest,
@@ -747,7 +744,6 @@ test('mute durations escalate', async () => {
   muteSig = await wallets.priest.signTypedData(mtyped4.domain, mtyped4.types, mtyped4.message);
   const second = await request(app)
     .post('/mute')
-    .set('x-insecure-sig', '1')
     .send({
       contractAddress: addresses.contract,
       moderatorAddress: addresses.priest,
@@ -778,7 +774,6 @@ test('permanently mutes after repeated escalations', async () => {
   const templSig = await wallets.priest.signTypedData(ctyped12.domain, ctyped12.types, ctyped12.message);
   await request(app)
     .post('/templs')
-    .set('x-insecure-sig', '1')
     .send({
       contractAddress: addresses.contract,
       priestAddress: addresses.priest,

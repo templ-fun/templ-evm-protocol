@@ -156,4 +156,4 @@ See the [E2E Environments](./README.md#E2E-Environments) section of the README f
 - `GET /templs` – list known TEMPLs from persistence. Returns `{ templs: [{ contract, priest } ...] }` by default; add `?include=groupId` to include `groupId` in each record.
 
 ### Debug endpoints
-- Do not enable any test‑only shortcuts in production (e.g., `x-insecure-sig` header, `DISABLE_XMTP_WAIT`).
+- Do not enable any test‑only flags in production (e.g., `DISABLE_XMTP_WAIT`).
