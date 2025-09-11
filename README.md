@@ -125,7 +125,7 @@ See [BACKEND.md#environment-variables](./BACKEND.md#environment-variables) and [
   - Frontend: `VITE_BACKEND_SERVER_ID="templ-prod-<region>"`
   These values are included in the EIP‑712 messages and must match; this prevents signatures from being replayed against a different server.
 -
-Do not use test‑only flags in production (`x-insecure-sig` header, `DISABLE_XMTP_WAIT`).
+Do not use test‑only flags in production (e.g., `DISABLE_XMTP_WAIT`).
 
 ## Core flows
 
@@ -186,7 +186,7 @@ Core flows include TEMPL creation, paid onboarding, chat, moderation, proposal d
   - XMTP Node DB is SQLCipher‑encrypted; provide `BACKEND_DB_ENC_KEY` (32‑byte hex). The server refuses to boot without it in production.
   - Browser DB lives in OPFS (not encrypted); avoid multiple clients per page to prevent access‑handle contention.
 - Operational notes
-  - Do not use test‑only shortcuts in production (e.g., `x-insecure-sig` header, `DISABLE_XMTP_WAIT`).
+  - Do not use test‑only flags in production (e.g., `DISABLE_XMTP_WAIT`).
   - XMTP dev network caps installs at 10 per inbox and ~256 total actions; tests rotate wallets or reuse local DBs to avoid the cap.
   - RPC responses are assumed honest; use a trusted provider.
   - For auditors: see CONTRACTS.md for custom errors, events, invariants, fee splits, and DAO constraints. CI runs tests and Slither.

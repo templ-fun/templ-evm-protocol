@@ -35,12 +35,14 @@ test('reloads groups from disk on restart', async () => {
   const createSig = await wallets.priest.signTypedData(createTyped.domain, createTyped.types, createTyped.message);
   await request(app)
     .post('/templs')
-    .set('x-insecure-sig', '1')
     .send({
       contractAddress: addresses.contract,
       priestAddress: addresses.priest,
       signature: createSig,
-      chainId: 31337
+      chainId: 31337,
+      nonce: createTyped.message.nonce,
+      issuedAt: createTyped.message.issuedAt,
+      expiry: createTyped.message.expiry
     })
     .expect(200);
   await app.close();
@@ -57,12 +59,14 @@ test('reloads groups from disk on restart', async () => {
   const joinSig = await wallets.member.signTypedData(joinTyped.domain, joinTyped.types, joinTyped.message);
   await request(app)
     .post('/join')
-    .set('x-insecure-sig', '1')
     .send({
       contractAddress: addresses.contract,
       memberAddress: addresses.member,
       signature: joinSig,
-      chainId: 31337
+      chainId: 31337,
+      nonce: joinTyped.message.nonce,
+      issuedAt: joinTyped.message.issuedAt,
+      expiry: joinTyped.message.expiry
     })
     .expect(200, { groupId: fakeGroup.id });
   await app.close();
@@ -96,12 +100,14 @@ test('returns 500 when persistence fails', async () => {
   const sig = await wallets.priest.signTypedData(createTyped2.domain, createTyped2.types, createTyped2.message);
   await request(app)
     .post('/templs')
-    .set('x-insecure-sig', '1')
     .send({
       contractAddress: addresses.contract,
       priestAddress: addresses.priest,
       signature: sig,
-      chainId: 31337
+      chainId: 31337,
+      nonce: createTyped2.message.nonce,
+      issuedAt: createTyped2.message.issuedAt,
+      expiry: createTyped2.message.expiry
     })
     .expect(500);
   await app.close();
