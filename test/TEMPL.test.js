@@ -434,9 +434,9 @@ describe("TEMPL Contract with DAO Governance", function () {
             await templ.connect(user1).vote(0, true);
             await templ.connect(user2).vote(0, true);
 
-            // Try to execute immediately
+            // Try to execute immediately: should require delay after quorum
             await expect(templ.connect(user1).executeProposal(0))
-                .to.be.revertedWithCustomError(templ, "VotingNotEnded");
+                .to.be.revertedWithCustomError(templ, "ExecutionDelayActive");
         });
 
         it("Should execute config update proposal", async function () {
@@ -606,6 +606,9 @@ describe("TEMPL Contract with DAO Governance", function () {
             await purchaseAccess(templ, token, [user1]);
 
             await purchaseAccess(templ, token, [user2]);
+            // Add more members so initial auto-yes does not meet quorum
+            await purchaseAccess(templ, token, [user3]);
+            await purchaseAccess(templ, token, [user4]);
 
             // interface for pause/unpause proposals
             // create proposal that remains active for voting after pause
@@ -684,6 +687,9 @@ describe("TEMPL Contract with DAO Governance", function () {
             
             // Add user2 as member too (needed for multiple proposal tests)
             await purchaseAccess(templ, token, [user2]);
+            // Add more members so initial auto-yes does not meet quorum
+            await purchaseAccess(templ, token, [user3]);
+            await purchaseAccess(templ, token, [user4]);
         });
 
         it("Should return active proposals correctly", async function () {
@@ -758,8 +764,9 @@ describe("TEMPL Contract with DAO Governance", function () {
             await ethers.provider.send("evm_increaseTime", [10]);
             await ethers.provider.send("evm_mine");
 
-            // Vote and execute first proposal
+            // Vote and execute first proposal (ensure quorum)
             await templ.connect(user1).vote(0, true);
+            await templ.connect(user2).vote(0, true);
             
             await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60]);
             await ethers.provider.send("evm_mine");

@@ -64,8 +64,12 @@ describe("TEMPL - Proposal Pagination", function () {
       }
       
       // Execute first 2 proposals to free up priest and user1
+      // Ensure quorum (>=33% of 6 eligible voters => at least 2 yes)
       await templ.connect(priest).vote(0, true);
+      await templ.connect(user2).vote(0, true);
       await templ.connect(user1).vote(1, true);
+      await templ.connect(user3).vote(1, true);
+      // Wait enough after quorum for execution
       await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60 + 1]);
       await ethers.provider.send("evm_mine");
       await templ.executeProposal(0);
@@ -106,8 +110,9 @@ describe("TEMPL - Proposal Pagination", function () {
       await templ.connect(user1).createProposal("P1", "D1", calldata, 7 * 24 * 60 * 60);
       await templ.connect(user2).createProposal("P2", "D2", calldata, 7 * 24 * 60 * 60);
 
-      // Vote and execute first proposal
+      // Vote and execute first proposal (reach quorum then wait)
       await templ.connect(priest).vote(0, true);
+      await templ.connect(user1).vote(0, true);
       await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60 + 1]);
       await ethers.provider.send("evm_mine");
       await templ.executeProposal(0);
@@ -202,10 +207,13 @@ describe("TEMPL - Proposal Pagination", function () {
         await templ.connect(users[i]).createProposal(`P${i}`, `D${i}`, calldata, 14 * 24 * 60 * 60);
       }
 
-      // Vote on proposals 0, 2, 4
+      // Vote on proposals 0, 2, 4 (ensure quorum)
       await templ.connect(priest).vote(0, true);
+      await templ.connect(user1).vote(0, true);
       await templ.connect(priest).vote(2, true);
+      await templ.connect(user1).vote(2, true);
       await templ.connect(priest).vote(4, true);
+      await templ.connect(user1).vote(4, true);
       
       // Fast forward to execute them
       await ethers.provider.send("evm_increaseTime", [14 * 24 * 60 * 60 + 1]);

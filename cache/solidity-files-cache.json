@@ -2,8 +2,8 @@
   "_format": "hh-sol-cache-2",
   "files": {
     "/Users/worms/Documents/templ/contracts/TEMPL.sol": {
-      "lastModificationDate": 1757513841922,
-      "contentHash": "47f2c39eb653b50a1e87755e79ac6f2b",
+      "lastModificationDate": 1757605540376,
+      "contentHash": "58071b1b5ca4aeebef98bd78fe6b65fe",
       "sourceName": "contracts/TEMPL.sol",
       "solcConfig": {
         "version": "0.8.23",
@@ -44,8 +44,8 @@
       ]
     },
     "/Users/worms/Documents/templ/contracts/TemplErrors.sol": {
-      "lastModificationDate": 1757465386528,
-      "contentHash": "a7f5cdf919cb02940ea3581311a4f641",
+      "lastModificationDate": 1757603609281,
+      "contentHash": "bf49002f945c5f84a2b92ae3a7cb286d",
       "sourceName": "contracts/TemplErrors.sol",
       "solcConfig": {
         "version": "0.8.23",

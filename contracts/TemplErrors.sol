@@ -70,4 +70,8 @@ library TemplErrors {
     error TokenChangeDisabled();
     /// @notice Thrown when an action requires members but none exist.
     error NoMembers();
+    /// @notice Thrown when attempting to execute a proposal that has not reached quorum.
+    error QuorumNotReached();
+    /// @notice Thrown when execution delay after quorum has not elapsed.
+    error ExecutionDelayActive();
 }

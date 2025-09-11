@@ -24,6 +24,9 @@ contract TEMPL is ReentrancyGuard {
     uint256 public memberPoolBalance;
     bool public paused;
     
+    uint256 public quorumPercent = 33;
+    uint256 public executionDelayAfterQuorum = 7 days;
+    
     
     struct Member {
         bool purchased;
@@ -57,6 +60,9 @@ contract TEMPL is ReentrancyGuard {
         bool executed;
         mapping(address => bool) hasVoted;
         mapping(address => bool) voteChoice;
+        uint256 eligibleVoters;
+        uint256 quorumReachedAt;
+        bool quorumExempt;
     }
 
     uint256 public proposalCount;
@@ -191,7 +197,7 @@ contract TEMPL is ReentrancyGuard {
     
     /**
      * @notice Purchase membership with automatic fee distribution
-     * @dev Executes 4 transfers: burn (30%), treasury (30%), member pool (30%), protocol (10%)
+     * @dev Distributes 30% burn, 30% treasury, 30% member pool, 10% protocol
      */
     function purchaseAccess() external whenNotPaused notSelf nonReentrant {
         Member storage m = members[msg.sender];
@@ -277,6 +283,16 @@ contract TEMPL is ReentrancyGuard {
         proposal.voteChoice[msg.sender] = true;
         proposal.yesVotes = 1;
         proposal.noVotes = 0;
+        // quorum snapshot and defaults
+        proposal.eligibleVoters = memberList.length;
+        proposal.quorumReachedAt = 0;
+        proposal.quorumExempt = false;
+        if (proposal.eligibleVoters > 0) {
+            if (proposal.yesVotes * 100 >= quorumPercent * proposal.eligibleVoters) {
+                proposal.quorumReachedAt = block.timestamp;
+                proposal.endTime = block.timestamp + executionDelayAfterQuorum;
+            }
+        }
         hasActiveProposal[msg.sender] = true;
         activeProposalId[msg.sender] = proposalId;
         emit ProposalCreated(proposalId, msg.sender, _title, proposal.endTime);
@@ -344,6 +360,10 @@ contract TEMPL is ReentrancyGuard {
         return id;
     }
 
+    /**
+     * @notice Create a proposal to disband the treasury into the member pool
+     * @dev If proposed by the priest, quorum is not required
+     */
     function createProposalDisbandTreasury(
         string memory _title,
         string memory _description,
@@ -351,12 +371,16 @@ contract TEMPL is ReentrancyGuard {
     ) external onlyMember returns (uint256) {
         (uint256 id, Proposal storage p) = _createBaseProposal(_title, _description, _votingPeriod);
         p.action = Action.DisbandTreasury;
+        // priest exception: disband proposed by priest has no quorum requirement
+        if (msg.sender == priest) {
+            p.quorumExempt = true;
+        }
         return id;
     }
     
     /**
      * @notice Cast or change a vote on an active proposal
-     * @dev Each member has 1 vote. Members can change their vote until the deadline.
+     * @dev One vote per member; vote can be changed until deadline
      * @param _proposalId Proposal to vote on
      * @param _support Vote choice (true = yes, false = no)
      */
@@ -390,19 +414,36 @@ contract TEMPL is ReentrancyGuard {
             }
         }
         
+        if (!proposal.quorumExempt && proposal.quorumReachedAt == 0) {
+            if (proposal.yesVotes * 100 >= quorumPercent * proposal.eligibleVoters) {
+                proposal.quorumReachedAt = block.timestamp;
+                proposal.endTime = block.timestamp + executionDelayAfterQuorum;
+            }
+        }
+
         emit VoteCast(_proposalId, msg.sender, _support, block.timestamp);
     }
     
     /**
-     * @notice Execute a passed proposal after voting ends
-     * @dev Requires simple majority (yesVotes > noVotes)
+     * @notice Execute a passed proposal
+     * @dev Requires simple majority. If quorum is required, execution is allowed only after the delay from first quorum.
      * @param _proposalId Proposal to execute
      */
     function executeProposal(uint256 _proposalId) external nonReentrant {
         if (_proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
         Proposal storage proposal = proposals[_proposalId];
-
-        if (block.timestamp < proposal.endTime) revert TemplErrors.VotingNotEnded();
+        
+        if (proposal.quorumExempt) {
+            if (block.timestamp < proposal.endTime) revert TemplErrors.VotingNotEnded();
+        } else {
+            if (proposal.quorumReachedAt == 0) {
+                // Not enough participation to execute
+                revert TemplErrors.QuorumNotReached();
+            }
+            if (block.timestamp < proposal.quorumReachedAt + executionDelayAfterQuorum) {
+                revert TemplErrors.ExecutionDelayActive();
+            }
+        }
         if (proposal.executed) revert TemplErrors.AlreadyExecuted();
 
         if (proposal.yesVotes <= proposal.noVotes) revert TemplErrors.ProposalNotPassed();
@@ -464,8 +505,6 @@ contract TEMPL is ReentrancyGuard {
         _withdrawAllTreasury(token, recipient, reason, 0);
     }
 
-    // Governance can move any assets held by the contract
-    
     /**
      * @notice Update contract configuration via DAO proposal
      * @param _token New ERC20 token address (or address(0) to keep current)
@@ -482,13 +521,11 @@ contract TEMPL is ReentrancyGuard {
     function setPausedDAO(bool _paused) external onlyDAO { _setPaused(_paused); }
 
     /**
-     * @notice Distribute entire treasury equally among all current members by allocating to the member pool.
-     * @dev Increases memberPoolBalance by treasury amount and increments cumulativeMemberRewards by per-member share.
-     *      Any division remainder is added to memberRewardRemainder for future distribution.
+     * @notice Distribute all treasury to the member pool equally
+     * @dev Increases memberPoolBalance and updates reward snapshots
      */
     function disbandTreasuryDAO() external onlyDAO { _disbandTreasury(0); }
 
-    // Internal implementations used by proposal execution and wrappers
     function _withdrawTreasury(
         address token,
         address recipient,
@@ -500,13 +537,10 @@ contract TEMPL is ReentrancyGuard {
         if (amount == 0) revert TemplErrors.AmountZero();
 
         if (token == accessToken) {
-            // Available treasury is total accessToken balance minus member pool obligations
             uint256 current = IERC20(accessToken).balanceOf(address(this));
             if (current <= memberPoolBalance) revert TemplErrors.InsufficientTreasuryBalance();
             uint256 available = current - memberPoolBalance;
             if (amount > available) revert TemplErrors.InsufficientTreasuryBalance();
-
-            // Reduce tracked treasuryBalance by the portion covered by fees (do not underflow)
             uint256 fromFees = amount <= treasuryBalance ? amount : treasuryBalance;
             treasuryBalance -= fromFees;
 
@@ -531,12 +565,9 @@ contract TEMPL is ReentrancyGuard {
         if (recipient == address(0)) revert TemplErrors.InvalidRecipient();
         uint256 amount;
         if (token == accessToken) {
-            // Withdraw all available accessToken that is not reserved for the member pool
             uint256 current = IERC20(accessToken).balanceOf(address(this));
             if (current <= memberPoolBalance) revert TemplErrors.NoTreasuryFunds();
             amount = current - memberPoolBalance;
-
-            // Reduce tracked treasury by the portion covered by fees
             uint256 fromFees = amount <= treasuryBalance ? amount : treasuryBalance;
             treasuryBalance -= fromFees;
 
@@ -587,7 +618,7 @@ contract TEMPL is ReentrancyGuard {
     }
     
     /**
-     * @notice Calculate member's unclaimed rewards from pool
+     * @notice Get unclaimed rewards for a member
      * @param member Address to check rewards for
      * @return Claimable token amount from member pool
      */
@@ -602,7 +633,7 @@ contract TEMPL is ReentrancyGuard {
     }
     
     /**
-     * @notice Claim accumulated rewards from member pool
+     * @notice Claim accumulated rewards from the member pool
      */
     function claimMemberPool() external onlyMember nonReentrant {
         uint256 claimable = getClaimablePoolAmount(msg.sender);
@@ -627,9 +658,9 @@ contract TEMPL is ReentrancyGuard {
      * @return description Detailed description
      * @return yesVotes Total weighted yes votes
      * @return noVotes Total weighted no votes
-     * @return endTime Timestamp when voting ends
+     * @return endTime Current deadline/earliest execution time
      * @return executed Whether proposal has been executed
-     * @return passed Whether proposal has passed (voting ended and yes votes exceed no votes)
+     * @return passed Whether proposal is eligible to pass based on timing and votes
      */
     function getProposal(uint256 _proposalId) external view returns (
         address proposer,
@@ -643,7 +674,13 @@ contract TEMPL is ReentrancyGuard {
     ) {
         if (_proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
         Proposal storage proposal = proposals[_proposalId];
-        passed = block.timestamp >= proposal.endTime && proposal.yesVotes > proposal.noVotes;
+        if (proposal.quorumExempt) {
+            passed = block.timestamp >= proposal.endTime && proposal.yesVotes > proposal.noVotes;
+        } else if (proposal.quorumReachedAt != 0) {
+            passed = (block.timestamp >= (proposal.quorumReachedAt + executionDelayAfterQuorum)) && (proposal.yesVotes > proposal.noVotes);
+        } else {
+            passed = false;
+        }
 
         return (
             proposal.proposer,
@@ -673,7 +710,7 @@ contract TEMPL is ReentrancyGuard {
     
     /**
      * @notice Get list of currently active proposals
-     * @dev WARNING: Gas usage grows with proposal count. Use paginated version for large counts.
+     * @dev Gas usage grows with proposal count; use paginated for large sets
      * @return Array of active proposal IDs
      */
     function getActiveProposals() external view returns (uint256[] memory) {
@@ -695,7 +732,7 @@ contract TEMPL is ReentrancyGuard {
     }
     
     /**
-     * @notice Get paginated list of active proposals (gas-efficient)
+     * @notice Get paginated list of active proposals
      * @param offset Starting position in proposal list
      * @param limit Maximum proposals to return
      * @return proposalIds Array of active proposal IDs
@@ -767,9 +804,9 @@ contract TEMPL is ReentrancyGuard {
     }
     
     /**
-     * @notice Get comprehensive treasury and fee distribution info
-     * @return treasury Current DAO treasury balance
-     * @return memberPool Current member pool balance  
+     * @notice Get treasury and fee distribution info
+     * @return treasury Current DAO treasury balance (available)
+     * @return memberPool Current member pool balance
      * @return totalReceived Total amount sent to treasury
      * @return totalBurnedAmount Total tokens burned
      * @return totalProtocolFees Total protocol fees collected
@@ -783,7 +820,6 @@ contract TEMPL is ReentrancyGuard {
         uint256 totalProtocolFees,
         address protocolAddress
     ) {
-        // UI-facing treasury: current accessToken balance minus member pool obligations (cannot be negative)
         uint256 current = IERC20(accessToken).balanceOf(address(this));
         uint256 available = current > memberPoolBalance ? current - memberPoolBalance : 0;
         return (
@@ -802,7 +838,7 @@ contract TEMPL is ReentrancyGuard {
      * @return fee Membership entry fee amount
      * @return isPaused Whether purchases are paused
      * @return purchases Total number of members
-     * @return treasury Current treasury balance
+     * @return treasury Current treasury balance (available)
      * @return pool Current member pool balance
      */
     function getConfig() external view returns (
