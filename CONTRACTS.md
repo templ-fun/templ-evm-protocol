@@ -1,95 +1,100 @@
 # TEMPL Contracts
 
 ## Overview
-See the [README](./README.md#architecture) for a system overview; this document focuses on the on-chain contracts for auditors.
+Solidity 0.8.23. Core contract is `contracts/TEMPL.sol` with shared errors in `contracts/TemplErrors.sol`. See `README.md#architecture` for the bigger picture; this document reflects the exact on-chain behavior and interfaces.
 
-## Economic model
-- **30% Burn** – sent to `0xdead`.
-- **30% Treasury** – DAO controlled, released via proposals. Tokens or ETH sent directly to the contract are also held for governance.
-- **30% Member pool** – accrued for existing members (`n - 1`) to claim via `claimMemberPool`.
-- **10% Protocol fee** – forwarded to a fixed recipient.
+## Economic Model
+- 30% Burn: sent to `0x000000000000000000000000000000000000dEaD`.
+- 30% Treasury: DAO-controlled; includes entry-fee share plus any tokens/ETH donated directly to the contract.
+- 30% Member Pool: claimable by existing members via `claimMemberPool()`.
+- 10% Protocol Fee: forwarded to immutable `protocolFeeRecipient`.
 
-Rewards per existing member are `30% / (n - 1)` where `n` is current membership count (integer division may leave dust).
+Per new member, claimable reward per existing member is `floor(30% / (n-1))` and any remainder is carried forward in `memberRewardRemainder`.
 
-### Member pool claims
-The member pool does not distribute automatically. Each entry fee increases
-`memberPoolBalance` and `cumulativeMemberRewards`. Existing members accrue a
-share of each new membership, tracked per address. To withdraw these rewards, a
-member calls `claimMemberPool`, which transfers their unclaimed balance and
-updates their snapshot. Unclaimed rewards continue to accumulate until claimed.
-
-See the sequence diagram below for deposit, snapshot, and claim.
-
-Note: Anyone may donate tokens or ETH by transferring them to the contract. Governance can move the TEMPL treasury and any donated assets; it cannot withdraw from the member pool.
+### Member Pool Mechanics
+- Accrual: Each purchase increases `memberPoolBalance` and `cumulativeMemberRewards`; members track a `rewardSnapshot` at their join time and on claim.
+- Claim: `claimMemberPool()` transfers the unclaimed delta and advances the snapshot. Reverts with `NoRewardsToClaim` if zero or `InsufficientPoolBalance` if not enough distributable tokens (excludes remainder).
+- Donations: Anyone may donate ETH or ERC‑20 to the contract. Governance may move donations and the treasury share, but member pool balances are not withdrawable except via disbanding into the pool.
 
 ```mermaid
 sequenceDiagram
     participant NewMember
     participant TEMPL
     participant ExistingMember
-    NewMember->>TEMPL: deposit entry fee
-    TEMPL-->>ExistingMember: snapshot reward
-    ExistingMember->>TEMPL: claimMemberPool
-    TEMPL-->>ExistingMember: transfer reward
+    NewMember->>TEMPL: purchaseAccess()
+    TEMPL-->>ExistingMember: increase cumulative rewards
+    ExistingMember->>TEMPL: claimMemberPool()
+    TEMPL-->>ExistingMember: transfer claimable
 ```
 
-## DAO governance
-- One member, one vote.
-- Each member may have only one active proposal.
-- Voting period: 7–30 days (`0` defaults to 7).
-- Any address can execute a passed proposal; execution is atomic.
-- Internal calls use `_executeCall` to invoke an allowlist of DAO functions during proposal execution. The allowlist is restricted to:
-  - `setPausedDAO(bool)` — pause/unpause joining
-  - `updateConfigDAO(address,uint256)` — reprice joining fee only; token changes revert with `TokenChangeDisabled`
-  - `withdrawTreasuryDAO(address,address,uint256,string)` — move a portion of any asset (token or ETH)
-  - `withdrawAllTreasuryDAO(address,address,string)` — move the entire balance of a specified asset
-  - `disbandTreasuryDAO()` — allocate the entire treasury equally to all members by moving it into the member pool accounting
-  Arbitrary external calls are disabled for security.
+## Governance
+- One member = one vote; votes are changeable until eligibility windows close.
+- One live proposal per address: creating a second while the first is active reverts `ActiveProposalExists`. Slot is cleared on execution or after expiry.
+- Voting period bounds: 7–30 days (`0` means default 7 days).
+- Execution: Any address may call `executeProposal(id)`. Execution is atomic and non‑reentrant.
+- Typed proposals only (no arbitrary calls). The allowed actions are:
+  - `setPausedDAO(bool)` — pause/unpause membership purchasing.
+  - `updateConfigDAO(address,uint256)` — update entry fee when `_entryFee > 0`. Changing token is disabled (`_token` must be `address(0)` or the current token), else `TokenChangeDisabled`.
+  - `withdrawTreasuryDAO(address,address,uint256,string)` — withdraw a specific amount of any asset (access token, other ERC‑20, or ETH with `address(0)`).
+  - `withdrawAllTreasuryDAO(address,address,string)` — withdraw the entire available balance of a given asset.
+  - `disbandTreasuryDAO()` / `disbandTreasuryDAO(address)` — move the full available balance of the access token into the member pool equally across all members.
 
-### Anti‑attack checks
-- **Flash loan protection** – `purchaseTimestamp[voter] < proposal.createdAt`.
-- **Spam prevention** – `!hasActiveProposal[msg.sender]`.
+### Quorum and Eligibility
+- Quorum threshold: `quorumPercent = 33` (33% yes votes of `eligibleVoters`).
+- On creation: proposer auto‑YES, `eligibleVoters = memberList.length`. If quorum is immediately satisfied, `quorumReachedAt` is set and `endTime` is reset to `now + executionDelayAfterQuorum`.
+- Before quorum: any member (including those who joined after creation) may vote; `eligibleVoters` tracks the current member count.
+- After quorum: voting eligibility freezes; only members who joined before `quorumReachedAt` may vote. Late joiners are rejected with `JoinedAfterProposal`.
+- Execution requires a simple majority (`yesVotes > noVotes`) and:
+  - if quorum is required: that quorum has been reached and the delay `executionDelayAfterQuorum = 7 days` has elapsed; otherwise reverts with `QuorumNotReached` or `ExecutionDelayActive`.
+  - priest exception: `createProposalDisbandTreasury(...)` proposed by `priest` is quorum‑exempt and respects only its `endTime`.
 
-## Configuration
-The deployment script accepts the following environment variables (the priest defaults to the deploying wallet):
+### Proposal Types (create functions)
+- `createProposalSetPaused(string title, string description, bool paused, uint256 votingPeriod)`
+- `createProposalUpdateConfig(string title, string description, uint256 newEntryFee, uint256 votingPeriod)`
+- `createProposalWithdrawTreasury(string title, string description, address token, address recipient, uint256 amount, string reason, uint256 votingPeriod)`
+- `createProposalWithdrawAllTreasury(string title, string description, address token, address recipient, string reason, uint256 votingPeriod)`
+- `createProposalDisbandTreasury(string title, string description, uint256 votingPeriod)` and overloaded `createProposalDisbandTreasury(string title, string description, address token, uint256 votingPeriod)` (token must equal the access token at execution).
 
-| Variable | Role | Required |
-| --- | --- | --- |
-| `PRIEST_ADDRESS` | Override priest address for tests | Optional |
-| `PROTOCOL_FEE_RECIPIENT` | Recipient of protocol fee | Required |
-| `TOKEN_ADDRESS` | ERC20 token used for membership fees | Required |
-| `ENTRY_FEE` | Membership cost in wei (≥10 and divisible by 10) | Required |
-| `PRIVATE_KEY` | Deployer wallet key | Required |
-| `RPC_URL` | Base network RPC endpoint | Required |
-| `BASESCAN_API_KEY` | BaseScan API key for verification | Optional |
+### Security Notes
+- Reentrancy: `purchaseAccess`, `claimMemberPool`, and `executeProposal` are non‑reentrant.
+- Purchase guard: `purchaseAccess` disallows calls from the DAO address itself (`InvalidSender`).
+- Pausing: only blocks `purchaseAccess`; proposing and voting continue while paused.
 
-More context appears in [README.md#environment-variables](README.md#environment-variables).
+## User‑Facing Functions and Views
+- `purchaseAccess()` — one‑time purchase; splits fee 30/30/30/10 via `safeTransferFrom`. Requires balance ≥ entry fee and contract not paused.
+- `vote(uint256 proposalId, bool support)` — cast or change a vote until eligible; emits `VoteCast`.
+- `executeProposal(uint256 proposalId)` — performs the allowlisted action; emits `ProposalExecuted` and action‑specific events.
+- `claimMemberPool()` — withdraw accrued rewards; emits `MemberPoolClaimed`.
+- `getActiveProposals()` — returns IDs of active proposals.
+- `getActiveProposalsPaginated(uint256 offset, uint256 limit)` — returns `(ids, hasMore)`; `limit` in [1,100], else `LimitOutOfRange`.
+- `getProposal(uint256 id)` — returns struct subset plus computed `passed` according to quorum/delay rules.
+- `hasVoted(uint256 id, address voter)` — returns `(voted, support)`.
+- `hasAccess(address user)` — returns membership status.
+- `getPurchaseDetails(address user)` — returns `(purchased, timestamp, blockNum)`.
+- `getTreasuryInfo()` — returns `(treasury, memberPool, totalReceived, totalBurnedAmount, totalProtocolFees, protocolAddress)` where
+  - `treasury` is the UI‑facing available access‑token balance: `currentBalance(accessToken) - memberPoolBalance` (includes donations), and
+  - `totalReceived` tracks only entry‑fee allocations.
+- `getConfig()` — returns `(token, fee, isPaused, purchases, treasury, pool)`.
+- `getMemberCount()` — number of members; `getVoteWeight(address)` — 1 if member else 0.
 
-`ENTRY_FEE` must be at least 10 and a multiple of 10 so the 30/30/30/10
-fee split divides evenly. This requirement is enforced by constructor validations.
-
-## Trust assumptions
-- Contract code is immutable after deployment.
-- ERC20 used for entry fees maintains expected behavior.
-- Off‑chain actors broadcast transactions honestly.
- - Access token must be standard ERC‑20 without transfer fees/taxes; deflationary tokens are not supported by the current purchase flow (which pulls and redistributes fixed split amounts).
-
-## Invariants
-- Membership supply limited by entry fee cost.
-- Proposal execution is all‑or‑nothing.
-- Treasury transfers only happen via approved proposals.
-
-Field notes
-- `eligibleVoters` recorded at proposal creation is informational and not used in execution checks; the execution rule is simple majority (`yesVotes > noVotes`) after `endTime`.
-
-## Failure modes
-- Token depeg or liquidity loss.
-- Malicious majority drains treasury.
-- Network congestion delays proposal execution.
+## State, Events, Errors
+- Key immutables: `priest`, `protocolFeeRecipient`, `accessToken`.
+- Key variables: `entryFee` (≥10 and multiple of 10), `paused`, `treasuryBalance` (tracks fee‑sourced tokens only), `memberPoolBalance`, counters (`totalBurned`, `totalToTreasury`, `totalToMemberPool`, `totalToProtocol`).
+- Quorum settings: `quorumPercent = 33`, `executionDelayAfterQuorum = 7 days` (not changeable by governance).
+- Events:
+  - `AccessPurchased(purchaser,totalAmount,burnedAmount,treasuryAmount,memberPoolAmount,protocolAmount,timestamp,blockNumber,purchaseId)`
+  - `MemberPoolClaimed(member,amount,timestamp)`
+  - `ProposalCreated(proposalId,proposer,title,endTime)`
+  - `VoteCast(proposalId,voter,support,timestamp)`
+  - `ProposalExecuted(proposalId,success,returnData)`
+  - `TreasuryAction(proposalId,token,recipient,amount,description)`
+  - `ConfigUpdated(token,entryFee)`
+  - `ContractPaused(isPaused)`
+  - `TreasuryDisbanded(proposalId,amount,perMember,remainder)`
+- Custom errors (from `TemplErrors.sol`): `NotMember`, `NotDAO`, `ContractPausedError`, `AlreadyPurchased`, `InsufficientBalance`, `TitleRequired`, `DescriptionRequired`, `ActiveProposalExists`, `VotingPeriodTooShort`, `VotingPeriodTooLong`, `InvalidProposal`, `VotingEnded`, `JoinedAfterProposal`, `VotingNotEnded`, `AlreadyExecuted`, `ProposalNotPassed`, `ProposalExecutionFailed`, `InvalidRecipient`, `AmountZero`, `InsufficientTreasuryBalance`, `NoTreasuryFunds`, `EntryFeeTooSmall`, `InvalidEntryFee`, `NoRewardsToClaim`, `InsufficientPoolBalance`, `LimitOutOfRange`, `InvalidSender`, `InvalidCallData`, `TokenChangeDisabled`, `NoMembers`, `QuorumNotReached`, `ExecutionDelayActive`.
 
 ## Flows
-### Membership purchase
-The membership purchase splits fees among burn, treasury, member pool, and protocol.
+### Membership Purchase
 ```mermaid
 sequenceDiagram
     participant User
@@ -100,41 +105,37 @@ sequenceDiagram
     participant Protocol
     User->>TEMPL: purchaseAccess()
     TEMPL->>Burn: 30% burn
-    TEMPL->>Treasury: 30% deposit
+    TEMPL->>Treasury: 30% entry‑fee share
     TEMPL->>MemberPool: 30% claimable
     TEMPL->>Protocol: 10% fee
     TEMPL-->>User: Membership granted
 ```
 
-### Proposal execution
-Executing a proposal calls an allowlisted action and reverts on failure.
+### Proposal Execution
 ```mermaid
 sequenceDiagram
     participant Member
     participant TEMPL
-    participant Target
     Member->>TEMPL: executeProposal(id)
-    TEMPL->>Target: call encoded action
-    Target-->>TEMPL: success/failure
-    alt success
-        TEMPL-->>Member: Proposal executed
-    else failure
-        TEMPL-->>Member: State rolled back
+    alt passed + quorum satisfied
+        TEMPL-->>Member: perform typed action (pause/config/withdraw/disband)
+    else not eligible
+        TEMPL-->>Member: revert (QuorumNotReached/ExecutionDelayActive/ProposalNotPassed)
     end
 ```
 
-## Tests & Lint
-Run contract tests and Slither:
-```bash
-npm test
-npm run slither
-```
-The Hardhat suite covers: fee‑split invariants, reentrancy protection, voting rules (1 member = 1 vote, proposer auto‑YES, vote changes until deadline), eligibility by join time, DAO execution of allowlisted functions (pause/config/treasury), pagination, integration user journey, and all view functions.
+## Configuration & Deployment
+- Constructor: `TEMPL(address priest, address protocolFeeRecipient, address token, uint256 entryFee)`; all addresses must be non‑zero. `entryFee` must be ≥10 and divisible by 10.
+- Env for `scripts/deploy.js` (priest defaults to deployer): `PRIEST_ADDRESS`, `PROTOCOL_FEE_RECIPIENT` (required), `TOKEN_ADDRESS` (required), `ENTRY_FEE` (required), `BASESCAN_API_KEY` (optional).
+- Commands:
+  - Compile/tests: `npm run compile`, `npm test`, `npm run slither`.
+  - Deploy example: `npx hardhat run scripts/deploy.js --network base`.
 
-## Deployment
-```bash
-npx hardhat compile
-npm test
-npx hardhat run scripts/deploy.js --network base
-```
-Artifacts and ABI are written to `deployments/` after deployment.
+## Invariants & Assumptions
+- No arbitrary external call execution; proposals are typed and restricted to internal handlers.
+- Treasury movements only via approved proposals; member pool is preserved except when explicitly increased via disband.
+- If quorum is never reached, proposals cannot be executed even after the voting period.
+- Access token should be a standard ERC‑20 without transfer fees/taxes to ensure exact splits.
+
+## Tests
+The Hardhat suite exercises: fee splits and counters, reentrancy guards, one‑member/one‑vote rules (proposer auto‑YES), post‑quorum voting eligibility, typed DAO actions (pause/config/withdraw/withdrawAll/disband), proposal pagination, and all public views.

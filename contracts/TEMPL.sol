@@ -250,6 +250,15 @@ contract TEMPL is ReentrancyGuard {
         );
     }
     
+    /**
+     * @dev Initialize a new proposal with normalized timing and proposer auto‑YES.
+     *      Enforces single active proposal per address and seeds quorum metadata.
+     * @param _title Human‑readable proposal title
+     * @param _description Detailed description
+     * @param _votingPeriod Voting period in seconds (0 uses default)
+     * @return proposalId Newly assigned proposal ID
+     * @return proposal Storage reference to initialized proposal
+     */
     function _createBaseProposal(
         string memory _title,
         string memory _description,
@@ -283,7 +292,6 @@ contract TEMPL is ReentrancyGuard {
         proposal.voteChoice[msg.sender] = true;
         proposal.yesVotes = 1;
         proposal.noVotes = 0;
-        // quorum snapshot and defaults
         proposal.eligibleVoters = memberList.length;
         proposal.quorumReachedAt = 0;
         proposal.quorumExempt = false;
@@ -298,6 +306,14 @@ contract TEMPL is ReentrancyGuard {
         emit ProposalCreated(proposalId, msg.sender, _title, proposal.endTime);
     }
 
+    /**
+     * @notice Create a proposal to pause or unpause membership purchases.
+     * @param _title Human‑readable title
+     * @param _description Detailed description
+     * @param _paused Desired paused state
+     * @param _votingPeriod Voting period in seconds (0 uses default)
+     * @return id Newly assigned proposal ID
+     */
     function createProposalSetPaused(
         string memory _title,
         string memory _description,
@@ -310,6 +326,16 @@ contract TEMPL is ReentrancyGuard {
         return id;
     }
 
+    /**
+     * @notice Create a proposal to update contract configuration.
+     * @dev Token changes are disabled via governance; `_token` remains unchanged.
+     *      `_newEntryFee` must be 0 (no change) or a valid value (≥10 and divisible by 10).
+     * @param _title Title
+     * @param _description Description
+     * @param _newEntryFee New entry fee (0 to keep current)
+     * @param _votingPeriod Voting period in seconds (0 uses default)
+     * @return id Newly assigned proposal ID
+     */
     function createProposalUpdateConfig(
         string memory _title,
         string memory _description,
@@ -326,6 +352,17 @@ contract TEMPL is ReentrancyGuard {
         return id;
     }
 
+    /**
+     * @notice Create a proposal to withdraw a specific amount from the treasury/donations.
+     * @param _title Title
+     * @param _description Description
+     * @param _token Asset to withdraw (`address(0)` for ETH)
+     * @param _recipient Destination address
+     * @param _amount Amount to withdraw
+     * @param _reason Human‑readable reason
+     * @param _votingPeriod Voting period in seconds (0 uses default)
+     * @return id Newly assigned proposal ID
+     */
     function createProposalWithdrawTreasury(
         string memory _title,
         string memory _description,
@@ -344,6 +381,16 @@ contract TEMPL is ReentrancyGuard {
         return id;
     }
 
+    /**
+     * @notice Create a proposal to withdraw the entire available balance of an asset.
+     * @param _title Title
+     * @param _description Description
+     * @param _token Asset to withdraw (`address(0)` for ETH)
+     * @param _recipient Destination address
+     * @param _reason Human‑readable reason
+     * @param _votingPeriod Voting period in seconds (0 uses default)
+     * @return id Newly assigned proposal ID
+     */
     function createProposalWithdrawAllTreasury(
         string memory _title,
         string memory _description,
@@ -371,9 +418,7 @@ contract TEMPL is ReentrancyGuard {
     ) external onlyMember returns (uint256) {
         (uint256 id, Proposal storage p) = _createBaseProposal(_title, _description, _votingPeriod);
         p.action = Action.DisbandTreasury;
-        // Default to access token balance for disbanding
         p.token = accessToken;
-        // priest exception: disband proposed by priest has no quorum requirement
         if (msg.sender == priest) {
             p.quorumExempt = true;
         }
@@ -393,7 +438,6 @@ contract TEMPL is ReentrancyGuard {
         (uint256 id, Proposal storage p) = _createBaseProposal(_title, _description, _votingPeriod);
         p.action = Action.DisbandTreasury;
         p.token = _token;
-        // priest exception: disband proposed by priest has no quorum requirement
         if (msg.sender == priest) {
             p.quorumExempt = true;
         }
@@ -411,9 +455,6 @@ contract TEMPL is ReentrancyGuard {
         Proposal storage proposal = proposals[_proposalId];
 
         if (block.timestamp >= proposal.endTime) revert TemplErrors.VotingEnded();
-        // Voting eligibility relative to quorum time:
-        // - Before quorum: any member may vote (including those who joined after creation)
-        // - After quorum: only members who joined before quorum may vote
         if (!proposal.quorumExempt && proposal.quorumReachedAt != 0) {
             if (members[msg.sender].timestamp >= proposal.quorumReachedAt) {
                 revert TemplErrors.JoinedAfterProposal();
@@ -443,7 +484,6 @@ contract TEMPL is ReentrancyGuard {
         }
         
         if (!proposal.quorumExempt && proposal.quorumReachedAt == 0) {
-            // Update eligible voters dynamically until quorum is first reached
             proposal.eligibleVoters = memberList.length;
             if (proposal.yesVotes * 100 >= quorumPercent * proposal.eligibleVoters) {
                 proposal.quorumReachedAt = block.timestamp;
@@ -467,7 +507,6 @@ contract TEMPL is ReentrancyGuard {
             if (block.timestamp < proposal.endTime) revert TemplErrors.VotingNotEnded();
         } else {
             if (proposal.quorumReachedAt == 0) {
-                // Not enough participation to execute
                 revert TemplErrors.QuorumNotReached();
             }
             if (block.timestamp < proposal.quorumReachedAt + executionDelayAfterQuorum) {
@@ -562,6 +601,17 @@ contract TEMPL is ReentrancyGuard {
      */
     function disbandTreasuryDAO(address token) external onlyDAO { _disbandTreasury(token, 0); }
 
+    /**
+     * @dev Internal handler to withdraw a specific amount of an asset.
+     *      Preserves member pool for the access token by limiting to available = balance - pool.
+     *      Emits {TreasuryAction}.
+     *      Reverts with InvalidRecipient, AmountZero, InsufficientTreasuryBalance, or ProposalExecutionFailed (for ETH send).
+     * @param token Asset to withdraw (address(0) for ETH)
+     * @param recipient Recipient address
+     * @param amount Amount to withdraw
+     * @param reason Free‑form description for event logging
+     * @param proposalId Associated proposal ID (0 for direct DAO calls in harness)
+     */
     function _withdrawTreasury(
         address token,
         address recipient,
@@ -592,6 +642,16 @@ contract TEMPL is ReentrancyGuard {
         emit TreasuryAction(proposalId, token, recipient, amount, reason);
     }
 
+    /**
+     * @dev Internal handler to withdraw the entire available balance of an asset.
+     *      For access token, preserves member pool and reduces tracked treasuryBalance up to fee‑sourced portion.
+     *      Emits {TreasuryAction}.
+     *      Reverts with InvalidRecipient or NoTreasuryFunds.
+     * @param token Asset to withdraw (address(0) for ETH)
+     * @param recipient Recipient address
+     * @param reason Free‑form description for event logging
+     * @param proposalId Associated proposal ID (0 for direct DAO calls in harness)
+     */
     function _withdrawAllTreasury(
         address token,
         address recipient,
@@ -621,6 +681,12 @@ contract TEMPL is ReentrancyGuard {
         emit TreasuryAction(proposalId, token, recipient, amount, reason);
     }
 
+    /**
+     * @dev Internal config updater. Token changes are disabled; entry fee updates must remain ≥10 and divisible by 10.
+     *      Emits {ConfigUpdated}.
+     * @param _token Must be address(0) or the current access token
+     * @param _entryFee New entry fee or 0 to keep current
+     */
     function _updateConfig(address _token, uint256 _entryFee) internal {
         if (_token != address(0) && _token != accessToken) revert TemplErrors.TokenChangeDisabled();
         if (_entryFee > 0) {
@@ -631,24 +697,30 @@ contract TEMPL is ReentrancyGuard {
         emit ConfigUpdated(accessToken, entryFee);
     }
 
+    /**
+     * @dev Internal pause setter. Emits {ContractPaused}.
+     * @param _paused True to pause, false to unpause
+     */
     function _setPaused(bool _paused) internal {
         paused = _paused;
         emit ContractPaused(_paused);
     }
 
+    /**
+     * @dev Internal disband: moves all available access token to the member pool equally across all members.
+     *      Updates cumulative rewards and remainder; emits {TreasuryDisbanded}.
+     *      Reverts if token is not the access token, if no funds are available, or if there are no members.
+     * @param token Must equal the access token
+     * @param proposalId Associated proposal ID (0 for direct DAO calls in harness)
+     */
     function _disbandTreasury(address token, uint256 proposalId) internal {
-        // Only the access token can be pooled/claimed
         if (token != accessToken) revert TemplErrors.InvalidCallData();
-
         uint256 current = IERC20(accessToken).balanceOf(address(this));
-        // Only the portion not already reserved for the member pool is available to disband
         if (current <= memberPoolBalance) revert TemplErrors.NoTreasuryFunds();
         uint256 amount = current - memberPoolBalance;
 
         uint256 n = memberList.length;
         if (n == 0) revert TemplErrors.NoMembers();
-
-        // Reduce tracked treasury by the portion sourced from fees; donations are not tracked
         uint256 fromFees = amount <= treasuryBalance ? amount : treasuryBalance;
         treasuryBalance -= fromFees;
 

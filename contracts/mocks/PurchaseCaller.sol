@@ -9,12 +9,13 @@ interface ITempl {
 contract PurchaseCaller {
     address public templ;
 
+    /// @dev Store TEMPL address at construction
     constructor(address _templ) {
         templ = _templ;
     }
 
+    /// @notice Call TEMPL.purchaseAccess() from this helper
     function callPurchaseAccess() external {
         ITempl(templ).purchaseAccess();
     }
 }
-
