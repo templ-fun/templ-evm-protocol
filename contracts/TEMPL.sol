@@ -360,16 +360,6 @@ contract TEMPL is ReentrancyGuard {
     }
 
     /**
-     * @notice Create a proposal to withdraw the entire available balance of an asset.
-     * @param _token Asset to withdraw (`address(0)` for ETH)
-     * @param _recipient Destination address
-     * @param _reason Human‑readable reason
-     * @param _votingPeriod Voting period in seconds (0 uses default)
-     * @return id Newly assigned proposal ID
-     */
-    // withdrawAll removed
-
-    /**
      * @notice Create a proposal to disband the treasury into the member pool
      * @dev If proposed by the priest, quorum is not required
      */
