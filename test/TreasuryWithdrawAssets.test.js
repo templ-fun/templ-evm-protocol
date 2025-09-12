@@ -4,7 +4,6 @@ const { deployTempl } = require("./utils/deploy");
 const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
 const {
   encodeWithdrawTreasuryDAO,
-  encodeWithdrawAllTreasuryDAO,
 } = require("./utils/callDataBuilders");
 
 describe("Treasury withdrawals for arbitrary assets", function () {
@@ -76,52 +75,7 @@ describe("Treasury withdrawals for arbitrary assets", function () {
     expect(after - before).to.equal(DONATED_AMOUNT);
   });
 
-  it("should withdraw all donated ETH", async function () {
-    await templ
-      .connect(member1)
-      .createProposalWithdrawAllTreasury(
-        ethers.ZeroAddress,
-        member1.address,
-        "withdraw all donated ETH",
-        7 * 24 * 60 * 60
-      );
-
-    await templ.connect(member1).vote(0, true);
-    await templ.connect(member2).vote(0, true);
-
-    await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
-    await ethers.provider.send("evm_mine");
-
-    const before = await ethers.provider.getBalance(member1.address);
-    await templ.executeProposal(0);
-    const after = await ethers.provider.getBalance(member1.address);
-    expect(after - before).to.equal(DONATED_AMOUNT);
-    expect(await ethers.provider.getBalance(await templ.getAddress())).to.equal(0);
-  });
-
-  it("should withdraw all donated ERC20 tokens", async function () {
-    await templ
-      .connect(member1)
-      .createProposalWithdrawAllTreasury(
-        otherToken.target,
-        member2.address,
-        "withdraw all donated ERC20",
-        7 * 24 * 60 * 60
-      );
-
-    await templ.connect(member1).vote(0, true);
-    await templ.connect(member2).vote(0, true);
-
-    await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
-    await ethers.provider.send("evm_mine");
-
-    const before = await otherToken.balanceOf(member2.address);
-    await templ.executeProposal(0);
-    expect(await otherToken.balanceOf(member2.address)).to.equal(
-      before + DONATED_AMOUNT
-    );
-    expect(await otherToken.balanceOf(await templ.getAddress())).to.equal(0);
-  });
+  // withdrawAll removed; partial withdraw tests cover functionality
 
   it("should withdraw donated accessToken beyond tracked treasuryBalance while preserving member pool", async function () {
     // At this point, two members have purchased access. The contract holds:
@@ -184,45 +138,5 @@ describe("Treasury withdrawals for arbitrary assets", function () {
     expect(info.treasury).to.equal(expectedAvailable);
   });
 
-  it("should withdrawAll accessToken including donations while preserving member pool", async function () {
-    const templAddress = await templ.getAddress();
-
-    // Donate accessToken
-    const donate = (ENTRY_FEE * 25n) / 100n; // 25 tokens
-    await token.mint(owner.address, donate);
-    await token.transfer(templAddress, donate);
-
-    const poolBefore = await templ.memberPoolBalance();
-
-    // Create withdrawAll for accessToken
-    await templ
-      .connect(member1)
-      .createProposalWithdrawAllTreasury(
-        token.target,
-        member2.address,
-        "all accessToken available",
-        7 * 24 * 60 * 60
-      );
-
-    await templ.connect(member1).vote(0, true);
-    await templ.connect(member2).vote(0, true);
-    await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
-    await ethers.provider.send("evm_mine");
-
-    const currBefore = await token.balanceOf(templAddress);
-    const availableBefore = currBefore - poolBefore;
-    const recipientBefore = await token.balanceOf(member2.address);
-
-    await templ.executeProposal(0);
-
-    // Member 2 receives all available (fees + donations), pool stays intact
-    const recipientAfter = await token.balanceOf(member2.address);
-    expect(recipientAfter - recipientBefore).to.equal(availableBefore);
-    const currAfter = await token.balanceOf(templAddress);
-    expect(currAfter).to.equal(poolBefore);
-
-    // UI-facing treasury now zero
-    const infoAfter = await templ.getTreasuryInfo();
-    expect(infoAfter.treasury).to.equal(0n);
-  });
+  // withdrawAll accessToken removed; covered by targeted withdraw + disband scenarios
 });

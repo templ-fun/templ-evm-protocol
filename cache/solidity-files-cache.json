@@ -2,8 +2,8 @@
   "_format": "hh-sol-cache-2",
   "files": {
     "/Users/worms/Documents/templ/contracts/TEMPL.sol": {
-      "lastModificationDate": 1757627948748,
-      "contentHash": "9174616632fc9ab2392b7f9863dc7eca",
+      "lastModificationDate": 1757686570215,
+      "contentHash": "e29671783e666e07c3cfa82a496a231c",
       "sourceName": "contracts/TEMPL.sol",
       "solcConfig": {
         "version": "0.8.23",
@@ -620,8 +620,8 @@
       ]
     },
     "/Users/worms/Documents/templ/contracts/mocks/DaoCallerHarness.sol": {
-      "lastModificationDate": 1757626174923,
-      "contentHash": "74ca4a48420c300b52e14a474532e18c",
+      "lastModificationDate": 1757686573901,
+      "contentHash": "0cf668bb4d38c65fa16d294b5f294e64",
       "sourceName": "contracts/mocks/DaoCallerHarness.sol",
       "solcConfig": {
         "version": "0.8.23",

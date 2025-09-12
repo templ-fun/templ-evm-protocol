@@ -2,7 +2,7 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
 const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
-const { encodeSetPausedDAO, encodeWithdrawTreasuryDAO, encodeWithdrawAllTreasuryDAO, encodeUpdateConfigDAO } = require("./utils/callDataBuilders");
+const { encodeSetPausedDAO, encodeWithdrawTreasuryDAO, encodeUpdateConfigDAO } = require("./utils/callDataBuilders");
 
 describe("TEMPL Contract with DAO Governance", function () {
     let templ;
@@ -163,16 +163,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             ).to.emit(templ, "ProposalCreated");
         });
 
-        it("Should allow creating a proposal to withdraw all treasury funds", async function () {
-            await expect(
-                templ.connect(user1).createProposalWithdrawAllTreasury(
-                    token.target,
-                    treasury.address,
-                    "Drain treasury",
-                    7 * 24 * 60 * 60
-                )
-            ).to.emit(templ, "ProposalCreated");
-        });
+        // withdrawAll proposal removed
 
         it("Should enforce minimum voting period", async function () {
             await expect(templ.connect(user1).createProposalSetPaused(
@@ -511,15 +502,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             )).to.be.revertedWithCustomError(templ, "NotDAO");
         });
 
-        it("Should prevent direct full treasury withdrawal", async function () {
-            await expect(
-                templ.connect(priest).withdrawAllTreasuryDAO(
-                    token.target,
-                    priest.address,
-                    "Unauthorized"
-                )
-            ).to.be.revertedWithCustomError(templ, "NotDAO");
-        });
+        // withdrawAll DAO call removed
 
 
         it("Should only allow treasury withdrawal through passed proposals", async function () {
@@ -856,32 +839,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             await purchaseAccess(templ, token, [user2]);
         });
 
-        it("Should execute withdrawAllTreasuryDAO through proposal", async function () {
-            const callData = encodeWithdrawAllTreasuryDAO(
-                token.target,
-                treasury.address,
-                "Empty treasury"
-            );
-
-            await templ.connect(user1).createProposal(
-                "Empty Treasury",
-                "Withdraw all funds",
-                callData,
-                7 * 24 * 60 * 60
-            );
-
-            await templ.connect(user1).vote(0, true);
-            await templ.connect(user2).vote(0, true);
-
-            await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
-            await ethers.provider.send("evm_mine");
-
-            const treasuryBefore = await templ.treasuryBalance();
-            await templ.executeProposal(0);
-
-            expect(await templ.treasuryBalance()).to.equal(0);
-            expect(await token.balanceOf(treasury.address)).to.equal(treasuryBefore);
-        });
+        // withdrawAll proposal path removed
 
         
     });

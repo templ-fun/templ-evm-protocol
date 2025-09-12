@@ -169,7 +169,7 @@ Core flows include TEMPL creation, paid onboarding, chat, moderation, proposal d
 
 - Contracts
   - Proposal execution is restricted to an allowlist of safe DAO actions; arbitrary external calls are disabled.
-  - Governance actions are allowlisted to: pause/unpause (`setPausedDAO`), reprice entry fee only (`updateConfigDAO` with token changes disabled), move treasury in part (`withdrawTreasuryDAO`) or in full (`withdrawAllTreasuryDAO`), and disband treasury into the member pool (`disbandTreasuryDAO`).
+  - Governance actions are allowlisted to: pause/unpause (`setPausedDAO`), reprice entry fee only (`updateConfigDAO` with token changes disabled), move treasury in part (`withdrawTreasuryDAO`), change the priest (`changePriestDAO`), and disband treasury into the member pool (`disbandTreasuryDAO`).
   - Voting is one member‑one vote; proposer auto‑YES, votes are changeable until deadline; anti‑flash rule enforces join before proposal.
   - Governance may move the access‑token treasury and any tokens or ETH held by the contract (including donations) via proposals. The member pool cannot be withdrawn; it is only claimable by members. Arbitrary external calls remain disabled.
 - Backend API

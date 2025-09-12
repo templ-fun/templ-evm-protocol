@@ -12,12 +12,7 @@ function encodeWithdrawTreasuryDAO(token, recipient, amount, reason) {
   return iface.encodeFunctionData("withdrawTreasuryDAO", [token, recipient, amount, reason]);
 }
 
-function encodeWithdrawAllTreasuryDAO(token, recipient, reason) {
-  const iface = new ethers.Interface([
-    "function withdrawAllTreasuryDAO(address,address,string)"
-  ]);
-  return iface.encodeFunctionData("withdrawAllTreasuryDAO", [token, recipient, reason]);
-}
+// withdrawAll removed
 
 function encodeUpdateConfigDAO(token, entryFee) {
   const iface = new ethers.Interface([
@@ -34,7 +29,6 @@ function encodePurchaseAccess() {
 module.exports = {
   encodeSetPausedDAO,
   encodeWithdrawTreasuryDAO,
-  encodeWithdrawAllTreasuryDAO,
   encodeUpdateConfigDAO,
   encodePurchaseAccess,
 };

@@ -36,7 +36,7 @@ sequenceDiagram
   - `setPausedDAO(bool)` — pause/unpause membership purchasing.
   - `updateConfigDAO(address,uint256)` — update entry fee when `_entryFee > 0`. Changing token is disabled (`_token` must be `address(0)` or the current token), else `TokenChangeDisabled`.
   - `withdrawTreasuryDAO(address,address,uint256,string)` — withdraw a specific amount of any asset (access token, other ERC‑20, or ETH with `address(0)`).
-  - `withdrawAllTreasuryDAO(address,address,string)` — withdraw the entire available balance of a given asset.
+  - `changePriestDAO(address)` — change the priest address via governance.
   - `disbandTreasuryDAO()` / `disbandTreasuryDAO(address)` — move the full available balance of the access token into the member pool equally across all members.
 
 ### Quorum and Eligibility
@@ -52,7 +52,7 @@ sequenceDiagram
 - `createProposalSetPaused(bool paused, uint256 votingPeriod)`
 - `createProposalUpdateConfig(uint256 newEntryFee, uint256 votingPeriod)`
 - `createProposalWithdrawTreasury(address token, address recipient, uint256 amount, string reason, uint256 votingPeriod)`
-- `createProposalWithdrawAllTreasury(address token, address recipient, string reason, uint256 votingPeriod)`
+- `createProposalChangePriest(address newPriest, uint256 votingPeriod)`
 - `createProposalDisbandTreasury(uint256 votingPeriod)` and overloaded
   `createProposalDisbandTreasury(address token, uint256 votingPeriod)` (token must equal the access token at execution).
 
@@ -81,7 +81,7 @@ Note: Proposal metadata (title/description) is not stored on‑chain. Keep human
 - `getMemberCount()` — number of members; `getVoteWeight(address)` — 1 if member else 0.
 
 ## State, Events, Errors
-- Key immutables: `priest`, `protocolFeeRecipient`, `accessToken`.
+- Key immutables: `protocolFeeRecipient`, `accessToken`. Priest is changeable via governance.
 - Key variables: `entryFee` (≥10 and multiple of 10), `paused`, `treasuryBalance` (tracks fee‑sourced tokens only), `memberPoolBalance`, counters (`totalBurned`, `totalToTreasury`, `totalToMemberPool`, `totalToProtocol`).
 - Quorum settings: `quorumPercent = 33`, `executionDelayAfterQuorum = 7 days` (not changeable by governance).
 - Events:
@@ -141,4 +141,4 @@ sequenceDiagram
 - Access token should be a standard ERC‑20 without transfer fees/taxes to ensure exact splits.
 
 ## Tests
-The Hardhat suite exercises: fee splits and counters, reentrancy guards, one‑member/one‑vote rules (proposer auto‑YES), post‑quorum voting eligibility, typed DAO actions (pause/config/withdraw/withdrawAll/disband), proposal pagination, and all public views.
+The Hardhat suite exercises: fee splits and counters, reentrancy guards, one‑member/one‑vote rules (proposer auto‑YES), post‑quorum voting eligibility, typed DAO actions (pause/config/withdraw/changePriest/disband), proposal pagination, and all public views.

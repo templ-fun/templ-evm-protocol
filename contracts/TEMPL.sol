@@ -16,7 +16,7 @@ contract TEMPL is ReentrancyGuard {
     uint256 private constant PROTOCOL_BP = 10;
     address private constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
-    address public immutable priest;
+    address public priest;
     address public immutable protocolFeeRecipient;
     address public immutable accessToken;
     uint256 public entryFee;
@@ -75,8 +75,8 @@ contract TEMPL is ReentrancyGuard {
         SetPaused,
         UpdateConfig,
         WithdrawTreasury,
-        WithdrawAllTreasury,
-        DisbandTreasury
+        DisbandTreasury,
+        ChangePriest
     }
     
     uint256 public totalPurchases;
@@ -132,6 +132,7 @@ contract TEMPL is ReentrancyGuard {
     );
 
     event ContractPaused(bool isPaused);
+    event PriestChanged(address indexed oldPriest, address indexed newPriest);
     event TreasuryDisbanded(
         uint256 indexed proposalId,
         uint256 amount,
@@ -366,19 +367,7 @@ contract TEMPL is ReentrancyGuard {
      * @param _votingPeriod Voting period in seconds (0 uses default)
      * @return id Newly assigned proposal ID
      */
-    function createProposalWithdrawAllTreasury(
-        address _token,
-        address _recipient,
-        string memory _reason,
-        uint256 _votingPeriod
-    ) external onlyMember returns (uint256) {
-        (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod);
-        p.action = Action.WithdrawAllTreasury;
-        p.token = _token;
-        p.recipient = _recipient;
-        p.reason = _reason;
-        return id;
-    }
+    // withdrawAll removed
 
     /**
      * @notice Create a proposal to disband the treasury into the member pool
@@ -410,6 +399,22 @@ contract TEMPL is ReentrancyGuard {
         if (msg.sender == priest) {
             p.quorumExempt = true;
         }
+        return id;
+    }
+
+    /**
+     * @notice Create a proposal to change the priest address
+     * @param _newPriest Address of the new priest
+     * @param _votingPeriod Voting period in seconds (0 uses default)
+     */
+    function createProposalChangePriest(
+        address _newPriest,
+        uint256 _votingPeriod
+    ) external onlyMember returns (uint256) {
+        if (_newPriest == address(0)) revert TemplErrors.InvalidRecipient();
+        (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod);
+        p.action = Action.ChangePriest;
+        p.recipient = _newPriest;
         return id;
     }
     
@@ -500,10 +505,10 @@ contract TEMPL is ReentrancyGuard {
             _updateConfig(proposal.token, proposal.newEntryFee);
         } else if (proposal.action == Action.WithdrawTreasury) {
             _withdrawTreasury(proposal.token, proposal.recipient, proposal.amount, proposal.reason, _proposalId);
-        } else if (proposal.action == Action.WithdrawAllTreasury) {
-            _withdrawAllTreasury(proposal.token, proposal.recipient, proposal.reason, _proposalId);
         } else if (proposal.action == Action.DisbandTreasury) {
             _disbandTreasury(proposal.token, _proposalId);
+        } else if (proposal.action == Action.ChangePriest) {
+            _changePriest(proposal.recipient);
         } else {
             revert TemplErrors.InvalidCallData();
         }
@@ -535,13 +540,7 @@ contract TEMPL is ReentrancyGuard {
      * @param recipient Address to receive assets
      * @param reason Withdrawal explanation
      */
-    function withdrawAllTreasuryDAO(
-        address token,
-        address recipient,
-        string memory reason
-    ) external onlyDAO {
-        _withdrawAllTreasury(token, recipient, reason, 0);
-    }
+    // withdrawAll removed
 
     /**
      * @notice Update contract configuration via DAO proposal
@@ -569,6 +568,14 @@ contract TEMPL is ReentrancyGuard {
      * @dev Currently only the access token is supported; other tokens cannot be pooled
      */
     function disbandTreasuryDAO(address token) external onlyDAO { _disbandTreasury(token, 0); }
+
+    /**
+     * @notice Change priest via DAO (only callable through self-call)
+     * @param newPriest The new priest address
+     */
+    function changePriestDAO(address newPriest) external onlyDAO {
+        _changePriest(newPriest);
+    }
 
     /**
      * @dev Internal handler to withdraw a specific amount of an asset.
@@ -612,6 +619,17 @@ contract TEMPL is ReentrancyGuard {
     }
 
     /**
+     * @dev Internal change priest handler
+     */
+    function _changePriest(address newPriest) internal {
+        if (newPriest == address(0)) revert TemplErrors.InvalidRecipient();
+        address old = priest;
+        if (newPriest == old) revert TemplErrors.InvalidCallData();
+        priest = newPriest;
+        emit PriestChanged(old, newPriest);
+    }
+
+    /**
      * @dev Internal handler to withdraw the entire available balance of an asset.
      *      For access token, preserves member pool and reduces tracked treasuryBalance up to fee‑sourced portion.
      *      Emits {TreasuryAction}.
@@ -621,34 +639,7 @@ contract TEMPL is ReentrancyGuard {
      * @param reason Free‑form description for event logging
      * @param proposalId Associated proposal ID (0 for direct DAO calls in harness)
      */
-    function _withdrawAllTreasury(
-        address token,
-        address recipient,
-        string memory reason,
-        uint256 proposalId
-    ) internal {
-        if (recipient == address(0)) revert TemplErrors.InvalidRecipient();
-        uint256 amount;
-        if (token == accessToken) {
-            uint256 current = IERC20(accessToken).balanceOf(address(this));
-            if (current <= memberPoolBalance) revert TemplErrors.NoTreasuryFunds();
-            amount = current - memberPoolBalance;
-            uint256 fromFees = amount <= treasuryBalance ? amount : treasuryBalance;
-            treasuryBalance -= fromFees;
-
-            IERC20(accessToken).safeTransfer(recipient, amount);
-        } else if (token == address(0)) {
-            amount = address(this).balance;
-            if (amount == 0) revert TemplErrors.NoTreasuryFunds();
-            (bool success, ) = payable(recipient).call{value: amount}("");
-            if (!success) revert TemplErrors.ProposalExecutionFailed();
-        } else {
-            amount = IERC20(token).balanceOf(address(this));
-            if (amount == 0) revert TemplErrors.NoTreasuryFunds();
-            IERC20(token).safeTransfer(recipient, amount);
-        }
-        emit TreasuryAction(proposalId, token, recipient, amount, reason);
-    }
+    // withdrawAll removed
 
     /**
      * @dev Internal config updater. Token changes are disabled; entry fee updates must remain ≥10 and divisible by 10.

@@ -205,7 +205,7 @@ Backend resolves inboxIds from the XMTP network via `findInboxIdByIdentifier` an
   - `setPausedDAO(bool)`
   - `updateConfigDAO(address,uint256)` — entry fee only
   - `withdrawTreasuryDAO(address,address,uint256,string)`
-  - `withdrawAllTreasuryDAO(address,address,string)`
+  - `changePriestDAO(address)`
   - `disbandTreasuryDAO()`
 - Voting: 1 vote per member; no priest bonus weighting.
 - Anti‑flash: voters must have joined before `proposal.createdAt`.
