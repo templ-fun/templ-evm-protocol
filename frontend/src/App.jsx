@@ -68,9 +68,10 @@ function App() {
   const [proposeOpen, setProposeOpen] = useState(false);
   const [proposeTitle, setProposeTitle] = useState('');
   const [proposeDesc, setProposeDesc] = useState('');
-  const [proposeAction, setProposeAction] = useState('none'); // none | pause | unpause | moveTreasuryToMe | reprice
+  const [proposeAction, setProposeAction] = useState('none'); // none | pause | unpause | moveTreasuryToMe | reprice | disband | changePriest
   const [proposeFee, setProposeFee] = useState('');
   const [proposeToken, setProposeToken] = useState('');
+  const [proposeNewPriest, setProposeNewPriest] = useState('');
   const [currentFee, setCurrentFee] = useState(null);
   const [tokenDecimals, setTokenDecimals] = useState(null);
   const [toast, setToast] = useState('');
@@ -1496,6 +1497,7 @@ function App() {
                 <button className={`btn ${proposeAction==='moveTreasuryToMe'?'btn-primary':''}`} onClick={() => setProposeAction('moveTreasuryToMe')}>Move Treasury To Me</button>
                 <button className={`btn ${proposeAction==='disband'?'btn-primary':''}`} onClick={() => setProposeAction('disband')}>Disband Treasury</button>
                 <button className={`btn ${proposeAction==='reprice'?'btn-primary':''}`} onClick={() => setProposeAction('reprice')}>Reprice Entry Fee</button>
+                <button className={`btn ${proposeAction==='changePriest'?'btn-primary':''}`} onClick={() => setProposeAction('changePriest')}>Change Priest</button>
                 <button className={`btn ${proposeAction==='none'?'btn-primary':''}`} onClick={() => setProposeAction('none')}>Custom/None</button>
               </div>
               <div className="text-xs text-black/60">Tip: Pause/Unpause and Move Treasury encode the call data automatically. Reprice expects a new fee in raw token units.</div>
@@ -1515,6 +1517,14 @@ function App() {
                     <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Token address or ETH" value={proposeToken} onChange={(e) => setProposeToken(e.target.value)} />
                   </div>
                   <div className="text-xs text-black/60">Leave blank to use entry fee token.</div>
+                </div>
+              )}
+              {proposeAction === 'changePriest' && (
+                <div className="text-xs text-black/80 mt-1 flex flex-col gap-2">
+                  <div className="flex gap-2 items-center">
+                    <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="New priest address" value={proposeNewPriest} onChange={(e) => setProposeNewPriest(e.target.value)} />
+                  </div>
+                  <div className="text-xs text-black/60">Must be a valid address.</div>
                 </div>
               )}
             </div>
@@ -1541,8 +1551,23 @@ function App() {
                       } else {
                         tokenAddr = proposeToken.trim();
                       }
-                      const iface = new ethers.Interface(['function withdrawAllTreasuryDAO(address token, address recipient, string reason)']);
-                      callData = iface.encodeFunctionData('withdrawAllTreasuryDAO', [tokenAddr, me, 'Tech demo payout']);
+                      // Determine full withdrawable amount for the chosen token
+                      let amount = 0n;
+                      if (tokenAddr === ethers.ZeroAddress) {
+                        amount = BigInt(await signer.provider.getBalance(templAddress));
+                      } else {
+                        const erc20 = new ethers.Contract(tokenAddr, ['function balanceOf(address) view returns (uint256)'], signer);
+                        const bal = BigInt(await erc20.balanceOf(templAddress));
+                        // For access token, available = balance - memberPoolBalance
+                        if (tokenAddr.toLowerCase() === (await templ.accessToken()).toLowerCase()) {
+                          const pool = BigInt(await templ.memberPoolBalance());
+                          amount = bal > pool ? (bal - pool) : 0n;
+                        } else {
+                          amount = bal;
+                        }
+                      }
+                      const iface = new ethers.Interface(['function withdrawTreasuryDAO(address token, address recipient, uint256 amount, string reason)']);
+                      callData = iface.encodeFunctionData('withdrawTreasuryDAO', [tokenAddr, me, amount, 'Tech demo payout']);
                       if (!proposeTitle) setProposeTitle('Move Treasury to me');
                     } catch {}
                   } else if (proposeAction === 'reprice') {
@@ -1560,6 +1585,18 @@ function App() {
                       if (!proposeTitle) setProposeTitle('Disband Treasury');
                       if (!proposeDesc) setProposeDesc('Allocate treasury equally to all members as claimable rewards');
                     } catch {}
+                  } else if (proposeAction === 'changePriest') {
+                    try {
+                      const addr = String(proposeNewPriest || '').trim();
+                      if (!addr || !ethers.isAddress(addr)) throw new Error('Invalid priest address');
+                      const iface = new ethers.Interface(['function changePriestDAO(address)']);
+                      callData = iface.encodeFunctionData('changePriestDAO', [addr]);
+                      if (!proposeTitle) setProposeTitle('Change Priest');
+                      if (!proposeDesc) setProposeDesc(`Set new priest to ${addr}`);
+                    } catch (e) {
+                      alert(e?.message || 'Invalid address');
+                      return;
+                    }
                   }
                   await proposeVote({ ethers, signer, templAddress, templArtifact, title: proposeTitle || 'Untitled', description: (proposeDesc || proposeTitle || 'Proposal'), callData });
                   setProposeOpen(false);
@@ -1568,6 +1605,7 @@ function App() {
                   setProposeAction('none');
                   setProposeFee('');
                   setProposeToken('');
+                  setProposeNewPriest('');
                   pushStatus('✅ Proposal submitted');
                 } catch (err) {
                   alert('Proposal failed: ' + (err?.message || String(err)));

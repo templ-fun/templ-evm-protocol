@@ -314,8 +314,8 @@ export async function proposeVote({
         tx = await contract.createProposalSetPaused(!!p.paused, votingPeriod, txOptions); break;
       case 'withdrawTreasury':
         tx = await contract.createProposalWithdrawTreasury(p.token, p.recipient, p.amount, p.reason || '', votingPeriod, txOptions); break;
-      case 'withdrawAllTreasury':
-        tx = await contract.createProposalWithdrawAllTreasury(p.token, p.recipient, p.reason || '', votingPeriod, txOptions); break;
+      case 'changePriest':
+        tx = await contract.createProposalChangePriest(p.newPriest, votingPeriod, txOptions); break;
       case 'updateConfig':
         tx = await contract.createProposalUpdateConfig(p.newEntryFee || 0n, votingPeriod, txOptions); break;
       case 'disbandTreasury':
@@ -351,9 +351,10 @@ export async function proposeVote({
         const tx = await contract.createProposalWithdrawTreasury(token, recipient, amount, reason, votingPeriod, txOptions);
         return await tx.wait();
       }
-      if (fn?.name === 'withdrawAllTreasuryDAO' && fn.inputs.length === 3) {
-        const [token, recipient, reason] = full.decodeFunctionData(fn, callData);
-        const tx = await contract.createProposalWithdrawAllTreasury(token, recipient, reason, votingPeriod, txOptions);
+      // withdrawAll removed
+      if (fn?.name === 'changePriestDAO' && fn.inputs.length === 1) {
+        const [newPriest] = full.decodeFunctionData(fn, callData);
+        const tx = await contract.createProposalChangePriest(newPriest, votingPeriod, txOptions);
         return await tx.wait();
       }
       if (fn?.name === 'updateConfigDAO' && fn.inputs.length === 2) {

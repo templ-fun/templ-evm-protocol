@@ -4,7 +4,6 @@ const { deployTempl } = require("./utils/deploy");
 const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
 const {
     encodeWithdrawTreasuryDAO,
-    encodeWithdrawAllTreasuryDAO,
 } = require("./utils/callDataBuilders");
 
 describe("Treasury Withdrawal Reverts", function () {
@@ -107,76 +106,5 @@ describe("Treasury Withdrawal Reverts", function () {
         });
     });
 
-    describe("withdrawAllTreasuryDAO", function () {
-        it("should revert with InvalidRecipient", async function () {
-            await templ.connect(user1).createProposalWithdrawAllTreasury(
-                token.target,
-                ethers.ZeroAddress,
-                "Invalid",
-                7 * 24 * 60 * 60
-            );
-
-            await templ.connect(user1).vote(0, true);
-            await templ.connect(user2).vote(0, true);
-
-            await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
-            await ethers.provider.send("evm_mine");
-
-            await expect(templ.executeProposal(0))
-                .to.be.revertedWithCustomError(templ, "InvalidRecipient");
-        });
-
-        it("should revert with NoTreasuryFunds", async function () {
-            // First, withdraw all funds to empty treasury
-            await templ.connect(user1).createProposalWithdrawAllTreasury(
-                token.target,
-                user1.address,
-                "Valid",
-                7 * 24 * 60 * 60
-            );
-
-            await templ.connect(user1).vote(0, true);
-            await templ.connect(user2).vote(0, true);
-            await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
-            await ethers.provider.send("evm_mine");
-            await templ.executeProposal(0);
-            expect(await templ.treasuryBalance()).to.equal(0n);
-
-            // Now, attempt another withdrawAll with empty treasury
-            await templ.connect(user1).createProposalWithdrawAllTreasury(
-                token.target,
-                user1.address,
-                "Valid",
-                7 * 24 * 60 * 60
-            );
-
-            await templ.connect(user1).vote(1, true);
-            await templ.connect(user2).vote(1, true);
-            await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
-            await ethers.provider.send("evm_mine");
-
-            await expect(templ.executeProposal(1))
-                .to.be.revertedWithCustomError(templ, "NoTreasuryFunds");
-        });
-
-        it("should revert when withdrawing all of a token with zero balance", async function () {
-            const OtherToken = await ethers.getContractFactory("TestToken");
-            const otherToken = await OtherToken.deploy("Other", "OTH", 18);
-
-            await templ.connect(user1).createProposalWithdrawAllTreasury(
-                otherToken.target,
-                user1.address,
-                "no balance",
-                7 * 24 * 60 * 60
-            );
-
-            await templ.connect(user1).vote(0, true);
-            await templ.connect(user2).vote(0, true);
-            await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
-            await ethers.provider.send("evm_mine");
-
-            await expect(templ.executeProposal(0))
-                .to.be.revertedWithCustomError(templ, "NoTreasuryFunds");
-        });
-    });
+    // withdrawAll reverts no longer applicable
 });

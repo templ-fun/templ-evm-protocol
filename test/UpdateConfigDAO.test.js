@@ -2,7 +2,7 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
 const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
-const { encodeUpdateConfigDAO, encodeWithdrawAllTreasuryDAO } = require("./utils/callDataBuilders");
+const { encodeUpdateConfigDAO } = require("./utils/callDataBuilders");
 
 describe("updateConfigDAO", function () {
     const ENTRY_FEE = ethers.parseUnits("100", 18);

@@ -13,10 +13,7 @@ contract DaoCallerHarness is TEMPL {
     function daoWithdraw(address token, address recipient, uint256 amount, string calldata reason) external {
         this.withdrawTreasuryDAO(token, recipient, amount, reason);
     }
-    /// @notice Wrapper to call withdrawAllTreasuryDAO via contract self-call
-    function daoWithdrawAll(address token, address recipient, string calldata reason) external {
-        this.withdrawAllTreasuryDAO(token, recipient, reason);
-    }
+    // withdrawAll wrapper removed
     /// @notice Wrapper to call updateConfigDAO via contract self-call
     function daoUpdate(address token, uint256 fee) external {
         this.updateConfigDAO(token, fee);
@@ -28,6 +25,10 @@ contract DaoCallerHarness is TEMPL {
     /// @notice Wrapper to call disbandTreasuryDAO via contract self-call
     function daoDisband() external {
         this.disbandTreasuryDAO();
+    }
+    /// @notice Wrapper to call changePriestDAO via contract self-call
+    function daoChangePriest(address newPriest) external {
+        this.changePriestDAO(newPriest);
     }
     /// @dev Test helper to force invalid action path (testing only)
     function corruptAction(uint256 proposalId, uint8 val) external {

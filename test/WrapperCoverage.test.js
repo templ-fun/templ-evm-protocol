@@ -27,13 +27,13 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
     await templ.daoWithdraw(token.target, recipient.address, amount, "payout");
     expect(await token.balanceOf(recipient.address)).to.equal(before + amount);
 
-    // donate other ERC20 and withdrawAll
+    // donate other ERC20 and withdraw full via withdrawTreasuryDAO
     const Other = await ethers.getContractFactory("contracts/mocks/TestToken.sol:TestToken");
     const other = await Other.deploy("Other", "OTH", 18);
     await other.mint(owner.address, 1000n);
     await other.transfer(templ.target, 777n);
     const before2 = await other.balanceOf(recipient.address);
-    await templ.daoWithdrawAll(other.target, recipient.address, "drain");
+    await templ.daoWithdraw(other.target, recipient.address, 777n, "drain");
     expect(await other.balanceOf(recipient.address)).to.equal(before2 + 777n);
   });
 
