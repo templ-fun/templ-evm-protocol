@@ -36,13 +36,13 @@ sequenceDiagram
 ## Documentation
 Use the docs below to dive into each component:
 
-- [WHITEPAPER.MD](./WHITEPAPER.MD) – comprehensive technical whitepaper
-- [CORE_FLOW_DOCS.MD](./CORE_FLOW_DOCS.MD) – core flow service diagrams
-- [CONTRACTS.md](./CONTRACTS.md) – smart‑contract specification
-- [BACKEND.md](./BACKEND.md) – XMTP bot and API
-- [FRONTEND.md](./FRONTEND.md) – React client
-- [PERSISTENCE.md](./PERSISTENCE.md) – data storage and XMTP DBs
-- [TEST_LOCALLY.md](./TEST_LOCALLY.md) – fast local end‑to‑end setup
+- [WHITEPAPER.MD](./docs/WHITEPAPER.MD) – comprehensive technical whitepaper
+- [CORE_FLOW_DOCS.MD](./docs/CORE_FLOW_DOCS.MD) – core flow service diagrams
+- [CONTRACTS.md](./docs/CONTRACTS.md) – smart‑contract specification
+- [BACKEND.md](./docs/BACKEND.md) – XMTP bot and API
+- [FRONTEND.md](./docs/FRONTEND.md) – React client
+- [PERSISTENCE.md](./docs/PERSISTENCE.md) – data storage and XMTP DBs
+- [TEST_LOCALLY.md](./docs/TEST_LOCALLY.md) – fast local end‑to‑end setup
  
 ## Prerequisites
 - Node `22.18.0` (enforced via `engines` in `package.json`).
@@ -82,7 +82,7 @@ Use the docs below to dive into each component:
    npm --prefix backend start
    npm --prefix frontend run dev
    ```
-   The backend expects environment variables like `BOT_PRIVATE_KEY`, `RPC_URL`, and `ALLOWED_ORIGINS` in `backend/.env`. See [BACKEND.md](./BACKEND.md) and [FRONTEND.md](./FRONTEND.md) for details.
+   The backend expects environment variables like `BOT_PRIVATE_KEY`, `RPC_URL`, and `ALLOWED_ORIGINS` in `backend/.env`. See [BACKEND.md](./docs/BACKEND.md) and [FRONTEND.md](./docs/FRONTEND.md) for details.
 
 ## Commands
 - Contracts: `npm run compile`, `npm test`, `npm run node`, `npm run deploy:local`, `npm run slither`, `npm run coverage`
@@ -107,10 +107,10 @@ Minimal local setup requires only a handful of variables:
 | `XMTP_METADATA_UPDATES` | Set to `0` to skip name/description updates on XMTP groups | `backend/.env` |
 | `BACKEND_SERVER_ID` | String identifier bound into EIP‑712 signatures (must match frontend’s `VITE_BACKEND_SERVER_ID`) | `backend/.env` |
 
-See [BACKEND.md#environment-variables](./BACKEND.md#environment-variables) and [CONTRACTS.md#configuration--deployment](./CONTRACTS.md#configuration--deployment) for complete lists.
+See [BACKEND.md#environment-variables](./docs/BACKEND.md#environment-variables) and [CONTRACTS.md#configuration--deployment](./docs/CONTRACTS.md#configuration--deployment) for complete lists.
 
 ## Deploying to production
-1. Create a `.env` file in the project root for deployment scripts and a `backend/.env` for the bot. Required variables are documented in [CONTRACTS.md#configuration](./CONTRACTS.md#configuration) and [BACKEND.md#environment-variables](./BACKEND.md#environment-variables).
+1. Create a `.env` file in the project root for deployment scripts and a `backend/.env` for the bot. Required variables are documented in [CONTRACTS.md#configuration](./docs/CONTRACTS.md#configuration) and [BACKEND.md#environment-variables](./docs/BACKEND.md#environment-variables).
 2. Run the full test suite and Slither analysis.
 3. Deploy with `scripts/deploy.js` and record the contract address and XMTP group ID.
 4. Host the backend bot and set `ALLOWED_ORIGINS` to the permitted frontend URL(s). In production, contract address is verified on‑chain and the `priest` address must match the deployed contract.
@@ -129,7 +129,7 @@ Do not use test‑only flags in production (e.g., `DISABLE_XMTP_WAIT`).
 
 ## Core flows
 
-High‑level sequence for deploying, joining, and messaging (see [CORE_FLOW_DOCS.MD](./CORE_FLOW_DOCS.MD) for full diagrams):
+High‑level sequence for deploying, joining, and messaging (see [CORE_FLOW_DOCS.MD](./docs/CORE_FLOW_DOCS.MD) for full diagrams):
 
 ```mermaid
 sequenceDiagram
@@ -162,7 +162,7 @@ Core flows include TEMPL creation, paid onboarding, chat, moderation, proposal d
 ## XMTP Essentials
 - Environments: set `XMTP_ENV`/`VITE_XMTP_ENV` to `dev`, `production`, or `local`.
 - Identity: messages route to an `inboxId` with multiple installations (devices/agents). XMTP caps installs at 10 per inbox. Install/Revoke count as inbox action and each inbox has only 256 actions before it requires rotation by increasing the nonce of the transaction.
-- Databases: Node client DB is SQLCipher‑encrypted (see `BACKEND_DB_ENC_KEY`); browser DB lives in OPFS per origin (not encrypted). See [PERSISTENCE.md](./PERSISTENCE.md).
+- Databases: Node client DB is SQLCipher‑encrypted (see `BACKEND_DB_ENC_KEY`); browser DB lives in OPFS per origin (not encrypted). See [PERSISTENCE.md](./docs/PERSISTENCE.md).
 - Discovery: after joins/creation, clients sync conversations; the backend may send a small warm message to help discovery.
 - Resolution: the backend resolves inboxIds from the network and ignores client‑supplied ids except in explicit local/test fallback modes.
 
