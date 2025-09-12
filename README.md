@@ -17,7 +17,7 @@ DAO‑governed token‑gated private groups with onchain treasury management and
 
 A TEMPL combines three pieces:
 - **Smart contracts** on Base gate membership with `purchaseAccess`.
-- **Backend bot** owns the XMTP group and invites paid wallets.
+- **Backend bot** creates the XMTP group with an ephemeral key and only invites paid wallets thereafter (no persistent owner/admin keys retained).
 - **React frontend** deploys contracts, verifies purchases and hosts chat.
 The frontend buys access and requests an invite; the backend can mirror contract events in chat.
 
