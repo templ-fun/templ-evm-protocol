@@ -97,7 +97,7 @@ Creation helpers (`createProposalX`) initialize proposals with normalized timing
 
 ### Responsibilities
 
-- Owns the XMTP group tied to a TEMPL contract, invites paid members by resolving inbox identities.
+- Maintains the XMTP group tied to a TEMPL contract: creates it via a short‑lived ephemeral key, then uses a persistent invite‑only bot identity to add on‑chain members (no persistent owner/admin privileges retained).
 - Verifies EIP‑712 signatures for all state‑changing requests and enforces replay protection.
 - Mirrors on‑chain governance events (`ProposalCreated`, `VoteCast`) into the group as JSON messages.
 - Enforces chat moderation via escalating mutes and optional delegated moderators.
@@ -155,4 +155,4 @@ Creation helpers (`createProposalX`) initialize proposals with normalized timing
 - **Member Pool**: Accrual bucket distributed equally to members; claimable pro‑rata by address.
 - **Disband**: Governance action moving the entire available access‑token treasury into the member pool equally.
 - **Quorum**: 33% of eligible voters; eligibility freezes after quorum.
-- **XMTP Group**: Off‑chain chat space owned by the backend’s bot identity; only invited members participate.
+- **XMTP Group**: Off‑chain chat space created via an ephemeral key; the backend’s bot identity has invite‑only powers to add on‑chain members. No persistent owner/admin keys are retained.
