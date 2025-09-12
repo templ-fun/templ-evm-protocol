@@ -17,9 +17,31 @@ TEMPL is a DAO‑governed, token‑gated private group system that combines:
 
 **High‑level flow (deploy → join → chat):**
 
-1) Deploy: Frontend deploys a TEMPL; backend creates an XMTP group bound to the contract using an ephemeral creator key (discarded after).
-2) Join: User purchases on‑chain; frontend requests invite; backend verifies and invites.
-3) Chat/Govern: Members chat on XMTP and govern with on‑chain proposals/votes.
+```mermaid
+sequenceDiagram
+    participant F as Frontend
+    participant B as Backend
+    participant C as Contract
+    participant X as XMTP
+
+    Note over F,B: Deploy
+    F->>C: deployTempl()
+    F->>B: POST /templs {contract}
+    B->>X: create group (ephemeral key)
+    B-->>F: {groupId}
+
+    Note over F,B,C: Join
+    F->>C: approve + purchaseAccess()
+    F->>B: POST /join {member, contract, sig}
+    B->>C: hasAccess(member)
+    C-->>B: true
+    B->>X: addMembers([inboxId])
+    B-->>F: {groupId}
+
+    Note over F,X: Chat/Govern
+    F->>X: send/receive messages
+    F->>C: propose/vote/execute
+```
 
 ## On‑Chain Protocol (contracts/TEMPL.sol)
 
@@ -32,6 +54,17 @@ TEMPL is a DAO‑governed, token‑gated private group system that combines:
   - 10% Protocol → transferred to `protocolFeeRecipient`
 - Member rewards: When a new member joins, the contract increments `cumulativeMemberRewards` by `floor(30% / (n-1))` for existing members (where `n` is new member count). Remainder accumulates in `memberRewardRemainder`.
 - Donations: Anyone may send ETH/ERC‑20 directly to the contract address. Governance may later withdraw donated assets; the member pool balance remains reserved for members.
+
+```mermaid
+sequenceDiagram
+    participant N as NewMember
+    participant T as TEMPL
+    participant E as ExistingMember
+    N->>T: purchaseAccess()
+    T-->>E: increase cumulative rewards
+    E->>T: claimMemberPool()
+    T-->>E: transfer claimable
+```
 
 ### Membership Lifecycle
 
@@ -62,6 +95,20 @@ TEMPL is a DAO‑governed, token‑gated private group system that combines:
     - If quorum‑exempt: execute after `endTime`
     - Requires quorum: earliest execution at `quorumReachedAt + executionDelayAfterQuorum (7 days)`
 - Quorum exemption: `createProposalDisbandTreasury` proposed by the `priest` sets `quorumExempt = true` and respects only `endTime`.
+
+```mermaid
+flowchart LR
+    A[Create Proposal] --> B{Quorum Reached?}
+    B -- No --> C[Members vote]
+    C --> B
+    B -- Yes --> D[Freeze eligibility]
+    D --> E[Set endTime = now + 7d]
+    E --> F{After 7d?}
+    F -- No --> E
+    F -- Yes --> G{Majority yes?}
+    G -- Yes --> H[Execute]
+    G -- No --> I[Not passed]
+```
 
 ### Allowed Actions
 
@@ -112,12 +159,37 @@ Creation helpers (`createProposalX`) initialize proposals with normalized timing
   - Signature: EIP‑712 `{ action:'join', contract, server, nonce, issuedAt, expiry }` signed by the member.
   - Identity: server resolves inboxIds and waits for readiness; client‑supplied ids are ignored except in explicit local/test fallback.
 
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant B as Backend
+    participant CH as Chain
+    participant X as XMTP
+    C->>B: POST /templs {contract, sig}
+    B->>CH: verify code/priest/chain (prod)
+    B->>X: create group
+    B-->>C: {groupId}
+    C->>B: POST /join {member, contract, sig}
+    B->>CH: hasAccess(member)
+    CH-->>B: true
+    B->>X: addMembers([inboxId])
+    B-->>C: {groupId}
+```
+
 ### Moderation Endpoints
 
 - `POST /delegateMute` — grant mute rights (priest EIP‑712 `{ action:'delegateMute', ... }`).
 - `DELETE /delegateMute` — revoke mute rights (same typed signature).
 - `POST /mute` — record escalating mute strike (priest or delegate EIP‑712 `{ action:'mute', ... }`).
 - `GET /mutes` — list active mutes for a contract.
+
+```mermaid
+flowchart LR
+    P[Priest] -->|delegateMute| B[Backend]
+    D[Delegate] -->|mute| B
+    P -->|mute| B
+    F[Frontend] -->|GET /mutes| B
+```
 
 ### Identity, Persistence, and Operations
 
