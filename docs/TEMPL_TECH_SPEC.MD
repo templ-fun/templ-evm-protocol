@@ -1,4 +1,4 @@
-# TEMPL Protocol — Technical Whitepaper
+# TEMPL Protocol — Technical Specifications
 
 ## Abstract
 

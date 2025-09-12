@@ -36,7 +36,7 @@ sequenceDiagram
 ## Documentation
 Use the docs below to dive into each component:
 
-- [WHITEPAPER.MD](./docs/WHITEPAPER.MD) – comprehensive technical whitepaper
+- [TEMPL_TECH_SPEC.MD](./docs/TEMPL_TECH_SPEC.MD) – TEMPL protocol technical specifications
 - [CORE_FLOW_DOCS.MD](./docs/CORE_FLOW_DOCS.MD) – core flow service diagrams
 - [CONTRACTS.md](./docs/CONTRACTS.md) – smart‑contract specification
 - [BACKEND.md](./docs/BACKEND.md) – XMTP bot and API
