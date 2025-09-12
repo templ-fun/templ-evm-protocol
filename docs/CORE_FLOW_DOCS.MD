@@ -34,7 +34,7 @@ flowchart LR
 
 ## 2. Pay-to-join
 Members sign a join message, and the backend verifies purchase before inviting them.
-See [CONTRACTS.md#economic-model](CONTRACTS.md#economic-model) for membership fee split details.
+See [CONTRACTS.md#economic-model](./CONTRACTS.md#economic-model) for membership fee split details.
 ```mermaid
 flowchart LR
     F[Frontend] -->|purchaseAccess| C[Contract]

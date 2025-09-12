@@ -1,10 +1,10 @@
 # TEMPL Frontend
 
-See the [README](./README.md#architecture) for how the frontend fits into TEMPL and the flows in [CORE_FLOW_DOCS.MD](./CORE_FLOW_DOCS.MD); this doc covers local development and testing.
+See the [README](../README.md#architecture) for how the frontend fits into TEMPL and the flows in [CORE_FLOW_DOCS.MD](./CORE_FLOW_DOCS.MD); this doc covers local development and testing.
 
 ## Prerequisites
 
-- Node.js `22.18.0` and the repo-wide setup steps from the [root README](./README.md#quick-start).
+- Node.js `22.18.0` and the repo-wide setup steps from the [root README](../README.md#quick-start).
 - Environment variables like `VITE_XMTP_ENV`, `VITE_E2E_DEBUG`, and `E2E_XMTP_LOCAL` configure the frontend. See [Environment variables](#environment-variables) for details.
 
 ## Setup
@@ -17,7 +17,7 @@ npm --prefix frontend ci
 
 ## Environment variables
 
-Global variables such as `RPC_URL` live in the project `.env`; see the [README's environment variables](./README.md#environment-variables).
+Global variables such as `RPC_URL` live in the project `.env`; see the [README's environment variables](../README.md#environment-variables).
 
 | Name | Description | Default |
 | --- | --- | --- |

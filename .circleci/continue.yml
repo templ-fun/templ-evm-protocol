@@ -7,6 +7,9 @@ parameters:
   run_app:
     type: boolean
     default: false
+  run_all:
+    type: boolean
+    default: false
 
 jobs:
   contracts:
@@ -94,6 +97,7 @@ workflows:
               ignore: main
 
   all_tests:
+    when: << pipeline.parameters.run_all >>
     jobs:
       - contracts:
           filters:
