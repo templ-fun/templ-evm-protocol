@@ -36,6 +36,7 @@ sequenceDiagram
 ## Documentation
 Use the docs below to dive into each component:
 
+- [WHITEPAPER.MD](./WHITEPAPER.MD) – comprehensive technical whitepaper
 - [CORE_FLOW_DOCS.MD](./CORE_FLOW_DOCS.MD) – core flow service diagrams
 - [CONTRACTS.md](./CONTRACTS.md) – smart‑contract specification
 - [BACKEND.md](./BACKEND.md) – XMTP bot and API
