@@ -138,9 +138,14 @@ Creation helpers (`createProposalX`) initialize proposals with normalized timing
 - XMTP environments: `local`, `dev`, `production` (`XMTP_ENV` / `VITE_XMTP_ENV`).
 - Group ownership: An ephemeral creator key is used at creation; the persistent invite‑bot identity manages invites thereafter (no need for admin powers like banning).
 - Persistence (SQLite `backend/groups.db`):
-  - `groups(contract, groupId, priest)`; `delegates(contract, delegate)`; `mutes(contract, target, count, until)`; `signatures(sig, usedAt)`; and `kv` (stores generated bot key when `BOT_PRIVATE_KEY` not provided).
-- XMTP Node DB: SQLCipher‑encrypted `xmtp-<env>-<inboxId>.db3` using `BACKEND_DB_ENC_KEY` (required in production). Browser DB lives in OPFS per origin (not encrypted).
-- CORS and rate limiting: `ALLOWED_ORIGINS` defines allowed frontends; Redis is auto‑used when `REDIS_URL` is set, otherwise in‑memory store (not recommended for production).
+  - `groups(contract, groupId, priest)`
+  - `delegates(contract, delegate)`
+  - `mutes(contract, target, count, until)`
+  - `signatures(sig, usedAt)`
+  - `kv` (stores generated bot key when `BOT_PRIVATE_KEY` not provided).
+- XMTP Node DB: SQLCipher‑encrypted `xmtp-<env>-<inboxId>.db3` using `BACKEND_DB_ENC_KEY`. Browser DB lives in OPFS per origin (not encrypted).
+  - Contains (server): invite‑bot identity and installation keys, stable `inboxId`, conversation/group identifiers and metadata (name/description), and sync cursors (e.g., last‑seen sequence) the SDK needs to resume.
+  - Excludes: chat message bodies or attachments, per‑member message history, and any application payloads. Our backend does not store chat content.
 
 ## Client (Frontend)
 
@@ -152,35 +157,16 @@ Creation helpers (`createProposalX`) initialize proposals with normalized timing
 
 - On‑chain: membership, treasury/pool balances, governance proposals, votes, and events.
 - Backend SQLite: contract→group mapping, priest, moderation, replay‑protection signatures, bot key (when generated).
-- XMTP Node DB (server): encrypted client identity and conversation metadata.
+- XMTP Node DB (server): encrypted invite‑bot identity (inboxId + installation), conversation identifiers/metadata, and sync cursors — no chat message bodies.
 - XMTP Browser DB: OPFS identity and metadata; advise one client per page to avoid OPFS access‑handle contention.
 
-## Capabilities and Constraints
-
-**What a TEMPL can do:**
-- Gate membership by paid entry with an ERC‑20 token and a fixed fee.
-- Automatically split entry fees among burn/treasury/member pool/protocol.
-- Let members claim accrued rewards from the member pool.
-- Govern via typed proposals with one‑member‑one‑vote and quorum rules.
-- Move treasury/donated assets via proposal; disband the entire available access‑token balance into the member pool.
-- Pause new purchases; change the priest; reprice the entry fee (token unchanged).
-- Run a private XMTP group where only on‑chain members are invited.
-
-**What a TEMPL cannot do:**
-- Change the access token via governance (`TokenChangeDisabled`).
-- Execute arbitrary external calls; all actions are typed and internal.
-- Revoke or transfer membership on‑chain; membership is a one‑time purchase recorded in a mapping.
-- Withdraw the member pool directly; it is only claimable by members or increased via disband.
-- Pool non‑access tokens; disband only supports the access token.
-- Bypass the backend to join the group; invitations require backend resolution and add.
-
 ## Glossary
-- Priest: Contract’s designated address with limited special power:
+- **Priest**: Contract’s designated address with limited special power:
   - its disband proposals are quorum‑exempt
   - priests can `/mute` and `/delegateMute` in the TEMPL XMTP chat
   - priest can be changed via DAO proposal
-- Treasury: Portion of access token and any donations held by the contract, withdrawable via proposals.
-- Member Pool: Accrual bucket distributed equally to members; claimable pro‑rata by address.
-- Disband: Governance action moving the entire available access‑token treasury into the member pool equally.
-- Quorum: 33% of eligible voters; eligibility freezes after quorum.
-- XMTP Group: Off‑chain chat space owned by the backend’s bot identity; only invited members participate.
+- **Treasury**: Portion of access token and any donations held by the contract, withdrawable via proposals.
+- **Member Pool**: Accrual bucket distributed equally to members; claimable pro‑rata by address.
+- **Disband**: Governance action moving the entire available access‑token treasury into the member pool equally.
+- **Quorum**: 33% of eligible voters; eligibility freezes after quorum.
+- **XMTP Group**: Off‑chain chat space owned by the backend’s bot identity; only invited members participate.
