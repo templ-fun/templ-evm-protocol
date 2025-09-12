@@ -36,13 +36,13 @@ sequenceDiagram
 ## Documentation
 Use the docs below to dive into each component:
 
-- [TEMPL_TECH_SPEC.MD](./docs/TEMPL_TECH_SPEC.MD) – TEMPL protocol technical specifications
-- [CORE_FLOW_DOCS.MD](./docs/CORE_FLOW_DOCS.MD) – core flow service diagrams
-- [CONTRACTS.md](./docs/CONTRACTS.md) – smart‑contract specification
-- [BACKEND.md](./docs/BACKEND.md) – XMTP bot and API
-- [FRONTEND.md](./docs/FRONTEND.md) – React client
-- [PERSISTENCE.md](./docs/PERSISTENCE.md) – data storage and XMTP DBs
-- [TEST_LOCALLY.md](./docs/TEST_LOCALLY.md) – fast local end‑to‑end setup
+- [TEMPL_TECH_SPEC](./docs/TEMPL_TECH_SPEC.MD) – TEMPL protocol technical specifications
+- [CORE_FLOW_DOCS](./docs/CORE_FLOW_DOCS.MD) – core flow service diagrams
+- [CONTRACTS](./docs/CONTRACTS.md) – smart‑contract specification
+- [BACKEND](./docs/BACKEND.md) – XMTP bot and API
+- [FRONTEND](./docs/FRONTEND.md) – React client
+- [PERSISTENCE](./docs/PERSISTENCE.md) – data storage and XMTP DBs
+- [TEST_LOCALLY](./docs/TEST_LOCALLY.md) – fast local end‑to‑end setup
  
 ## Prerequisites
 - Node `22.18.0` (enforced via `engines` in `package.json`).
