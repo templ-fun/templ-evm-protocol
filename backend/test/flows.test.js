@@ -45,9 +45,41 @@ test('creates templ and returns group id', async () => {
   await app.close();
 });
 
+test('rejects templ creation when signature reused', async () => {
+  const fakeGroup = {
+    id: 'group-reused',
+    addMembers: async () => {},
+    removeMembers: async () => {}
+  };
+  const fakeXmtp = {
+    inboxId: 'test-inbox-id',
+    conversations: {
+      newGroup: async () => fakeGroup
+    }
+  };
+  const hasPurchased = async () => false;
+
+  const app = makeApp({ xmtp: fakeXmtp, hasPurchased });
+  const ctyped = buildCreateTypedData({ chainId: 31337, contractAddress: addresses.contract });
+  const signature = await wallets.priest.signTypedData(ctyped.domain, ctyped.types, ctyped.message);
+  const payload = {
+    contractAddress: addresses.contract,
+    priestAddress: addresses.priest,
+    signature,
+    chainId: 31337,
+    nonce: ctyped.message.nonce,
+    issuedAt: ctyped.message.issuedAt,
+    expiry: ctyped.message.expiry
+  };
+
+  await request(app).post('/templs').send(payload).expect(200, { groupId: fakeGroup.id });
+  await request(app).post('/templs').send(payload).expect(409, { error: 'Signature already used' });
+  await app.close();
+});
+
 test('rejects templ creation with malformed addresses', async () => {
   const fakeGroup = { id: 'group-x', addMembers: async () => {}, removeMembers: async () => {} };
-  const fakeXmtp = { 
+  const fakeXmtp = {
     inboxId: 'test-inbox-id',
     conversations: { newGroup: async () => fakeGroup } 
   };
