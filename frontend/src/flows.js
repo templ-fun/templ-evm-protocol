@@ -71,7 +71,7 @@ export async function deployTempl({
   // Record immediately for tests to discover, even before backend registration
   addToTestRegistry(contractAddress);
   const network = await signer.provider?.getNetwork?.();
-  const chainId = Number(network?.chainId || 31337);
+  const chainId = Number(network?.chainId || 1337);
   const createTyped = buildCreateTypedData({ chainId, contractAddress: contractAddress.toLowerCase() });
   const signature = await signer.signTypedData(createTyped.domain, createTyped.types, createTyped.message);
   
@@ -274,7 +274,7 @@ export async function purchaseAndJoin({
     });
   }
   const network = await signer.provider?.getNetwork?.();
-  const chainId = Number(network?.chainId || 31337);
+  const chainId = Number(network?.chainId || 1337);
   const joinTyped = buildJoinTypedData({ chainId, contractAddress: templAddress.toLowerCase() });
   const signature = await signer.signTypedData(joinTyped.domain, joinTyped.types, joinTyped.message);
   
@@ -532,7 +532,7 @@ export async function delegateMute({
   backendUrl = BACKEND_URL
 }) {
   const network = await signer.provider?.getNetwork?.();
-  const chainId = Number(network?.chainId || 31337);
+  const chainId = Number(network?.chainId || 1337);
   const typed = buildDelegateTypedData({ chainId, contractAddress, delegateAddress });
   const signature = await signer.signTypedData(typed.domain, typed.types, typed.message);
   const res = await fetch(`${backendUrl}/delegateMute`, {
@@ -565,7 +565,7 @@ export async function muteMember({
   backendUrl = BACKEND_URL
 }) {
   const network = await signer.provider?.getNetwork?.();
-  const chainId = Number(network?.chainId || 31337);
+  const chainId = Number(network?.chainId || 1337);
   const typed = buildMuteTypedData({ chainId, contractAddress, targetAddress });
   const signature = await signer.signTypedData(typed.domain, typed.types, typed.message);
   const res = await fetch(`${backendUrl}/mute`, {

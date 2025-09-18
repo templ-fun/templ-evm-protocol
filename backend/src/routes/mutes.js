@@ -18,7 +18,7 @@ export default function mutesRouter({ groups, database }) {
       database,
       addressField: 'moderatorAddress',
       buildTyped: (req) => {
-        const chainId = Number(req.body?.chainId || 31337);
+        const chainId = Number(req.body?.chainId || 1337);
         const n = Number(req.body?.nonce);
         const i = Number(req.body?.issuedAt);
         const e = Number(req.body?.expiry);

@@ -94,7 +94,7 @@ describe('templ flows', () => {
     const fetchArgs = /** @type {[string, any]} */ (globalThis.fetch.mock.calls[0]);
     expect(fetchArgs[1].body).toContain('"priestAddress":"0xabc"');
     expect(fetchArgs[1].body).toContain('"signature":"sig"');
-    expect(fetchArgs[1].body).toContain('"chainId":31337');
+    expect(fetchArgs[1].body).toContain('"chainId":1337');
     expect(fetchArgs[1].body).toContain('"nonce":');
     expect(fetchArgs[1].body).toContain('"issuedAt":');
     expect(fetchArgs[1].body).toContain('"expiry":');
@@ -423,7 +423,7 @@ describe('templ flows', () => {
       expect(args[1].body).toContain('"priestAddress":"0xPriest"');
       expect(args[1].body).toContain('"delegateAddress":"0xDel"');
       expect(args[1].body).toContain('"signature":"sig"');
-      expect(args[1].body).toContain('"chainId":31337');
+      expect(args[1].body).toContain('"chainId":1337');
       expect(args[1].body).toContain('"nonce":');
       expect(args[1].body).toContain('"issuedAt":');
       expect(args[1].body).toContain('"expiry":');
@@ -465,7 +465,7 @@ describe('templ flows', () => {
       expect(args[1].body).toContain('"moderatorAddress":"0xMod"');
       expect(args[1].body).toContain('"targetAddress":"0xTar"');
       expect(args[1].body).toContain('"signature":"sig"');
-      expect(args[1].body).toContain('"chainId":31337');
+      expect(args[1].body).toContain('"chainId":1337');
       expect(args[1].body).toContain('"nonce":');
       expect(args[1].body).toContain('"issuedAt":');
       expect(args[1].body).toContain('"expiry":');
