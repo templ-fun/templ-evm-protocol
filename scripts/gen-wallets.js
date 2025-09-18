@@ -27,8 +27,8 @@ async function main() {
   const funder = new ethers.Wallet(FUNDER_PK, provider);
 
   const chain = await provider.getNetwork().catch(() => ({ chainId: 0n }));
-  if (chain.chainId !== 31337n) {
-    console.warn('[warn] This script is intended for Hardhat localhost (chainId 31337). Proceeding anyway.');
+  if (chain.chainId !== 1337n) {
+    console.warn('[warn] This script is intended for Hardhat localhost (chainId 1337). Proceeding anyway.');
   }
 
   const wallets = [];

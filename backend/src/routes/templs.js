@@ -53,7 +53,7 @@ export default function templsRouter({ xmtp, groups, persist, connectContract, d
       database,
       addressField: 'priestAddress',
       buildTyped: (req) => {
-        const chainId = Number(req.body?.chainId || 31337);
+        const chainId = Number(req.body?.chainId || 1337);
         const n = Number(req.body?.nonce);
         const i = Number(req.body?.issuedAt);
         const e = Number(req.body?.expiry);

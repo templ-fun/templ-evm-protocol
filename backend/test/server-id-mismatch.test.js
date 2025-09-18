@@ -7,7 +7,7 @@ test('rejects /templs when BACKEND_SERVER_ID mismatches signed server id', async
   const prev = process.env.BACKEND_SERVER_ID;
   // Sign with server id = srv-one
   process.env.BACKEND_SERVER_ID = 'srv-one';
-  const createTyped = buildCreateTypedData({ chainId: 31337, contractAddress: '0x0000000000000000000000000000000000000001' });
+  const createTyped = buildCreateTypedData({ chainId: 1337, contractAddress: '0x0000000000000000000000000000000000000001' });
   const signature = await wallets.priest.signTypedData(createTyped.domain, createTyped.types, createTyped.message);
 
   // App can be created now; change expected server id before request so verification mismatches
@@ -20,7 +20,7 @@ test('rejects /templs when BACKEND_SERVER_ID mismatches signed server id', async
       contractAddress: '0x0000000000000000000000000000000000000001',
       priestAddress: wallets.priest.address,
       signature,
-      chainId: 31337,
+      chainId: 1337,
       nonce: createTyped.message.nonce,
       issuedAt: createTyped.message.issuedAt,
       expiry: createTyped.message.expiry
