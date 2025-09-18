@@ -14,7 +14,7 @@ Components and message flows powering TEMPL's core protocol.
 ## Actors & Legend
 - Frontend: Browser app where users deploy, join, chat, and govern.
 - Backend: Node service that owns the group, verifies chain state, and moderates.
-- Contract: TEMPL logic (treasury, member pool, voting).
+- Contract: TEMPL logic split across `TemplBase`/`TemplMembership`/`TemplTreasury`/`TemplGovernance` with `TEMPL` as the concrete entrypoint.
 - XMTP: Messaging network.
 - SQLite: Backend DB for groups, delegates, and mutes.
 

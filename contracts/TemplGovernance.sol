@@ -1,0 +1,312 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.23;
+
+import {TemplTreasury} from "./TemplTreasury.sol";
+import {TemplErrors} from "./TemplErrors.sol";
+
+abstract contract TemplGovernance is TemplTreasury {
+    constructor(address _protocolFeeRecipient, address _accessToken)
+        TemplTreasury(_protocolFeeRecipient, _accessToken)
+    {}
+
+    function createProposalSetPaused(
+        bool _paused,
+        uint256 _votingPeriod
+    ) external onlyMember returns (uint256) {
+        (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod);
+        p.action = Action.SetPaused;
+        p.paused = _paused;
+        return id;
+    }
+
+    function createProposalUpdateConfig(
+        uint256 _newEntryFee,
+        uint256 _votingPeriod
+    ) external onlyMember returns (uint256) {
+        if (_newEntryFee > 0) {
+            if (_newEntryFee < 10) revert TemplErrors.EntryFeeTooSmall();
+            if (_newEntryFee % 10 != 0) revert TemplErrors.InvalidEntryFee();
+        }
+        (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod);
+        p.action = Action.UpdateConfig;
+        p.newEntryFee = _newEntryFee;
+        return id;
+    }
+
+    function createProposalWithdrawTreasury(
+        address _token,
+        address _recipient,
+        uint256 _amount,
+        string memory _reason,
+        uint256 _votingPeriod
+    ) external onlyMember returns (uint256) {
+        (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod);
+        p.action = Action.WithdrawTreasury;
+        p.token = _token;
+        p.recipient = _recipient;
+        p.amount = _amount;
+        p.reason = _reason;
+        return id;
+    }
+
+    function createProposalDisbandTreasury(
+        uint256 _votingPeriod
+    ) external onlyMember returns (uint256) {
+        (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod);
+        p.action = Action.DisbandTreasury;
+        p.token = accessToken;
+        if (msg.sender == priest) {
+            p.quorumExempt = true;
+        }
+        return id;
+    }
+
+    function createProposalDisbandTreasury(
+        address _token,
+        uint256 _votingPeriod
+    ) external onlyMember returns (uint256) {
+        (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod);
+        p.action = Action.DisbandTreasury;
+        p.token = _token;
+        if (msg.sender == priest) {
+            p.quorumExempt = true;
+        }
+        return id;
+    }
+
+    function createProposalChangePriest(
+        address _newPriest,
+        uint256 _votingPeriod
+    ) external onlyMember returns (uint256) {
+        if (_newPriest == address(0)) revert TemplErrors.InvalidRecipient();
+        (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod);
+        p.action = Action.ChangePriest;
+        p.recipient = _newPriest;
+        return id;
+    }
+
+    function vote(uint256 _proposalId, bool _support) external onlyMember {
+        if (_proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
+        Proposal storage proposal = proposals[_proposalId];
+
+        if (block.timestamp >= proposal.endTime) revert TemplErrors.VotingEnded();
+        if (!proposal.quorumExempt && proposal.quorumReachedAt != 0) {
+            if (members[msg.sender].timestamp >= proposal.quorumReachedAt) {
+                revert TemplErrors.JoinedAfterProposal();
+            }
+        }
+
+        bool hadVoted = proposal.hasVoted[msg.sender];
+        bool previous = proposal.voteChoice[msg.sender];
+
+        proposal.hasVoted[msg.sender] = true;
+        proposal.voteChoice[msg.sender] = _support;
+
+        if (!hadVoted) {
+            if (_support) {
+                proposal.yesVotes += 1;
+            } else {
+                proposal.noVotes += 1;
+            }
+        } else if (previous != _support) {
+            if (previous) {
+                proposal.yesVotes -= 1;
+                proposal.noVotes += 1;
+            } else {
+                proposal.noVotes -= 1;
+                proposal.yesVotes += 1;
+            }
+        }
+
+        if (!proposal.quorumExempt && proposal.quorumReachedAt == 0) {
+            proposal.eligibleVoters = memberList.length;
+            if (proposal.yesVotes * 100 >= quorumPercent * proposal.eligibleVoters) {
+                proposal.quorumReachedAt = block.timestamp;
+                proposal.endTime = block.timestamp + executionDelayAfterQuorum;
+            }
+        }
+
+        emit VoteCast(_proposalId, msg.sender, _support, block.timestamp);
+    }
+
+    function executeProposal(uint256 _proposalId) external nonReentrant {
+        if (_proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
+        Proposal storage proposal = proposals[_proposalId];
+
+        if (proposal.quorumExempt) {
+            if (block.timestamp < proposal.endTime) revert TemplErrors.VotingNotEnded();
+        } else {
+            if (proposal.quorumReachedAt == 0) {
+                revert TemplErrors.QuorumNotReached();
+            }
+            if (block.timestamp < proposal.quorumReachedAt + executionDelayAfterQuorum) {
+                revert TemplErrors.ExecutionDelayActive();
+            }
+        }
+        if (proposal.executed) revert TemplErrors.AlreadyExecuted();
+
+        if (proposal.yesVotes <= proposal.noVotes) revert TemplErrors.ProposalNotPassed();
+
+        proposal.executed = true;
+
+        address proposerAddr = proposal.proposer;
+        if (hasActiveProposal[proposerAddr] && activeProposalId[proposerAddr] == _proposalId) {
+            hasActiveProposal[proposerAddr] = false;
+            activeProposalId[proposerAddr] = 0;
+        }
+
+        if (proposal.action == Action.SetPaused) {
+            _setPaused(proposal.paused);
+        } else if (proposal.action == Action.UpdateConfig) {
+            _updateConfig(proposal.token, proposal.newEntryFee);
+        } else if (proposal.action == Action.WithdrawTreasury) {
+            _withdrawTreasury(proposal.token, proposal.recipient, proposal.amount, proposal.reason, _proposalId);
+        } else if (proposal.action == Action.DisbandTreasury) {
+            _disbandTreasury(proposal.token, _proposalId);
+        } else if (proposal.action == Action.ChangePriest) {
+            _changePriest(proposal.recipient);
+        } else {
+            revert TemplErrors.InvalidCallData();
+        }
+
+        emit ProposalExecuted(_proposalId, true, hex"");
+    }
+
+    function getProposal(uint256 _proposalId) external view returns (
+        address proposer,
+        uint256 yesVotes,
+        uint256 noVotes,
+        uint256 endTime,
+        bool executed,
+        bool passed
+    ) {
+        if (_proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
+        Proposal storage proposal = proposals[_proposalId];
+        if (proposal.quorumExempt) {
+            passed = block.timestamp >= proposal.endTime && proposal.yesVotes > proposal.noVotes;
+        } else if (proposal.quorumReachedAt != 0) {
+            passed = (block.timestamp >= (proposal.quorumReachedAt + executionDelayAfterQuorum)) &&
+                (proposal.yesVotes > proposal.noVotes);
+        } else {
+            passed = false;
+        }
+
+        return (
+            proposal.proposer,
+            proposal.yesVotes,
+            proposal.noVotes,
+            proposal.endTime,
+            proposal.executed,
+            passed
+        );
+    }
+
+    function hasVoted(
+        uint256 _proposalId,
+        address _voter
+    ) external view returns (bool voted, bool support) {
+        if (_proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
+        Proposal storage proposal = proposals[_proposalId];
+
+        return (proposal.hasVoted[_voter], proposal.voteChoice[_voter]);
+    }
+
+    function getActiveProposals() external view returns (uint256[] memory) {
+        uint256 pc = proposalCount;
+        uint256[] memory temp = new uint256[](pc);
+        uint256 count = 0;
+
+        for (uint256 i = 0; i < pc; i++) {
+            if (block.timestamp < proposals[i].endTime && !proposals[i].executed) {
+                temp[count++] = i;
+            }
+        }
+
+        uint256[] memory activeIds = new uint256[](count);
+        for (uint256 j = 0; j < count; j++) {
+            activeIds[j] = temp[j];
+        }
+        return activeIds;
+    }
+
+    function getActiveProposalsPaginated(
+        uint256 offset,
+        uint256 limit
+    ) external view returns (
+        uint256[] memory proposalIds,
+        bool hasMore
+    ) {
+        if (limit == 0 || limit > 100) revert TemplErrors.LimitOutOfRange();
+        if (offset >= proposalCount) {
+            return (new uint256[](0), false);
+        }
+
+        uint256[] memory tempIds = new uint256[](limit);
+        uint256 count = 0;
+        uint256 scanned = offset;
+
+        for (uint256 i = offset; i < proposalCount && count < limit; i++) {
+            if (block.timestamp < proposals[i].endTime && !proposals[i].executed) {
+                tempIds[count++] = i;
+            }
+            scanned = i + 1;
+        }
+        hasMore = false;
+        if (scanned < proposalCount) {
+            for (uint256 i = scanned; i < proposalCount; i++) {
+                if (block.timestamp < proposals[i].endTime && !proposals[i].executed) {
+                    hasMore = true;
+                    break;
+                }
+            }
+        }
+
+        proposalIds = new uint256[](count);
+        for (uint256 i = 0; i < count; i++) {
+            proposalIds[i] = tempIds[i];
+        }
+
+        return (proposalIds, hasMore);
+    }
+
+    function _createBaseProposal(
+        uint256 _votingPeriod
+    ) internal returns (uint256 proposalId, Proposal storage proposal) {
+        if (hasActiveProposal[msg.sender]) {
+            uint256 existingId = activeProposalId[msg.sender];
+            Proposal storage existingProposal = proposals[existingId];
+            if (!existingProposal.executed && block.timestamp < existingProposal.endTime) {
+                revert TemplErrors.ActiveProposalExists();
+            } else {
+                hasActiveProposal[msg.sender] = false;
+                activeProposalId[msg.sender] = 0;
+            }
+        }
+        uint256 period = _votingPeriod == 0 ? DEFAULT_VOTING_PERIOD : _votingPeriod;
+        if (period < MIN_VOTING_PERIOD) revert TemplErrors.VotingPeriodTooShort();
+        if (period > MAX_VOTING_PERIOD) revert TemplErrors.VotingPeriodTooLong();
+        proposalId = proposalCount++;
+        proposal = proposals[proposalId];
+        proposal.id = proposalId;
+        proposal.proposer = msg.sender;
+        proposal.endTime = block.timestamp + period;
+        proposal.createdAt = block.timestamp;
+        proposal.executed = false;
+        proposal.hasVoted[msg.sender] = true;
+        proposal.voteChoice[msg.sender] = true;
+        proposal.yesVotes = 1;
+        proposal.noVotes = 0;
+        proposal.eligibleVoters = memberList.length;
+        proposal.quorumReachedAt = 0;
+        proposal.quorumExempt = false;
+        if (proposal.eligibleVoters > 0) {
+            if (proposal.yesVotes * 100 >= quorumPercent * proposal.eligibleVoters) {
+                proposal.quorumReachedAt = block.timestamp;
+                proposal.endTime = block.timestamp + executionDelayAfterQuorum;
+            }
+        }
+        hasActiveProposal[msg.sender] = true;
+        activeProposalId[msg.sender] = proposalId;
+        emit ProposalCreated(proposalId, msg.sender, proposal.endTime);
+    }
+}

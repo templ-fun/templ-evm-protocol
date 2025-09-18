@@ -3,6 +3,13 @@
 ## Overview
 Solidity 0.8.23. Core contract is `contracts/TEMPL.sol` with shared errors in `contracts/TemplErrors.sol`. See `README.md#architecture` for the bigger picture; this document reflects the exact on-chain behavior and interfaces.
 
+### Module Layout
+- `TemplBase`: shared storage layout, immutables, counters, events, and modifiers. All other modules inherit it, so audits can focus on a single storage contract.
+- `TemplMembership`: membership lifecycle (`purchaseAccess`, claims, view helpers) and accounting for the member pool.
+- `TemplTreasury`: governance-callable treasury/config/priest handlers and their internal helpers.
+- `TemplGovernance`: proposal creation, voting/quorum logic, execution router, and governance view helpers.
+- `TEMPL`: thin concrete contract wiring the constructor requirements (`priest`, `protocolFeeRecipient`, `token`, `entryFee`) and exposing the payable `receive` hook.
+
 ## Economic Model
 - 30% Burn: sent to `0x000000000000000000000000000000000000dEaD`.
 - 30% Treasury: DAO-controlled; includes entry-fee share plus any tokens/ETH donated directly to the contract.

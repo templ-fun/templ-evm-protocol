@@ -45,6 +45,13 @@ sequenceDiagram
 
 ## On‑Chain Protocol (contracts/TEMPL.sol)
 
+Implementation is layered across:
+- `TemplBase` (storage, immutables, modifiers)
+- `TemplMembership` (purchase + claims)
+- `TemplTreasury` (treasury/config/priest handlers)
+- `TemplGovernance` (proposal lifecycle)
+- `TEMPL` (constructor wiring + payable receive)
+
 ### Economic Model (per `purchaseAccess()`)
 
 - Split of `entryFee`:

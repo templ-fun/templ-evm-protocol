@@ -49,7 +49,7 @@ Use the docs below to dive into each component:
 - After installing (e.g., `npm ci`), enable hooks with `npm run prepare` (Husky).
   
 ## Monorepo Structure
-- `contracts/` – Hardhat + Solidity 0.8.23
+- `contracts/` – Hardhat + Solidity 0.8.23 (modularized across `TemplBase`, `TemplMembership`, `TemplTreasury`, `TemplGovernance`, and concrete `TEMPL`)
 - `backend/` – Node service with XMTP bot and HTTP API
 - `frontend/` – Vite + React demo app with Playwright e2e
 - `shared/` – JS utilities shared by backend and frontend
