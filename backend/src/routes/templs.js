@@ -257,6 +257,18 @@ export default function templsRouter({ xmtp, groups, persist, connectContract, d
             })
           );
         });
+        contract.on('PriestChanged', (oldPriest, newPriest) => {
+          try {
+            const oldKey = typeof oldPriest === 'string' ? oldPriest.toLowerCase() : String(oldPriest || '').toLowerCase();
+            const nextKey = typeof newPriest === 'string' ? newPriest.toLowerCase() : String(newPriest || '').toLowerCase();
+            record.priest = nextKey;
+            groups.set(key, record);
+            persist(key, record);
+            logger.info({ contract: key, oldPriest: oldKey, newPriest: nextKey }, 'Priest updated from PriestChanged event');
+          } catch (err) {
+            logger.warn({ contract: key, err: String(err?.message || err) }, 'Failed to process PriestChanged event');
+          }
+        });
         record.contract = contract;
       }
 
