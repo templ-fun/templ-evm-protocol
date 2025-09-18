@@ -31,7 +31,7 @@ test('reloads groups from disk on restart', async () => {
   const hasPurchased = async () => true;
 
   let app = makeApp({ xmtp: xmtp1, hasPurchased, dbPath });
-  const createTyped = buildCreateTypedData({ chainId: 31337, contractAddress: addresses.contract });
+  const createTyped = buildCreateTypedData({ chainId: 1337, contractAddress: addresses.contract });
   const createSig = await wallets.priest.signTypedData(createTyped.domain, createTyped.types, createTyped.message);
   await request(app)
     .post('/templs')
@@ -39,7 +39,7 @@ test('reloads groups from disk on restart', async () => {
       contractAddress: addresses.contract,
       priestAddress: addresses.priest,
       signature: createSig,
-      chainId: 31337,
+      chainId: 1337,
       nonce: createTyped.message.nonce,
       issuedAt: createTyped.message.issuedAt,
       expiry: createTyped.message.expiry
@@ -55,7 +55,7 @@ test('reloads groups from disk on restart', async () => {
   app = makeApp({ xmtp: xmtp2, hasPurchased, dbPath });
   await new Promise((r) => setTimeout(r, 10));
 
-  const joinTyped = buildJoinTypedData({ chainId: 31337, contractAddress: addresses.contract });
+  const joinTyped = buildJoinTypedData({ chainId: 1337, contractAddress: addresses.contract });
   const joinSig = await wallets.member.signTypedData(joinTyped.domain, joinTyped.types, joinTyped.message);
   await request(app)
     .post('/join')
@@ -63,7 +63,7 @@ test('reloads groups from disk on restart', async () => {
       contractAddress: addresses.contract,
       memberAddress: addresses.member,
       signature: joinSig,
-      chainId: 31337,
+      chainId: 1337,
       nonce: joinTyped.message.nonce,
       issuedAt: joinTyped.message.issuedAt,
       expiry: joinTyped.message.expiry
@@ -96,7 +96,7 @@ test('returns 500 when persistence fails', async () => {
 
   const app = makeApp({ xmtp, hasPurchased, db: failingDb });
 
-  const createTyped2 = buildCreateTypedData({ chainId: 31337, contractAddress: addresses.contract });
+  const createTyped2 = buildCreateTypedData({ chainId: 1337, contractAddress: addresses.contract });
   const sig = await wallets.priest.signTypedData(createTyped2.domain, createTyped2.types, createTyped2.message);
   await request(app)
     .post('/templs')
@@ -104,7 +104,7 @@ test('returns 500 when persistence fails', async () => {
       contractAddress: addresses.contract,
       priestAddress: addresses.priest,
       signature: sig,
-      chainId: 31337,
+      chainId: 1337,
       nonce: createTyped2.message.nonce,
       issuedAt: createTyped2.message.issuedAt,
       expiry: createTyped2.message.expiry
