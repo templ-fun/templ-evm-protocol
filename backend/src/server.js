@@ -72,15 +72,26 @@ export function createApp(opts) {
         .prepare('SELECT contract, groupId, priest FROM groups')
         .all();
       for (const row of rows) {
-        try {
-          const group = await xmtp.conversations.getConversationById(row.groupId);
-          groups.set(row.contract, { group, groupId: row.groupId, priest: row.priest, memberSet: new Set() });
-        } catch {
-          /* ignore */
+        const key = String(row?.contract || '').toLowerCase();
+        if (!key) continue;
+        const record = {
+          group: null,
+          groupId: row?.groupId || null,
+          priest: row?.priest ? String(row.priest).toLowerCase() : null,
+          memberSet: new Set()
+        };
+        if (record.groupId && xmtp?.conversations?.getConversationById) {
+          try {
+            const hydrated = await xmtp.conversations.getConversationById(record.groupId);
+            if (hydrated) record.group = hydrated;
+          } catch (err) {
+            logger?.warn?.({ contract: key, err: String(err?.message || err) }, 'Failed to hydrate conversation on startup');
+          }
         }
+        groups.set(key, record);
       }
-    } catch {
-      /* ignore */
+    } catch (err) {
+      logger?.warn?.({ err: String(err?.message || err) }, 'Failed to restore groups from persistence');
     }
   })();
 

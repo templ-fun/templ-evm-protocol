@@ -23,6 +23,33 @@ function isE2ETestEnv() {
   return false;
 }
 
+function extractProposalIdFromReceipt(receipt, ethersLib, templArtifact, templAddress) {
+  try {
+    if (!templArtifact?.abi || !ethersLib?.Interface || !receipt) return null;
+    const iface = new ethersLib.Interface(templArtifact.abi);
+    const target = templAddress ? String(templAddress).toLowerCase() : null;
+    for (const log of receipt.logs || []) {
+      try {
+        if (target && String(log?.address || '').toLowerCase() !== target) continue;
+        const parsed = iface.parseLog({ topics: Array.from(log?.topics || []), data: log?.data || '0x' });
+        if (parsed?.name === 'ProposalCreated') {
+          const rawId = parsed.args?.proposalId ?? parsed.args?.[0];
+          if (rawId === undefined || rawId === null) return null;
+          if (typeof rawId === 'number') return rawId;
+          if (typeof rawId === 'bigint') return Number(rawId);
+          const asNum = Number(rawId);
+          return Number.isNaN(asNum) ? null : asNum;
+        }
+      } catch {
+        /* ignore individual log parse failures */
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
 function addToTestRegistry(address) {
   if (!isE2ETestEnv()) return;
   try {
@@ -376,6 +403,12 @@ export async function proposeVote({
   txOptions = {}
 }) {
   const contract = new ethers.Contract(templAddress, templArtifact.abi, signer);
+  const lowerAddress = String(templAddress || '').toLowerCase();
+  const waitForProposal = async (tx) => {
+    const receipt = await tx.wait();
+    const proposalId = extractProposalIdFromReceipt(receipt, ethers, templArtifact, lowerAddress);
+    return { receipt, proposalId };
+  };
   if (action) {
     /** @type {any} */
     const p = params || {};
@@ -408,13 +441,13 @@ export async function proposeVote({
       default:
         throw new Error('Unknown action: ' + action);
     }
-    return await tx.wait();
+    return await waitForProposal(tx);
   }
   if (callData) {
     const hasInterface = !!(ethers && typeof ethers.Interface === 'function');
-    const fallbackCreate = async () => { throw new Error('Unsupported callData'); };
+    const fallbackCreate = () => { throw new Error('Unsupported callData'); };
     if (!hasInterface) {
-      return await fallbackCreate();
+      return fallbackCreate();
     }
     try {
       const sig = callData.slice(0, 10).toLowerCase();
@@ -424,39 +457,39 @@ export async function proposeVote({
       if (fn?.name === 'setPausedDAO') {
         const [paused] = full.decodeFunctionData(fn, callData);
         const tx = await contract.createProposalSetPaused(paused, votingPeriod, txOptions);
-        return await tx.wait();
+        return await waitForProposal(tx);
       }
       if (fn?.name === 'withdrawTreasuryDAO' && fn.inputs.length === 4) {
         const [token, recipient, amount, reason] = full.decodeFunctionData(fn, callData);
         const tx = await contract.createProposalWithdrawTreasury(token, recipient, amount, reason, votingPeriod, txOptions);
-        return await tx.wait();
+        return await waitForProposal(tx);
       }
       // withdrawAll removed
       if (fn?.name === 'changePriestDAO' && fn.inputs.length === 1) {
         const [newPriest] = full.decodeFunctionData(fn, callData);
         const tx = await contract.createProposalChangePriest(newPriest, votingPeriod, txOptions);
-        return await tx.wait();
+        return await waitForProposal(tx);
       }
       if (fn?.name === 'updateConfigDAO' && fn.inputs.length === 2) {
         const [, newEntryFee] = full.decodeFunctionData(fn, callData);
         const tx = await contract.createProposalUpdateConfig(newEntryFee, votingPeriod, txOptions);
-        return await tx.wait();
+        return await waitForProposal(tx);
       }
       if (fn?.name === 'disbandTreasuryDAO') {
         if (fn.inputs.length === 1) {
           const [token] = full.decodeFunctionData(fn, callData);
           const tx = await contract.createProposalDisbandTreasury(token, votingPeriod, txOptions);
-          return await tx.wait();
+          return await waitForProposal(tx);
         }
         if (fn.inputs.length === 0) {
           const token = await contract.accessToken();
           const tx = await contract.createProposalDisbandTreasury(token, votingPeriod, txOptions);
-          return await tx.wait();
+          return await waitForProposal(tx);
         }
       }
-      return await fallbackCreate();
+      return fallbackCreate();
     } catch {
-      return await fallbackCreate();
+      return fallbackCreate();
     }
   }
   throw new Error('proposeVote: provide either action or callData');

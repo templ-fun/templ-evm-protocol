@@ -291,10 +291,10 @@ describe('templ flows', () => {
 
   it('proposeVote uses typed helper for setPaused', async () => {
     const contract = {
-      createProposalSetPaused: vi.fn().mockResolvedValue({ wait: vi.fn() })
+      createProposalSetPaused: vi.fn().mockResolvedValue({ wait: vi.fn().mockResolvedValue({ logs: [] }) })
     };
     const ethers = { Contract: vi.fn().mockReturnValue(contract) };
-    await proposeVote({
+    const result = await proposeVote({
       ethers,
       signer: {},
       templAddress: '0xtempl',
@@ -304,6 +304,7 @@ describe('templ flows', () => {
       votingPeriod: 0
     });
     expect(contract.createProposalSetPaused).toHaveBeenCalled();
+    expect(result).toEqual({ receipt: expect.any(Object), proposalId: null });
   });
 
   it('voteOnProposal calls vote', async () => {

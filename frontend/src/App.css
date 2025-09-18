@@ -39,6 +39,7 @@
 
 .chat-item--poll .chat-poll { border: 1px solid var(--border); border-radius: 12px; padding: 10px; background: #fff; width: 100%; }
 .chat-poll__title { font-weight: 600; margin-bottom: 8px; }
+.chat-poll__description { font-size: 13px; color: var(--text-muted); margin-bottom: 8px; white-space: pre-wrap; }
 .chat-poll__bars { display: flex; width: 100%; height: 10px; background: var(--bg-muted); border-radius: 6px; overflow: hidden; margin-bottom: 6px; border: 1px solid var(--border); }
 .chat-poll__bar { height: 100%; }
 .chat-poll__bar.is-yes { background: var(--yes); }

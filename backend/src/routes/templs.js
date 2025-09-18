@@ -111,66 +111,72 @@ export default function templsRouter({ xmtp, groups, persist, connectContract, d
         const priestIdentifierObj = { identifier: priestAddress.toLowerCase(), identifierKind: 0 };
 
       // The SDK often reports successful syncs as errors, so capture that case.
+      const inboxIds = [];
+      const skipNetworkResolution = process.env.DISABLE_XMTP_WAIT === '1';
       let group;
       try {
         // Build initial participant list using inbox IDs as required by node-sdk@4.x
         // Always include the server's own inboxId (invite-bot). Add priest inboxId if resolvable.
-        const inboxIds = [];
         if (xmtp?.inboxId) inboxIds.push(xmtp.inboxId);
-        try {
-          const envOpt = /** @type {'local'|'dev'|'production'} */ (
-            ['local','dev','production'].includes(String(process.env.XMTP_ENV)) ? process.env.XMTP_ENV : 'dev'
-          );
-          const priestInboxMaybe = await getInboxIdForIdentifier(priestIdentifierObj, envOpt);
-          if (priestInboxMaybe) {
-            inboxIds.push(priestInboxMaybe);
-          } else {
-            // Only allow deterministic generation in local/test to avoid accidental mismatches in dev/prod
-            if (envOpt === 'local' || process.env.NODE_ENV === 'test') {
+        if (!skipNetworkResolution) {
+          try {
+            const envOpt = /** @type {'local'|'dev'|'production'} */ (
+              ['local','dev','production'].includes(String(process.env.XMTP_ENV)) ? process.env.XMTP_ENV : 'dev'
+            );
+            const priestInboxMaybe = await getInboxIdForIdentifier(priestIdentifierObj, envOpt);
+            if (priestInboxMaybe) {
+              inboxIds.push(priestInboxMaybe);
+            } else if (envOpt === 'local') {
               try { inboxIds.push(generateInboxId(priestIdentifierObj)); } catch { /* ignore */ }
             }
+          } catch {
+            // ignore resolution errors silently
           }
-        } catch {
-          // ignore resolution errors silently
         }
+        // In fast-test mode we rely on invites happening later; do not
+        // include unregistered inboxIds to avoid SequenceId errors.
         if (!inboxIds.length) {
           throw new Error('No inboxIds available for group creation');
         }
 
-        // Use an ephemeral creator key to create the group, so the invite bot only invites and cannot rug admin.
-        const useEphemeralCreator = process.env.NODE_ENV !== 'test' && process.env.EPHEMERAL_CREATOR !== '0';
-        if (useEphemeralCreator) {
-          const eph = ethers.Wallet.createRandom();
-          const ephXmtp = await createXmtpWithRotation(eph);
-          // In tests we guard with NODE_ENV above; in real runs we call the network client
-          if (typeof ephXmtp?.conversations?.newGroup !== 'function') {
-            throw new Error('Ephemeral XMTP client missing newGroup');
-          }
-          group = await ephXmtp.conversations.newGroup(inboxIds);
-          // Try to set metadata using creator (server will not need admin perms for this)
-          try {
-            if (process.env.XMTP_METADATA_UPDATES !== '0') {
-              try { await group.updateName?.(`Templ ${contractAddress}`); } catch { /* ignore benign sync msgs */ }
-              try { await group.updateDescription?.('Private TEMPL group'); } catch { /* ignore */ }
-            }
-          } catch { /* ignore */ }
-          // Resolve the server's view of the conversation by id
-          try {
-            await syncXMTP(xmtp);
-            const g2 = await xmtp.conversations?.getConversationById?.(group.id);
-            if (g2) group = g2;
-          } catch { /* ignore */ }
-        } else {
-          // Fallback (tests): create using the server's invite-bot identity
-          if (typeof xmtp.conversations.newGroup !== 'function') {
+        const testMode = process.env.DISABLE_XMTP_WAIT === '1';
+        if (testMode) {
+          if (typeof xmtp.conversations?.newGroup !== 'function') {
             throw new Error('XMTP client does not support newGroup(inboxIds)');
           }
-          if (DISABLE_WAIT) {
-            const timeoutMs = 3000;
-            const to = new Promise((_, rej) => setTimeout(() => rej(new Error('newGroup timed out')), timeoutMs));
-            group = await Promise.race([xmtp.conversations.newGroup(inboxIds), to]);
+          group = await xmtp.conversations.newGroup(inboxIds);
+        } else {
+          // Use an ephemeral creator key to create the group, so the invite bot only invites and cannot rug admin.
+          const useEphemeralCreator = process.env.EPHEMERAL_CREATOR !== '0';
+          if (useEphemeralCreator) {
+            const eph = ethers.Wallet.createRandom();
+            const ephXmtp = await createXmtpWithRotation(eph);
+            if (typeof ephXmtp?.conversations?.newGroup !== 'function') {
+              throw new Error('Ephemeral XMTP client missing newGroup');
+            }
+            group = await ephXmtp.conversations.newGroup(inboxIds);
+            try {
+              if (process.env.XMTP_METADATA_UPDATES !== '0') {
+                try { await group.updateName?.(`Templ ${contractAddress}`); } catch { /* ignore benign sync msgs */ }
+                try { await group.updateDescription?.('Private TEMPL group'); } catch { /* ignore */ }
+              }
+            } catch { /* ignore */ }
+            try {
+              await syncXMTP(xmtp);
+              const g2 = await xmtp.conversations?.getConversationById?.(group.id);
+              if (g2) group = g2;
+            } catch { /* ignore */ }
           } else {
-            group = await xmtp.conversations.newGroup(inboxIds);
+            if (typeof xmtp.conversations.newGroup !== 'function') {
+              throw new Error('XMTP client does not support newGroup(inboxIds)');
+            }
+            if (DISABLE_WAIT) {
+              const timeoutMs = 3000;
+              const to = new Promise((_, rej) => setTimeout(() => rej(new Error('newGroup timed out')), timeoutMs));
+              group = await Promise.race([xmtp.conversations.newGroup(inboxIds), to]);
+            } else {
+              group = await xmtp.conversations.newGroup(inboxIds);
+            }
           }
         }
       } catch (err) {
@@ -187,10 +193,6 @@ export default function templsRouter({ xmtp, groups, persist, connectContract, d
           let candidate = byDiff.find((c) => c.name === expectedName) || afterList.find((c) => c.name === expectedName);
           if (candidate) group = candidate;
         } catch (e) { void e; }
-        // If still no group, retry with just the server's inboxId
-        if (!group && typeof xmtp.conversations.newGroup === 'function' && xmtp?.inboxId) {
-          group = await xmtp.conversations.newGroup([xmtp.inboxId]);
-        }
         if (!group) {
           throw err;
         }

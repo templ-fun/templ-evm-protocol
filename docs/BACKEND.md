@@ -32,11 +32,11 @@ npm --prefix backend ci
 | `LOG_LEVEL` | Pino log level (`info`, `debug`, etc.) | `info` |
 | `RATE_LIMIT_STORE` | Rate limit store (`memory` or `redis`) | auto (uses `redis` when `REDIS_URL` is set; else `memory`) |
 | `REDIS_URL` | Redis URL for distributed rate limiting | — |
-| `DISABLE_XMTP_WAIT` | Skip XMTP readiness checks in tests | `0` |
+| `DISABLE_XMTP_WAIT` | Skip XMTP readiness checks in tests (keep `0` in prod) | `0` |
 | `XMTP_MAX_ATTEMPTS` | Limit XMTP client rotation attempts | unlimited |
 | `DB_PATH` | Custom SQLite path for group metadata | `backend/groups.db` |
-| `EPHEMERAL_CREATOR` | When `1` (default), create groups with a fresh, throwaway key; set `0` to disable (mainly for tests) | `1` |
-| `CLEAR_DB` | Wipe database on startup | `0` |
+| `EPHEMERAL_CREATOR` | When `1` (default and recommended), create groups with a fresh, throwaway key | `1` |
+| `CLEAR_DB` | Wipe database on startup (dev-only; leave `0` in prod) | `0` |
 
 See [README.md#environment-variables](../README.md#environment-variables) for minimal setup variables and [PERSISTENCE.md](./PERSISTENCE.md) for database details.
 Startup fails without `RPC_URL`. If `BOT_PRIVATE_KEY` is not provided, the server generates one on first boot and persists it in SQLite (table `kv`, key `bot_private_key`) so the invite-bot identity stays stable across restarts.

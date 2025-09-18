@@ -214,7 +214,7 @@ describe('core flows e2e', () => {
     const iface = new ethers.Interface(templArtifact.abi);
     const callData = iface.encodeFunctionData('setPausedDAO', [true]);
 
-    await proposeVote({
+    const firstProposal = await proposeVote({
       ethers,
       signer: memberSigner, // Use member who has purchased access
       templAddress,
@@ -223,6 +223,7 @@ describe('core flows e2e', () => {
       votingPeriod: 7 * 24 * 60 * 60,
       txOptions: { nonce: memberNonce++ }
     });
+    expect(firstProposal.proposalId).toBe(0);
     // Verify proposal created
     const [proposer, yesVotes, noVotes] = await templ.getProposal(0);
     expect(proposer.toLowerCase()).toBe((await memberSigner.getAddress()).toLowerCase());
@@ -259,7 +260,7 @@ describe('core flows e2e', () => {
     const iface2 = new ethers.Interface(templArtifact.abi);
     const newFee = ethers.parseUnits('200', 18);
     const cd2 = iface2.encodeFunctionData('updateConfigDAO', [ethers.ZeroAddress, newFee]);
-    await proposeVote({
+    const secondProposal = await proposeVote({
       ethers,
       signer: memberSigner,
       templAddress,
@@ -268,6 +269,7 @@ describe('core flows e2e', () => {
       votingPeriod: 7 * 24 * 60 * 60,
       txOptions: { nonce: memberNonce++ }
     });
+    expect(secondProposal.proposalId).toBe(1);
     await voteOnProposal({
       ethers,
       signer: memberSigner,
@@ -285,7 +287,7 @@ describe('core flows e2e', () => {
     // Disband treasury: allocate equally to all members (integration)
     const tBefore = await templ.treasuryBalance();
     if (tBefore > 0n) {
-      await proposeVote({
+      const thirdProposal = await proposeVote({
         ethers,
         signer: memberSigner,
         templAddress,
@@ -294,6 +296,7 @@ describe('core flows e2e', () => {
         votingPeriod: 7 * 24 * 60 * 60,
         txOptions: { nonce: memberNonce++ }
       });
+      expect(thirdProposal.proposalId).toBe(2);
       await voteOnProposal({ ethers, signer: memberSigner, templAddress, templArtifact, proposalId: 2, support: true, txOptions: { nonce: memberNonce++ } });
       await provider.send('evm_increaseTime', [7 * 24 * 60 * 60]);
       await provider.send('evm_mine', []);

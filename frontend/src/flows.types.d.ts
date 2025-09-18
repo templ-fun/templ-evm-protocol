@@ -61,9 +61,11 @@ export interface ProposeVoteArgs {
   callData?: string
   votingPeriod?: number
   txOptions?: any
+  title?: string
+  description?: string
 }
 
-export function proposeVote(args: ProposeVoteArgs): Promise<void>
+export function proposeVote(args: ProposeVoteArgs): Promise<{ receipt: any; proposalId: number | null }>
 export function voteOnProposal(args: { ethers: any; signer: any; templAddress: Address; templArtifact: any; proposalId: number; support: boolean; txOptions?: any }): Promise<void>
 export function executeProposal(args: { ethers: any; signer: any; templAddress: Address; templArtifact: any; proposalId: number; txOptions?: any }): Promise<void>
 export function watchProposals(args: { ethers: any; provider: any; templAddress: Address; templArtifact: any; onProposal: Function; onVote: Function }): () => void

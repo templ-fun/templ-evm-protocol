@@ -101,11 +101,11 @@ Minimal local setup requires only a handful of variables:
 | `BOT_PRIVATE_KEY` | XMTP invite-bot wallet key (auto-generated if omitted) | `backend/.env` |
 | `ALLOWED_ORIGINS` | Comma-separated frontend origins allowed to call the backend | `backend/.env` |
 | `BACKEND_DB_ENC_KEY` | 32-byte hex key to encrypt XMTP Node DB (overrides derived key) | `backend/.env` |
-| `EPHEMERAL_CREATOR` | Use a fresh, throwaway key to create groups (default) | `backend/.env` |
+| `EPHEMERAL_CREATOR` | Use a fresh, throwaway key to create groups (default and recommended for prod) | `backend/.env` |
 | `XMTP_BOOT_MAX_TRIES` | Max boot retries for XMTP client initialization | `backend/.env` |
-| `REQUIRE_CONTRACT_VERIFY` | When `1` or in production, backend verifies contract code and on‑chain priest | `backend/.env` |
-| `XMTP_METADATA_UPDATES` | Set to `0` to skip name/description updates on XMTP groups | `backend/.env` |
-| `BACKEND_SERVER_ID` | String identifier bound into EIP‑712 signatures (must match frontend’s `VITE_BACKEND_SERVER_ID`) | `backend/.env` |
+| `REQUIRE_CONTRACT_VERIFY` | When `1` (required in prod), backend verifies contract code and on-chain priest | `backend/.env` |
+| `XMTP_METADATA_UPDATES` | Set to `0` to skip name/description updates on XMTP groups (keep at `1` in prod) | `backend/.env` |
+| `BACKEND_SERVER_ID` | String identifier bound into EIP-712 signatures (must match frontend’s `VITE_BACKEND_SERVER_ID`) | `backend/.env` |
 
 See [BACKEND.md#environment-variables](./docs/BACKEND.md#environment-variables) and [CONTRACTS.md#configuration--deployment](./docs/CONTRACTS.md#configuration--deployment) for complete lists.
 

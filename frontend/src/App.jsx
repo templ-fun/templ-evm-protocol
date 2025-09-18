@@ -53,7 +53,7 @@ function App() {
   const [groupConnected, setGroupConnected] = useState(false);
   const [paused, setPaused] = useState(false);
   const [status, setStatus] = useState([]);
-  const [messages, setMessages] = useState([]); // [{ kind:'text'|'proposal'|'system', content, senderAddress, proposalId, title, yes, no }]
+  const [messages, setMessages] = useState([]); // [{ kind:'text'|'proposal'|'system', content, senderAddress, proposalId, title, description, yes, no }]
   const [messageInput, setMessageInput] = useState('');
   const [proposals, setProposals] = useState([]);
   const [proposalsById, setProposalsById] = useState({});
@@ -572,6 +572,7 @@ function App() {
         if (list.length > 0) oldestNsRef.current = list[0].sentAtNs;
         setHasMoreHistory(list.length === 100);
         // transform and seed messages
+        const metaUpdates = [];
         const transformed = list.map((dm) => {
           const from = (dm.senderAddress || '').toLowerCase();
           let raw = '';
@@ -581,13 +582,54 @@ function App() {
           if (parsed && parsed.type === 'proposal') {
             const id = Number(parsed.id);
             const title = String(parsed.title || `Proposal #${id}`);
-            setProposalsById((prev) => ({ ...prev, [id]: { ...(prev[id]||{}), id, title, yes: (prev[id]?.yes || 0), no: (prev[id]?.no || 0) } }));
-            return { mid: dm.id, kind: 'proposal', senderAddress: from, proposalId: id, title };
+            const description = typeof parsed.description === 'string' ? parsed.description : undefined;
+            setProposalsById((prev) => {
+              const existing = prev[id] || {};
+              return {
+                ...prev,
+                [id]: {
+                  ...existing,
+                  id,
+                  title,
+                  description: description !== undefined ? description : existing.description,
+                  yes: existing.yes ?? 0,
+                  no: existing.no ?? 0
+                }
+              };
+            });
+            return { mid: dm.id, kind: 'proposal', senderAddress: from, proposalId: id, title, description };
           }
           if (parsed && parsed.type === 'vote') {
             const id = Number(parsed.id);
             const support = Boolean(parsed.support);
-            setProposalsById((prev) => ({ ...prev, [id]: { ...(prev[id]||{ id, yes:0, no:0 }), yes: (prev[id]?.yes || 0) + (support ? 1 : 0), no: (prev[id]?.no || 0) + (!support ? 1 : 0) } }));
+            setProposalsById((prev) => {
+              const existing = prev[id] || { id, yes: 0, no: 0 };
+              const yes = (existing.yes || 0) + (support ? 1 : 0);
+              const no = (existing.no || 0) + (!support ? 1 : 0);
+              return {
+                ...prev,
+                [id]: { ...existing, id, yes, no }
+              };
+            });
+            return null;
+          }
+          if (parsed && parsed.type === 'proposal-meta') {
+            const id = Number(parsed.id);
+            const title = String(parsed.title || `Proposal #${id}`);
+            const description = typeof parsed.description === 'string' ? parsed.description : '';
+            setProposalsById((prev) => {
+              const existing = prev[id] || {};
+              return {
+                ...prev,
+                [id]: {
+                  ...existing,
+                  id,
+                  title,
+                  description,
+                }
+              };
+            });
+            metaUpdates.push({ id, title, description });
             return null;
           }
           if (parsed && (parsed.type === 'templ-created' || parsed.type === 'member-joined')) {
@@ -596,11 +638,27 @@ function App() {
           return { mid: dm.id, kind: 'text', senderAddress: from, content: raw };
         }).filter(Boolean);
         setMessages((prev) => {
-          if (prev.length === 0) return transformed;
-          // Prepend any new items not already present by message id; keep existing order
-          const prevIds = new Set(prev.map((m) => m.mid).filter(Boolean));
-          const deduped = transformed.filter((m) => !m.mid || !prevIds.has(m.mid));
-          return [...deduped, ...prev];
+          let next;
+          if (prev.length === 0) {
+            next = [...transformed];
+          } else {
+            // Prepend any new items not already present by message id; keep existing order
+            const prevIds = new Set(prev.map((m) => m.mid).filter(Boolean));
+            const deduped = transformed.filter((m) => !m.mid || !prevIds.has(m.mid));
+            next = [...deduped, ...prev];
+          }
+          if (metaUpdates.length) {
+            next = next.map((item) => {
+              if (item?.kind === 'proposal') {
+                const hit = metaUpdates.find((u) => Number(item.proposalId) === u.id);
+                if (hit) {
+                  return { ...item, title: hit.title, description: hit.description };
+                }
+              }
+              return item;
+            });
+          }
+          return next;
         });
       } catch {}
       finally { setHistoryLoading(false); }
@@ -629,17 +687,62 @@ function App() {
           if (parsed && parsed.type === 'proposal') {
             const id = Number(parsed.id);
             const title = String(parsed.title || `Proposal #${id}`);
-            setProposalsById((prev) => ({ ...prev, [id]: { ...(prev[id]||{}), id, title, yes: (prev[id]?.yes || 0), no: (prev[id]?.no || 0) } }));
+            const description = typeof parsed.description === 'string' ? parsed.description : undefined;
+            setProposalsById((prev) => {
+              const existing = prev[id] || {};
+              return {
+                ...prev,
+                [id]: {
+                  ...existing,
+                  id,
+                  title,
+                  description: description !== undefined ? description : existing.description,
+                  yes: existing.yes ?? 0,
+                  no: existing.no ?? 0
+                }
+              };
+            });
             setMessages((m) => {
               if (m.some((it) => it.kind === 'proposal' && Number(it.proposalId) === id)) return m;
-              return [...m, { mid: msg.id, kind: 'proposal', senderAddress: from, proposalId: id, title }];
+              return [...m, { mid: msg.id, kind: 'proposal', senderAddress: from, proposalId: id, title, description }];
             });
+            continue;
+          }
+          if (parsed && parsed.type === 'proposal-meta') {
+            const id = Number(parsed.id);
+            const title = String(parsed.title || `Proposal #${id}`);
+            const description = typeof parsed.description === 'string' ? parsed.description : '';
+            setProposalsById((prev) => {
+              const existing = prev[id] || {};
+              return {
+                ...prev,
+                [id]: {
+                  ...existing,
+                  id,
+                  title,
+                  description,
+                  yes: existing.yes ?? 0,
+                  no: existing.no ?? 0
+                }
+              };
+            });
+            setMessages((m) => m.map((item) => (item?.kind === 'proposal' && Number(item.proposalId) === id)
+              ? { ...item, title, description }
+              : item));
             continue;
           }
           if (parsed && parsed.type === 'vote') {
             const id = Number(parsed.id);
             const support = Boolean(parsed.support);
-            setProposalsById((prev) => ({ ...prev, [id]: { ...(prev[id]||{ id, yes:0, no:0 }), yes: (prev[id]?.yes || 0) + (support ? 1 : 0), no: (prev[id]?.no || 0) + (!support ? 1 : 0) } }));
+            setProposalsById((prev) => {
+              const existing = prev[id] || { id, yes: 0, no: 0 };
+              const yes = (existing.yes || 0) + (support ? 1 : 0);
+              const no = (existing.no || 0) + (!support ? 1 : 0);
+              return {
+                ...prev,
+                [id]: { ...existing, id, yes, no }
+              };
+            });
             continue;
           }
           if (parsed && (parsed.type === 'templ-created' || parsed.type === 'member-joined')) {
@@ -1426,6 +1529,7 @@ function App() {
                     list.sort((a, b) => (a.sentAtNs < b.sentAtNs ? -1 : a.sentAtNs > b.sentAtNs ? 1 : 0));
                     if (list.length > 0) oldestNsRef.current = list[0].sentAtNs;
                     setHasMoreHistory(list.length === 100);
+                    const metaUpdates = [];
                     const transformed = list.map((dm) => {
                       let raw = '';
                       try { raw = (typeof dm.content === 'string') ? dm.content : (dm.fallback || ''); } catch {}
@@ -1434,13 +1538,56 @@ function App() {
                       if (parsed && parsed.type === 'proposal') {
                         const id = Number(parsed.id);
                         const title = String(parsed.title || `Proposal #${id}`);
-                        setProposalsById((prev) => ({ ...prev, [id]: { ...(prev[id]||{}), id, title, yes: (prev[id]?.yes || 0), no: (prev[id]?.no || 0) } }));
-                        return { mid: dm.id, kind: 'proposal', senderAddress: '', proposalId: id, title };
+                        const description = typeof parsed.description === 'string' ? parsed.description : undefined;
+                        setProposalsById((prev) => {
+                          const existing = prev[id] || {};
+                          return {
+                            ...prev,
+                            [id]: {
+                              ...existing,
+                              id,
+                              title,
+                              description: description !== undefined ? description : existing.description,
+                              yes: existing.yes ?? 0,
+                              no: existing.no ?? 0
+                            }
+                          };
+                        });
+                        return { mid: dm.id, kind: 'proposal', senderAddress: '', proposalId: id, title, description };
                       }
                       if (parsed && parsed.type === 'vote') {
                         const id = Number(parsed.id);
                         const support = Boolean(parsed.support);
-                        setProposalsById((prev) => ({ ...prev, [id]: { ...(prev[id]||{ id, yes:0, no:0 }), yes: (prev[id]?.yes || 0) + (support ? 1 : 0), no: (prev[id]?.no || 0) + (!support ? 1 : 0) } }));
+                        setProposalsById((prev) => {
+                          const existing = prev[id] || { id, yes: 0, no: 0 };
+                          const yes = (existing.yes || 0) + (support ? 1 : 0);
+                          const no = (existing.no || 0) + (!support ? 1 : 0);
+                          return {
+                            ...prev,
+                            [id]: { ...existing, id, yes, no }
+                          };
+                        });
+                        return null;
+                      }
+                      if (parsed && parsed.type === 'proposal-meta') {
+                        const id = Number(parsed.id);
+                        const title = String(parsed.title || `Proposal #${id}`);
+                        const description = typeof parsed.description === 'string' ? parsed.description : '';
+                        setProposalsById((prev) => {
+                          const existing = prev[id] || {};
+                          return {
+                            ...prev,
+                            [id]: {
+                              ...existing,
+                              id,
+                              title,
+                              description,
+                              yes: existing.yes ?? 0,
+                              no: existing.no ?? 0
+                            }
+                          };
+                        });
+                        metaUpdates.push({ id, title, description });
                         return null;
                       }
                       if (parsed && (parsed.type === 'templ-created' || parsed.type === 'member-joined')) {
@@ -1450,7 +1597,18 @@ function App() {
                     }).filter(Boolean);
                     setMessages((prev) => {
                       const seen = new Set(prev.map((m) => m.mid).filter(Boolean));
-                      const merged = [...transformed, ...prev.filter((m) => !m.mid || !seen.has(m.mid))];
+                      let merged = [...transformed, ...prev.filter((m) => !m.mid || !seen.has(m.mid))];
+                      if (metaUpdates.length) {
+                        merged = merged.map((item) => {
+                          if (item?.kind === 'proposal') {
+                            const hit = metaUpdates.find((u) => Number(item.proposalId) === u.id);
+                            if (hit) {
+                              return { ...item, title: hit.title, description: hit.description };
+                            }
+                          }
+                          return item;
+                        });
+                      }
                       return merged;
                     });
                   } catch {}
@@ -1479,6 +1637,9 @@ function App() {
                   <div key={i} className="chat-item chat-item--poll">
                     <div className="chat-poll">
                       <div className="chat-poll__title">{m.title || `Proposal #${pid}`}</div>
+                      {poll.description && (
+                        <div className="chat-poll__description" data-testid={`proposal-description-${pid}`}>{poll.description}</div>
+                      )}
                       <div className="chat-poll__bars">
                         <div className="chat-poll__bar is-yes" style={{ width: `${yesPct}%` }} />
                         <div className="chat-poll__bar is-no" style={{ width: `${noPct}%` }} />
@@ -1700,7 +1861,44 @@ function App() {
                       return;
                     }
                   }
-                  await proposeVote({ ethers, signer, templAddress, templArtifact, title: proposeTitle || 'Untitled', description: (proposeDesc || proposeTitle || 'Proposal'), callData });
+                  const metaTitle = proposeTitle || 'Untitled';
+                  const metaDescription = (proposeDesc || '').trim();
+                  const { proposalId } = await proposeVote({ ethers, signer, templAddress, templArtifact, title: metaTitle, description: metaDescription, callData });
+                  if (proposalId !== null && proposalId !== undefined) {
+                    const numericId = Number(proposalId);
+                    setProposalsById((prev) => {
+                      const existing = prev[numericId] || {};
+                      return {
+                        ...prev,
+                        [numericId]: {
+                          ...existing,
+                          id: numericId,
+                          title: metaTitle,
+                          description: metaDescription,
+                          yes: existing.yes ?? 0,
+                          no: existing.no ?? 0
+                        }
+                      };
+                    });
+                    setMessages((items) => items.map((item) => (item?.kind === 'proposal' && Number(item.proposalId) === numericId)
+                      ? { ...item, title: metaTitle, description: metaDescription }
+                      : item));
+                    try {
+                      if (xmtp) {
+                        let convo = group;
+                        if ((!convo || !convo.id) && groupId) {
+                          convo = await waitForConversation({ xmtp, groupId, retries: 6, delayMs: 500 });
+                        }
+                        if (convo && typeof convo.send === 'function') {
+                          const payload = { type: 'proposal-meta', id: numericId, title: metaTitle };
+                          if (metaDescription) payload.description = metaDescription;
+                          await convo.send(JSON.stringify(payload));
+                        }
+                      }
+                    } catch (err) {
+                      dlog('Failed to send proposal metadata', err?.message || err);
+                    }
+                  }
                   setProposeOpen(false);
                   setProposeTitle('');
                   setProposeDesc('');
