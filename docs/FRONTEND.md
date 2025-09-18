@@ -25,6 +25,8 @@ Global variables such as `RPC_URL` live in the project `.env`; see the [README's
 | `VITE_E2E_DEBUG` | Enables debug helpers (`window.__XMTP`, etc.) during E2E runs. | `0` |
 | `E2E_XMTP_LOCAL` | When `1`, Playwright E2E tests connect to a local XMTP node instead of production. | `0` |
 | `VITE_BACKEND_SERVER_ID` | String identifier that must match the backend `BACKEND_SERVER_ID` to bind EIP‑712 signatures to your deployment. | — |
+| `VITE_E2E_NO_PURCHASE` | Skip the on-chain purchase step during E2E/dev runs when access is pre-seeded. | `0` |
+| `VITE_ENABLE_BACKEND_FALLBACK` | When `1`, enables debug fallbacks that query backend `/debug` endpoints for membership snapshots. | `0` |
 
 ## Development
 
