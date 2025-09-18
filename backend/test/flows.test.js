@@ -213,6 +213,66 @@ test('rejects join for unknown templ', async () => {
   await app.close();
 });
 
+test('requires provider when verification enabled for join', async () => {
+  const prev = process.env.REQUIRE_CONTRACT_VERIFY;
+  process.env.REQUIRE_CONTRACT_VERIFY = '0';
+  const fakeGroup = {
+    id: 'group-verify-required',
+    addMembers: async () => {},
+    removeMembers: async () => {}
+  };
+  const fakeXmtp = {
+    inboxId: 'test-inbox-id',
+    conversations: {
+      newGroup: async () => fakeGroup,
+      getConversationById: async () => fakeGroup,
+      list: async () => []
+    }
+  };
+  const hasPurchased = async () => true;
+  const app = makeApp({ xmtp: fakeXmtp, hasPurchased });
+  try {
+    const ctyped = buildCreateTypedData({ chainId: 31337, contractAddress: addresses.contract });
+    const templSig = await wallets.priest.signTypedData(ctyped.domain, ctyped.types, ctyped.message);
+    await request(app)
+      .post('/templs')
+      .send({
+        contractAddress: addresses.contract,
+        priestAddress: addresses.priest,
+        signature: templSig,
+        chainId: 31337,
+        nonce: ctyped.message.nonce,
+        issuedAt: ctyped.message.issuedAt,
+        expiry: ctyped.message.expiry
+      })
+      .expect(200);
+
+    process.env.REQUIRE_CONTRACT_VERIFY = '1';
+
+    const jtyped = buildJoinTypedData({ chainId: 31337, contractAddress: addresses.contract });
+    const joinSig = await wallets.member.signTypedData(jtyped.domain, jtyped.types, jtyped.message);
+    await request(app)
+      .post('/join')
+      .send({
+        contractAddress: addresses.contract,
+        memberAddress: addresses.member,
+        signature: joinSig,
+        chainId: 31337,
+        nonce: jtyped.message.nonce,
+        issuedAt: jtyped.message.issuedAt,
+        expiry: jtyped.message.expiry
+      })
+      .expect(500, { error: 'Verification required but no provider configured' });
+  } finally {
+    if (prev === undefined) {
+      delete process.env.REQUIRE_CONTRACT_VERIFY;
+    } else {
+      process.env.REQUIRE_CONTRACT_VERIFY = prev;
+    }
+    await app.close();
+  }
+});
+
 test('responds with 403 when access not purchased', async () => {
   const fakeGroup = {
     id: 'group-deny',
