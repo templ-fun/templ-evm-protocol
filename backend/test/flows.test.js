@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import { EventEmitter } from 'node:events';
+import { mkdtemp } from 'fs/promises';
+import path from 'path';
+import os from 'os';
 import { makeApp, wallets } from './helpers.js';
 import { buildCreateTypedData, buildJoinTypedData, buildDelegateTypedData, buildMuteTypedData } from '../../shared/signing.js';
 
@@ -955,4 +958,106 @@ test('broadcasts proposal and vote events to group', async () => {
     }
   ]);
   await app.close();
+});
+
+test('updates priest when PriestChanged fires and persists to disk', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'templ-priest-'));
+  const dbPath = path.join(dir, 'groups.db');
+
+  const fakeGroup = {
+    id: 'group-priest-change',
+    addMembers: async () => {},
+    removeMembers: async () => {},
+    send: async () => {}
+  };
+
+  const xmtp1 = {
+    inboxId: 'test-inbox-id',
+    conversations: { newGroup: async () => fakeGroup }
+  };
+  const emitter = new EventEmitter();
+  const connectContract = () => emitter;
+  const hasPurchased = async () => true;
+
+  const app1 = makeApp({ xmtp: xmtp1, hasPurchased, connectContract, dbPath });
+  try {
+    const createTyped = buildCreateTypedData({ chainId: 31337, contractAddress: addresses.contract });
+    const createSig = await wallets.priest.signTypedData(createTyped.domain, createTyped.types, createTyped.message);
+    await request(app1)
+      .post('/templs')
+      .send({
+        contractAddress: addresses.contract,
+        priestAddress: addresses.priest,
+        signature: createSig,
+        chainId: 31337,
+        nonce: createTyped.message.nonce,
+        issuedAt: createTyped.message.issuedAt,
+        expiry: createTyped.message.expiry
+      })
+      .expect(200);
+
+    emitter.emit('PriestChanged', addresses.priest, addresses.delegate);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const delegateTyped = buildDelegateTypedData({
+      chainId: 31337,
+      contractAddress: addresses.contract,
+      delegateAddress: addresses.member
+    });
+    const delegateSig = await wallets.delegate.signTypedData(
+      delegateTyped.domain,
+      delegateTyped.types,
+      delegateTyped.message
+    );
+    await request(app1)
+      .post('/delegateMute')
+      .send({
+        contractAddress: addresses.contract,
+        priestAddress: addresses.delegate,
+        delegateAddress: addresses.member,
+        signature: delegateSig,
+        chainId: 31337,
+        nonce: delegateTyped.message.nonce,
+        issuedAt: delegateTyped.message.issuedAt,
+        expiry: delegateTyped.message.expiry
+      })
+      .expect(200, { delegated: true });
+  } finally {
+    await app1.close();
+  }
+
+  const xmtp2 = {
+    inboxId: 'test-inbox-id',
+    conversations: {
+      getConversationById: async () => fakeGroup
+    }
+  };
+
+  const app2 = makeApp({ xmtp: xmtp2, hasPurchased, dbPath });
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    const muteTyped = buildMuteTypedData({
+      chainId: 31337,
+      contractAddress: addresses.contract,
+      targetAddress: addresses.stranger
+    });
+    const muteSig = await wallets.delegate.signTypedData(muteTyped.domain, muteTyped.types, muteTyped.message);
+    const resp = await request(app2)
+      .post('/mute')
+      .send({
+        contractAddress: addresses.contract,
+        moderatorAddress: addresses.delegate,
+        targetAddress: addresses.stranger,
+        signature: muteSig,
+        chainId: 31337,
+        nonce: muteTyped.message.nonce,
+        issuedAt: muteTyped.message.issuedAt,
+        expiry: muteTyped.message.expiry
+      })
+      .expect(200);
+    assert.ok(resp.body.mutedUntil === 0 || resp.body.mutedUntil > Date.now());
+  } finally {
+    await app2.close();
+  }
 });
