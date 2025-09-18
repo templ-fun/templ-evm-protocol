@@ -72,7 +72,7 @@ Add the Hardhat network in MetaMask:
 
 - Network name: Hardhat
 - RPC URL: `http://127.0.0.1:8545`
-- Chain ID: `31337`
+- Chain ID: `1337`
 - Currency: ETH
 
 Import these private keys (addresses are shown for convenience):
