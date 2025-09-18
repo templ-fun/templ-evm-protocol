@@ -86,7 +86,7 @@ Use the docs below to dive into each component:
 
 ## Commands
 - Contracts: `npm run compile`, `npm test`, `npm run node`, `npm run deploy:local`, `npm run slither`, `npm run coverage`
-- Backend: `npm --prefix backend start`, `npm --prefix backend test`, `npm --prefix backend run coverage`, `npm --prefix backend run lint[:fix]`
+- Backend: `npm --prefix backend start`, `npm --prefix backend test`, `npm --prefix backend run coverage`, `npm --prefix backend run lint`, `npm --prefix backend run lint:fix`
 - Frontend: `npm --prefix frontend run dev`, `npm --prefix frontend test`, `npm --prefix frontend run coverage`, `npm --prefix frontend run test:e2e`, `npm --prefix frontend run build`, `npm --prefix frontend run preview`
 - Integration (end‑to‑end core flows): `npm --prefix frontend run test -- src/core-flows.integration.test.js`
 
