@@ -91,7 +91,7 @@ abstract contract TemplGovernance is TemplTreasury {
 
         if (block.timestamp >= proposal.endTime) revert TemplErrors.VotingEnded();
         if (!proposal.quorumExempt && proposal.quorumReachedAt != 0) {
-            if (members[msg.sender].timestamp >= proposal.quorumReachedAt) {
+            if (members[msg.sender].timestamp > proposal.quorumReachedAt) {
                 revert TemplErrors.JoinedAfterProposal();
             }
         }

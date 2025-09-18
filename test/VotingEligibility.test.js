@@ -102,6 +102,73 @@ describe("Voting Eligibility Based on Join Time", function () {
             await expect(templ.connect(member3).vote(0, false)).to.emit(templ, "VoteCast");
         });
 
+        it("Should allow members who joined earlier in the quorum block to vote", async function () {
+            // Four members join to avoid auto-quorum at creation
+            await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
+            await templ.connect(member1).purchaseAccess();
+            await token.connect(member2).approve(await templ.getAddress(), ENTRY_FEE);
+            await templ.connect(member2).purchaseAccess();
+            await token.connect(member3).approve(await templ.getAddress(), ENTRY_FEE);
+            await templ.connect(member3).purchaseAccess();
+            await token.connect(member4).approve(await templ.getAddress(), ENTRY_FEE);
+            await templ.connect(member4).purchaseAccess();
+
+            await templ.connect(member1).createProposalWithdrawTreasury(
+                token.target,
+                member1.address,
+                ethers.parseUnits("10", 18),
+                "Test",
+                7 * 24 * 60 * 60
+            );
+
+            const voteTx = await templ.connect(member2).vote(0, true);
+            const voteReceipt = await voteTx.wait();
+            const quorumBlock = await ethers.provider.getBlock(voteReceipt.blockNumber);
+            const quorumTimestamp = BigInt(quorumBlock.timestamp);
+            const quorumBlockNumber = BigInt(voteReceipt.blockNumber);
+
+            await token.connect(lateMember).approve(await templ.getAddress(), ENTRY_FEE);
+            const joinTx = await templ.connect(lateMember).purchaseAccess();
+            await joinTx.wait();
+
+            const mappingSlot = 8n;
+            const encodedKey = ethers.AbiCoder.defaultAbiCoder().encode(
+                ["address", "uint256"],
+                [lateMember.address, mappingSlot]
+            );
+            const baseSlot = BigInt(ethers.keccak256(encodedKey));
+            const templAddress = await templ.getAddress();
+
+            await ethers.provider.send("hardhat_setStorageAt", [
+                templAddress,
+                ethers.toBeHex(baseSlot + 1n, 32),
+                ethers.zeroPadValue(ethers.toBeHex(quorumTimestamp), 32)
+            ]);
+
+            const storedTimestamp = await ethers.provider.getStorage(
+                templAddress,
+                ethers.toBeHex(baseSlot + 1n, 32)
+            );
+            expect(BigInt(storedTimestamp)).to.equal(quorumTimestamp);
+
+            await ethers.provider.send("hardhat_setStorageAt", [
+                templAddress,
+                ethers.toBeHex(baseSlot + 2n, 32),
+                ethers.zeroPadValue(ethers.toBeHex(quorumBlockNumber), 32)
+            ]);
+
+            const storedBlock = await ethers.provider.getStorage(
+                templAddress,
+                ethers.toBeHex(baseSlot + 2n, 32)
+            );
+            expect(BigInt(storedBlock)).to.equal(quorumBlockNumber);
+
+            const memberInfo = await templ.members(lateMember.address);
+            expect(memberInfo.timestamp).to.equal(quorumTimestamp);
+
+            await expect(templ.connect(lateMember).vote(0, true)).to.emit(templ, "VoteCast");
+        });
+
         it("Should track eligible voters dynamically before quorum and freeze eligibility after quorum", async function () {
             // 4 members join initially (avoid auto-quorum at creation)
             await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);

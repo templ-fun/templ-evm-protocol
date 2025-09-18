@@ -12,7 +12,7 @@ Solidity 0.8.23. Core contract is `contracts/TEMPL.sol` with shared errors in `c
 
 ## Economic Model
 - 30% Burn: sent to `0x000000000000000000000000000000000000dEaD`.
-- 30% Treasury: DAO-controlled; includes entry-fee share plus any tokens/ETH donated directly to the contract.
+- 30% Treasury: DAO-controlled. The `treasuryBalance` counter tracks the entry-fee share; additional tokens/ETH donated directly to the contract are still available to governance via the contract’s free balance (`balanceOf - memberPoolBalance`).
 - 30% Member Pool: claimable by existing members via `claimMemberPool()`.
 - 10% Protocol Fee: forwarded to immutable `protocolFeeRecipient`.
 
@@ -21,7 +21,8 @@ Per new member, claimable reward per existing member is `floor(30% / (n-1))` and
 ### Member Pool Mechanics
 - Accrual: Each purchase increases `memberPoolBalance` and `cumulativeMemberRewards`; members track a `rewardSnapshot` at their join time and on claim.
 - Claim: `claimMemberPool()` transfers the unclaimed delta and advances the snapshot. Reverts with `NoRewardsToClaim` if zero or `InsufficientPoolBalance` if not enough distributable tokens (excludes remainder).
-- Donations: Anyone may donate ETH or ERC‑20 to the contract. Governance may move donations and the treasury share, but member pool balances are not withdrawable except via disbanding into the pool.
+- Donations: Anyone may donate ETH or ERC‑20 to the contract. Governance may move donations and the entry-fee treasury share, but member pool balances are not withdrawable except via disbanding into the pool.
+- Remainders: Any indivisible leftovers from reward calculations accumulate in `memberRewardRemainder` and are rolled into the next distribution (purchase or disband) so the pool eventually captures every token.
 
 ```mermaid
 sequenceDiagram
@@ -44,13 +45,13 @@ sequenceDiagram
   - `updateConfigDAO(address,uint256)` — update entry fee when `_entryFee > 0`. Changing token is disabled (`_token` must be `address(0)` or the current token), else `TokenChangeDisabled`.
   - `withdrawTreasuryDAO(address,address,uint256,string)` — withdraw a specific amount of any asset (access token, other ERC‑20, or ETH with `address(0)`).
   - `changePriestDAO(address)` — change the priest address via governance.
-  - `disbandTreasuryDAO()` / `disbandTreasuryDAO(address)` — move the full available balance of the access token into the member pool equally across all members.
+  - `disbandTreasuryDAO()` / `disbandTreasuryDAO(address)` — move the full available balance of the access token into the member pool with per-member integer division; any remainder rolls into `memberRewardRemainder` for future payouts.
 
 ### Quorum and Eligibility
 - Quorum threshold: `quorumPercent = 33` (33% yes votes of `eligibleVoters`).
 - On creation: proposer auto‑YES, `eligibleVoters = memberList.length`. If quorum is immediately satisfied, `quorumReachedAt` is set and `endTime` is reset to `now + executionDelayAfterQuorum`.
 - Before quorum: any member (including those who joined after creation) may vote; `eligibleVoters` tracks the current member count.
-- After quorum: voting eligibility freezes; only members who joined before `quorumReachedAt` may vote. Late joiners are rejected with `JoinedAfterProposal`.
+- After quorum: voting eligibility freezes; only members who joined before `quorumReachedAt` may vote. Late joiners are rejected with `JoinedAfterProposal`. Because Ethereum timestamps are per block, joins mined in the same block that reached quorum remain eligible.
 - Execution requires a simple majority (`yesVotes > noVotes`) and:
   - if quorum is required: that quorum has been reached and the delay `executionDelayAfterQuorum = 7 days` has elapsed; otherwise reverts with `QuorumNotReached` or `ExecutionDelayActive`.
   - priest exception: `createProposalDisbandTreasury(...)` proposed by `priest` is quorum‑exempt and respects only its `endTime`.
@@ -136,7 +137,7 @@ sequenceDiagram
 ```
 
 ## Configuration & Deployment
-- Constructor: `TEMPL(address priest, address protocolFeeRecipient, address token, uint256 entryFee)`; all addresses must be non‑zero. `entryFee` must be ≥10 and divisible by 10.
+- Constructor: `TEMPL(address priest, address protocolFeeRecipient, address token, uint256 entryFee)`; all addresses must be non‑zero. `entryFee` must be ≥10 and divisible by 10, matching deploy-script validation.
 - Env for `scripts/deploy.js` (priest defaults to deployer): `PRIEST_ADDRESS`, `PROTOCOL_FEE_RECIPIENT` (required), `TOKEN_ADDRESS` (required), `ENTRY_FEE` (required), `BASESCAN_API_KEY` (optional).
 - Commands:
   - Compile/tests: `npm run compile`, `npm test`, `npm run slither`.

@@ -108,10 +108,11 @@ abstract contract TemplTreasury is TemplMembership {
 
         memberPoolBalance += amount;
 
-        uint256 perMember = amount / n;
-        uint256 remainder = amount % n;
+        uint256 totalRewards = amount + memberRewardRemainder;
+        uint256 perMember = totalRewards / n;
+        uint256 remainder = totalRewards % n;
         cumulativeMemberRewards += perMember;
-        memberRewardRemainder += remainder;
+        memberRewardRemainder = remainder;
 
         emit TreasuryDisbanded(proposalId, amount, perMember, remainder);
     }

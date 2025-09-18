@@ -24,6 +24,9 @@ async function main() {
   if (entryFee < 10n) {
     throw new Error("ENTRY_FEE must be at least 10 wei for proper distribution");
   }
+  if (entryFee % 10n !== 0n) {
+    throw new Error("ENTRY_FEE must be divisible by 10 to satisfy contract constraints");
+  }
 
   console.log("========================================");
   console.log("Deploying TEMPL Contract");

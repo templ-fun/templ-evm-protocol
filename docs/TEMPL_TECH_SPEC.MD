@@ -56,11 +56,12 @@ Implementation is layered across:
 
 - Split of `entryFee`:
   - 30% Burn → `0x000000000000000000000000000000000000dEaD`
-  - 30% Treasury → retained by contract, tracked in `treasuryBalance`
+  - 30% Treasury → retained by contract, tracked in `treasuryBalance` (entry-fee share); donations also accrue to the contract balance and are withdrawable via governance.
   - 30% Member Pool → retained by contract, tracked in `memberPoolBalance`
   - 10% Protocol → transferred to `protocolFeeRecipient`
 - Member rewards: When a new member joins, the contract increments `cumulativeMemberRewards` by `floor(30% / (n-1))` for existing members (where `n` is new member count). Remainder accumulates in `memberRewardRemainder`.
 - Donations: Anyone may send ETH/ERC‑20 directly to the contract address. Governance may later withdraw donated assets; the member pool balance remains reserved for members.
+- Leftovers: Any indivisible remainder from reward splits accumulates in `memberRewardRemainder` and is folded into the next distribution so every token is eventually claimable.
 
 ```mermaid
 sequenceDiagram
@@ -94,7 +95,7 @@ sequenceDiagram
     - `eligibleVoters = memberList.length`
   - After quorum:
     - Eligibility freezes at `quorumReachedAt`
-    - Only members who joined before `quorumReachedAt` may vote; late joiners revert `JoinedAfterProposal`
+    - Only members who joined before `quorumReachedAt` may vote; late joiners revert `JoinedAfterProposal`. Because timestamps are per block, joins mined in the same block as quorum remain eligible.
     - Post‑quorum window is fixed to 7 days: on first quorum, `endTime` is reset to `now + 7 days`
     - Voting continues during this 7‑day window for eligible voters; after it, `vote()` reverts `VotingEnded`
   - Execution:
@@ -122,7 +123,7 @@ flowchart LR
 - `setPausedDAO(bool)` — pause/unpause purchases.
 - `updateConfigDAO(address,uint256)` — update entry fee only; token changes are disabled (`TokenChangeDisabled`). `_token` must be `address(0)` or the current token.
 - `withdrawTreasuryDAO(address token, address recipient, uint256 amount, string reason)` — move a specific amount of any asset held by the contract. For the access token, only the treasury portion is withdrawable; the member pool is preserved.
-- `disbandTreasuryDAO()` / `disbandTreasuryDAO(address)` — move the full available balance of the access token into the member pool equally. Execution succeeds only when the token matches the configured access token; mismatches revert during execution even though proposal creation succeeds.
+- `disbandTreasuryDAO()` / `disbandTreasuryDAO(address)` — move the full available balance of the access token into the member pool with per-member integer division; any remainder rolls into `memberRewardRemainder`. Execution succeeds only when the token matches the configured access token; mismatches revert during execution even though proposal creation succeeds.
 - `changePriestDAO(address)` — change the on‑chain `priest` address.
 
 Creation helpers (`createProposalX`) initialize proposals with normalized timing, proposer auto‑YES, and optional quorum exemption for priest‑proposed disband.
