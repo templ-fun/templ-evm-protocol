@@ -15,7 +15,7 @@ export function verifyTypedSignature({ database, addressField, buildTyped, error
   let hasSig = null;
   try {
     if (database?.prepare) {
-      insertSig = database.prepare('INSERT INTO signatures (sig, usedAt) VALUES (?, ?)');
+      insertSig = database.prepare('INSERT OR IGNORE INTO signatures (sig, usedAt) VALUES (?, ?)');
       hasSig = database.prepare('SELECT 1 FROM signatures WHERE sig = ?');
     }
   } catch { /* ignore - fallback to no-op replay checks */ }
@@ -42,7 +42,20 @@ export function verifyTypedSignature({ database, addressField, buildTyped, error
         const seen = hasSig?.get ? hasSig.get(signature) : null;
         if (seen) return res.status(409).json({ error: 'Signature already used' });
       } catch { /* ignore */ }
-      try { insertSig?.run?.(signature, Date.now()); } catch { /* ignore */ }
+      try {
+        if (insertSig?.run) {
+          const usedAt = Date.now();
+          const result = insertSig.run(signature, usedAt);
+          if (typeof result?.changes === 'number' && result.changes === 0) {
+            return res.status(409).json({ error: 'Signature already used' });
+          }
+        }
+      } catch (err) {
+        if (err?.code && String(err.code).startsWith('SQLITE_CONSTRAINT')) {
+          return res.status(409).json({ error: 'Signature already used' });
+        }
+        /* ignore other failures */
+      }
       next();
     } catch {
       return res.status(403).json({ error: errorMessage });
