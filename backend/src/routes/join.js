@@ -44,21 +44,28 @@ export default function joinRouter({ xmtp, groups, hasPurchased, lastJoin, datab
       }
       if (!purchased) return res.status(403).json({ error: 'Access not purchased' });
       // Optional chainId and code verification in production/strict mode
-      try {
-        const requireVerify = process.env.REQUIRE_CONTRACT_VERIFY === '1' || process.env.NODE_ENV === 'production';
-        if (requireVerify && provider) {
+      const requireVerify = process.env.REQUIRE_CONTRACT_VERIFY === '1' || process.env.NODE_ENV === 'production';
+      if (requireVerify) {
+        if (!provider) {
+          return res.status(500).json({ error: 'Verification required but no provider configured' });
+        }
+        try {
           const net = await provider.getNetwork();
           const expected = Number(net.chainId);
           const provided = Number(req.body?.chainId);
           if (Number.isFinite(provided) && provided !== expected) {
             return res.status(400).json({ error: 'ChainId mismatch' });
           }
+        } catch {/* ignore minor verification errors */}
+        try {
           const code = await provider.getCode(contractAddress);
           if (!code || code === '0x') {
             return res.status(400).json({ error: 'Not a contract' });
           }
+        } catch {
+          return res.status(400).json({ error: 'Unable to verify contract' });
         }
-      } catch {/* ignore minor verification errors */}
+      }
       try {
         // Resolve member inboxId via network; never trust client-provided ids blindly.
         const memberIdentifier = { identifier: memberAddress.toLowerCase(), identifierKind: 0 };
