@@ -59,6 +59,30 @@ describe("TEMPL Contract with DAO Governance", function () {
             ).to.be.revertedWithCustomError(TEMPL, "InvalidRecipient");
         });
 
+        it("Should revert when protocol fee recipient is zero", async function () {
+            const TEMPL = await ethers.getContractFactory("TEMPL");
+            await expect(
+                TEMPL.deploy(
+                    priest.address,
+                    ethers.ZeroAddress,
+                    await token.getAddress(),
+                    ENTRY_FEE
+                )
+            ).to.be.revertedWithCustomError(TEMPL, "InvalidRecipient");
+        });
+
+        it("Should revert when access token address is zero", async function () {
+            const TEMPL = await ethers.getContractFactory("TEMPL");
+            await expect(
+                TEMPL.deploy(
+                    priest.address,
+                    priest.address,
+                    ethers.ZeroAddress,
+                    ENTRY_FEE
+                )
+            ).to.be.revertedWithCustomError(TEMPL, "InvalidRecipient");
+        });
+
         it("Should revert when entry fee is zero", async function () {
             const TEMPL = await ethers.getContractFactory("TEMPL");
             await expect(
