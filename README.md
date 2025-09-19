@@ -106,6 +106,7 @@ Minimal local setup requires only a handful of variables:
 | `REQUIRE_CONTRACT_VERIFY` | When `1` (required in prod), backend verifies contract code and on-chain priest | `backend/.env` |
 | `XMTP_METADATA_UPDATES` | Set to `0` to skip name/description updates on XMTP groups (keep at `1` in prod) | `backend/.env` |
 | `BACKEND_SERVER_ID` | String identifier bound into EIP-712 signatures (must match frontend’s `VITE_BACKEND_SERVER_ID`) | `backend/.env` |
+| `TEMPL_ENABLE_LOCAL_FALLBACK` | Optional frontend/debug toggle that lets tests merge local templ registries with the `/templs` API; leave unset in production | env when running tests |
 
 See [BACKEND.md#environment-variables](./docs/BACKEND.md#environment-variables) and [CONTRACTS.md#configuration--deployment](./docs/CONTRACTS.md#configuration--deployment) for complete lists.
 
@@ -125,7 +126,7 @@ See [BACKEND.md#environment-variables](./docs/BACKEND.md#environment-variables) 
   - Frontend: `VITE_BACKEND_SERVER_ID="templ-prod-<region>"`
   These values are included in the EIP‑712 messages and must match; this prevents signatures from being replayed against a different server.
 -
-Do not use test‑only flags in production (e.g., `DISABLE_XMTP_WAIT`).
+Do not use test‑only flags in production (e.g., `DISABLE_XMTP_WAIT`, `TEMPL_ENABLE_LOCAL_FALLBACK`, `VITE_ENABLE_BACKEND_FALLBACK`).
 
 ## Core flows
 

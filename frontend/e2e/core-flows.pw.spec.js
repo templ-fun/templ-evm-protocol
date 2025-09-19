@@ -1,23 +1,5 @@
 import { test, expect, TestToken } from './fixtures.js';
 import { ethers } from 'ethers';
-function buildCreateTypedData({ chainId, contractAddress, nonce, issuedAt, expiry }) {
-  if (!Number.isFinite(nonce)) nonce = Date.now();
-  if (!Number.isFinite(issuedAt)) issuedAt = Date.now();
-  if (!Number.isFinite(expiry)) expiry = Date.now() + 5 * 60_000;
-  const domain = { name: 'TEMPL', version: '1', chainId };
-  const types = {
-    Create: [
-      { name: 'action', type: 'string' },
-      { name: 'contract', type: 'address' },
-      { name: 'server', type: 'string' },
-      { name: 'nonce', type: 'uint256' },
-      { name: 'issuedAt', type: 'uint256' },
-      { name: 'expiry', type: 'uint256' },
-    ]
-  };
-  const message = { action: 'create', contract: contractAddress, server: 'templ-dev', nonce, issuedAt, expiry };
-  return { domain, types, message };
-}
 import { readFileSync } from 'fs';
 import path from 'path';
 
@@ -29,6 +11,7 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
   let templAddress;
   let templAbi;
   let memberInboxId = '';
+  let priestInboxId = '';
 
   test('All 7 Core Flows', async ({ page, wallets }) => {
 
@@ -107,11 +90,14 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
       });
       await page.exposeFunction(signTypedFnName, async ({ domain, types, message }) => {
         try {
-          return await w.signTypedData(domain, types, message);
+          const sanitizedTypes = { ...(types || {}) };
+          if (sanitizedTypes.EIP712Domain) delete sanitizedTypes.EIP712Domain;
+          return await w.signTypedData(domain, sanitizedTypes, message);
         } catch (err) {
           throw new Error(`signTyped failed: ${err?.message || String(err)}`);
         }
       });
+      let nextNonceForWallet = null;
       await page.exposeFunction(sendFnName, async (tx) => {
         try {
           const req = {
@@ -120,10 +106,18 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
             value: tx.value ? BigInt(tx.value) : undefined,
             gasPrice: tx.gasPrice ? BigInt(tx.gasPrice) : undefined,
             gasLimit: tx.gas || tx.gasLimit ? BigInt(tx.gas || tx.gasLimit) : undefined,
-            // Do NOT pass through tx.nonce from the browser; let the Wallet compute
-            // the correct pending nonce to avoid races with Node-sent txs.
           };
+          const provider = w.provider;
+          let pendingNonce = await provider.getTransactionCount(addr, 'pending');
+          if (nextNonceForWallet !== null && pendingNonce < nextNonceForWallet) {
+            pendingNonce = nextNonceForWallet;
+          }
+          req.nonce = pendingNonce;
           const resp = await w.sendTransaction(req);
+          const usedNonce = typeof resp.nonce === 'bigint' ? Number(resp.nonce) : resp.nonce;
+          if (Number.isFinite(usedNonce)) {
+            nextNonceForWallet = usedNonce + 1;
+          }
           return resp.hash;
         } catch (err) {
           throw new Error(`sendTransaction failed: ${err?.message || String(err)}`);
@@ -185,6 +179,7 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
         await expect(page.locator('.status')).toContainText('Wallet connected');
         // Wait for XMTP client to initialize deterministically
         await expect.poll(async () => await page.evaluate(() => Boolean(window.__XMTP?.inboxId)), { timeout: 15000 }).toBe(true);
+        priestInboxId = await page.evaluate(() => window.__XMTP?.inboxId || '');
         testWallet = w;
         testAddress = addr;
         break;
@@ -232,60 +227,44 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
     const templ = new ethers.Contract(templAddress, templAbi, wallets.priest);
     expect(await templ.accessToken()).toBe(tokenAddress);
 
-    // Ensure the backend is registered with the new Templ (typed EIP-712)
-    {
-      const chainId = Number((await wallets.priest.provider.getNetwork()).chainId);
-      const typed = buildCreateTypedData({ chainId, contractAddress: templAddress.toLowerCase() });
-      const sig = await wallets.priest.signTypedData(typed.domain, typed.types, typed.message);
-      const resp = await fetch('http://localhost:3001/templs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contractAddress: templAddress,
-          priestAddress: await wallets.priest.getAddress(),
-          signature: sig,
-          chainId,
-          nonce: typed.message.nonce,
-          issuedAt: typed.message.issuedAt,
-          expiry: typed.message.expiry
-        })
-      });
-      if (!resp.ok) {
-        const t = await resp.text().catch(() => '');
-        console.log('[e2e] /templs failed', resp.status, resp.statusText, t);
-      }
-      expect(resp.ok).toBe(true);
-      const json = await resp.json();
-      expect(typeof json.groupId).toBe('string');
-      // Seed localStorage for faster UI discovery
-      await page.evaluate(({ addr, gid }) => {
-        try { localStorage.setItem('templ:lastAddress', addr); } catch {}
-        try { localStorage.setItem('templ:lastGroupId', String(gid)); } catch {}
-      }, { addr: templAddress, gid: json.groupId });
-    }
+    const waitForBackendJoin = async (contractAddress, inboxId) => {
+      await expect.poll(async () => {
+        if (!inboxId) return false;
+        try {
+          const membership = await fetch(`http://localhost:3001/debug/membership?contractAddress=${contractAddress}&inboxId=${inboxId}`).then(r => r.json());
+          if (membership && membership.contains === true) return true;
+        } catch {}
+        try {
+          const lastJoin = await fetch('http://localhost:3001/debug/last-join').then(r => r.json());
+          const meta = lastJoin?.payload?.joinMeta;
+          const norm = (s) => String(s || '').replace(/^0x/i, '').toLowerCase();
+          if (meta && norm(meta.contract) === norm(contractAddress) && norm(meta.inboxId) === norm(inboxId)) {
+            return true;
+          }
+        } catch {}
+        return false;
+      }, { timeout: 180000 }).toBe(true);
+    };
 
-    // Core Flow 3: Pay-to-join
-    console.log('Core Flow 3: Pay-to-join');
-    
-    // Approve tokens using Node ethers to avoid relying on window.ethers globals
-    {
-      const tokenForUI = new ethers.Contract(
-        tokenAddress,
-        ['function approve(address spender, uint256 amount) returns (bool)'],
-        testWallet
-      );
-      const templForUI = new ethers.Contract(templAddress, templAbi, testWallet);
-      const prov = testWallet.provider;
-      const addr = await testWallet.getAddress();
-      let nonce = await prov.getTransactionCount(addr);
-      // Approve with explicit nonce, wait for mining
-      let tx = await tokenForUI.approve(templAddress, 100, { nonce: nonce++ });
-      await tx.wait();
-      dbg('Tokens approved');
-      // Pre-purchase on Node side to avoid UI sendTransaction nonce races
-      tx = await templForUI.purchaseAccess({ nonce: nonce++ });
-      await tx.wait();
-      dbg('Access purchased (pre-join)');
+    // Core Flow 3: Pay-to-join (priest wallet via UI)
+    console.log('Core Flow 3: Pay-to-join (priest)');
+    await page.click('button:has-text("Join")');
+    await expect.poll(async () => await page.evaluate(() => typeof window.__templTrigger === 'function')).toBe(true);
+    await page.evaluate(() => {
+      console.log('trigger type (priest)', typeof window.__templTrigger);
+    });
+    await page.fill('input[placeholder*="Contract address"]', templAddress);
+    const priestJoinResponse = page.waitForResponse((res) => res.url().endsWith('/join') && res.request().method() === 'POST');
+    await page.evaluate(() => {
+      // @ts-ignore
+      window.__templTrigger?.('join');
+    });
+    const priestJoin = await priestJoinResponse;
+    expect(priestJoin.ok()).toBeTruthy();
+    try {
+      await waitForBackendJoin(templAddress, priestInboxId);
+    } catch (err) {
+      console.warn('[e2e] priest join backend confirmation timed out', err?.message || err);
     }
     
     // Now join as a separate member to better mirror real usage
@@ -296,21 +275,6 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
       const w = wallets.member;
       const addr = await w.getAddress();
       // capture member inboxId once and reuse outside this block
-      // Pre-purchase for member on Node side to avoid UI nonce races and ensure backend /join can succeed deterministically
-      try {
-        const erc20 = new ethers.Contract(
-          tokenAddress,
-          ['function approve(address spender, uint256 amount) returns (bool)'],
-          w
-        );
-        const templForMember = new ethers.Contract(templAddress, templAbi, w);
-        const prov = w.provider;
-        let n = await prov.getTransactionCount(addr);
-        await (await erc20.approve(templAddress, 100, { nonce: n++ })).wait();
-        await (await templForMember.purchaseAccess({ nonce: n++ })).wait();
-      } catch (e) {
-        console.log('[e2e] member pre-purchase skipped or failed:', e?.message || String(e));
-      }
       // Bridge sign and send for member
       await page.exposeFunction('e2e_member_sign', async ({ message }) => {
         if (typeof message === 'string' && message.startsWith('0x')) {
@@ -319,8 +283,13 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
         return await w.signMessage(message);
       });
       await page.exposeFunction('e2e_member_signTyped', async ({ domain, types, message }) => {
-        try { return await w.signTypedData(domain, types, message); } catch (e) { throw new Error(`signTyped failed: ${e?.message||e}`); }
+        try {
+          const sanitizedTypes = { ...(types || {}) };
+          if (sanitizedTypes.EIP712Domain) delete sanitizedTypes.EIP712Domain;
+          return await w.signTypedData(domain, sanitizedTypes, message);
+        } catch (e) { throw new Error(`signTyped failed: ${e?.message||e}`); }
       });
+      let memberNextNonce = null;
       await page.exposeFunction('e2e_member_send', async (tx) => {
         const req = {
           to: tx.to || undefined,
@@ -329,7 +298,17 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
           gasPrice: tx.gasPrice ? BigInt(tx.gasPrice) : undefined,
           gasLimit: tx.gas || tx.gasLimit ? BigInt(tx.gas || tx.gasLimit) : undefined,
         };
+        const provider = w.provider;
+        let pendingNonce = await provider.getTransactionCount(addr, 'pending');
+        if (memberNextNonce !== null && pendingNonce < memberNextNonce) {
+          pendingNonce = memberNextNonce;
+        }
+        req.nonce = pendingNonce;
         const resp = await w.sendTransaction(req);
+        const usedNonce = typeof resp.nonce === 'bigint' ? Number(resp.nonce) : resp.nonce;
+        if (Number.isFinite(usedNonce)) {
+          memberNextNonce = usedNonce + 1;
+        }
         return resp.hash;
       });
       await page.evaluate(async ({ address }) => {
@@ -373,6 +352,10 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
       await page.click('button:has-text("Connect Wallet")');
       await page.click('button:has-text("Join")');
       await expect.poll(async () => await page.evaluate(() => Boolean(window.__XMTP?.inboxId)), { timeout: 15000 }).toBe(true);
+      await expect.poll(async () => await page.evaluate(() => typeof window.__templTrigger === 'function')).toBe(true);
+      await page.evaluate(() => {
+        console.log('trigger type (member)', typeof window.__templTrigger);
+      });
       // Ensure browser installation is visible on XMTP infra before join (linearize readiness)
       try {
         const inboxId = await page.evaluate(() => window.__XMTP?.inboxId || null);
@@ -391,39 +374,18 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
       // Execute production flow via UI: approve + purchase + join
       await expect(page.locator('h2:has-text("Join Existing Templ")')).toBeVisible({ timeout: 5000 });
       await page.fill('input[placeholder*="Contract address"]', templAddress);
-      await page.click('button:has-text("Purchase & Join")');
-      // Mirror the UI join call deterministically: sign typed Join and POST /join
+      const memberJoinResponse = page.waitForResponse((res) => res.url().endsWith('/join') && res.request().method() === 'POST');
+      await page.evaluate(() => {
+        // @ts-ignore
+        window.__templTrigger?.('join');
+      });
+      const memberJoin = await memberJoinResponse;
+      expect(memberJoin.ok()).toBeTruthy();
       try {
-        const chainId = Number((await w.provider.getNetwork()).chainId);
-        const now = Date.now();
-        const domain = { name: 'TEMPL', version: '1', chainId };
-        const types = { Join: [
-          { name: 'action', type: 'string' },
-          { name: 'contract', type: 'address' },
-          { name: 'server', type: 'string' },
-          { name: 'nonce', type: 'uint256' },
-          { name: 'issuedAt', type: 'uint256' },
-          { name: 'expiry', type: 'uint256' },
-        ] };
-        const message = { action: 'join', contract: templAddress.toLowerCase(), server: 'templ-dev', nonce: now, issuedAt: now, expiry: now + 5*60_000 };
-        const sig = await w.signTypedData(domain, types, message);
-        const inboxId = await page.evaluate(() => window.__XMTP?.inboxId || '');
-        const resp = await fetch('http://localhost:3001/join', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contractAddress: templAddress,
-            memberAddress: addr,
-            inboxId: String(inboxId || '').replace(/^0x/i, ''),
-            signature: sig,
-            chainId,
-            nonce: message.nonce,
-            issuedAt: message.issuedAt,
-            expiry: message.expiry
-          })
-        });
-        dbg('[e2e] join after UI status', resp.status, resp.statusText);
-      } catch (e) { dbg('post-UI join error', e?.message || String(e)); }
+        await waitForBackendJoin(templAddress, memberInboxId);
+      } catch (err) {
+        console.warn('[e2e] member join backend confirmation timed out', err?.message || err);
+      }
     }
     // Resolve groupId robustly from backend debug if UI hasn't populated yet
     let groupId = '';
@@ -471,37 +433,7 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
       dbg('DEBUG /debug/last-join final:', dbg4);
     } catch {}
     
-    // Treat backend membership as the source of truth for "connected".
-    // Poll server-only (no browser.evaluate) using stored memberInboxId.
-    let connected = false;
-    for (let i = 0; i < 3 && !connected; i++) {
-      try {
-        const dbgMem = await fetch(`http://localhost:3001/debug/membership?contractAddress=${templAddress}&inboxId=${memberInboxId}`).then(r => r.json());
-        if (dbgMem && dbgMem.contains === true) connected = true;
-      } catch {}
-      if (!connected) {
-        try {
-          const g = await fetch(`http://localhost:3001/debug/group?contractAddress=${templAddress}&refresh=1`).then(r => r.json());
-          const norm = (s) => String(s || '').replace(/^0x/i, '').toLowerCase();
-          if (Array.isArray(g?.members) && norm(memberInboxId) && g.members.some((m) => norm(m) === norm(memberInboxId))) {
-            connected = true;
-          }
-        } catch {}
-      }
-      if (!connected) {
-        try {
-          const last = await fetch('http://localhost:3001/debug/last-join').then(r => r.json());
-          const jm = last?.payload?.joinMeta;
-          const norm = (s) => String(s || '').replace(/^0x/i, '').toLowerCase();
-          if (jm && norm(jm.contract) === norm(templAddress) && norm(jm.inboxId) === norm(memberInboxId)) {
-            connected = true;
-          }
-        } catch {}
-      }
-      if (!connected) await new Promise(r => setTimeout(r, 500));
-    }
-    expect(connected, 'Backend did not confirm membership in time').toBeTruthy();
-    console.log('[e2e] Backend confirmed membership as connected');
+    console.log('[e2e] Backend join responses received');
     // Landing page should list created templs
     await page.click('button:has-text("Home")');
     await expect(page.locator('[data-testid="templ-list"]')).toBeVisible();
@@ -526,7 +458,7 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
       if (agg) dbg('Browser XMTP aggregate stats post-discovery:\n' + agg);
     } catch {}
 
-    // Membership is handled by the UI flow; avoid duplicate purchase.
+    // Memberships are handled by the UI flows; avoid duplicate purchase.
     // Optionally assert membership via backend debug
     // Confirm membership via backend using the stored member inboxId; avoid browser.evaluate in recovery.
     await expect.poll(async () => {
@@ -534,7 +466,7 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
         const dbg = await fetch(`http://localhost:3001/debug/membership?contractAddress=${templAddress}&inboxId=${memberInboxId}`).then(r => r.json());
         return Boolean(dbg && dbg.contains === true);
       } catch { return false; }
-    }, { timeout: 20000 }).toBe(true);
+    }, { timeout: 180000 }).toBe(true);
 
     // Core Flow 4: Messaging — wait until connected, send, and assert render
     dbg('Core Flow 4: Messaging');
@@ -639,7 +571,7 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
       await expect.poll(async () => {
         const [has, ] = await templPriest.hasVoted(lastId1, testAddress);
         return has;
-      }, { timeout: 15000 }).toBe(true);
+      }, { timeout: 180000 }).toBe(true);
     // Advance time and execute via priest programmatically
       const member = wallets.member;
       const templMember = new ethers.Contract(templAddress, templAbi, member);

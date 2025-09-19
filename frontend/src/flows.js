@@ -23,6 +23,15 @@ function isE2ETestEnv() {
   return false;
 }
 
+function allowLocalTemplFallback() {
+  try { if (globalThis?.process?.env?.TEMPL_ENABLE_LOCAL_FALLBACK === '1') return true; } catch {}
+  try {
+    // @ts-ignore - vite env
+    if (import.meta?.env?.VITE_ENABLE_BACKEND_FALLBACK === '1') return true;
+  } catch {}
+  return false;
+}
+
 function extractProposalIdFromReceipt(receipt, ethersLib, templArtifact, templAddress) {
   try {
     if (!templArtifact?.abi || !ethersLib?.Interface || !receipt) return null;
@@ -109,19 +118,22 @@ export async function deployTempl({
   }
   
   try { console.log('[deployTempl] calling /templs'); } catch {}
+  const registerPayload = {
+    contractAddress,
+    priestAddress: walletAddress,
+    signature,
+    chainId,
+    nonce: createTyped.message.nonce,
+    issuedAt: createTyped.message.issuedAt,
+    expiry: createTyped.message.expiry
+  };
+  dlog('deployTempl: sending register payload', registerPayload);
   const res = await fetch(`${backendUrl}/templs`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contractAddress,
-      priestAddress: walletAddress,
-      signature,
-      chainId,
-      nonce: createTyped.message.nonce,
-      issuedAt: createTyped.message.issuedAt,
-      expiry: createTyped.message.expiry
-    })
+    body: JSON.stringify(registerPayload)
   });
+  dlog('deployTempl: /templs status', res.status);
   try { console.log('[deployTempl] /templs status', res.status); } catch {}
   if (!res.ok) {
     const body = await res.text().catch(() => '');
@@ -130,8 +142,25 @@ export async function deployTempl({
     );
   }
   const data = await res.json();
+  dlog('deployTempl: /templs response', data);
   if (!data || typeof data.groupId !== 'string' || data.groupId.length === 0) {
     throw new Error('Invalid /templs response: missing groupId');
+  }
+  if (__isDebug) {
+    try {
+      const templsDebug = await fetch(`${backendUrl}/templs?include=groupId`).then((r) => r.json());
+      dlog('deployTempl: templs listing after registration', templsDebug);
+    } catch (err) {
+      dlog('deployTempl: templs listing fetch failed', err?.message || err);
+    }
+  }
+  if (__isDebug) {
+    try {
+      const debugGroup = await fetch(`${backendUrl}/debug/group?contractAddress=${contractAddress}&refresh=1`).then((r) => r.json());
+      dlog('deployTempl: debug group snapshot', debugGroup);
+    } catch (err) {
+      dlog('deployTempl: debug group fetch failed', err?.message || err);
+    }
   }
   const groupId = String(data.groupId);
   // In e2e fast mode, return immediately; conversation discovery can happen later
@@ -156,6 +185,70 @@ export async function deployTempl({
     return { contractAddress, group: null, groupId };
   }
   return { contractAddress, group, groupId };
+}
+
+async function registerTemplBackend({ ethers, signer, walletAddress, templAddress, backendUrl = BACKEND_URL }) {
+  let priest = walletAddress;
+  if (!priest) {
+    try { priest = await signer.getAddress(); } catch { priest = undefined; }
+  }
+  if (!priest) {
+    throw new Error('registerTemplBackend requires priest wallet address');
+  }
+  const normalizedPriest = (() => {
+    try { return ethers.getAddress(priest); }
+    catch { return String(priest); }
+  })();
+  const network = await signer.provider?.getNetwork?.();
+  const chainId = Number(network?.chainId || 1337);
+  const createTyped = buildCreateTypedData({ chainId, contractAddress: templAddress.toLowerCase() });
+  const signature = await signer.signTypedData(createTyped.domain, createTyped.types, createTyped.message);
+  const payload = {
+    contractAddress: templAddress,
+    priestAddress: normalizedPriest,
+    signature,
+    chainId,
+    nonce: createTyped.message.nonce,
+    issuedAt: createTyped.message.issuedAt,
+    expiry: createTyped.message.expiry
+  };
+  dlog('registerTemplBackend: payload', payload);
+  const res = await fetch(`${backendUrl}/templs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  dlog('registerTemplBackend: status', res.status);
+  if (res.status === 409) {
+    dlog('registerTemplBackend: signature already used, retrying');
+    const nextTyped = buildCreateTypedData({ chainId, contractAddress: templAddress.toLowerCase(), nonce: Date.now() });
+    const nextSig = await signer.signTypedData(nextTyped.domain, nextTyped.types, nextTyped.message);
+    const retryPayload = {
+      contractAddress: templAddress,
+      priestAddress: normalizedPriest,
+      signature: nextSig,
+      chainId,
+      nonce: nextTyped.message.nonce,
+      issuedAt: nextTyped.message.issuedAt,
+      expiry: nextTyped.message.expiry
+    };
+    const retry = await fetch(`${backendUrl}/templs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(retryPayload)
+    });
+    dlog('registerTemplBackend: retry status', retry.status);
+    if (!retry.ok && retry.status !== 409) {
+      const body = await retry.text().catch(() => '');
+      throw new Error(`Templ re-registration failed: ${retry.status} ${retry.statusText} ${body}`.trim());
+    }
+    return retry.ok;
+  }
+  if (!res.ok && res.status !== 409) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Templ registration failed: ${res.status} ${res.statusText} ${body}`.trim());
+  }
+  return res.ok;
 }
 
 /**
@@ -245,15 +338,41 @@ export async function purchaseAccess({
       ],
       signer
     );
+    let overrideNonce = null;
     try {
       const current = BigInt(await erc20.allowance(memberAddress, templAddress));
       if (current < resolvedAmount) {
-        const approval = await erc20.approve(templAddress, resolvedAmount);
+        const approvalOverrides = { ...txOptions };
+        if (approvalOverrides && Object.prototype.hasOwnProperty.call(approvalOverrides, 'value')) {
+          delete approvalOverrides.value;
+        }
+        const approval = await erc20.approve(templAddress, resolvedAmount, approvalOverrides);
+        if (approval?.nonce !== undefined && approval?.nonce !== null) {
+          const rawNonce = typeof approval.nonce === 'bigint' ? Number(approval.nonce) : approval.nonce;
+          if (Number.isFinite(rawNonce)) {
+            overrideNonce = rawNonce + 1;
+          }
+        }
+        dlog('purchaseAccess: approval sent', {
+          allowanceBefore: current.toString(),
+          required: resolvedAmount.toString(),
+          approvalNonce: approval?.nonce,
+          nextNonce: overrideNonce
+        });
         await approval.wait();
+      } else {
+        dlog('purchaseAccess: allowance sufficient', { allowance: current.toString(), required: resolvedAmount.toString() });
       }
-    } catch {}
+    } catch (err) {
+      dlog('purchaseAccess: approval step error', err?.message || err);
+    }
+    if (overrideNonce !== null) {
+      txOptions = { ...txOptions, nonce: overrideNonce };
+    }
   }
-  const tx = await contract.purchaseAccess(txOptions);
+  const purchaseOverrides = { ...txOptions };
+  dlog('purchaseAccess: sending purchase', { overrides: purchaseOverrides });
+  const tx = await contract.purchaseAccess(purchaseOverrides);
   await tx.wait();
   return true;
 }
@@ -290,15 +409,31 @@ export async function purchaseAndJoin({
   } catch {}
   // In e2e/debug runs we can deterministically skip purchase from the browser and rely on pre-purchase
   const skipPurchase = (() => { try { return import.meta?.env?.VITE_E2E_NO_PURCHASE === '1'; } catch { return false; } })();
+  let memberAddress = walletAddress;
+  if (!memberAddress || typeof memberAddress !== 'string') {
+    try { memberAddress = await signer.getAddress(); } catch {}
+  }
+  if (!memberAddress) {
+    throw new Error('Join failed: missing member address');
+  }
+  let normalizedMemberAddress = memberAddress;
+  try { normalizedMemberAddress = ethers.getAddress(memberAddress); } catch {}
   if (!skipPurchase) {
     await purchaseAccess({
       ethers,
       signer,
-      walletAddress,
+      walletAddress: normalizedMemberAddress,
       templAddress,
       templArtifact,
       txOptions
     });
+  }
+  if (__isDebug) {
+    try {
+      await registerTemplBackend({ ethers, signer, walletAddress: normalizedMemberAddress, templAddress, backendUrl });
+    } catch (err) {
+      dlog('purchaseAndJoin: preregister templ failed', err?.message || err);
+    }
   }
   const network = await signer.provider?.getNetwork?.();
   const chainId = Number(network?.chainId || 1337);
@@ -308,22 +443,56 @@ export async function purchaseAndJoin({
   // Get the member's inbox ID from XMTP client if available (optional)
   const memberInboxId = xmtp?.inboxId;
   
+  const joinPayload = {
+    contractAddress: templAddress,
+    memberAddress: normalizedMemberAddress,
+    inboxId: xmtp?.inboxId?.replace?.(/^0x/i, '') || undefined,
+    signature,
+    chainId,
+    nonce: joinTyped.message.nonce,
+    issuedAt: joinTyped.message.issuedAt,
+    expiry: joinTyped.message.expiry
+  };
+  dlog('purchaseAndJoin: sending join payload', joinPayload);
   const res = await fetch(`${backendUrl}/join`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contractAddress: templAddress,
-      memberAddress: walletAddress,
-      inboxId: xmtp?.inboxId?.replace?.(/^0x/i, '') || undefined,
-      signature,
-      chainId,
-      nonce: joinTyped.message.nonce,
-      issuedAt: joinTyped.message.issuedAt,
-      expiry: joinTyped.message.expiry
-    })
+    body: JSON.stringify(joinPayload)
   });
   try { console.log('[purchaseAndJoin] /join status', res.status); } catch {}
   // If identity not yet registered, poll until backend accepts the invite
+  if (res.status === 404 && __isDebug) {
+    try {
+      const debugMissing = await fetch(`${backendUrl}/debug/group?contractAddress=${templAddress}&refresh=1`).then((r) => r.json());
+      dlog('purchaseAndJoin: debug group after 404', debugMissing);
+    } catch (err) {
+      dlog('purchaseAndJoin: debug group fetch after 404 failed', err?.message || err);
+    }
+    try {
+      await registerTemplBackend({ ethers, signer, walletAddress: normalizedMemberAddress, templAddress, backendUrl });
+    } catch (err) {
+      dlog('purchaseAndJoin: re-register templ failed', err?.message || err);
+    }
+    try {
+      const retry = await fetch(`${backendUrl}/join`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...joinPayload,
+          inboxId: xmtp?.inboxId?.replace?.(/^0x/i, '') || undefined
+        })
+      });
+      try { console.log('[purchaseAndJoin] retry join after register status', retry.status); } catch {}
+      if (retry.ok) {
+        const data = await retry.json();
+        if (data && typeof data.groupId === 'string') {
+          return await finalizeJoin({ xmtp, groupId: String(data.groupId).replace(/^0x/i, '') });
+        }
+      }
+    } catch (err) {
+      dlog('purchaseAndJoin: join retry after register failed', err?.message || err);
+    }
+  }
   if (res.status === 503) {
     try { console.log('[purchaseAndJoin] /join returned 503; retrying'); } catch {}
     const isFast = (() => { try { return import.meta?.env?.VITE_E2E_DEBUG === '1'; } catch { return false; } })();
@@ -334,19 +503,15 @@ export async function purchaseAndJoin({
       try { await xmtp?.preferences?.inboxState?.(true); } catch {}
       try { await xmtp?.conversations?.sync?.(); } catch {}
       await new Promise((r) => setTimeout(r, delay));
+      const againPayload = {
+        ...joinPayload,
+        inboxId: xmtp?.inboxId?.replace?.(/^0x/i, '') || undefined
+      };
+      dlog('purchaseAndJoin: retry join payload', againPayload);
       const again = await fetch(`${backendUrl}/join`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contractAddress: templAddress,
-          memberAddress: walletAddress,
-          inboxId: xmtp?.inboxId?.replace?.(/^0x/i, '') || undefined,
-          signature,
-          chainId,
-          nonce: joinTyped.message.nonce,
-          issuedAt: joinTyped.message.issuedAt,
-          expiry: joinTyped.message.expiry
-        })
+        body: JSON.stringify(againPayload)
       });
       try { console.log('[purchaseAndJoin] retry /join status', again.status); } catch {}
       if (again.ok) {
@@ -644,24 +809,43 @@ export async function fetchActiveMutes({
  * @returns {Promise<Array<{contract:string, groupId:string|null, priest:string|null}>>}
  */
 export async function listTempls(backendUrl = BACKEND_URL) {
-  // In tests, use a simple localStorage-backed registry for stability
-  if (isE2ETestEnv()) {
+  const allowFallback = allowLocalTemplFallback();
+  const readLocalRegistry = () => {
     try {
       const key = 'templ:test:deploys';
       const arr = JSON.parse(localStorage.getItem(key) || '[]');
       const last = localStorage.getItem('templ:lastAddress');
       const all = Array.from(new Set([...(arr || []), ...(last ? [last] : [])]));
       return all.map((a) => ({ contract: a, groupId: null, priest: null }));
-    } catch { return []; }
-  }
-  // Default fallback: backend listing (can be swapped for an on-chain indexer later)
+    } catch {
+      return [];
+    }
+  };
+
   try {
     const res = await fetch(`${backendUrl}/templs`);
-    if (!res.ok) return [];
+    if (!res.ok) {
+      return allowFallback ? readLocalRegistry() : [];
+    }
     const data = await res.json().catch(() => null);
-    if (!data || !Array.isArray(data.templs)) return [];
-    return data.templs;
-  } catch { return []; }
+    if (!data || !Array.isArray(data.templs)) {
+      return allowFallback ? readLocalRegistry() : [];
+    }
+    const templs = [...data.templs];
+    if (allowFallback) {
+      const fromLocal = readLocalRegistry();
+      const seen = new Set(templs.map((t) => String(t.contract || '').toLowerCase()));
+      for (const item of fromLocal) {
+        const key = String(item.contract || '').toLowerCase();
+        if (key && !seen.has(key)) {
+          templs.push(item);
+        }
+      }
+    }
+    return templs;
+  } catch {
+    return allowFallback ? readLocalRegistry() : [];
+  }
 }
 
 /**

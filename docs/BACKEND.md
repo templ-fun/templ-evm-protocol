@@ -76,8 +76,8 @@ npm --prefix backend run lint
 ## Architecture
 - **Ownership** – Groups are created by an ephemeral wallet (fresh key per group) and then managed by a single persistent invite-bot identity. The ephemeral creator key is not persisted ("burned") after creation. The invite-bot is only used to invite members; it is not intended to hold admin powers like banning.
 - **Endpoints**
-  - `POST /templs` – create a group for a deployed contract; if a `connectContract` factory is supplied the backend also watches governance events.
-  - `POST /join` – verify `hasAccess` on-chain and invite the wallet.
+- `POST /templs` – create a group for a deployed contract; if a `connectContract` factory is supplied the backend also watches governance events.
+- `POST /join` – verify `hasAccess` on-chain and invite the wallet.
   - `POST /delegateMute` – priest assigns mute rights to a member.
   - `DELETE /delegateMute` – revoke a delegate's mute rights.
   - `POST /mute` – priest or delegate records an escalating mute for a member.
@@ -141,7 +141,7 @@ When `ENABLE_DEBUG_ENDPOINTS=1`, these endpoints assist tests and local debuggin
 - `GET /debug/group?contractAddress=<addr>&refresh=1` – returns server inboxId, stored/resolved groupId, and (when available) members.
 - `GET /debug/conversations` – returns a count and the first few conversation ids seen by the server.
 - `GET /debug/membership?contractAddress=<addr>&inboxId=<id>` – whether server group view contains `inboxId`.
-- `GET /debug/last-join` – last join metadata.
+- `GET /debug/last-join` – last join metadata (consumed by e2e diagnostics; the frontend may re-register via `/templs` and retry `/join` automatically when this endpoint shows a missing contract).
 - `GET /debug/inbox-state?inboxId=<id>&env=<local|dev|production>` – raw XMTP inbox state.
  - `POST /debug/send` – send a free‑form message to a group's conversation (for discovery warmup and diagnostics).
 

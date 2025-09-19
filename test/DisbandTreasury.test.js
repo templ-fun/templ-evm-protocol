@@ -89,6 +89,25 @@ describe("Disband Treasury", function () {
     expect(proposal.token).to.equal(otherToken.target);
   });
 
+  it("allows priest quorum-exempt disband after voting window", async function () {
+    const priest = accounts[1];
+    await mintToUsers(token, [priest], TOKEN_SUPPLY);
+    await purchaseAccess(templ, token, [priest]);
+
+    const accessToken = await templ.accessToken();
+    await templ.connect(priest).createProposalDisbandTreasury(accessToken, VOTING_PERIOD);
+    const proposal = await templ.proposals(0);
+    expect(proposal.quorumExempt).to.equal(true);
+
+    await ethers.provider.send("evm_increaseTime", [VOTING_PERIOD + 1]);
+    await ethers.provider.send("evm_mine", []);
+
+    await templ.connect(priest).executeProposal(0);
+
+    expect((await templ.proposals(0)).executed).to.equal(true);
+    expect(await templ.treasuryBalance()).to.equal(0n);
+  });
+
   it("reverts when treasury is empty", async function () {
     const accessToken = await templ.accessToken();
 
