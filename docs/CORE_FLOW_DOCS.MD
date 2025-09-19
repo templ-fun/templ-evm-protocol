@@ -180,15 +180,15 @@ sequenceDiagram
 ## Backend Endpoints & Signatures
 - POST `/templs` – create group for a deployed TEMPL
   - Signature: EIP‑712 typed data `{ action:'create', contract, server, nonce, issuedAt, expiry }` signed by priest EOA.
-  - Body: `{ contractAddress, priestAddress, signature, chainId }`
+  - Body: `{ contractAddress, priestAddress, signature, chainId, nonce, issuedAt, expiry }`
   - Response: `{ groupId }`
 - POST `/join` – verify purchase and invite member
   - Signature: EIP‑712 `{ action:'join', contract, server, nonce, issuedAt, expiry }` signed by member EOA.
-  - Body: `{ contractAddress, memberAddress, signature, chainId, inboxId? }` (`inboxId` is ignored in normal environments; local/test fallback may use it deterministically when network resolution is unavailable.)
+  - Body: `{ contractAddress, memberAddress, signature, chainId, nonce, issuedAt, expiry, inboxId? }` (`inboxId` is ignored in normal environments; local/test fallback may use it deterministically when network resolution is unavailable.)
   - Response: `{ groupId }` or HTTP 503 until identity is visible on XMTP.
 - POST `/delegateMute` – grant mute rights
   - Signature: EIP‑712 `{ action:'delegateMute', contract, delegate, server, nonce, issuedAt, expiry }` signed by priest EOA.
-  - Body: `{ contractAddress, priestAddress, delegateAddress, signature, chainId }`
+  - Body: `{ contractAddress, priestAddress, delegateAddress, signature, chainId, nonce, issuedAt, expiry }`
   - Response: `{ delegated: true }`
 - DELETE `/delegateMute` – revoke mute rights (same signature fields).
   - `{ delegated: false }` on success.
@@ -222,6 +222,8 @@ Backend resolves inboxIds from the XMTP network via `findInboxIdByIdentifier` an
   - `groups(contract TEXT PRIMARY KEY, groupId TEXT, priest TEXT)`
   - `mutes(contract TEXT, target TEXT, count INTEGER, until INTEGER, PRIMARY KEY(contract, target))`
   - `delegates(contract TEXT, delegate TEXT, PRIMARY KEY(contract, delegate))`
+  - `signatures(sig TEXT PRIMARY KEY, usedAt INTEGER)` – replay protection for EIP‑712 signatures
+  - `kv(key TEXT PRIMARY KEY, value TEXT)` – stores generated invite-bot secrets (e.g., `bot_private_key`)
 - XMTP client DBs:
   - Node: `xmtp-<env>-<inboxId>.db3` (SQLCipher when `dbEncryptionKey` provided).
   - Browser: OPFS per-origin; not OS-visible.
