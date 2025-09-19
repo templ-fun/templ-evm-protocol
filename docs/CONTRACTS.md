@@ -116,6 +116,7 @@ Note: Proposal metadata (title/description) is not stored on‑chain. Keep human
   - `TreasuryDisbanded(proposalId,token,amount,perMember,remainder)`
   - `ExternalRewardClaimed(token,member,amount)`
   - `PriestChanged(oldPriest,newPriest)`
+    - Backend listeners purge all delegates/mutes on this event so the incoming priest takes over with a clean moderation slate.
  - Custom errors (from `TemplErrors.sol`): `NotMember`, `NotDAO`, `ContractPausedError`, `AlreadyPurchased`, `InsufficientBalance`, `ActiveProposalExists`, `VotingPeriodTooShort`, `VotingPeriodTooLong`, `InvalidProposal`, `VotingEnded`, `JoinedAfterProposal`, `VotingNotEnded`, `AlreadyExecuted`, `ProposalNotPassed`, `ProposalExecutionFailed`, `InvalidRecipient`, `AmountZero`, `InsufficientTreasuryBalance`, `NoTreasuryFunds`, `EntryFeeTooSmall`, `InvalidEntryFee`, `NoRewardsToClaim`, `InsufficientPoolBalance`, `LimitOutOfRange`, `InvalidSender`, `InvalidCallData`, `TokenChangeDisabled`, `NoMembers`, `QuorumNotReached`, `ExecutionDelayActive`.
 
 ## Flows

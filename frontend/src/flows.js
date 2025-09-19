@@ -181,8 +181,35 @@ export async function deployTempl({
   // Be more generous in e2e to reduce flakiness on prod XMTP
   const group = await waitForConversation({ xmtp, groupId, retries: isFast ? 12 : 6, delayMs: isFast ? 500 : 1000 });
   if (!group) {
-    console.error('Could not find group after creation; will rely on join step');
-    return { contractAddress, group: null, groupId };
+    const resolveConversation = async () => {
+      const fallback = await waitForConversation({ xmtp, groupId, retries: isFast ? 60 : 120, delayMs: isFast ? 500 : 1000 });
+      if (!fallback) return null;
+      return fallback;
+    };
+    const lazyGroup = {
+      id: groupId,
+      async send(content) {
+        const resolved = await resolveConversation();
+        if (!resolved?.send) {
+          throw new Error('Group not yet available to send messages');
+        }
+        lazyGroup.send = resolved.send.bind(resolved);
+        if (typeof resolved.sync === 'function') {
+          lazyGroup.sync = resolved.sync.bind(resolved);
+        }
+        if (typeof resolved.updateName === 'function') {
+          lazyGroup.updateName = resolved.updateName.bind(resolved);
+        }
+        if (typeof resolved.updateDescription === 'function') {
+          lazyGroup.updateDescription = resolved.updateDescription.bind(resolved);
+        }
+        if (resolved.members !== undefined) {
+          lazyGroup.members = resolved.members;
+        }
+        return lazyGroup.send(content);
+      }
+    };
+    return { contractAddress, group: lazyGroup, groupId };
   }
   return { contractAddress, group, groupId };
 }

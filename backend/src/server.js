@@ -18,13 +18,20 @@ import debugRouter from './routes/debug.js';
 import { logger } from './logger.js';
 import { createXmtpWithRotation, waitForInboxReady, XMTP_ENV, waitForXmtpClientReady } from './xmtp/index.js';
 
+const TEMPL_EVENT_ABI = [
+  'event ProposalCreated(uint256 indexed proposalId, address indexed proposer, uint256 endTime)',
+  'event VoteCast(uint256 indexed proposalId, address indexed voter, bool support, uint256 timestamp)',
+  'event PriestChanged(address indexed oldPriest, address indexed newPriest)'
+];
+
 export { logger, createXmtpWithRotation, waitForInboxReady, XMTP_ENV };
 
 export function createApp(opts) {
   /** @type {{xmtp:any, hasPurchased:(contract:string,member:string)=>Promise<boolean>, connectContract?: (address:string)=>{on: Function}, dbPath?: string, db?: any, rateLimitStore?: import('express-rate-limit').Store}} */
   // @ts-ignore - runtime validation below
-  const { xmtp, hasPurchased, connectContract, dbPath, db, rateLimitStore, provider } =
+  const { xmtp, hasPurchased, connectContract: providedConnectContract, dbPath, db, rateLimitStore, provider } =
     opts || {};
+  const connectContract = providedConnectContract ?? (provider ? ((address) => new ethers.Contract(address, TEMPL_EVENT_ABI, provider)) : null);
   const app = express();
   const allowedOrigins =
     process.env.ALLOWED_ORIGINS?.split(',')
@@ -57,6 +64,8 @@ export function createApp(opts) {
   database.exec(
     'CREATE TABLE IF NOT EXISTS signatures (sig TEXT PRIMARY KEY, usedAt INTEGER)'
   );
+  const deleteDelegatesStmt = database.prepare('DELETE FROM delegates WHERE contract = ?');
+  const deleteMutesStmt = database.prepare('DELETE FROM mutes WHERE contract = ?');
 
   function persist(contract, record) {
     database
@@ -65,6 +74,140 @@ export function createApp(opts) {
       )
       .run(contract, (record.groupId || record.group?.id), record.priest);
   }
+
+  const listenerRegistry = new Map();
+
+  async function ensureGroup(record) {
+    if (record?.group) return record.group;
+    if (record?.groupId && xmtp?.conversations?.getConversationById) {
+      try {
+        const maybe = await xmtp.conversations.getConversationById(record.groupId);
+        if (maybe) {
+          record.group = maybe;
+          return maybe;
+        }
+      } catch (err) {
+        logger?.warn?.({ err: String(err?.message || err), groupId: record.groupId }, 'Failed to hydrate group conversation');
+      }
+    }
+    return record?.group || null;
+  }
+
+  const watchContract = connectContract
+    ? (contractAddress, record) => {
+        if (!contractAddress || !record) return;
+        const key = String(contractAddress).toLowerCase();
+        if (listenerRegistry.has(key)) {
+          // Update cached record reference so handlers retain latest object
+          listenerRegistry.get(key).record = record;
+          return;
+        }
+        let contract;
+        try {
+          contract = connectContract(contractAddress);
+        } catch (err) {
+          logger?.warn?.({ err: String(err?.message || err), contract: contractAddress }, 'Failed to connect contract listeners');
+          return;
+        }
+        if (!contract || typeof contract.on !== 'function') {
+          return;
+        }
+
+        const wrapListener = (label, fn) => (...args) => {
+          try {
+            const maybe = fn(...args);
+            if (maybe && typeof maybe.then === 'function') {
+              maybe.catch((err) => {
+                logger?.warn?.({ err: String(err?.message || err), contract: key }, label);
+              });
+            }
+          } catch (err) {
+            logger?.warn?.({ err: String(err?.message || err), contract: key }, label);
+          }
+        };
+
+        const handleProposal = wrapListener('Contract listener error', async (id, proposer, endTime) => {
+          const group = record.group || await ensureGroup(record);
+          if (!group?.send) return;
+          try {
+            await group.send(
+              JSON.stringify({
+                type: 'proposal',
+                id: Number(id),
+                proposer,
+                endTime: Number(endTime)
+              })
+            );
+          } catch (err) {
+            logger?.warn?.({ err: String(err?.message || err), contract: key }, 'Failed to relay ProposalCreated');
+          }
+        });
+
+        const handleVote = wrapListener('Contract listener error', async (id, voter, support, timestamp) => {
+          const group = record.group || await ensureGroup(record);
+          if (!group?.send) return;
+          try {
+            await group.send(
+              JSON.stringify({
+                type: 'vote',
+                id: Number(id),
+                voter,
+                support: Boolean(support),
+                timestamp: Number(timestamp)
+              })
+            );
+          } catch (err) {
+            logger?.warn?.({ err: String(err?.message || err), contract: key }, 'Failed to relay VoteCast');
+          }
+        });
+
+        const handlePriestChanged = wrapListener('Contract listener error', async (oldPriest, newPriest) => {
+          const oldKey = String(oldPriest || '').toLowerCase();
+          const nextKey = String(newPriest || '').toLowerCase();
+          record.priest = nextKey;
+          groups.set(key, record);
+          persist(key, record);
+          let delegatesCleared = 0;
+          let mutesCleared = 0;
+          try {
+            const res = deleteDelegatesStmt.run(key);
+            delegatesCleared = Number(res?.changes || 0);
+          } catch (err) {
+            logger?.warn?.({ err: String(err?.message || err), contract: key }, 'Failed clearing delegates on priest change');
+          }
+          try {
+            const res = deleteMutesStmt.run(key);
+            mutesCleared = Number(res?.changes || 0);
+          } catch (err) {
+            logger?.warn?.({ err: String(err?.message || err), contract: key }, 'Failed clearing mutes on priest change');
+          }
+          logger?.info?.({ contract: key, oldPriest: oldKey, newPriest: nextKey, delegatesCleared, mutesCleared }, 'Priest updated from contract event');
+
+          const group = record.group || await ensureGroup(record);
+          if (!group?.send) return;
+          try {
+            await group.send(
+              JSON.stringify({
+                type: 'priest-changed',
+                oldPriest: oldKey,
+                newPriest: nextKey,
+                delegatesCleared,
+                mutesCleared
+              })
+            );
+          } catch (err) {
+            logger?.warn?.({ err: String(err?.message || err), contract: key }, 'Failed to announce priest change');
+          }
+        });
+
+        contract.on('ProposalCreated', handleProposal);
+        contract.on('VoteCast', handleVote);
+        contract.on('PriestChanged', handlePriestChanged);
+
+        listenerRegistry.set(key, { contract, record, handlers: { handleProposal, handleVote, handlePriestChanged } });
+        record.contract = contract;
+      }
+    : null;
 
   (async () => {
     try {
@@ -80,22 +223,17 @@ export function createApp(opts) {
           priest: row?.priest ? String(row.priest).toLowerCase() : null,
           memberSet: new Set()
         };
-        if (record.groupId && xmtp?.conversations?.getConversationById) {
-          try {
-            const hydrated = await xmtp.conversations.getConversationById(record.groupId);
-            if (hydrated) record.group = hydrated;
-          } catch (err) {
-            logger?.warn?.({ contract: key, err: String(err?.message || err) }, 'Failed to hydrate conversation on startup');
-          }
-        }
         groups.set(key, record);
+        if (watchContract) {
+          watchContract(row.contract || key, record);
+        }
       }
     } catch (err) {
       logger?.warn?.({ err: String(err?.message || err) }, 'Failed to restore groups from persistence');
     }
   })();
 
-  const context = { xmtp, hasPurchased, connectContract, database, groups, persist, lastJoin, provider };
+  const context = { xmtp, hasPurchased, database, groups, persist, lastJoin, provider, watchContract };
 
   app.use(templsRouter(context));
   app.use(joinRouter(context));

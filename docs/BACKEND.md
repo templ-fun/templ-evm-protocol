@@ -89,6 +89,7 @@ npm --prefix backend run lint
 When watching governance events, the backend relays:
 - `ProposalCreated(id, proposer, endTime)` → sends `{ type: 'proposal', id, proposer, endTime }` to the group. Human‑readable metadata (title/description) is not on‑chain and should be sent by clients as a regular XMTP message alongside the id.
 - `VoteCast(id, voter, support, timestamp)` → sends `{ type: 'vote', id, voter, support, timestamp }`.
+- `PriestChanged(oldPriest, newPriest)` → updates the stored priest, deletes all delegate rows, clears the mute table for that contract, and announces `{ type: 'priest-changed', ... }` in chat so a new priest always starts from a clean moderation slate.
 
 ### Endpoint flows
 

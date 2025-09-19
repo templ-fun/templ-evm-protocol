@@ -7,7 +7,7 @@ import { generateInboxId, getInboxIdForIdentifier } from '@xmtp/node-sdk';
 import { logger } from '../logger.js';
 import { createXmtpWithRotation } from '../xmtp/index.js';
 
-export default function templsRouter({ xmtp, groups, persist, connectContract, database, provider }) {
+export default function templsRouter({ xmtp, groups, persist, database, provider, watchContract }) {
   const router = express.Router();
   const DISABLE_WAIT = process.env.DISABLE_XMTP_WAIT === '1' || process.env.NODE_ENV === 'test';
   // Optionally attach provider for contract verification if xmtp exposes it in app context
@@ -113,12 +113,13 @@ export default function templsRouter({ xmtp, groups, persist, connectContract, d
 
       // The SDK often reports successful syncs as errors, so capture that case.
       const inboxIds = [];
-      const skipNetworkResolution = process.env.DISABLE_XMTP_WAIT === '1';
+        const skipNetworkResolution = process.env.DISABLE_XMTP_WAIT === '1' || process.env.NODE_ENV === 'test';
       let group;
       try {
         // Build initial participant list using inbox IDs as required by node-sdk@4.x
         // Always include the server's own inboxId (invite-bot). Add priest inboxId if resolvable.
         if (xmtp?.inboxId) inboxIds.push(xmtp.inboxId);
+        let priestInboxAdded = false;
         if (!skipNetworkResolution) {
           try {
             const envOpt = /** @type {'local'|'dev'|'production'} */ (
@@ -127,11 +128,20 @@ export default function templsRouter({ xmtp, groups, persist, connectContract, d
             const priestInboxMaybe = await getInboxIdForIdentifier(priestIdentifierObj, envOpt);
             if (priestInboxMaybe) {
               inboxIds.push(priestInboxMaybe);
-            } else if (envOpt === 'local') {
-              try { inboxIds.push(generateInboxId(priestIdentifierObj)); } catch { /* ignore */ }
+              priestInboxAdded = true;
             }
           } catch {
             // ignore resolution errors silently
+          }
+        }
+        if (!priestInboxAdded) {
+          try {
+            const deterministic = generateInboxId(priestIdentifierObj);
+            if (!inboxIds.some((id) => String(id).toLowerCase() === deterministic.toLowerCase())) {
+              inboxIds.push(deterministic);
+            }
+          } catch {
+            // deterministic generation unavailable; proceed without priest but purchase/join flow will rely on invites
           }
         }
         // In fast-test mode we rely on invites happening later; do not
@@ -237,47 +247,12 @@ export default function templsRouter({ xmtp, groups, persist, connectContract, d
         memberSet: new Set()
       };
 
-      if (connectContract) {
-        const contract = connectContract(contractAddress);
-        contract.on('ProposalCreated', (id, proposer, endTime) => {
-          group.send(
-            JSON.stringify({
-              type: 'proposal',
-              id: Number(id),
-              proposer,
-              endTime: Number(endTime)
-            })
-          );
-        });
-        contract.on('VoteCast', (id, voter, support, timestamp) => {
-          group.send(
-            JSON.stringify({
-              type: 'vote',
-              id: Number(id),
-              voter,
-              support: Boolean(support),
-              timestamp: Number(timestamp)
-            })
-          );
-        });
-        contract.on('PriestChanged', (oldPriest, newPriest) => {
-          try {
-            const oldKey = typeof oldPriest === 'string' ? oldPriest.toLowerCase() : String(oldPriest || '').toLowerCase();
-            const nextKey = typeof newPriest === 'string' ? newPriest.toLowerCase() : String(newPriest || '').toLowerCase();
-            record.priest = nextKey;
-            groups.set(key, record);
-            persist(key, record);
-            logger.info({ contract: key, oldPriest: oldKey, newPriest: nextKey }, 'Priest updated from PriestChanged event');
-          } catch (err) {
-            logger.warn({ contract: key, err: String(err?.message || err) }, 'Failed to process PriestChanged event');
-          }
-        });
-        record.contract = contract;
-      }
-
       const key = contractAddress.toLowerCase();
       groups.set(key, record);
       persist(key, record);
+      if (watchContract) {
+        watchContract(contractAddress, record);
+      }
       logger.info({ contract: key, groupId: record.groupId }, 'Templ registered');
       res.json({ groupId: group.id });
       } catch (err) {

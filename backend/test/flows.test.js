@@ -1088,18 +1088,100 @@ test('updates priest when PriestChanged fires and persists to disk', async () =>
       })
       .expect(200);
 
-    emitter.emit('PriestChanged', addresses.priest, addresses.delegate);
-    await new Promise((resolve) => setImmediate(resolve));
+    const initialDelegateTyped = buildDelegateTypedData({
+      chainId: 31337,
+      contractAddress: addresses.contract,
+      delegateAddress: addresses.member
+    });
+    const initialDelegateSig = await wallets.priest.signTypedData(
+      initialDelegateTyped.domain,
+      initialDelegateTyped.types,
+      initialDelegateTyped.message
+    );
+    await request(app1)
+      .post('/delegateMute')
+      .send({
+        contractAddress: addresses.contract,
+        priestAddress: addresses.priest,
+        delegateAddress: addresses.member,
+        signature: initialDelegateSig,
+        chainId: 31337,
+        nonce: initialDelegateTyped.message.nonce,
+        issuedAt: initialDelegateTyped.message.issuedAt,
+        expiry: initialDelegateTyped.message.expiry
+      })
+      .expect(200, { delegated: true });
 
-    const delegateTyped = buildDelegateTypedData({
+    const initialMuteTyped = buildMuteTypedData({
+      chainId: 31337,
+      contractAddress: addresses.contract,
+      targetAddress: addresses.stranger
+    });
+    const initialMuteSig = await wallets.member.signTypedData(
+      initialMuteTyped.domain,
+      initialMuteTyped.types,
+      initialMuteTyped.message
+    );
+    await request(app1)
+      .post('/mute')
+      .send({
+        contractAddress: addresses.contract,
+        moderatorAddress: addresses.member,
+        targetAddress: addresses.stranger,
+        signature: initialMuteSig,
+        chainId: 31337,
+        nonce: initialMuteTyped.message.nonce,
+        issuedAt: initialMuteTyped.message.issuedAt,
+        expiry: initialMuteTyped.message.expiry
+      })
+      .expect(200);
+
+    const beforeMutes = await request(app1)
+      .get(`/mutes?contractAddress=${addresses.contract}`)
+      .expect(200);
+    assert.equal(beforeMutes.body.mutes.length, 1);
+
+    emitter.emit('PriestChanged', addresses.priest, addresses.delegate);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const afterMutes = await request(app1)
+      .get(`/mutes?contractAddress=${addresses.contract}`)
+      .expect(200);
+    assert.equal(afterMutes.body.mutes.length, 0);
+
+    const oldDelegateMuteTyped = buildMuteTypedData({
+      chainId: 31337,
+      contractAddress: addresses.contract,
+      targetAddress: addresses.stranger
+    });
+    const oldDelegateMuteSig = await wallets.member.signTypedData(
+      oldDelegateMuteTyped.domain,
+      oldDelegateMuteTyped.types,
+      oldDelegateMuteTyped.message
+    );
+    await request(app1)
+      .post('/mute')
+      .send({
+        contractAddress: addresses.contract,
+        moderatorAddress: addresses.member,
+        targetAddress: addresses.stranger,
+        signature: oldDelegateMuteSig,
+        chainId: 31337,
+        nonce: oldDelegateMuteTyped.message.nonce,
+        issuedAt: oldDelegateMuteTyped.message.issuedAt,
+        expiry: oldDelegateMuteTyped.message.expiry
+      })
+      .expect(403);
+
+    const newDelegateTyped = buildDelegateTypedData({
       chainId: 31337,
       contractAddress: addresses.contract,
       delegateAddress: addresses.member
     });
     const delegateSig = await wallets.delegate.signTypedData(
-      delegateTyped.domain,
-      delegateTyped.types,
-      delegateTyped.message
+      newDelegateTyped.domain,
+      newDelegateTyped.types,
+      newDelegateTyped.message
     );
     await request(app1)
       .post('/delegateMute')
@@ -1109,9 +1191,9 @@ test('updates priest when PriestChanged fires and persists to disk', async () =>
         delegateAddress: addresses.member,
         signature: delegateSig,
         chainId: 31337,
-        nonce: delegateTyped.message.nonce,
-        issuedAt: delegateTyped.message.issuedAt,
-        expiry: delegateTyped.message.expiry
+        nonce: newDelegateTyped.message.nonce,
+        issuedAt: newDelegateTyped.message.issuedAt,
+        expiry: newDelegateTyped.message.expiry
       })
       .expect(200, { delegated: true });
   } finally {

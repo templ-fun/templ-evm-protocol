@@ -25,6 +25,9 @@
 - Naming: `*.test.js` in `test/` (contracts) and `backend/test/`; e2e in `frontend/e2e/`.
 - Coverage: Codecov enforces 100% for contracts; run `npm run coverage:all` or per-package coverage before PRs.
 
+### Agent Notes
+- If XMTP conversations are not discovered during deploy/join flows, **do not** extend timeouts or retries. Investigate conversation creation: ensure the priest inbox ID is deterministically included in `newGroup` and that backend watchers hydrate the group. Increasing wait loops only masks real regressions and makes `test:all` flaky.
+
 ## Commit & Pull Request Guidelines
 - Use Conventional Commits: `feat(contracts): ...`, `fix(backend): ...`, `docs: ...`, `chore: ...`, `ci: ...`.
 - PRs: clear description, linked issues, test plan, screenshots for UI changes, CI green, no snapshot updates without justification.
