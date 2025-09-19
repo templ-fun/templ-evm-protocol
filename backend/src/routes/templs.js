@@ -65,6 +65,7 @@ export default function templsRouter({ xmtp, groups, persist, connectContract, d
     }),
     async (req, res) => {
       const { contractAddress, priestAddress } = req.body;
+      logger.info({ contract: contractAddress, priest: priestAddress }, 'Received templ registration request');
       try {
         // Optional contract + priest verification (prod): ensure address is a contract and priest matches on-chain when configured
         const requireVerify = process.env.REQUIRE_CONTRACT_VERIFY === '1' || process.env.NODE_ENV === 'production';
@@ -277,6 +278,7 @@ export default function templsRouter({ xmtp, groups, persist, connectContract, d
       const key = contractAddress.toLowerCase();
       groups.set(key, record);
       persist(key, record);
+      logger.info({ contract: key, groupId: record.groupId }, 'Templ registered');
       res.json({ groupId: group.id });
       } catch (err) {
         logger.error({ err, priestAddress, contractAddress }, 'Failed to create group');

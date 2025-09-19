@@ -139,6 +139,8 @@ Switch MetaMask to the Member wallet (`0x15d3…6A65`). In the app:
 3. Paste the Templ contract address you just deployed.
 4. Click `Purchase & Join` (the UI approves tokens and purchases access, then connects to chat).
 
+   The join flow now always posts to `/join`; the UI only falls back to any locally cached templ addresses when `TEMPL_ENABLE_LOCAL_FALLBACK=1` (used in automated tests). Leave that flag unset during manual runs so you verify the backend invite path end-to-end.
+
 The chat auto‑loads the last 100 messages and any past proposals. Use “Load previous” to page older history.
 
 ## 9) Try governance in chat

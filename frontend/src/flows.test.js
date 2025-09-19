@@ -182,7 +182,7 @@ describe('templ flows', () => {
 
     expect(templContract.getConfig).toHaveBeenCalled();
     expect(erc20.allowance).toHaveBeenCalledWith('0xabc', '0xTempl');
-    expect(erc20.approve).toHaveBeenCalledWith('0xTempl', 100n);
+    expect(erc20.approve).toHaveBeenCalledWith('0xTempl', 100n, { gasLimit: 123n });
     expect(approvalTx.wait).toHaveBeenCalled();
     expect(templContract.purchaseAccess).toHaveBeenCalledWith({ gasLimit: 123n });
     expect(purchaseTx.wait).toHaveBeenCalled();

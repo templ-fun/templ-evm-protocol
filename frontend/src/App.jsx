@@ -1,5 +1,5 @@
 // @ts-check
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { ethers } from 'ethers';
 import { Client } from '@xmtp/browser-sdk';
 import templArtifact from './contracts/TEMPL.json';
@@ -35,7 +35,7 @@ function App() {
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);
-  function navigate(to) {
+  const navigate = useCallback((to) => {
     try {
       const url = new URL(to, window.location.origin);
       window.history.pushState({}, '', url.toString());
@@ -45,7 +45,7 @@ function App() {
       // Fallback to hash navigation
       window.location.assign(to);
     }
-  }
+  }, []);
   const [walletAddress, setWalletAddress] = useState();
   const [signer, setSigner] = useState();
   const [xmtp, setXmtp] = useState();
@@ -99,19 +99,26 @@ function App() {
 
   // joining form
   const [templAddress, setTemplAddress] = useState('');
+  const templAddressRef = useRef('');
+  const updateTemplAddress = useCallback((value) => {
+    const next = typeof value === 'string' ? value.trim() : String(value || '').trim();
+    dlog('[app] updateTemplAddress', next);
+    templAddressRef.current = next;
+    setTemplAddress(next);
+  }, [setTemplAddress]);
   const [groupId, setGroupId] = useState('');
   const joinedLoggedRef = useRef(false);
   const lastProfileBroadcastRef = useRef(0);
   const autoDeployTriggeredRef = useRef(false);
 
-  function pushStatus(msg) {
+  const pushStatus = useCallback((msg) => {
     setStatus((s) => [...s, String(msg)]);
     try {
       setToast(String(msg));
       window.clearTimeout(window.__templToastT);
       window.__templToastT = window.setTimeout(() => setToast(''), 1800);
     } catch {}
-  }
+  }, []);
 
   // Minimal debug logger: prints only in dev or when explicitly enabled for e2e
   const dlog = (...args) => {
@@ -407,7 +414,7 @@ function App() {
     } catch {}
   }, [xmtp, walletAddress]);
 
-  async function handleDeploy() {
+  const handleDeploy = useCallback(async () => {
     dlog('[app] handleDeploy clicked', { signer: !!signer, xmtp: !!xmtp });
     try { console.log('[app] handleDeploy start', { signer: !!signer, xmtp: !!xmtp, tokenAddress, protocolFeeRecipient, entryFee }); } catch {}
     if (!signer) return;
@@ -431,7 +438,7 @@ function App() {
       dlog('[app] deployTempl returned', result);
       try { console.log('[app] handleDeploy success', { contract: result.contractAddress, groupId: result.groupId }); } catch {}
       dlog('[app] deployTempl groupId details', { groupId: result.groupId, has0x: String(result.groupId).startsWith('0x'), len: String(result.groupId).length });
-      setTemplAddress(result.contractAddress);
+      updateTemplAddress(result.contractAddress);
       setGroup(result.group);
       setGroupId(result.groupId);
       pushStatus('✅ Templ deployed');
@@ -447,7 +454,7 @@ function App() {
       console.error('[app] deploy failed', err);
       alert(err.message);
     }
-  }
+  }, [signer, xmtp, tokenAddress, protocolFeeRecipient, entryFee, walletAddress, updateTemplAddress, pushStatus, navigate]);
 
   // In e2e debug mode, auto-trigger deploy once inputs are valid to deflake clicks
   useEffect(() => {
@@ -465,11 +472,22 @@ function App() {
         handleDeploy();
       }
     } catch {}
-  }, [path, signer, tokenAddress, protocolFeeRecipient, entryFee]);
+  }, [path, signer, tokenAddress, protocolFeeRecipient, entryFee, handleDeploy]);
 
-  async function handlePurchaseAndJoin() {
-    if (!signer || !xmtp || !templAddress) return;
-    if (!ethers.isAddress(templAddress)) return alert('Invalid contract address');
+  const handlePurchaseAndJoin = useCallback(async () => {
+    dlog('[app] handlePurchaseAndJoin invoked', {
+      signerReady: !!signer,
+      xmtpReady: !!xmtp,
+      refAddress: templAddressRef.current,
+      stateAddress: templAddress
+    });
+    if (!signer || !xmtp) return;
+    const rawAddress = templAddressRef.current || templAddress;
+    const trimmedAddress = typeof rawAddress === 'string' ? rawAddress.trim() : '';
+    if (!trimmedAddress || !ethers.isAddress(trimmedAddress)) {
+      return alert('Invalid contract address');
+    }
+    updateTemplAddress(trimmedAddress);
     try {
       // Ensure browser identity is registered before joining
       try {
@@ -484,24 +502,28 @@ function App() {
           if (env === 'local') { max = 10; delay = 150; }
           for (let i = 0; i < max && !identityReadyRef.current; i++) {
             try {
-              const resp = await fetch(`${BACKEND_URL}/debug/inbox-state?inboxId=${inboxId}&env=${env}`).then(r => r.json());
+              const resp = await fetch(`${BACKEND_URL}/debug/inbox-state?inboxId=${inboxId}&env=${env}`).then((r) => r.json());
               if (resp && Array.isArray(resp.states) && resp.states.length > 0) {
                 identityReadyRef.current = true;
                 break;
               }
             } catch {}
             try { await xmtp.preferences?.inboxState?.(true); } catch {}
-            await new Promise(r => setTimeout(r, delay));
+            await new Promise((r) => setTimeout(r, delay));
           }
         }
       } catch {}
       dlog('[app] starting purchaseAndJoin', { inboxId: xmtp?.inboxId, address: walletAddress, templAddress });
+      let memberAddress = walletAddress;
+      if (!memberAddress) {
+        try { memberAddress = await signer.getAddress(); } catch {}
+      }
       const result = await purchaseAndJoin({
         ethers,
         xmtp,
         signer,
-        walletAddress,
-        templAddress,
+        walletAddress: memberAddress,
+        templAddress: trimmedAddress,
         templArtifact
       });
       dlog('[app] purchaseAndJoin returned', result);
@@ -518,7 +540,7 @@ function App() {
           pushStatus('🔄 Waiting for group discovery');
         }
         try {
-          localStorage.setItem('templ:lastAddress', templAddress);
+          localStorage.setItem('templ:lastAddress', trimmedAddress);
           if (result.groupId) localStorage.setItem('templ:lastGroupId', String(result.groupId));
         } catch {}
         navigate(`/chat?address=${templAddress}`);
@@ -527,7 +549,7 @@ function App() {
     } catch (err) {
       alert(err.message);
     }
-  }
+  }, [signer, xmtp, templAddress, updateTemplAddress, walletAddress, pushStatus, navigate]);
 
   // Passive discovery: if a groupId is known (e.g., after deploy) try to
   // discover the conversation without requiring an explicit join.
@@ -546,7 +568,7 @@ function App() {
         }
       } catch {}
     })();
-  }, [xmtp, group, groupConnected]);
+  }, [xmtp, group, groupConnected, pushStatus]);
 
   // As soon as we have a groupId, surface a visible success status
   useEffect(() => {
@@ -555,7 +577,7 @@ function App() {
       pushStatus('✅ Group ID received; discovering conversation');
       joinedLoggedRef.current = true;
     }
-  }, [groupId]);
+  }, [groupId, pushStatus]);
 
   useEffect(() => {
     if (!group || !xmtp) return;
@@ -772,7 +794,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [group, xmtp, mutes]);
+  }, [group, xmtp, mutes, pushStatus]);
 
   // When we know the `groupId`, keep trying to resolve the group locally until found.
   useEffect(() => {
@@ -934,7 +956,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [xmtp, groupId, group]);
+  }, [xmtp, groupId, group, templAddress, pushStatus]);
 
   useEffect(() => {
     if (!templAddress || !signer) return;
@@ -1032,19 +1054,19 @@ function App() {
     if (templAddress && groupId) return;
     try {
       const last = localStorage.getItem('templ:lastAddress');
-      if (last && ethers.isAddress(last)) setTemplAddress(last);
+      if (last && ethers.isAddress(last)) updateTemplAddress(last);
       const lastG = localStorage.getItem('templ:lastGroupId');
       if (lastG && !groupId) setGroupId(lastG.replace(/^0x/i, ''));
     } catch {}
-  }, [templAddress, groupId]);
+  }, [templAddress, groupId, updateTemplAddress]);
 
   // Sync query param for join prefill
   useEffect(() => {
     if (path === '/join') {
       const addr = String(query.get('address') || '').trim();
-      if (addr && addr !== templAddress) setTemplAddress(addr);
+      if (addr && addr !== templAddress) updateTemplAddress(addr);
     }
-  }, [path, query, templAddress]);
+  }, [path, query, templAddress, updateTemplAddress]);
 
   // Fetch treasury and claimable stats when context is ready
   useEffect(() => {
@@ -1296,6 +1318,24 @@ function App() {
     }
   }
 
+  useEffect(() => {
+    try {
+      // @ts-ignore - expose testing helpers in e2e mode only
+      if (import.meta?.env?.VITE_E2E_DEBUG === '1' && typeof window !== 'undefined') {
+        window.__templTrigger = (action) => {
+          dlog('[app] __templTrigger called', action);
+          if (action === 'deploy') {
+            handleDeploy();
+          } else if (action === 'join') {
+            handlePurchaseAndJoin();
+          } else if (action === 'navigate-chat') {
+            navigate('/chat');
+          }
+        };
+      }
+    } catch {}
+  }, [navigate, handleDeploy, handlePurchaseAndJoin]);
+
   // Check if user is priest
   useEffect(() => {
     async function checkPriest() {
@@ -1406,7 +1446,7 @@ function App() {
         {path === '/join' && (
           <div className="join space-y-3">
             <h2 className="text-xl font-semibold">Join Existing Templ</h2>
-            <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Contract address" value={templAddress} onChange={(e) => setTemplAddress(e.target.value)} />
+            <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Contract address" value={templAddress} onChange={(e) => updateTemplAddress(e.target.value)} />
             <button className="px-4 py-2 rounded bg-primary text-black font-semibold w-full sm:w-auto" onClick={handlePurchaseAndJoin}>Purchase & Join</button>
             {/* Optional list if no prefill */}
             {(!templAddress || templAddress.trim() === '') && (

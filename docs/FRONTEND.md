@@ -27,6 +27,7 @@ Global variables such as `RPC_URL` live in the project `.env`; see the [README's
 | `VITE_BACKEND_SERVER_ID` | String identifier that must match the backend `BACKEND_SERVER_ID` to bind EIP‑712 signatures to your deployment. | — |
 | `VITE_E2E_NO_PURCHASE` | Skip the on-chain purchase step during E2E/dev runs when access is pre-seeded. | `0` |
 | `VITE_ENABLE_BACKEND_FALLBACK` | When `1`, enables debug fallbacks that query backend `/debug` endpoints for membership snapshots. | `0` |
+| `TEMPL_ENABLE_LOCAL_FALLBACK` | Node-unit toggle that lets tests merge localStorage templ registries with the backend list; keep `0` in production so the UI always reflects real `/templs` data. | `0` |
 
 ## Development
 
@@ -67,6 +68,7 @@ flowchart LR
 ## Notes
 - `VITE_XMTP_ENV` defaults to `dev` on localhost and `production` elsewhere; override for `local` nodes.
 - `VITE_E2E_DEBUG=1` exposes `window.__XMTP` helpers for diagnostics.
+- When debug helpers are enabled, the join flow automatically re-registers the contract with `/templs` if a 404 is encountered and retries the join; production runs continue to rely solely on the primary invite path.
 - The Browser SDK sets `appVersion` for diagnostics and `src/flows.js` is typed via JSDoc.
 - The chat exposes a single `Claim` button that sweeps both member-pool rewards and any external token pools using `claimExternalToken`; external balances remain visible for transparency.
 
