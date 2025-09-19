@@ -100,7 +100,7 @@ Minimal local setup requires only a handful of variables:
 | `PRIVATE_KEY` | Deployer wallet key for contract deployments | `.env` |
 | `BOT_PRIVATE_KEY` | XMTP invite-bot wallet key (auto-generated if omitted) | `backend/.env` |
 | `ALLOWED_ORIGINS` | Comma-separated frontend origins allowed to call the backend | `backend/.env` |
-| `BACKEND_DB_ENC_KEY` | 32-byte hex key to encrypt XMTP Node DB (overrides derived key) | `backend/.env` |
+| `BACKEND_DB_ENC_KEY` | 32-byte hex key to encrypt XMTP Node DB. Required in production; in dev/test the backend derives a fallback from the bot key if omitted. | `backend/.env` |
 | `EPHEMERAL_CREATOR` | Use a fresh, throwaway key to create groups (default and recommended for prod) | `backend/.env` |
 | `XMTP_BOOT_MAX_TRIES` | Max boot retries for XMTP client initialization | `backend/.env` |
 | `REQUIRE_CONTRACT_VERIFY` | When `1` (required in prod), backend verifies contract code and on-chain priest | `backend/.env` |
@@ -118,7 +118,7 @@ See [BACKEND.md#environment-variables](./docs/BACKEND.md#environment-variables) 
 5. Build the frontend (`npm --prefix frontend run build`) and serve the static files.
 
 ### Production Configuration
-- Set `NODE_ENV=production` for the backend. In this mode, signature bypass headers are disabled and `/templs` chain/priest checks are enforced when `REQUIRE_CONTRACT_VERIFY=1` (recommended).
+- Set `NODE_ENV=production` for the backend. In this mode, `/templs` chain/priest checks are always enforced; set `REQUIRE_CONTRACT_VERIFY=1` to enable the same verification in other environments.
 - Provide `BACKEND_DB_ENC_KEY` (32‑byte hex). The backend will refuse to boot without it in production.
 - If `BOT_PRIVATE_KEY` is omitted, the backend generates one and stores it in the SQLite DB (table `kv`, key `bot_private_key`) so the invite-bot identity remains stable.
 - Bind signatures to your deployment by setting a shared server id:
