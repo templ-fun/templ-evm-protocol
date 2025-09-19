@@ -30,8 +30,9 @@ contract DaoCallerHarness is TEMPL {
     function daoChangePriest(address newPriest) external {
         this.changePriestDAO(newPriest);
     }
-    /// @dev Test helper to force invalid action path (testing only)
-    function corruptAction(uint256 proposalId, uint8 val) external {
-        proposals[proposalId].action = Action(val);
+
+    /// @dev Test helper to set action to an undefined value (testing only)
+    function setUndefinedAction(uint256 proposalId) external {
+        proposals[proposalId].action = Action.Undefined;
     }
 }

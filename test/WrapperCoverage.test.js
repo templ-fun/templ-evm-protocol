@@ -35,6 +35,9 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
     const before2 = await other.balanceOf(recipient.address);
     await templ.daoWithdraw(other.target, recipient.address, 777n, "drain");
     expect(await other.balanceOf(recipient.address)).to.equal(before2 + 777n);
+
+    await templ.daoChangePriest(recipient.address);
+    expect(await templ.priest()).to.equal(recipient.address);
   });
 
   it("covers update + pause + disband wrappers via self-call", async function () {

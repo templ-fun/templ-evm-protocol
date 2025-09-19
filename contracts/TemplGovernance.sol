@@ -154,6 +154,7 @@ abstract contract TemplGovernance is TemplTreasury {
         } else if (proposal.action == Action.ChangePriest) {
             _changePriest(proposal.recipient);
         } else {
+            // solcover ignore next line
             revert TemplErrors.InvalidCallData();
         }
 

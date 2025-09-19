@@ -129,6 +129,18 @@ describe("Disband Treasury", function () {
       .to.be.revertedWithCustomError(templ, "NoTreasuryFunds");
   });
 
+  it("returns zero external rewards for non-members and unknown tokens", async function () {
+    const unknownToken = accounts[6].address;
+
+    expect(
+      await templ.getClaimableExternalToken(owner.address, unknownToken)
+    ).to.equal(0n);
+
+    expect(
+      await templ.getClaimableExternalToken(m1.address, unknownToken)
+    ).to.equal(0n);
+  });
+
   it("rolls remainder into the distribution when disbanding uneven amounts", async function () {
     const customEntryFee = ethers.parseUnits("110", 18);
     const { templ: unevenTempl, token: unevenToken, accounts: unevenAccounts } =
@@ -213,6 +225,34 @@ describe("Disband Treasury", function () {
     expect(after - before).to.equal(claimable1);
 
     expect(await templ.getClaimableExternalToken(m1.address, otherToken.target)).to.equal(0n);
+  });
+
+  it("syncs external reward snapshots for new members", async function () {
+    const OtherToken = await ethers.getContractFactory("TestToken");
+    const otherToken = await OtherToken.deploy("External", "EXT", 18);
+    const donation = ethers.parseUnits("9", 18);
+    const newMember = accounts[5];
+
+    await otherToken.mint(owner.address, donation);
+    await otherToken.transfer(await templ.getAddress(), donation);
+
+    await templ
+      .connect(m1)
+      .createProposalDisbandTreasury(otherToken.target, VOTING_PERIOD);
+    await templ.connect(m1).vote(0, true);
+    await templ.connect(m2).vote(0, true);
+    await advanceTimeBeyondVoting();
+    await templ.executeProposal(0);
+
+    const rewardsBefore = await templ.getExternalRewardState(otherToken.target);
+    expect(rewardsBefore.cumulativeRewards).to.be.gt(0n);
+
+    await mintToUsers(token, [newMember], ENTRY_FEE * 2n);
+    await purchaseAccess(templ, token, [newMember]);
+
+    expect(
+      await templ.getClaimableExternalToken(newMember.address, otherToken.target)
+    ).to.equal(0n);
   });
 
   it("distributes donated ETH into external claim balances", async function () {

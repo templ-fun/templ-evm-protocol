@@ -75,7 +75,8 @@ abstract contract TemplBase is ReentrancyGuard {
         UpdateConfig,
         WithdrawTreasury,
         DisbandTreasury,
-        ChangePriest
+        ChangePriest,
+        Undefined
     }
 
     uint256 public totalPurchases;
