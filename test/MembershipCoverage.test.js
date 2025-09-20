@@ -205,4 +205,35 @@ describe("Membership coverage extras", function () {
       templ.connect(memberA).claimExternalToken(otherToken.target)
     ).to.be.revertedWithCustomError(templ, "InsufficientPoolBalance");
   });
+
+  it("captures rounding remainders when splits don't divide evenly", async function () {
+    const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE });
+    const [, , memberA, memberB] = accounts;
+
+    await mintToUsers(token, [memberA, memberB], ENTRY_FEE * 50n);
+    await purchaseAccess(templ, token, [memberA]);
+
+    const newEntryFee = ENTRY_FEE + 10n;
+    const proposalId = await templ.proposalCount();
+    await templ
+      .connect(memberA)
+      .createProposalUpdateConfig(newEntryFee, 31, 31, 28, true, VOTING_PERIOD);
+    await templ.connect(memberA).vote(proposalId, true);
+    await ethers.provider.send("evm_increaseTime", [VOTING_PERIOD + DAY]);
+    await ethers.provider.send("evm_mine", []);
+    await templ.executeProposal(proposalId);
+
+    const treasuryBefore = await templ.treasuryBalance();
+    await purchaseAccess(templ, token, [memberB]);
+    const treasuryAfter = await templ.treasuryBalance();
+
+    const treasuryPortion = (newEntryFee * 31n) / 100n;
+    const memberPortion = (newEntryFee * 28n) / 100n;
+    const burnPortion = (newEntryFee * 31n) / 100n;
+    const protocolPortion = (newEntryFee * 10n) / 100n;
+    const distributed = treasuryPortion + memberPortion + burnPortion + protocolPortion;
+    const expectedRemainder = newEntryFee - distributed;
+
+    expect(treasuryAfter - treasuryBefore).to.equal(treasuryPortion + expectedRemainder);
+  });
 });

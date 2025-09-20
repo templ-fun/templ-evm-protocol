@@ -70,7 +70,7 @@ describe("TemplFactory", function () {
     });
 
     it("reverts when fee split does not sum to 100", async function () {
-        const [, , protocolRecipient] = await ethers.getSigners();
+        const [deployer, , protocolRecipient] = await ethers.getSigners();
         const token = await deployToken("Bad", "BAD");
         const Factory = await ethers.getContractFactory("TemplFactory");
         const factory = await Factory.deploy(protocolRecipient.address, 15);
@@ -112,5 +112,38 @@ describe("TemplFactory", function () {
         expect(await templ.quorumPercent()).to.equal(33);
         expect(await templ.executionDelayAfterQuorum()).to.equal(7 * 24 * 60 * 60);
         expect(await templ.burnAddress()).to.equal("0x000000000000000000000000000000000000dEaD");
+    });
+
+    it("patches optional fields to defaults when config omits them", async function () {
+        const [deployer, , protocolRecipient] = await ethers.getSigners();
+        const token = await deployToken("Patched", "PTC");
+        const Factory = await ethers.getContractFactory("TemplFactory");
+        const factory = await Factory.deploy(protocolRecipient.address, 10);
+        await factory.waitForDeployment();
+
+        const config = {
+            priest: ethers.ZeroAddress,
+            token: await token.getAddress(),
+            entryFee: ENTRY_FEE,
+            burnPercent: 0,
+            treasuryPercent: 0,
+            memberPoolPercent: 0,
+            quorumPercent: 0,
+            executionDelaySeconds: 0,
+            burnAddress: ethers.ZeroAddress
+        };
+
+        const templAddress = await factory.createTemplWithConfig.staticCall(config);
+        await (await factory.createTemplWithConfig(config)).wait();
+
+        const templ = await ethers.getContractAt("TEMPL", templAddress);
+
+        expect(await templ.priest()).to.equal(deployer.address);
+        expect(await templ.quorumPercent()).to.equal(33);
+        expect(await templ.executionDelayAfterQuorum()).to.equal(7 * 24 * 60 * 60);
+        expect(await templ.burnAddress()).to.equal("0x000000000000000000000000000000000000dEaD");
+        expect(await templ.burnPercent()).to.equal(30);
+        expect(await templ.treasuryPercent()).to.equal(30);
+        expect(await templ.memberPoolPercent()).to.equal(30);
     });
 });

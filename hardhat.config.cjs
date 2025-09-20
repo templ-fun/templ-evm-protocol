@@ -1,9 +1,9 @@
-import "@nomicfoundation/hardhat-toolbox";
-import "solidity-coverage";
-import dotenv from "dotenv";
-import { subtask } from "hardhat/config.js";
-import { TASK_COMPILE_SOLIDITY_GET_SOURCE_PATHS } from "hardhat/builtin-tasks/task-names.js";
-import path from "path";
+require("@nomicfoundation/hardhat-toolbox");
+require("solidity-coverage");
+const dotenv = require("dotenv");
+const { subtask } = require("hardhat/config");
+const { TASK_COMPILE_SOLIDITY_GET_SOURCE_PATHS } = require("hardhat/builtin-tasks/task-names");
+const path = require("path");
 
 dotenv.config();
 
@@ -25,10 +25,10 @@ const config = {
   solidity: {
     version: "0.8.23",
     settings: {
-      viaIR: usingCoverage ? false : true,
+      viaIR: true,
       optimizer: {
-        enabled: usingCoverage ? false : true,
-        runs: 200
+        enabled: true,
+        runs: usingCoverage ? 1 : 200
       }
     }
   },
@@ -55,4 +55,4 @@ const config = {
   }
 };
 
-export default config;
+module.exports = config;
