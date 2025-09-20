@@ -1,33 +1,37 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
+const ENTRY_FEE = ethers.parseUnits("100", 18);
+
+async function deployHarness(entryFee = ENTRY_FEE) {
+  const accounts = await ethers.getSigners();
+  const [, priest] = accounts;
+
+  const Token = await ethers.getContractFactory("contracts/mocks/TestToken.sol:TestToken");
+  const token = await Token.deploy("Test", "TEST", 18);
+  await token.waitForDeployment();
+
+  const Harness = await ethers.getContractFactory("contracts/mocks/DaoCallerHarness.sol:DaoCallerHarness");
+  const templ = await Harness.deploy(priest.address, priest.address, token.target, entryFee);
+  await templ.waitForDeployment();
+
+  return { accounts, token, templ };
+}
+
 describe("WrapperCoverage (onlyDAO externals)", function () {
-  const ENTRY_FEE = ethers.parseUnits("100", 18);
-
   it("covers withdraw wrappers via self-call", async function () {
-    const accounts = await ethers.getSigners();
-    const [owner, priest, member, recipient] = accounts;
+    const { accounts, token, templ } = await deployHarness();
+    const [owner, , member, recipient] = accounts;
 
-    const Token = await ethers.getContractFactory("contracts/mocks/TestToken.sol:TestToken");
-    const token = await Token.deploy("Test", "TEST", 18);
-    await token.waitForDeployment();
-
-    const Harness = await ethers.getContractFactory("contracts/mocks/DaoCallerHarness.sol:DaoCallerHarness");
-    const templ = await Harness.deploy(priest.address, priest.address, token.target, ENTRY_FEE);
-    await templ.waitForDeployment();
-
-    // Fund member and perform purchase to seed treasury
     await token.mint(member.address, ENTRY_FEE);
     await token.connect(member).approve(templ.target, ENTRY_FEE);
     await templ.connect(member).purchaseAccess();
 
-    // withdraw part of treasury in access token
-    const amount = (ENTRY_FEE * 30n) / 100n; // 30% in treasury
+    const amount = (ENTRY_FEE * 30n) / 100n;
     const before = await token.balanceOf(recipient.address);
     await templ.daoWithdraw(token.target, recipient.address, amount, "payout");
     expect(await token.balanceOf(recipient.address)).to.equal(before + amount);
 
-    // donate other ERC20 and withdraw full via withdrawTreasuryDAO
     const Other = await ethers.getContractFactory("contracts/mocks/TestToken.sol:TestToken");
     const other = await Other.deploy("Other", "OTH", 18);
     await other.mint(owner.address, 1000n);
@@ -41,28 +45,17 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
   });
 
   it("covers update + pause + disband wrappers via self-call", async function () {
-    const accounts = await ethers.getSigners();
-    const [owner, priest, m1, m2] = accounts;
+    const { accounts, token, templ } = await deployHarness();
+    const [owner, , m1, m2] = accounts;
 
-    const Token = await ethers.getContractFactory("contracts/mocks/TestToken.sol:TestToken");
-    const token = await Token.deploy("Test", "TEST", 18);
-    await token.waitForDeployment();
-
-    const Harness = await ethers.getContractFactory("contracts/mocks/DaoCallerHarness.sol:DaoCallerHarness");
-    const templ = await Harness.deploy(priest.address, priest.address, token.target, ENTRY_FEE);
-    await templ.waitForDeployment();
-
-    // hit update wrapper with no-op change
     await templ.daoUpdate(ethers.ZeroAddress, 0n, false, 0, 0, 0);
     expect(await templ.entryFee()).to.equal(ENTRY_FEE);
 
-    // pause/unpause
     await templ.daoPause(true);
     expect(await templ.paused()).to.equal(true);
     await templ.daoPause(false);
     expect(await templ.paused()).to.equal(false);
 
-    // seed treasury with two members then disband to pool
     await token.mint(m1.address, ENTRY_FEE);
     await token.connect(m1).approve(templ.target, ENTRY_FEE);
     await templ.connect(m1).purchaseAccess();
@@ -77,4 +70,59 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
     expect(await templ.memberPoolBalance()).to.equal(poolBefore + treasuryBefore);
   });
 
+  it("guards priest updates, config changes, and disband preconditions", async function () {
+    const { accounts, token, templ } = await deployHarness();
+    const [owner, , member, secondMember] = accounts;
+
+    await expect(templ.daoChangePriest(ethers.ZeroAddress)).to.be.revertedWithCustomError(
+      templ,
+      "InvalidRecipient"
+    );
+
+    const Other = await ethers.getContractFactory("contracts/mocks/TestToken.sol:TestToken");
+    const other = await Other.deploy("Other", "OTH", 18);
+    await other.waitForDeployment();
+
+    await expect(
+      templ.daoUpdate(other.target, 0n, false, 0, 0, 0)
+    ).to.be.revertedWithCustomError(templ, "TokenChangeDisabled");
+
+    await expect(
+      templ.daoUpdate(ethers.ZeroAddress, 5n, false, 0, 0, 0)
+    ).to.be.revertedWithCustomError(templ, "EntryFeeTooSmall");
+
+    await expect(
+      templ.daoUpdate(ethers.ZeroAddress, 15n, false, 0, 0, 0)
+    ).to.be.revertedWithCustomError(templ, "InvalidEntryFee");
+
+    await expect(templ.daoDisband(token.target)).to.be.revertedWithCustomError(templ, "NoMembers");
+
+    await token.mint(member.address, ENTRY_FEE);
+    await token.connect(member).approve(templ.target, ENTRY_FEE);
+    await templ.connect(member).purchaseAccess();
+    await token.mint(secondMember.address, ENTRY_FEE);
+    await token.connect(secondMember).approve(templ.target, ENTRY_FEE);
+    await templ.connect(secondMember).purchaseAccess();
+
+    await templ.daoDisband(token.target);
+    await expect(
+      templ.daoWithdraw(token.target, owner.address, 1n, "pool-locked")
+    ).to.be.revertedWithCustomError(templ, "InsufficientTreasuryBalance");
+
+    const Extra = await ethers.getContractFactory("contracts/mocks/TestToken.sol:TestToken");
+    const extra = await Extra.deploy("Reserve", "RSV", 18);
+    await extra.mint(owner.address, 10n);
+    await extra.transfer(templ.target, 10n);
+
+    await templ.daoDisband(extra.target);
+    await expect(
+      templ.daoWithdraw(extra.target, owner.address, 10n, "reserved")
+    ).to.be.revertedWithCustomError(templ, "InsufficientTreasuryBalance");
+
+    await owner.sendTransaction({ to: templ.target, value: ethers.parseUnits("1", 18) });
+    await templ.daoDisband(ethers.ZeroAddress);
+    await expect(
+      templ.daoWithdraw(ethers.ZeroAddress, owner.address, ethers.parseUnits("1", 18), "reserved-eth")
+    ).to.be.revertedWithCustomError(templ, "InsufficientTreasuryBalance");
+  });
 });

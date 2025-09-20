@@ -168,6 +168,28 @@ describe("TemplFactory", function () {
         ).to.be.revertedWithCustomError(factory, "InvalidEntryFee");
     });
 
+    it("reverts when quorum percent exceeds 100", async function () {
+        const [, , protocolRecipient] = await ethers.getSigners();
+        const token = await deployToken("Quorum", "QRM");
+        const Factory = await ethers.getContractFactory("TemplFactory");
+        const factory = await Factory.deploy(protocolRecipient.address, 10);
+        await factory.waitForDeployment();
+
+        await expect(
+            factory.createTemplWithConfig({
+                priest: protocolRecipient.address,
+                token: await token.getAddress(),
+                entryFee: ENTRY_FEE,
+                burnPercent: 30,
+                treasuryPercent: 30,
+                memberPoolPercent: 30,
+                quorumPercent: 101,
+                executionDelaySeconds: 7 * 24 * 60 * 60,
+                burnAddress: ethers.ZeroAddress
+            })
+        ).to.be.revertedWithCustomError(factory, "InvalidPercentage");
+    });
+
     it("patches optional fields to defaults when config omits them", async function () {
         const [deployer, , protocolRecipient] = await ethers.getSigners();
         const token = await deployToken("Patched", "PTC");
