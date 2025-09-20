@@ -101,6 +101,7 @@ abstract contract TemplTreasury is TemplMembership {
         emit TreasuryAction(proposalId, token, recipient, amount, reason);
     }
 
+    /// @dev Backend listeners consume PriestChanged to clear delegate/mute state for the new priest.
     function _changePriest(address newPriest) internal {
         if (newPriest == address(0)) revert TemplErrors.InvalidRecipient();
         address old = priest;

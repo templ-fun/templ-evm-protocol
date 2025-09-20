@@ -62,7 +62,7 @@ sequenceDiagram
   - `setPausedDAO(bool)` — pause/unpause membership purchasing.
 - `updateConfigDAO(address,uint256,bool,uint256,uint256,uint256)` — update the entry fee (must remain >0 and multiple of 10) and, when `_updateFeeSplit` is true, adjust the burn/treasury/member percentages. The protocol split comes from the factory and cannot be changed. Token changes are disabled (`_token` must be `address(0)` or the current token), else `TokenChangeDisabled`.
   - `withdrawTreasuryDAO(address,address,uint256,string)` — withdraw a specific amount of any asset (access token, other ERC‑20, or ETH with `address(0)`).
-  - `changePriestDAO(address)` — change the priest address via governance.
+  - `changePriestDAO(address)` — change the priest address via governance; the resulting `PriestChanged` event signals the backend to clear all delegate assignments and active mutes so the new priest inherits a clean moderation slate.
   - `disbandTreasuryDAO(address token)` — move the full available balance of `token` into a member-distributable pool. When `token == accessToken`, funds roll into the member pool (`memberPoolBalance`) with per-member integer division and any remainder added to `memberRewardRemainder`. When targeting any other ERC‑20 or native ETH (`address(0)`), the amount is recorded in an external rewards pool so members can later claim their share with `claimExternalToken`.
 
 ### Quorum and Eligibility
