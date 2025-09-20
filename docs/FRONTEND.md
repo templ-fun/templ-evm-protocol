@@ -22,7 +22,7 @@ npm --prefix frontend ci
 
 ## Environment variables
 
-These toggles shape the cult experience in the browser. Global variables such as `RPC_URL` live in the project `.env`; see the [README's environment variables](../README.md#environment-variables).
+These toggles shape the cult experience in the browser. Remember: in Vite builds only `VITE_*` variables reach the client. For backend/tests, see the [README's environment variables](../README.md#environment-variables).
 
 | Name | Description | Default |
 | --- | --- | --- |

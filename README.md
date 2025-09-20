@@ -52,11 +52,7 @@ Fees keep bots at bay, demand proof-of-faith (skin in the game), and continuousl
 The founding Priest can choose any split at deploy time - 30/30/30 is just our default scaffolding. The only constant is the 10% protocol tithe, which keeps the broader Templ Protocol humming.
 
 ### Protocol Tithe (the Fixed 10%)
-Every tribute also powers the protocol:
-- **4%** buys and burns TEMPL.
-- **3%** streams to TEMPL stakers (paid out in the underlying cult tokens, so stakers collect the most popular memecoins on templ.fun).
-- **2%** covers protocol operations: hosting, domains, future XMTP costs.
-- **1%** converts to ETH and deepens the TMPL-ETH pool on Uniswap.
+Every tribute also powers the protocol: the Templ factory forwards a fixed 10% of every entry fee to the templ.fun protocol treasury, funding keeper costs, future rewards programs, and long-term upgrades.
 
 ## Infinite Templs
 One token can host an entire pantheon of Templs. Maybe PEPE splits into low-cost public plazas and ultra-elite sanctums. Maybe a creator coin spins up VIP circles for superfans. Templ works for memecoins, utility tokens, streamer coins, content coins, card coins, RWAs, xStocks - any community that wants to go from passive bag holding to active coordination.
