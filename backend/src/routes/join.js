@@ -6,7 +6,7 @@ import { waitForInboxReady, XMTP_ENV } from '../xmtp/index.js';
 import { Client as NodeXmtpClient, generateInboxId, getInboxIdForIdentifier } from '@xmtp/node-sdk';
 import { logger } from '../logger.js';
 
-export default function joinRouter({ xmtp, groups, hasPurchased, lastJoin, database, provider }) {
+export default function joinRouter({ xmtp, groups, hasPurchased, lastJoin, database, provider, ensureGroup }) {
   const router = express.Router();
   // (no DISABLE_WAIT flags here; production-safe logic below)
 
@@ -69,6 +69,23 @@ export default function joinRouter({ xmtp, groups, hasPurchased, lastJoin, datab
       try {
         // Resolve member inboxId via network; never trust client-provided ids blindly.
         const memberIdentifier = { identifier: memberAddress.toLowerCase(), identifierKind: 0 };
+        let group = record.group && record.group.id ? record.group : null;
+        try {
+          if (!group && typeof ensureGroup === 'function') {
+            group = await ensureGroup(record);
+          }
+          if (!group && record.groupId && xmtp?.conversations?.getConversationById) {
+            const maybe = await xmtp.conversations.getConversationById(record.groupId);
+            if (maybe) {
+              group = maybe;
+            }
+          }
+        } catch (e) {
+          logger.warn({ err: e?.message || e }, 'Rehydrate group failed');
+        }
+        if (group && group.id) {
+          record.group = group;
+        }
         let providedInboxId = null;
         try {
           const raw = String(req.body?.inboxId || req.body?.memberInboxId || '').trim();
@@ -102,13 +119,6 @@ export default function joinRouter({ xmtp, groups, hasPurchased, lastJoin, datab
           }
           return null;
         }
-        // Ensure we have a fresh group handle
-        try {
-          if ((!record.group || !record.group.id) && record.groupId && xmtp?.conversations?.getConversationById) {
-            const maybe = await xmtp.conversations.getConversationById(record.groupId);
-            if (maybe) record.group = maybe;
-          }
-        } catch (e) { logger.warn({ err: e?.message || e }, 'Rehydrate group failed'); }
         // Resolve inboxId from network; only accept providedInboxId if it matches resolution
         const allowDeterministic = ['local'].includes(String(XMTP_ENV)) || process.env.NODE_ENV === 'test';
         const resolvedInboxId = await waitForInboxId(memberIdentifier, allowDeterministic ? 30 : 180, allowDeterministic);
@@ -124,6 +134,9 @@ export default function joinRouter({ xmtp, groups, hasPurchased, lastJoin, datab
         } catch { /* ignore */ }
         if (!inboxId) {
           return res.status(503).json({ error: 'Member identity not registered yet; retry shortly' });
+        }
+        if (!group || !group.id) {
+          return res.status(503).json({ error: 'Group not ready yet; retry shortly' });
         }
         // On local/dev, also ensure the target installation has at least one visible installation record
         try {
@@ -205,17 +218,17 @@ export default function joinRouter({ xmtp, groups, hasPurchased, lastJoin, datab
         const ready = await waitForInboxReady(inboxId, readyTries);
         logger.info({ inboxId, ready }, 'Member inbox readiness before add');
         const beforeAgg = xmtp?.debugInformation?.apiAggregateStatistics?.();
-        const joinMeta = { contract: contractAddress.toLowerCase(), member: memberAddress.toLowerCase(), inboxId, serverInboxId: xmtp?.inboxId || null, groupId: record.group?.id || record.groupId || null };
+        const joinMeta = { contract: contractAddress.toLowerCase(), member: memberAddress.toLowerCase(), inboxId, serverInboxId: xmtp?.inboxId || null, groupId: group?.id || record.groupId || null };
         logger.info(joinMeta, 'Inviting member by inboxId');
         try {
-          if (typeof record.group.addMembers === 'function') {
-            await record.group.addMembers([inboxId]);
+          if (typeof group.addMembers === 'function') {
+            await group.addMembers([inboxId]);
             logger.info({ inboxId }, 'addMembers([inboxId]) succeeded');
-          } else if (typeof record.group.addMembersByInboxId === 'function') {
-            await record.group.addMembersByInboxId([inboxId]);
+          } else if (typeof group.addMembersByInboxId === 'function') {
+            await group.addMembersByInboxId([inboxId]);
             logger.info({ inboxId }, 'addMembersByInboxId([inboxId]) succeeded');
-          } else if (typeof record.group.addMembersByIdentifiers === 'function') {
-            await record.group.addMembersByIdentifiers([memberIdentifier]);
+          } else if (typeof group.addMembersByIdentifiers === 'function') {
+            await group.addMembersByIdentifiers([memberIdentifier]);
             logger.info({ member: memberAddress.toLowerCase() }, 'addMembersByIdentifiers([identifier]) succeeded');
           } else {
             throw new Error('XMTP group does not support adding members');
@@ -229,7 +242,7 @@ export default function joinRouter({ xmtp, groups, hasPurchased, lastJoin, datab
           await syncXMTP(xmtp);
           logger.info('Server conversations synced after join');
           try {
-            if (record.group?.sync) await record.group.sync();
+            if (group?.sync) await group.sync();
           } catch { /* ignore */ }
         } catch (err) {
           logger.warn({ err }, 'Server sync after join failed');
@@ -241,8 +254,8 @@ export default function joinRouter({ xmtp, groups, hasPurchased, lastJoin, datab
           const max = isTest ? 3 : (env === 'local' ? 30 : 60);
           const delay = isTest ? 100 : (env === 'local' ? 150 : 500);
           for (let i = 0; i < max; i++) {
-            try { await record.group?.sync?.(); } catch { /* ignore */ }
-            const members = Array.isArray(record.group?.members) ? record.group.members : [];
+            try { await group?.sync?.(); } catch { /* ignore */ }
+            const members = Array.isArray(group?.members) ? group.members : [];
             const norm = (s) => String(s || '').replace(/^0x/i, '').toLowerCase();
             if (members.some((m) => norm(m) === norm(inboxId))) break;
             await new Promise((r) => setTimeout(r, delay));
@@ -265,13 +278,13 @@ export default function joinRouter({ xmtp, groups, hasPurchased, lastJoin, datab
           record.memberSet.add(norm(inboxId));
         } catch { /* ignore */ }
         // Avoid logging member arrays by default, and nudge metadata to produce a fresh commit
-        try { if (typeof record.group.sync === 'function') await record.group.sync(); } catch (err) { void err; }
-        try { await record.group.send(JSON.stringify({ type: 'member-joined', address: memberAddress })); } catch (err) { void err; }
+        try { if (typeof group.sync === 'function') await group.sync(); } catch (err) { void err; }
+        try { await group.send(JSON.stringify({ type: 'member-joined', address: memberAddress })); } catch (err) { void err; }
         const META_UPDATES = process.env.XMTP_METADATA_UPDATES !== '0';
         if (META_UPDATES) {
           try {
-            if (typeof record.group.updateDescription === 'function') {
-              await record.group.updateDescription('Member joined');
+            if (typeof group.updateDescription === 'function') {
+              await group.updateDescription('Member joined');
             }
           } catch (err) {
             // Some SDKs report successful syncs as errors; ignore benign cases
@@ -279,8 +292,8 @@ export default function joinRouter({ xmtp, groups, hasPurchased, lastJoin, datab
           }
           // Also bump the name to ensure a commit is produced across SDK versions
           try {
-            if (typeof record.group.updateName === 'function') {
-              await record.group.updateName(`Templ ${contractAddress}`);
+            if (typeof group.updateName === 'function') {
+              await group.updateName(`Templ ${contractAddress}`);
             }
           } catch (err) {
             if (!String(err?.message || '').includes('succeeded')) { /* ignore */ }
@@ -288,8 +301,8 @@ export default function joinRouter({ xmtp, groups, hasPurchased, lastJoin, datab
         }
         // Final sync to ensure the warm message and membership are visible network-wide before responding
         try { await syncXMTP(xmtp); } catch { /* ignore */ }
-        try { if (typeof record.group.sync === 'function') await record.group.sync(); } catch { /* ignore */ }
-        res.json({ groupId: record.group.id });
+        try { if (typeof group.sync === 'function') await group.sync(); } catch { /* ignore */ }
+        res.json({ groupId: group.id });
       } catch (err) {
         logger.error({ err, contractAddress }, 'Join failed');
         res.status(500).json({ error: err.message });

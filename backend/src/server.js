@@ -233,7 +233,7 @@ export function createApp(opts) {
     }
   })();
 
-  const context = { xmtp, hasPurchased, database, groups, persist, lastJoin, provider, watchContract };
+  const context = { xmtp, hasPurchased, database, groups, persist, lastJoin, provider, watchContract, ensureGroup };
 
   app.use(templsRouter(context));
   app.use(joinRouter(context));

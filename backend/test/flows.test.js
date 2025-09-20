@@ -5,6 +5,7 @@ import { EventEmitter } from 'node:events';
 import { mkdtemp } from 'fs/promises';
 import path from 'path';
 import os from 'os';
+import Database from 'better-sqlite3';
 import { makeApp, wallets } from './helpers.js';
 import { buildCreateTypedData, buildJoinTypedData, buildDelegateTypedData, buildMuteTypedData } from '../../shared/signing.js';
 
@@ -211,6 +212,60 @@ test('rejects join for unknown templ', async () => {
     })
     .expect(404);
   await app.close();
+});
+
+test('returns 503 when templ group is not yet hydrated', async () => {
+  const db = new Database(':memory:');
+  db.exec('CREATE TABLE IF NOT EXISTS groups (contract TEXT PRIMARY KEY, groupId TEXT, priest TEXT)');
+  db.exec('CREATE TABLE IF NOT EXISTS mutes (contract TEXT, target TEXT, count INTEGER, until INTEGER, PRIMARY KEY(contract, target))');
+  db.exec('CREATE TABLE IF NOT EXISTS delegates (contract TEXT, delegate TEXT, PRIMARY KEY(contract, delegate))');
+  db.exec('CREATE TABLE IF NOT EXISTS signatures (sig TEXT PRIMARY KEY, usedAt INTEGER)');
+  const contractKey = addresses.contract.toLowerCase();
+  const priestKey = addresses.priest.toLowerCase();
+  const groupId = 'group-not-ready';
+  db.prepare('INSERT OR REPLACE INTO groups (contract, groupId, priest) VALUES (?, ?, ?)').run(contractKey, groupId, priestKey);
+
+  const prevDisableWait = process.env.DISABLE_XMTP_WAIT;
+  process.env.DISABLE_XMTP_WAIT = '1';
+
+  const xmtp = {
+    inboxId: 'server-inbox',
+    conversations: {
+      getConversationById: async () => null
+    },
+    findInboxIdByIdentifier: async () => 'member-inbox-id',
+    getKeyPackageStatusesForInstallationIds: async () => ({})
+  };
+
+  const app = makeApp({ xmtp, hasPurchased: async () => true, db });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+
+  try {
+    const jtyped = buildJoinTypedData({ chainId: 1337, contractAddress: addresses.contract });
+    const signature = await wallets.member.signTypedData(jtyped.domain, jtyped.types, jtyped.message);
+    const res = await request(app)
+      .post('/join')
+      .send({
+        contractAddress: addresses.contract,
+        memberAddress: addresses.member,
+        signature,
+        chainId: 1337,
+        nonce: jtyped.message.nonce,
+        issuedAt: jtyped.message.issuedAt,
+        expiry: jtyped.message.expiry
+      })
+      .expect(503);
+
+    assert.equal(res.body?.error, 'Group not ready yet; retry shortly');
+  } finally {
+    await app.close();
+    if (prevDisableWait === undefined) {
+      delete process.env.DISABLE_XMTP_WAIT;
+    } else {
+      process.env.DISABLE_XMTP_WAIT = prevDisableWait;
+    }
+    db.close();
+  }
 });
 
 test('requires provider when verification enabled for join', async () => {
