@@ -2,7 +2,7 @@
 
 Bring the entire stack up on your machine so you can deploy a templ, join as members, and exercise governance without touching production services.
 
-## Why this doc
+## Why this ritual matters
 - Spin up Hardhat, the backend bot, and the frontend with minimal ceremony.
 - Preload MetaMask with deterministic wallets so you can test priest/member roles quickly.
 - Optionally run against a local XMTP node when you need hermetic e2e tests.
@@ -60,7 +60,7 @@ To target a local XMTP node instead, set `VITE_XMTP_ENV=local` in `frontend/.env
 
 ## 4) Generate fresh wallets (avoid XMTP install caps)
 
-By default, Hardhat’s first 20 accounts are static. XMTP imposes per‑address installation limits over time. For clean local tests, generate fresh wallets and fund them from Hardhat #0:
+By default, Hardhat’s first 20 accounts are static. XMTP imposes per-address installation limits over time. For clean local tests, generate fresh wallets and fund them from Hardhat #0:
 
 ```
 npm run gen:wallets
@@ -94,7 +94,7 @@ Import these private keys (addresses are shown for convenience):
 
 These are Hardhat defaults, funded automatically.
 
-## 6) Deploy a test ERC‑20 token locally
+## 6) Deploy a test ERC-20 token locally
 
 Use Hardhat console (Terminal A or a new one):
 
@@ -129,9 +129,9 @@ In the frontend (with the Priest wallet selected):
    - Protocol fee recipient: `0x70997970C51812dc3A010C7d01b50e0d17dc79C8` (Hardhat #1)
    - Entry fee: `100` (must be ≥10 and divisible by 10)
    - Note: governance rules:
-     - One member = one vote; proposer auto‑YES; votes are changeable until eligibility closes.
+     - One member = one vote; proposer auto-YES; votes are changeable until eligibility closes.
      - Before quorum, any member may vote; after quorum is reached, only members who joined before `quorumReachedAt` may vote.
-     - Execution requires a simple majority. For most proposals, execution is allowed only after quorum is reached and the post‑quorum delay elapses; priest‑proposed disband is quorum‑exempt and respects only its end time.
+     - Execution requires a simple majority. For most proposals, execution is allowed only after quorum is reached and the post-quorum delay elapses; priest-proposed disband is quorum-exempt and respects only its end time.
 4. Click `Deploy`.
 
 You’ll land in `Chat` with the group created. The header shows the contract short address.
@@ -147,7 +147,7 @@ Switch MetaMask to the Member wallet (`0x15d3…6A65`). In the app:
 
    The join flow now always posts to `/join`; the UI only falls back to any locally cached templ addresses when `TEMPL_ENABLE_LOCAL_FALLBACK=1` (used in automated tests). Leave that flag unset during manual runs so you verify the backend invite path end-to-end.
 
-The chat auto‑loads the last 100 messages and any past proposals. Use “Load previous” to page older history.
+The chat auto-loads the last 100 messages and any past proposals. Use “Load previous” to page older history.
 
 ## 9) Try governance in chat
 
@@ -156,11 +156,11 @@ The chat auto‑loads the last 100 messages and any past proposals. Use “Load 
 - Vote via `Vote Yes/No`; each voter signs their tx.
 - If you’re the priest, an `Execute` button is always visible; the contract enforces eligibility (quorum, delay, quorum-exempt priest disband timing) and reverts when the proposal cannot yet be executed.
 
-## Troubleshooting
+## Troubleshooting (when the ritual misbehaves)
 
 - Backend CORS: update `ALLOWED_ORIGINS` in `backend/.env` if your frontend origin differs.
 - Ports in use: stop stray `:8545`, `:3001`, or `:5173` processes before restarting.
-- XMTP boot time: the first run may take ~20–60s while the SDK initializes identity and device sync. Subsequent runs are faster.
+- XMTP boot time: the first run may take ~20-60s while the SDK initializes identity and device sync. Subsequent runs are faster.
 
 ## Next
 Check [../scripts/README.md](../scripts/README.md) for deployment, wallet, and CI scripts that build on this setup.

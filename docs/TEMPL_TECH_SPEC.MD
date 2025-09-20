@@ -1,32 +1,32 @@
-# TEMPL Protocol — Technical Specifications
+# Templ Protocol - Cult Mechanics
 
-## Why this doc
-- Understand the economic guarantees that every templ instance inherits from the factory.
-- Learn the exact membership + reward lifecycle before you dive into implementation details.
-- Map governance constraints so you can reason about proposal safety and treasury custody.
+## Why this grimoire exists
+- Track the economic guarantees every Templ inherits from the factory before you remix the splits.
+- Understand the full membership and reward lifecycle so you know how tributes circulate among believers.
+- Map the governance guardrails that keep treasuries safe while Priests and members steer proposals.
 
-## How it flows
-1. **Abstract & system overview** — a quick mental model for the full protocol.
-2. **On-chain mechanics** — storage layout, fee splits, membership lifecycle, governance rules.
-3. **Off-chain hooks** — how signatures and XMTP glue the app together.
-4. **Safety notes** — invariants and assumptions that audits rely on.
+## How to use this guide
+1. **Abstract & system overview** - build a mental model for the entire ritual stack.
+2. **On-chain rituals** - storage layout, fee math, membership lifecycle, and governance rules.
+3. **Off-chain rites** - the signatures, bots, and XMTP hooks that keep cult gates locked.
+4. **Safety notes** - invariants auditors lean on when they bless deployments.
 
 ## Abstract
 
-TEMPL is a DAO‑governed, token‑gated private group system that combines:
+Templ is the DAO-governed cult engine that fuses:
 
-- On‑chain membership with a fixed ERC‑20 entry fee (one‑time, non‑transferable).
-- Automatic fee splits when a new member joins (burn/treasury/member-pool portions are per templ; the protocol share is fixed by the factory).
-- One‑member‑one‑vote governance over an allowlisted set of safe actions.
-- Views and signatures that let a backend enforce access to an XMTP group chat.
+- On-chain membership with a one-time ERC-20 tribute (non-transferable, forever binding).
+- Automatic tribute splits on every new member (burn/treasury/member-pool chosen per Templ; the protocol tithe is factory-fixed).
+- One-member-one-vote governance over an allowlisted menu of safe actions.
+- Views and typed signatures so the backend can police who gets into the XMTP sanctuary.
 
-## System Overview
+## System overview (the cult stack)
 
-The protocol relies on three cooperating layers:
+Three layers work in concert to turn coins into cults:
 
-- **Smart contracts** (Solidity 0.8.23) gate membership and manage the treasury and member pool.
-- **Backend** (Node/Express) creates the XMTP group with a short‑lived ephemeral key, then uses a persistent invite‑bot identity to invite on-chain members. No persistent owner/admin keys are retained; the bot is not used for banning. It also mirrors governance events and enforces moderation via signatures.
-- **Frontend** (Vite + React) deploys contracts, buys access, requests invites, and surfaces governance + chat.
+- **Smart contracts** (Solidity 0.8.23) gate membership and guard the treasury + member pool.
+- **Backend** (Node/Express) conjures the XMTP group with an ephemeral creator key, then promotes a persistent invite-bot identity that only admits on-chain members. No admin key is kept around and the bot never bans. It also mirrors governance events and enforces moderation signatures.
+- **Frontend** (Vite + React) deploys Templs, shepherds purchases, requests invites, and surfaces governance plus chat.
 
 ### High-level flow (deploy → join → chat)
 
@@ -56,17 +56,19 @@ sequenceDiagram
     F->>C: propose/vote/execute
 ```
 
-## On‑Chain Protocol (contracts/TEMPL.sol)
+## On-chain rituals (`contracts/TEMPL.sol`)
 
-Implementation is layered across:
+Everything on-chain is modular so each cult instance inherits the same safeguards:
 - `TemplBase` (storage, immutables, modifiers)
 - `TemplMembership` (purchase + claims)
 - `TemplTreasury` (treasury/config/priest handlers)
 - `TemplGovernance` (proposal lifecycle)
 - `TEMPL` (constructor wiring + payable receive)
-- `TemplFactory` (fixes protocol fee percentage + recipient and deploys templ instances). `createTempl(token, entryFee)` uses defaults (priest = caller, 30/30/30 split, quorum 33%, execution delay 7 days, burn address `0x000000000000000000000000000000000000dEaD`). `createTemplWithConfig(CreateConfig)` accepts overrides for priest, the three percentages, burn address, quorum percent, and execution delay—percentages must still sum with the immutable protocol percent to 100.
+- `TemplFactory` (fixes protocol fee percentage + recipient and deploys templ instances). `createTempl(token, entryFee)` uses defaults (priest = caller, 30/30/30 split, quorum 33%, execution delay 7 days, burn address `0x000000000000000000000000000000000000dEaD`). `createTemplWithConfig(CreateConfig)` accepts overrides for priest, the three percentages, burn address, quorum percent, and execution delay - percentages must still sum with the immutable protocol percent to 100.
 
-### Economic Model (per `purchaseAccess()`)
+### Economic model (per `purchaseAccess()` tribute)
+
+Each purchase runs the same ritual math:
 
 - Split of `entryFee` (percentages configurable at deployment time):
   - Burn (`burnPercent`) → default `0x000000000000000000000000000000000000dEaD` unless overridden at deploy time
@@ -74,7 +76,7 @@ Implementation is layered across:
   - Member Pool (`memberPoolPercent`) → retained by contract and tracked in `memberPoolBalance`
   - Protocol (`protocolPercent`) → transferred to the factory’s immutable `protocolFeeRecipient`
 - Member rewards: When a new member joins, the contract increments `cumulativeMemberRewards` by `floor(memberPoolShare / (n-1))` for existing members (where `n` is new member count). Remainders accumulate in `memberRewardRemainder`.
-- Donations: Anyone may send ETH/ERC‑20 directly to the contract address. Governance may later withdraw donated assets; the member pool balance remains reserved for members.
+- Donations: Anyone may send ETH/ERC-20 directly to the contract address. Governance may later withdraw donated assets; the member pool balance remains reserved for members.
 - Leftovers: Any indivisible remainder from reward splits accumulates in `memberRewardRemainder` and is folded into the next distribution so every token is eventually claimable.
 
 ```mermaid
@@ -88,25 +90,29 @@ sequenceDiagram
     T-->>E: transfer claimable
 ```
 
-### Membership Lifecycle
+### Membership lifecycle
 
-- `purchaseAccess()` — one‑time, guarded by `whenNotPaused` and `notSelf` (DAO cannot purchase). Transfers tokens using SafeERC20 and emits `AccessPurchased` with counters.
-- `hasAccess(address)` — returns membership boolean.
-- `getPurchaseDetails(address)` — returns `(purchased, timestamp, block)`.
+How initiates enter, prove they belong, and harvest rewards:
+
+- `purchaseAccess()` - one-time, guarded by `whenNotPaused` and `notSelf` (DAO cannot purchase). Transfers tokens using SafeERC20 and emits `AccessPurchased` with counters.
+- `hasAccess(address)` - returns membership boolean.
+- `getPurchaseDetails(address)` - returns `(purchased, timestamp, block)`.
 - Member rewards:
-  - `getClaimablePoolAmount(address)` — accrued rewards since join/last claim.
-  - `claimMemberPool()` — transfers claimable amount; reverts `NoRewardsToClaim` or `InsufficientPoolBalance` when applicable. Updates snapshot and `memberPoolBalance`.
+  - `getClaimablePoolAmount(address)` - accrued rewards since join/last claim.
+  - `claimMemberPool()` - transfers claimable amount; reverts `NoRewardsToClaim` or `InsufficientPoolBalance` when applicable. Updates snapshot and `memberPoolBalance`.
 - External reward pools:
-  - Governance can disburse non access-token assets (ERC‑20 or ETH) by disbanding them with `disbandTreasuryDAO(token)`.
+  - Governance can disburse non access-token assets (ERC-20 or ETH) by disbanding them with `disbandTreasuryDAO(token)`.
   - The contract tracks each token in `externalRewards[token]`; members inspect via `getExternalRewardTokens()` / `getExternalRewardState(token)` and withdraw their share using `claimExternalToken(token)` (supports `address(0)` for ETH).
   - Successful withdrawals emit `ExternalRewardClaimed(token, member, amount)` and update snapshots to prevent double-claims.
 - Governance constants:
   - `burnAddress` is set at deploy time (defaults to the canonical dead address, but `createTemplWithConfig` can override it).
   - `quorumPercent` and `executionDelayAfterQuorum` are established during deployment via the factory and remain immutable during contract lifetime.
 
-### Governance Model
+### Governance model
 
-- Voting power: one member = one vote. Proposer auto‑YES. Votes can be changed until eligibility windows close.
+The cult keeps decision-making egalitarian and predictable:
+
+- Voting power: one member = one vote. Proposer auto-YES. Votes can be changed until eligibility windows close.
 - Proposal bounds: exactly one live proposal per address. A new proposal clears a previous one when it is expired or executed; otherwise creation reverts `ActiveProposalExists`.
 - Voting windows: default `7 days` if `0` is provided; allowed range `[7, 30] days`.
 - Quorum and eligibility:
@@ -117,11 +123,11 @@ sequenceDiagram
   - After quorum:
     - Eligibility freezes at `quorumReachedAt`
     - Only members who joined before `quorumReachedAt` may vote; late joiners revert `JoinedAfterProposal`. Because timestamps are per block, joins mined in the same block as quorum remain eligible.
-    - Post‑quorum window is fixed to 7 days: on first quorum, `endTime` is reset to `now + 7 days`
-    - Voting continues during this 7‑day window for eligible voters; after it, `vote()` reverts `VotingEnded`
+    - Post-quorum window is fixed to 7 days: on first quorum, `endTime` is reset to `now + 7 days`
+    - Voting continues during this 7-day window for eligible voters; after it, `vote()` reverts `VotingEnded`
   - Execution:
     - Majority required: `yesVotes > noVotes`
-    - If quorum‑exempt: execute after `endTime`
+    - If quorum-exempt: execute after `endTime`
     - Requires quorum: earliest execution at `quorumReachedAt + executionDelayAfterQuorum (7 days)`
 - Quorum exemption: `createProposalDisbandTreasury` proposed by the `priest` sets `quorumExempt = true` and respects only `endTime`.
 
@@ -139,55 +145,59 @@ flowchart LR
     G -- No --> I[Not passed]
 ```
 
-### Allowed Actions
+### Allowed actions (typed proposals only)
 
-- `setPausedDAO(bool)` — pause/unpause purchases.
-- `updateConfigDAO(address,uint256,bool,uint256,uint256,uint256)` — update entry fee and optionally the burn/treasury/member pool percentages. Token changes are disabled (`TokenChangeDisabled`). `_token` must be `address(0)` or the current token. When `_updateFeeSplit` is true the provided percentages must sum with `protocolPercent` to 100.
-- `withdrawTreasuryDAO(address token, address recipient, uint256 amount, string reason)` — move a specific amount of any asset held by the contract. For the access token, only the treasury portion is withdrawable; the member pool is preserved.
-- `disbandTreasuryDAO(address token)` — move the full available balance of `token` into a member-distributable pool. With the access token this increases the member pool (`memberPoolBalance`) and remainder; with any other ERC‑20 or ETH the funds are tracked in an external rewards pool that members withdraw via `claimExternalToken`.
-- `changePriestDAO(address)` — change the on‑chain `priest` address.
+- `setPausedDAO(bool)` - pause/unpause purchases.
+- `updateConfigDAO(address,uint256,bool,uint256,uint256,uint256)` - update entry fee and optionally the burn/treasury/member pool percentages. Token changes are disabled (`TokenChangeDisabled`). `_token` must be `address(0)` or the current token. When `_updateFeeSplit` is true the provided percentages must sum with `protocolPercent` to 100.
+- `withdrawTreasuryDAO(address token, address recipient, uint256 amount, string reason)` - move a specific amount of any asset held by the contract. For the access token, only the treasury portion is withdrawable; the member pool is preserved.
+- `disbandTreasuryDAO(address token)` - move the full available balance of `token` into a member-distributable pool. With the access token this increases the member pool (`memberPoolBalance`) and remainder; with any other ERC-20 or ETH the funds are tracked in an external rewards pool that members withdraw via `claimExternalToken`.
+- `changePriestDAO(address)` - change the on-chain `priest` address.
 
-Creation helpers (`createProposalX`) initialize proposals with normalized timing, proposer auto‑YES, and optional quorum exemption for priest‑proposed disband.
+Creation helpers (`createProposalX`) initialize proposals with normalized timing, proposer auto-YES, and optional quorum exemption for priest-proposed disband.
 
-### Views and Introspection
+### Views and introspection
 
-- `getTreasuryInfo()` — available treasury (excludes reserved member pool), current pool, totals, protocol recipient.
-- `getConfig()` — token, entry fee, paused flag, member count, available treasury, pool, burn/treasury/member percentages, and protocol percentage.
-- `getMemberCount()` — number of members.
-- `getVoteWeight(address)` — `1` for members, `0` for non‑members.
-- External reward helpers: `getExternalRewardTokens()`, `getExternalRewardState(address)`, `getClaimableExternalToken(member, token)`, and `claimExternalToken(token)` (handles ERC‑20 or native via `address(0)`).
-- `getProposal(id)` — proposer, yes/no votes, endTime, executed flag, computed `passed`.
-- `hasVoted(id, voter)` — whether and how a voter voted (`support`).
-- `getActiveProposals()` / `getActiveProposalsPaginated(offset, limit)` — active proposal ids, with pagination support.
+These helpers expose the cult’s current state without mutating anything:
 
-### Safety and Invariants
+- `getTreasuryInfo()` - available treasury (excludes reserved member pool), current pool, totals, protocol recipient.
+- `getConfig()` - token, entry fee, paused flag, member count, available treasury, pool, burn/treasury/member percentages, and protocol percentage.
+- `getMemberCount()` - number of members.
+- `getVoteWeight(address)` - `1` for members, `0` for non-members.
+- External reward helpers: `getExternalRewardTokens()`, `getExternalRewardState(address)`, `getClaimableExternalToken(member, token)`, and `claimExternalToken(token)` (handles ERC-20 or native via `address(0)`).
+- `getProposal(id)` - proposer, yes/no votes, endTime, executed flag, computed `passed`.
+- `hasVoted(id, voter)` - whether and how a voter voted (`support`).
+- `getActiveProposals()` / `getActiveProposalsPaginated(offset, limit)` - active proposal ids, with pagination support.
 
-- Non‑reentrant: `purchaseAccess`, `claimMemberPool`, `executeProposal`.
-- `onlyDAO` guards administration to self‑calls via `executeProposal`.
+### Safety spells and invariants
+
+- Non-reentrant: `purchaseAccess`, `claimMemberPool`, `executeProposal`.
+- `onlyDAO` guards administration to self-calls via `executeProposal`.
 - `notSelf` prevents DAO from purchasing membership.
 - `paused` blocks new purchases; proposing/voting continue while paused.
 - Token change disabled in governance; entry fee constrained (≥10 and multiple of 10).
 - No arbitrary external calls; proposal execution is internal and typed.
 - Member pool is preserved: withdrawals of access token are limited to the available treasury (excludes pool). Disband operations increase the pool for equitable member distribution.
 
-## Off‑Chain Protocol (Backend API + XMTP)
+## Off-chain rituals (Backend API + XMTP)
 
 ### Responsibilities
 
-- Maintains the XMTP group tied to a TEMPL contract: creates it via a short‑lived ephemeral key, then uses a persistent invite‑only bot identity to add on‑chain members (no persistent owner/admin privileges retained).
-- Verifies EIP‑712 signatures for all state‑changing requests and enforces replay protection.
-- Mirrors on‑chain governance events (`ProposalCreated`, `VoteCast`) into the group as JSON messages.
+- Maintains the XMTP group tied to a Templ contract: conjures it via a short-lived ephemeral key, then uses a persistent invite-only bot identity to add on-chain members (no persistent owner/admin privileges retained).
+- Verifies EIP-712 signatures for all state-changing requests and enforces replay protection.
+- Mirrors on-chain governance events (`ProposalCreated`, `VoteCast`) into the group as JSON messages.
 - Enforces chat moderation via escalating mutes and optional delegated moderators.
 
-### Group Creation and Invites
+### Group creation and invites
 
-- `POST /templs` — create/register a group for a deployed contract.
-  - Production checks: verify contract code, `chainId`, and that `priestAddress` equals on‑chain `priest()` (when `REQUIRE_CONTRACT_VERIFY=1`).
-  - Signature: EIP‑712 `{ action:'create', contract, server, nonce, issuedAt, expiry }` bound to `BACKEND_SERVER_ID`.
+Two signed calls power the gatekeeping ritual:
+
+- `POST /templs` - create/register a group for a deployed contract.
+  - Production checks: verify contract code, `chainId`, and that `priestAddress` equals on-chain `priest()` (when `REQUIRE_CONTRACT_VERIFY=1`).
+  - Signature: EIP-712 `{ action:'create', contract, server, nonce, issuedAt, expiry }` bound to `BACKEND_SERVER_ID`.
   - Response and persistence: `{ groupId }`; store `{ contract, groupId, priest }` in SQLite.
-- `POST /join` — verify `hasAccess(member)` and invite by inboxId.
-  - Signature: EIP‑712 `{ action:'join', contract, server, nonce, issuedAt, expiry }` signed by the member.
-  - Identity: server resolves inboxIds and waits for readiness; client‑supplied ids are ignored except in explicit local/test fallback.
+- `POST /join` - verify `hasAccess(member)` and invite by inboxId.
+  - Signature: EIP-712 `{ action:'join', contract, server, nonce, issuedAt, expiry }` signed by the member.
+  - Identity: server resolves inboxIds and waits for readiness; client-supplied ids are ignored except in explicit local/test fallback.
 
 ```mermaid
 sequenceDiagram
@@ -206,12 +216,14 @@ sequenceDiagram
     B-->>C: {groupId}
 ```
 
-### Moderation Endpoints
+### Moderation endpoints
 
-- `POST /delegateMute` — grant mute rights (priest EIP‑712 `{ action:'delegateMute', ... }`).
-- `DELETE /delegateMute` — revoke mute rights (same typed signature).
-- `POST /mute` — record escalating mute strike (priest or delegate EIP‑712 `{ action:'mute', ... }`).
-- `GET /mutes` — list active mutes for a contract.
+Mute rituals stay limited and auditable:
+
+- `POST /delegateMute` - grant mute rights (priest EIP-712 `{ action:'delegateMute', ... }`).
+- `DELETE /delegateMute` - revoke mute rights (same typed signature).
+- `POST /mute` - record escalating mute strike (priest or delegate EIP-712 `{ action:'mute', ... }`).
+- `GET /mutes` - list active mutes for a contract.
 
 ```mermaid
 flowchart LR
@@ -221,43 +233,43 @@ flowchart LR
     F[Frontend] -->|GET /mutes| B
 ```
 
-### Identity, Persistence, and Operations
+### Identity, persistence, and operations
 
 - XMTP environments: `local`, `dev`, `production` (`XMTP_ENV` / `VITE_XMTP_ENV`).
-- Group ownership: An ephemeral creator key is used at creation; the persistent invite‑bot identity manages invites thereafter (no need for admin powers like banning).
+- Group ownership: An ephemeral creator key is used at creation; the persistent invite-bot identity manages invites thereafter (no need for admin powers like banning).
 - Persistence (SQLite `backend/groups.db`):
   - `groups(contract, groupId, priest)`
   - `delegates(contract, delegate)`
   - `mutes(contract, target, count, until)`
   - `signatures(sig, usedAt)`
   - `kv` (stores generated bot key when `BOT_PRIVATE_KEY` not provided).
-- XMTP Node DB: SQLCipher‑encrypted `xmtp-<env>-<inboxId>.db3` using `BACKEND_DB_ENC_KEY`. Browser DB lives in OPFS per origin (not encrypted).
-  - Contains (server): invite‑bot identity and installation keys, stable `inboxId`, conversation/group identifiers and metadata (name/description), and sync cursors (e.g., last‑seen sequence) the SDK needs to resume.
-  - Excludes: chat message bodies or attachments, per‑member message history, and any application payloads. Our backend does not store chat content.
+- XMTP Node DB: SQLCipher-encrypted `xmtp-<env>-<inboxId>.db3` using `BACKEND_DB_ENC_KEY`. Browser DB lives in OPFS per origin (not encrypted).
+  - Contains (server): invite-bot identity and installation keys, stable `inboxId`, conversation/group identifiers and metadata (name/description), and sync cursors (e.g., last-seen sequence) the SDK needs to resume.
+  - Excludes: chat message bodies or attachments, per-member message history, and any application payloads. Our backend does not store chat content.
 
-## Client (Frontend)
+## Frontend rituals (client responsibilities)
 
-- Deploy TEMPL, purchase & join, chat, propose, vote, and execute from a React app.
-- Governance UI composes the typed proposal actions (pause/unpause, withdraw the entire available treasury balance of the selected asset to the connected wallet, disband to pool, entry-fee reprice, change priest). Titles/descriptions are not on‑chain; they are shared as XMTP messages adjacent to the on‑chain proposal id. Crafting a proposal for a partial treasury withdrawal still requires entering custom calldata.
-- `VITE_BACKEND_SERVER_ID` must match backend `BACKEND_SERVER_ID` to bind EIP‑712 signatures to your deployment.
+- Deploy Templ, purchase & join, chat, propose, vote, and execute from a React app.
+- Governance UI composes the typed proposal actions (pause/unpause, withdraw the entire available treasury balance of the selected asset to the connected wallet, disband to pool, entry-fee reprice, change priest). Titles/descriptions are not on-chain; they are shared as XMTP messages adjacent to the on-chain proposal id. Crafting a proposal for a partial treasury withdrawal still requires entering custom calldata.
+- `VITE_BACKEND_SERVER_ID` must match backend `BACKEND_SERVER_ID` to bind EIP-712 signatures to your deployment.
 
-## Persistence Overview
+## Persistence (where the lore lives)
 
-- On‑chain: membership, treasury/pool balances, governance proposals, votes, and events.
-- Backend SQLite: contract→group mapping, priest, moderation, replay‑protection signatures, bot key (when generated).
-- XMTP Node DB (server): encrypted invite‑bot identity (inboxId + installation), conversation identifiers/metadata, and sync cursors — no chat message bodies.
-- XMTP Browser DB: OPFS identity and metadata; advise one client per page to avoid OPFS access‑handle contention.
+- On-chain: membership, treasury/pool balances, governance proposals, votes, and events.
+- Backend SQLite: contract→group mapping, priest, moderation, replay-protection signatures, bot key (when generated).
+- XMTP Node DB (server): encrypted invite-bot identity (inboxId + installation), conversation identifiers/metadata, and sync cursors - no chat message bodies.
+- XMTP Browser DB: OPFS identity and metadata; advise one client per page to avoid OPFS access-handle contention.
 
-## Glossary
-- **Priest** — Contract’s designated address with limited special power:
+## Cult glossary
+- **Priest** - Contract’s designated address with limited special power:
   - its disband proposals are quorum-exempt.
-  - priests can `/mute` and `/delegateMute` in the TEMPL XMTP chat.
+  - priests can `/mute` and `/delegateMute` in the Templ XMTP chat.
   - priest can be changed via DAO proposal.
-- **Treasury** — Portion of access token and any donations held by the contract, withdrawable via proposals.
-- **Member Pool** — Accrual bucket distributed equally to members; claimable pro-rata by address.
-- **Disband** — Governance action moving the entire available access-token treasury into the member pool equally.
-- **Quorum** — 33% of eligible voters; eligibility freezes after quorum.
-- **XMTP Group** — Off-chain chat space created via an ephemeral key; the backend’s bot identity has invite-only powers to add on-chain members. No persistent owner/admin keys are retained.
+- **Treasury** - Portion of access token and any donations held by the contract, withdrawable via proposals.
+- **Member Pool** - Accrual bucket distributed equally to members; claimable pro-rata by address.
+- **Disband** - Governance action moving the entire available access-token treasury into the member pool equally.
+- **Quorum** - 33% of eligible voters; eligibility freezes after quorum.
+- **XMTP Group** - Off-chain chat space created via an ephemeral key; the backend’s bot identity has invite-only powers to add on-chain members. No persistent owner/admin keys are retained.
 
 ## Next
-Move to [CORE_FLOW_DOCS.MD](./CORE_FLOW_DOCS.MD) for step-by-step diagrams of the flows outlined here.
+Move to [CORE_FLOW_DOCS.MD](./CORE_FLOW_DOCS.MD) for step-by-step diagrams of the rituals outlined here.

@@ -1,18 +1,18 @@
 # Scripts
 
-> Entry points for common developer tasks: deploy a templ, spin up wallets, or mirror CI locally.
+> Entry points for cult maintenance: deploy a templ, spin up wallets, or mirror CI locally.
 
 Run each script from the repo root unless noted. All commands assume dependencies are installed (`npm ci`, package-specific installs) and any required environment variables are present.
 
-## Why this doc
+## Why this playbook matters
 - Deploy templs consistently across environments with `deploy.js`.
 - Generate deterministic wallets and ERC-20 balances for local testing.
 - Reproduce the full CI pipeline locally before opening a PR.
 
-## At a Glance
-- `deploy.js` – stand up a factory/templ pair with environment-driven configuration and save deployment metadata.
-- `gen-wallets.js` – mint fresh Hardhat wallets (and optional ERC-20 balances) for local integration or e2e runs.
-- `test-all.sh` – replicate CI locally in four phases so regressions surface before pushing.
+## At a glance
+- `deploy.js` - stand up a factory/templ pair with environment-driven configuration and save deployment metadata.
+- `gen-wallets.js` - mint fresh Hardhat wallets (and optional ERC-20 balances) for local integration or e2e runs.
+- `test-all.sh` - replicate CI locally in four phases so regressions surface before pushing.
 
 ## deploy.js
 - Deploys `TemplFactory` (when `FACTORY_ADDRESS` is unset) and creates a new templ via `createTemplWithConfig`.

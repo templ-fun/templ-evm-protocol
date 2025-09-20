@@ -1,51 +1,84 @@
-# TEMPL
+# Templ
 
 [![CircleCI](https://dl.circleci.com/status-badge/img/gh/MarcoWorms/templ/tree/main.svg?style=svg&circle-token=CCIPRJ_MhZ5NbNKhpfEAwFSEGDkUH_61036d1e9e936102be414dfd8d86a9318181746a)](https://dl.circleci.com/status-badge/redirect/gh/MarcoWorms/templ/tree/main)
 [![coverage](https://codecov.io/github/MarcoWorms/templ/graph/badge.svg?token=M8SPKQX6UD)](https://codecov.io/github/MarcoWorms/templ)
 
-DAO-governed, token-gated private groups with on-chain treasury management and XMTP messaging. Visit [templ.fun](https://templ.fun) for the public demo.
+*Where memecoins become movements.*
 
-## System at a Glance
-- Smart contracts on Base enforce access with a one-time ERC-20 entry fee and typed governance.
-- An Express bot watches the chain, owns the XMTP group, and only invites wallets that purchased access.
-- A React client deploys contracts, guides purchases, mirrors proposals, and embeds chat.
-- Shared helpers keep EIP-712 signatures, XMTP polling, and test utilities consistent across the stack.
+Templ.fun is the sacred ground where coin holders rally, reward each other, and set their token on a deflationary march upward. We converge the energy of everyone already invested in a token so the price goes up together.
 
-```mermaid
-sequenceDiagram
-    participant Frontend
-    participant Backend
-    participant Contracts
+Visit [templ.fun](https://templ.fun) for the live demo.
 
-    Frontend->>Contracts: deployTempl() / purchaseAccess()
-    Frontend->>Backend: POST /templs & /join
-    Contracts-->>Backend: AccessPurchased / Proposal events
-    Backend-->>Frontend: Invite & governance updates
-```
+## Mission
+- Converge the energy of people holding the same asset so their coordinated actions amplify price.
+- Turn any token into a capital-coordinated cult that grows demand and shrinks supply.
+- Transform coins into cults - sacred grounds where belief, rewards, and governance compound.
 
-## Read in this Order
-1. **[docs/TEMPL_TECH_SPEC.MD](./docs/TEMPL_TECH_SPEC.MD)** — protocol motivation, economic rules, and governance model.
-2. **[docs/CORE_FLOW_DOCS.MD](./docs/CORE_FLOW_DOCS.MD)** — diagrams for deploy, join, moderation, voting, and treasury moves.
-3. **Implementation deep-dives**
-   - [docs/CONTRACTS.md](./docs/CONTRACTS.md) — Solidity modules, invariants, and typed actions.
-   - [docs/BACKEND.md](./docs/BACKEND.md) — API surface, env configuration, runbooks.
-   - [docs/FRONTEND.md](./docs/FRONTEND.md) — Vite app flows, env flags, testing.
-   - [docs/SHARED.md](./docs/SHARED.md) — cross-package signing/XMTP helpers.
-4. **Operations & tooling**
-   - [docs/PERSISTENCE.md](./docs/PERSISTENCE.md) — storage map (SQLite, XMTP node/browser DBs).
-   - [docs/TEST_LOCALLY.md](./docs/TEST_LOCALLY.md) — quick path to run the full stack.
-   - [scripts/README.md](./scripts/README.md) — deploy/test scripts you will call repeatedly.
+## Why Now
+Every day more than 100,000 tokens roar into existence. Memecoins already command a $100B+ market and the broader crypto supply floats above $4T. People crave a way to turn passive holding into an active, aligned movement. Templ delivers the rails that upgrade memecoins from jokes into thriving cults with real cash flow.
 
-Each doc ends with a pointer to the next item so you can read straight through without context switching.
+## How Templ Works
+Templ lets anyone launch a pay-to-access chapel (a “Templ”) around any token. Admission requires a one-time tribute in the cult’s chosen token. That flow simultaneously:
 
-## Component Overview
-- **Contracts** (`contracts/`) — modular TEMPL implementation (`TemplBase`, `TemplMembership`, `TemplTreasury`, `TemplGovernance`, `TEMPL`, `TemplFactory`) plus Hardhat config and tests.
-- **Backend** (`backend/`) — Node 22 Express server that creates XMTP groups with an ephemeral key, promotes a persistent invite-bot, and exposes `/templs`, `/join`, and moderation endpoints.
-- **Frontend** (`frontend/`) — Vite + React interface for deploying, joining, chatting, and submitting proposals.
-- **Shared utilities** (`shared/`) — ESM helpers for signing, XMTP waits, and deterministic tests consumed by all packages.
-- **Scripts** (`scripts/`) — deployment, wallet generation, and CI orchestration helpers.
+- **Increases demand** by recruiting new members who must buy the token to join.
+- **Removes supply** by burning a slice of every tribute.
 
-Primary deploy/join flow:
+We build the sacred gathering grounds for these cults: on-chain membership, protocol-enforced splits, treasury controls, and XMTP-powered chat.
+
+### The Templ Flywheel
+By default each tribute is split the moment a new believer walks through the gates:
+
+| Slice | Percent | What it signals |
+| --- | --- | --- |
+| Burn | 30% | Permanent sacrifice to make the token scarcer. |
+| Treasury | 30% | Adds to the cult’s war chest - governed on-chain by members. |
+| Member rewards | 30% | Redistributed to existing members so they evangelize the Templ. |
+| Protocol tithe | 10% | Feeds the Templ Protocol engine and TEMPL stakers. |
+
+### Example: PEPE Palace
+Spin up a “PEPE Palace” with a 2,000,000 PEPE entry fee (~$20). When a new initiate pays the tribute:
+
+- 600,000 PEPE is sent to the burn address.
+- 600,000 PEPE fills the PEPE Palace treasury, ready for member proposals.
+- 600,000 PEPE is split across existing members - each recruit enriches the faithful.
+- 200,000 PEPE flows to the protocol tithe that keeps templ.fun running and rewards TEMPL stakers.
+
+Templs feel like DAOs born *after* a token is liquid. People co-own a narrative, harvest upside, and coordinate spend from day one.
+
+### Why a Fee Gate Instead of Token Gating?
+Fees keep bots at bay, demand proof-of-faith (skin in the game), and continuously refill the community treasury. They also let us route the economics to people who are already aligned, instead of letting lurkers loiter behind a token-balance gate.
+
+### Configurable Splits
+The founding Priest can choose any split at deploy time - 30/30/30 is just our default scaffolding. The only constant is the 10% protocol tithe, which keeps the broader Templ Protocol humming.
+
+### Protocol Tithe (the Fixed 10%)
+Every tribute also powers the protocol:
+- **4%** buys and burns TEMPL.
+- **3%** streams to TEMPL stakers (paid out in the underlying cult tokens, so stakers collect the most popular memecoins on templ.fun).
+- **2%** covers protocol operations: hosting, domains, future XMTP costs.
+- **1%** converts to ETH and deepens the TMPL-ETH pool on Uniswap.
+
+## Infinite Templs
+One token can host an entire pantheon of Templs. Maybe PEPE splits into low-cost public plazas and ultra-elite sanctums. Maybe a creator coin spins up VIP circles for superfans. Templ works for memecoins, utility tokens, streamer coins, content coins, card coins, RWAs, xStocks - any community that wants to go from passive bag holding to active coordination.
+
+## Priests, Governance, and Rewards
+Whoever launches a Templ becomes its Priest. Priests set the initial economics, steward the vibe, and, like any member, collect rewards when new initiates arrive. Example: if it costs 200,000 tokens to enter and you’re the Priest, the second believer nets you 60,000 tokens, the third sends you 30,000, and so on. 
+
+Members propose and vote on treasury moves or config changes directly inside the gathering grounds. Governance is on-chain, proposal actions are typed, and the treasury can only move on sanctioned paths. Tribute remainders accrue and keep rewarding the faithful even as distribution sizes shrink.
+
+## What You Get
+- Memecoins upgraded from 1.0 speculation to 2.0 cult coordination with deflationary tokenomics.
+- Social clubs that mint revenue, reputation, and rewards - no new token required.
+- Templs as schelling points: multiple tiers per token, tailored fees, and unique missions for every faction.
+- Shared infrastructure that routes value back to the originating token instead of diluting it with clones.
+- A path to turn any tokenized thing into a cashflowing, evangelizing tribe.
+
+## Architecture
+Templ is a three-headed beast that keeps the ritual tight:
+- **Smart contracts** on Base enforce membership, tribute splits, governance, and treasury safety.
+- **Backend bot** (Node 22/Express) watches the chain, owns the XMTP group, and only invites wallets that paid to enter.
+- **Frontend** (Vite + React) deploys Templs, guides purchases, mirrors governance, and embeds the chat.
+- **Shared utilities** keep signatures, XMTP handling, and tests aligned across packages.
 
 ```mermaid
 sequenceDiagram
@@ -54,132 +87,74 @@ sequenceDiagram
     participant Contracts
     participant Backend
     participant XMTP
-    User->>Frontend: Connect wallet & start flow
+    User->>Frontend: Connect wallet & choose a Templ
     Frontend->>Contracts: deployTempl() / purchaseAccess()
     Contracts-->>Backend: AccessPurchased / Proposal events
-    Frontend->>Backend: POST /templs & /join (signed EIP-712)
+    Frontend->>Backend: POST /templs & /join
     Backend->>XMTP: newGroup / addMembers
-    XMTP-->>Frontend: group discovered
-    Backend-->>Frontend: mirror governance + moderation
+    XMTP-->>Frontend: invite delivered, chat unlocked
 ```
 
-## Getting Started
-
+## Developer Quickstart
 ### Prerequisites
 - Node.js `22.18.0`
-- `npm ci` in the repo root installs top-level dependencies.
-- Run `npm run prepare` once to install Husky hooks.
+- Install dependencies once with `npm ci` at the repo root.
+- Run `npm run prepare` to install Husky hooks.
 
-### Install
+### Install Everything
 ```bash
 npm ci
 npm --prefix backend ci
 npm --prefix frontend ci
 ```
 
-### Test the Monorepo
+### Test the Stack
 ```bash
 npm run test:all
 ```
-This aggregates contract tests, Slither, backend `node --test`, frontend Vitest, and Playwright e2e. Review package docs for individual commands when iterating locally.
+This includes Hardhat unit tests, Slither, backend `node --test`, Vitest, and Playwright e2e. Drill into each package for focused iteration when needed.
 
-### Run the Apps (dev)
+### Run Locally
 ```bash
 npm --prefix backend start
 npm --prefix frontend run dev
 ```
-The backend expects `backend/.env` with `RPC_URL`, `BOT_PRIVATE_KEY`, `ALLOWED_ORIGINS`, and `BACKEND_SERVER_ID`. The frontend reads matching `VITE_*` variables; see component docs for full matrices.
+The backend expects `backend/.env` with `RPC_URL`, `BOT_PRIVATE_KEY`, `ALLOWED_ORIGINS`, and `BACKEND_SERVER_ID`. The frontend reads matching `VITE_*` variables; see the deep dives below for full matrices.
 
 ## Repository Layout
-- `contracts/` — Hardhat project, Solidity 0.8.23 contracts, tests under `test/`.
-- `backend/` — Express service, `src/` for code, `test/` for `node --test`, coverage reports under `coverage/`.
-- `frontend/` — Vite app, `src/`, `e2e/` Playwright specs, `dist/` build output.
-- `shared/` — shared JS utilities.
-- `scripts/` — helper scripts (`deploy.js`, `gen-wallets.js`, `test-all.sh`).
-- `deployments/` — network artifacts written by deployment scripts.
-- `artifacts/`, `cache/` — Hardhat build outputs.
+- `contracts/` - Solidity 0.8.23 contracts, Hardhat config, and tests under `test/`.
+- `backend/` - Express service (`src/` + `test/` + `coverage/`) that operates the XMTP cult bot.
+- `frontend/` - Vite + React client with `src/`, Vitest specs, and Playwright `e2e/` runs.
+- `shared/` - Utilities shared across packages (signing, XMTP helpers, tests).
+- `scripts/` - Deployment helpers, wallet generators, CI orchestration.
+- `deployments/` - Network artifacts emitted by deployment scripts.
 
 ## Everyday Commands
-| Domain | Commands |
+| Domain | Rituals |
 | --- | --- |
-| Contracts | `npm run compile`, `npm test`, `npm run node`, `npm run deploy:local`, `npm run slither`, `npm run coverage` |
+| Contracts | `npm run compile`, `npm test`, `npm run node`, `npm run deploy:local`, `npm run coverage`, `npm run slither` |
 | Backend | `npm --prefix backend start`, `npm --prefix backend test`, `npm --prefix backend run lint`, `npm --prefix backend run coverage` |
-| Frontend | `npm --prefix frontend run dev`, `npm --prefix frontend test`, `npm --prefix frontend run lint`, `npm --prefix frontend run build`, `npm --prefix frontend run test:e2e` |
-| Shared | `npm --prefix shared test` or run specific files through frontend/backend runners |
-| CI mirror | `./scripts/test-all.sh` |
+| Frontend | `npm --prefix frontend run dev`, `npm --prefix frontend run build`, `npm --prefix frontend run test`, `npm --prefix frontend run coverage`, `npm --prefix frontend run test:e2e` |
+| Full stack | `npm run test:all`, `npm run deploy:local`, `npm run coverage:all` |
 
-## Configuration & Environment
-Essential variables to set early:
+## Deep Dives & Docs
+Read these in order to understand every layer of the cult machinery:
+1. **[docs/TEMPL_TECH_SPEC.MD](./docs/TEMPL_TECH_SPEC.MD)** - protocol lore, economic guarantees, and governance rules.
+2. **[docs/CORE_FLOW_DOCS.MD](./docs/CORE_FLOW_DOCS.MD)** - diagrams for deploy, join, moderation, voting, and treasury moves.
+3. Implementation handbooks:
+   - [docs/CONTRACTS.md](./docs/CONTRACTS.md)
+   - [docs/BACKEND.md](./docs/BACKEND.md)
+   - [docs/FRONTEND.md](./docs/FRONTEND.md)
+   - [docs/SHARED.md](./docs/SHARED.md)
+4. Operations
+   - [docs/PERSISTENCE.md](./docs/PERSISTENCE.md) - storage maps (SQLite, XMTP DBs).
+   - [docs/TEST_LOCALLY.md](./docs/TEST_LOCALLY.md) - your field guide for spinning up the full stack.
 
-| Variable | Location | Purpose |
-| --- | --- | --- |
-| `RPC_URL` | `backend/.env`, deploy scripts | Provider for on-chain reads/writes |
-| `BOT_PRIVATE_KEY` | `backend/.env` | XMTP invite-bot identity (Hardhat key in local dev) |
-| `BACKEND_DB_ENC_KEY` | `backend/.env` (prod) | SQLCipher key for XMTP Node DB (32-byte hex) |
-| `ALLOWED_ORIGINS` | `backend/.env` | CORS allowlist |
-| `BACKEND_SERVER_ID` / `VITE_BACKEND_SERVER_ID` | Backend + frontend env | Shared identifier bound into typed signatures |
-| `VITE_XMTP_ENV` / `XMTP_ENV` | Frontend `.env`, backend `.env` | Target XMTP network (`local`, `dev`, `production`) |
-| `TEMPL_ENABLE_LOCAL_FALLBACK` | Frontend env/tests | Merge local registry with `/templs` (tests only) |
+## Production Launch Notes
+- Keep `BACKEND_SERVER_ID` ≙ `VITE_BACKEND_SERVER_ID` and provide `BACKEND_DB_ENC_KEY`; the backend refuses to boot in production without it.
+- Deploy with trusted RPC endpoints; invite enforcement assumes honest answers.
+- XMTP dev inboxes cap at ~10 installs and ~256 actions - rotate wallets or reuse DBs to stay within limits.
+- Leave test toggles (`DISABLE_XMTP_WAIT`, `VITE_ENABLE_BACKEND_FALLBACK`, etc.) off in production so ritual order stays strict.
 
-Each package doc expands on optional flags (`DISABLE_XMTP_WAIT`, `RATE_LIMIT_STORE`, debug toggles). Production setups must align backend and frontend server IDs and provide encryption keys; refer to [docs/BACKEND.md](./docs/BACKEND.md#environment-variables) and [docs/CONTRACTS.md](./docs/CONTRACTS.md#configuration--deployment) for full matrices.
-
-## Deploying to Production
-1. Populate `.env` (root) for scripts and `backend/.env` for the bot. Required fields: provider URL, `FACTORY_ADDRESS` (optional), fees, quorum/delay, bot key, server IDs, and `BACKEND_DB_ENC_KEY`.
-2. Run `npm run test:all` plus `npm run slither` to satisfy CI requirements.
-3. Deploy via `npx hardhat run scripts/deploy.js --network <network>`. Record factory + templ addresses and the XMTP group ID emitted by the backend.
-4. Host the backend with `NODE_ENV=production` and `REQUIRE_CONTRACT_VERIFY=1`. Align `ALLOWED_ORIGINS` with your frontend domain.
-5. Build and host the frontend (`npm --prefix frontend run build`). Ensure runtime `VITE_*` variables match backend configuration.
-6. Keep `DISABLE_XMTP_WAIT`, `VITE_ENABLE_BACKEND_FALLBACK`, and other test toggles disabled in production.
-
-### Production Checklist
-- Shared server id (`BACKEND_SERVER_ID` == `VITE_BACKEND_SERVER_ID`).
-- Provide `BACKEND_DB_ENC_KEY`; backend refuses to boot without it in production.
-- Monitor XMTP install counts (max 10 per inbox; 256 action cap per inbox run).
-- Use trusted RPC endpoints; backend assumes honest responses when guarding invites.
-
-## Core Flows
-High-level deploy → join → chat sequence (see [docs/CORE_FLOW_DOCS.MD](./docs/CORE_FLOW_DOCS.MD) for expanded diagrams):
-
-```mermaid
-sequenceDiagram
-    participant F as Frontend
-    participant C as Contract
-    participant B as Backend
-    participant X as XMTP
-
-    Note over F,B: deployTempl
-    F->>C: createTempl()
-    C-->>F: templ address
-    F->>B: POST /templs
-    B->>X: newGroup
-
-    Note over F: purchaseAndJoin
-    F->>C: purchaseAccess()
-    C-->>F: membership
-    F->>B: POST /join
-    B->>X: addMembers
-
-    Note over F,X: chat & govern
-    F->>X: send/receive
-    C-->>B: Proposal/Vote events
-    B->>X: mirror updates
-```
-
-## XMTP Essentials
-- Set `XMTP_ENV`/`VITE_XMTP_ENV` to `dev`, `production`, or `local`. Playwright defaults to `dev`; set `E2E_XMTP_LOCAL=1` to boot the bundled local node.
-- Inbox identities are shared across installations; XMTP dev caps installs at 10 per inbox and ~256 total actions. Rotate wallets or reuse local DBs to stay under caps.
-- Node-side XMTP DBs are SQLCipher-encrypted; browsers store OPFS files per origin (not encrypted). Avoid running multiple clients for the same inbox on one page.
-- Backend resolves inbox IDs server-side and enforces invite sequencing; client-provided IDs are ignored outside local/test fallbacks.
-
-## Security & Hardening
-- **Contracts** — one-member-one-vote governance, typed proposal actions (pause/config/withdraw/disband/change priest), non-reentrant handlers, member pool cannot be withdrawn except via disband. No arbitrary external calls.
-- **Backend** — EIP-712 signatures include `{ action, contract, chainId, nonce, issuedAt, expiry, server }`, stored in SQLite for replay protection. Production mode enforces on-chain priest and bytecode checks on `/templs`.
-- **Operations** — never enable debug/test flags (`DISABLE_XMTP_WAIT`, `VITE_ENABLE_BACKEND_FALLBACK`, etc.) in production. Protect bot keys and encryption keys; compromise allows unauthorized invites/mutes.
-
-## Operational References
-- **E2E environments** — defaults to XMTP dev; set `E2E_XMTP_LOCAL=1` to start `xmtp-local-node`. Details live in [docs/TEST_LOCALLY.md](./docs/TEST_LOCALLY.md).
-- **Debug endpoints** — enable with `ENABLE_DEBUG_ENDPOINTS=1`; see [docs/BACKEND.md#debug-endpoints](./docs/BACKEND.md#debug-endpoints) for `/debug/group`, `/debug/conversations`, `/debug/membership`, `/debug/last-join`, `/debug/inbox-state`, `/debug/send`.
-- **Troubleshooting** — `npm run test:all` failures often stem from port contention (8545/3001/5173) or XMTP readiness; component docs include runbooks for XMTP outages, bot key rotation, and DB encryption.
-
-## Next Step
-Continue with the protocol deep dive in [docs/TEMPL_TECH_SPEC.MD](./docs/TEMPL_TECH_SPEC.MD). Every subsequent doc links forward so you can walk the entire stack without backtracking.
+## Next Steps
+Start with [docs/TEMPL_TECH_SPEC.MD](./docs/TEMPL_TECH_SPEC.MD) and walk the docs end-to-end. By the time you return, you’ll know how to launch cults, protect their treasuries, and make templ.fun the schelling point for every token tribe.

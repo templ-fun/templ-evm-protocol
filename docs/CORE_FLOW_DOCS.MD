@@ -1,10 +1,10 @@
-# Core Flow Service Diagrams
+# Core Ritual Diagrams
 
-Visual walk-throughs of the interactions between contracts, backend, frontend, and XMTP. Read this after the protocol spec so you can picture the runtime choreography.
+These diagrams show the choreography between contracts, backend, frontend, and XMTP that turns a token into a living cult. Read this after the protocol spec so you can visualize every rite from deployment to execution.
 
-## How to use this doc
+## How to use this map
 - Skim the flow index to jump to a scenario (deploy, join, moderation, governance).
-- Each section starts with a flowchart and is followed by sequence details when additional context helps.
+- Each section opens with a flowchart and is followed by sequence details whenever extra context helps.
 - Keep [docs/CONTRACTS.md](./CONTRACTS.md) nearby for function definitions referenced in callouts.
 
 ## Flow overview
@@ -25,8 +25,8 @@ Visual walk-throughs of the interactions between contracts, backend, frontend, a
 
 Legend: F=Frontend, B=Backend, C=Contract, X=XMTP, D=SQLite, M=Member, P=Priest.
 
-## 1. TEMPL creation
-The backend creates the XMTP group when a TEMPL is deployed via the factory. By default it uses a short‑lived ephemeral creator key to create the group, and then operates it via the server’s invite‑bot identity (which invites members but does not need admin privileges).
+## 1. Birth of a Templ
+The backend raises the XMTP group the moment a Templ is deployed via the factory. It wields a short-lived creator key for the summon, then hands control to the invite-bot identity that keeps the gates.
 ```mermaid
 flowchart LR
     F[Frontend] -->|factory.createTempl| C[Contract]
@@ -37,9 +37,8 @@ flowchart LR
 
 - Frontend calls `TemplFactory.createTempl(...)` to obtain the new templ address, then posts `{contract}`; backend verifies the contract and on-chain priest in production, resolves the priest inbox from the network, creates the group (including the priest), and stores the `groupId`.
 
-## 2. Pay-to-join
-Members sign a join message, and the backend verifies purchase before inviting them.
-See [CONTRACTS.md#economic-model](./CONTRACTS.md#economic-model) for membership fee split details.
+## 2. Tribute to join
+Members sign a join message, and the backend verifies the on-chain purchase before inviting them. See [CONTRACTS.md#economic-model](./CONTRACTS.md#economic-model) for how the tribute splits.
 ```mermaid
 flowchart LR
     F[Frontend] -->|purchaseAccess| C[Contract]
@@ -67,18 +66,18 @@ sequenceDiagram
     F->>X: sync and discover conversation
 ```
 
-## 3. Messaging
-Members send messages directly to the XMTP group.
+## 3. Messaging the cult
+Members send messages directly to the XMTP group once they cross the threshold.
 ```mermaid
 flowchart LR
     M[Member] -->|send message| X[XMTP]
 ```
 
 Discovery
-- After joining, browser clients sync conversations and preferences until the group is found.
+- After joining, browser clients sync conversations and preferences until the sanctuary materializes.
 
-## 4. Moderation
-The backend enforces escalating mutes and allows delegated moderation.
+## 4. Moderation rituals
+The backend enforces escalating mutes and allows delegated moderation so the cult stays orderly.
 ```mermaid
 flowchart LR
     P[Priest] -->|POST /delegateMute| B[Backend]
@@ -108,8 +107,8 @@ sequenceDiagram
     B-->>P: 200 { mutedUntil }
 ```
 
-## 5. Proposal creation
-Members create typed proposals on-chain; the backend mirrors on-chain proposal events into the XMTP group. Proposal titles/descriptions live only in XMTP messages, not on-chain.
+## 5. Proposal sparks
+Members create typed proposals on-chain; the backend mirrors proposal events into the XMTP group. Titles and descriptions live in XMTP messages, not on-chain.
 ```mermaid
 flowchart LR
     M[Member] -->|submit proposal| C[Contract]
@@ -122,8 +121,8 @@ Notes
 - After group creation/join, the backend syncs and records network stats. A small warm message may be sent.
 - `ProposalCreated` includes the proposal id, proposer address, and end time; the backend mirrors these fields in the XMTP summary payload.
 
-## 6. Voting
-Members vote on proposals and the backend broadcasts vote events.
+## 6. Voting signals
+Members vote on proposals and the backend broadcasts vote events to the congregation.
 ```mermaid
 flowchart LR
     M[Member] -->|vote| C[Contract]
@@ -131,7 +130,7 @@ flowchart LR
     B -->|send vote JSON| X[XMTP]
 ```
 
-## 7. Proposal execution
+## 7. Executing decrees
 Execution is limited to an allowlisted set of contract functions.
 ```mermaid
 flowchart LR
@@ -143,7 +142,7 @@ flowchart LR
 - Arbitrary external calls are disabled.
 
 End-to-end proposal lifecycle (sequence):
-This sequence shows proposal creation, voting, and execution across the system. Human‑readable metadata (title/description) is carried only in XMTP messages.
+This sequence shows proposal creation, voting, and execution across the system. Human-readable metadata (title/description) is carried only in XMTP messages.
 ```mermaid
 sequenceDiagram
     participant M as Member
@@ -184,43 +183,43 @@ sequenceDiagram
 ```
 
 ## Backend Endpoints & Signatures
-- POST `/templs` – create group for a deployed TEMPL
-  - Signature: EIP‑712 typed data `{ action:'create', contract, server, nonce, issuedAt, expiry }` signed by priest EOA.
+- POST `/templs` - create group for a deployed TEMPL
+  - Signature: EIP-712 typed data `{ action:'create', contract, server, nonce, issuedAt, expiry }` signed by priest EOA.
   - Body: `{ contractAddress, priestAddress, signature, chainId, nonce, issuedAt, expiry }`
   - Response: `{ groupId }`
-- POST `/join` – verify purchase and invite member
-  - Signature: EIP‑712 `{ action:'join', contract, server, nonce, issuedAt, expiry }` signed by member EOA.
+- POST `/join` - verify purchase and invite member
+  - Signature: EIP-712 `{ action:'join', contract, server, nonce, issuedAt, expiry }` signed by member EOA.
   - Body: `{ contractAddress, memberAddress, signature, chainId, nonce, issuedAt, expiry, inboxId? }` (`inboxId` is ignored in normal environments; local/test fallback may use it deterministically when network resolution is unavailable.)
   - Response: `{ groupId }` or HTTP 503 until identity is visible on XMTP.
-- POST `/delegateMute` – grant mute rights
-  - Signature: EIP‑712 `{ action:'delegateMute', contract, delegate, server, nonce, issuedAt, expiry }` signed by priest EOA.
+- POST `/delegateMute` - grant mute rights
+  - Signature: EIP-712 `{ action:'delegateMute', contract, delegate, server, nonce, issuedAt, expiry }` signed by priest EOA.
   - Body: `{ contractAddress, priestAddress, delegateAddress, signature, chainId, nonce, issuedAt, expiry }`
   - Response: `{ delegated: true }`
-- DELETE `/delegateMute` – revoke mute rights (same signature fields).
+- DELETE `/delegateMute` - revoke mute rights (same signature fields).
   - `{ delegated: false }` on success.
-- POST `/mute` – escalate mute for a target
-  - Signature: EIP‑712 `{ action:'mute', contract, target, server, nonce, issuedAt, expiry }` signed by priest or a delegate.
+- POST `/mute` - escalate mute for a target
+  - Signature: EIP-712 `{ action:'mute', contract, target, server, nonce, issuedAt, expiry }` signed by priest or a delegate.
   - Response: `{ mutedUntil }` (ms since epoch; 0 means permanent after 5th strike).
-- GET `/mutes?contractAddress=...` – list active mutes: `{ mutes: [{ address, count, until }] }`
-- GET `/templs` – list known TEMPLs: `{ templs: [{ contract, priest, groupId? }] }` (include `?include=groupId` to include ids).
+- GET `/mutes?contractAddress=...` - list active mutes: `{ mutes: [{ address, count, until }] }`
+- GET `/templs` - list known TEMPLs: `{ templs: [{ contract, priest, groupId? }] }` (include `?include=groupId` to include ids).
 - Debug (when `ENABLE_DEBUG_ENDPOINTS=1`): `/debug/group`, `/debug/conversations`, `/debug/membership`, `/debug/last-join`, `/debug/inbox-state`, `/debug/send`.
 
 Notes
-- EIP‑712 messages include a `server` string; the backend verifies signatures against its own `BACKEND_SERVER_ID` (which must match the frontend’s `VITE_BACKEND_SERVER_ID`). A mismatch causes signature verification to fail.
+- EIP-712 messages include a `server` string; the backend verifies signatures against its own `BACKEND_SERVER_ID` (which must match the frontend’s `VITE_BACKEND_SERVER_ID`). A mismatch causes signature verification to fail.
 
-Backend resolves inboxIds from the XMTP network via `findInboxIdByIdentifier` and waits for identity readiness before `addMembers`. In normal environments, client‑supplied inboxIds are ignored. In local/test fallback modes (e.g., during E2E runs), the server may deterministically accept a provided inboxId or generate one when network resolution is unavailable, to keep tests moving.
+Backend resolves inboxIds from the XMTP network via `findInboxIdByIdentifier` and waits for identity readiness before `addMembers`. In normal environments, client-supplied inboxIds are ignored. In local/test fallback modes (e.g., during E2E runs), the server may deterministically accept a provided inboxId or generate one when network resolution is unavailable, to keep tests moving.
 
 ## Governance Allowlist & Rules
 - Proposal actions are restricted to an allowlist enforced at creation and execution:
-  - `setPausedDAO(bool)` — pause/unpause purchases
-  - `updateConfigDAO(address,uint256,bool,uint256,uint256,uint256)` — entry fee update (must remain >0 and multiple of 10) with optional burn/treasury/member split changes; token change remains disabled
-  - `withdrawTreasuryDAO(address,address,uint256,string)` — move a specific amount of any asset held by the contract
-  - `changePriestDAO(address)` — change the priest
-  - `disbandTreasuryDAO(address token)` — disband the full available balance of the chosen token. Using the access token increases the member pool; other ERC‑20s or ETH become claimable via external reward pools.
-- Voting: 1 vote per member; proposer auto‑YES; votes are changeable until eligibility closes.
+  - `setPausedDAO(bool)` - pause/unpause purchases
+  - `updateConfigDAO(address,uint256,bool,uint256,uint256,uint256)` - entry fee update (must remain >0 and multiple of 10) with optional burn/treasury/member split changes; token change remains disabled
+  - `withdrawTreasuryDAO(address,address,uint256,string)` - move a specific amount of any asset held by the contract
+  - `changePriestDAO(address)` - change the priest
+  - `disbandTreasuryDAO(address token)` - disband the full available balance of the chosen token. Using the access token increases the member pool; other ERC-20s or ETH become claimable via external reward pools.
+- Voting: 1 vote per member; proposer auto-YES; votes are changeable until eligibility closes.
 - Eligibility freeze: before quorum, any member may vote; after quorum is reached, only members who joined before `quorumReachedAt` may vote (late joiners revert `JoinedAfterProposal`).
 - Execution: requires simple majority (`yesVotes > noVotes`) and either:
-  - quorum‑exempt proposals: `block.timestamp >= endTime`, or
+  - quorum-exempt proposals: `block.timestamp >= endTime`, or
   - proposals requiring quorum: quorum reached and the delay `executionDelayAfterQuorum` elapsed since `quorumReachedAt`.
 
 ## Data & Storage
@@ -228,8 +227,8 @@ Backend resolves inboxIds from the XMTP network via `findInboxIdByIdentifier` an
   - `groups(contract TEXT PRIMARY KEY, groupId TEXT, priest TEXT)`
   - `mutes(contract TEXT, target TEXT, count INTEGER, until INTEGER, PRIMARY KEY(contract, target))`
   - `delegates(contract TEXT, delegate TEXT, PRIMARY KEY(contract, delegate))`
-  - `signatures(sig TEXT PRIMARY KEY, usedAt INTEGER)` – replay protection for EIP‑712 signatures
-  - `kv(key TEXT PRIMARY KEY, value TEXT)` – stores generated invite-bot secrets (e.g., `bot_private_key`)
+  - `signatures(sig TEXT PRIMARY KEY, usedAt INTEGER)` - replay protection for EIP-712 signatures
+  - `kv(key TEXT PRIMARY KEY, value TEXT)` - stores generated invite-bot secrets (e.g., `bot_private_key`)
 - XMTP client DBs:
   - Node: `xmtp-<env>-<inboxId>.db3` (SQLCipher when `dbEncryptionKey` provided).
   - Browser: OPFS per-origin; not OS-visible.

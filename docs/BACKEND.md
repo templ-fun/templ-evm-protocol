@@ -1,44 +1,47 @@
-# TEMPL Backend
+# Templ Backend
 
-Operational handbook for the Express bot that turns on-chain state into XMTP invitations. Read this after the contract deep-dive so the API signatures make sense.
+Field manual for the Express invite-bot that turns on-chain state into XMTP gatekeeping. Read this after the contract deep-dive so every signature and endpoint lands with context.
 
-## Why this doc
+## Why this field manual matters
 - Configure the service for local dev, staging, and production with the right env flags.
 - Understand the endpoints that the frontend and scripts call (`/templs`, `/join`, moderation routes, debug helpers).
 - Learn how the backend protects itself (EIP-712 signatures, replay protection, XMTP identity rotation) and how to respond when XMTP misbehaves.
 
-For an architectural refresher, revisit [README.md#component-overview](../README.md#component-overview) and the diagrams in [CORE_FLOW_DOCS.MD](./CORE_FLOW_DOCS.MD).
+For a cult stack refresher, revisit [README.md#architecture](../README.md#architecture) and the diagrams in [CORE_FLOW_DOCS.MD](./CORE_FLOW_DOCS.MD).
 
 ## Setup
-Install dependencies:
+Summon dependencies:
 
 ```bash
 npm --prefix backend ci
 ```
 
 ## Environment variables
+These toggles tune how the invite-bot behaves across dev, staging, and production:
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
-| `RPC_URL` | RPC endpoint for on-chain reads and writes | — |
+| `RPC_URL` | RPC endpoint for on-chain reads and writes | - |
 | `PORT` | HTTP port for the API service | `3001` |
 | `BOT_PRIVATE_KEY` | Private key for the XMTP invite-bot wallet | auto-generated (persisted) |
 | `ALLOWED_ORIGINS` | Comma-separated CORS origins | `http://localhost:5173` |
 | `ENABLE_DEBUG_ENDPOINTS` | Expose debug endpoints when set to `1` | `0` |
 | `XMTP_ENV` | XMTP network (`dev`, `production`, `local`) | `dev` |
 | `REQUIRE_CONTRACT_VERIFY` | When `1`, `/templs` verifies target is a deployed contract | `0` |
-| `BACKEND_DB_ENC_KEY` | 32-byte hex string to encrypt the XMTP Node DB; if omitted, a key is derived from the bot private key and env | — |
+| `BACKEND_DB_ENC_KEY` | 32-byte hex string to encrypt the XMTP Node DB; if omitted, a key is derived from the bot private key and env | - |
 | `XMTP_BOOT_MAX_TRIES` | Max boot retries for XMTP client initialization | `30` |
 | `XMTP_METADATA_UPDATES` | Set to `0` to skip name/description updates on groups | `1` |
-| `BACKEND_SERVER_ID` | String identifier included in EIP‑712 messages; must match frontend `VITE_BACKEND_SERVER_ID` | — |
+| `BACKEND_SERVER_ID` | String identifier included in EIP-712 messages; must match frontend `VITE_BACKEND_SERVER_ID` | - |
 
 ### Optional variables
+
+Extra switches for advanced rituals:
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
 | `LOG_LEVEL` | Pino log level (`info`, `debug`, etc.) | `info` |
 | `RATE_LIMIT_STORE` | Rate limit store (`memory` or `redis`) | auto (uses `redis` when `REDIS_URL` is set; else `memory`) |
-| `REDIS_URL` | Redis URL for distributed rate limiting (requires installing `redis` + `rate-limit-redis`; optional, not bundled) | — |
+| `REDIS_URL` | Redis URL for distributed rate limiting (requires installing `redis` + `rate-limit-redis`; optional, not bundled) | - |
 | `DISABLE_XMTP_WAIT` | Skip XMTP readiness checks in tests (keep `0` in prod) | `0` |
 | `XMTP_MAX_ATTEMPTS` | Limit XMTP client rotation attempts | `20` (set to override) |
 | `DB_PATH` | Custom SQLite path for group metadata | `backend/groups.db` |
@@ -56,7 +59,7 @@ When `REQUIRE_CONTRACT_VERIFY=1` (or `NODE_ENV=production`), the server requires
   - Ensure the typed `chainId` matches the provider’s `chainId`.
   - Check that `priestAddress` equals `await contract.priest()` on-chain when creating groups.
 
-### Rate limiting
+### Rate limiting (protecting the gates)
 
 The API rate-limits requests.
 - In development and tests, it uses the in-memory store.
@@ -65,7 +68,7 @@ The API rate-limits requests.
 - If Redis is unavailable or misconfigured, it safely falls back to memory and logs a warning. Avoid memory in production as it is not resilient or horizontally scalable.
 
 ## Development
-Start the API service:
+Start the invite-bot:
 
 ```bash
 npm --prefix backend start
@@ -74,7 +77,7 @@ npm --prefix backend start
 ### Logging
 Logging uses [Pino](https://github.com/pinojs/pino) (JSON to `stdout`; `LOG_LEVEL` controls verbosity and defaults to `info`). Pipe through `pino-pretty` in dev or redirect to a file in production.
 
-## Tests & Lint
+## Tests & lint
 
 ```bash
 npm --prefix backend test
@@ -82,20 +85,21 @@ npm --prefix backend run lint
 ```
 
 ## Architecture
-- **Ownership** – Groups are created by an ephemeral wallet (fresh key per group) and then managed by a single persistent invite-bot identity. The ephemeral creator key is not persisted ("burned") after creation. The invite-bot is only used to invite members; it is not intended to hold admin powers like banning.
+The backend is the high priest that enforces who crosses the chat threshold:
+- **Ownership** - Groups are created by an ephemeral wallet (fresh key per group) and then managed by a single persistent invite-bot identity. The ephemeral creator key is not persisted ("burned") after creation. The invite-bot is only used to invite members; it is not intended to hold admin powers like banning.
 - **Endpoints**
-- `POST /templs` – create a group for a deployed contract; if a `connectContract` factory is supplied the backend also watches governance events.
-- `POST /join` – verify `hasAccess` on-chain and invite the wallet.
-  - `POST /delegateMute` – priest assigns mute rights to a member.
-  - `DELETE /delegateMute` – revoke a delegate's mute rights.
-  - `POST /mute` – priest or delegate records an escalating mute for a member.
-  - `GET /mutes` – list active mutes for a contract so the frontend can hide messages.
-- **Dependencies** – XMTP JS SDK and an on-chain provider; event watching requires a `connectContract` factory.
-- **Persistence** – group metadata persists to a SQLite database at `backend/groups.db` (or a custom path via `createApp({ dbPath })` in tests). The database is read on startup and updated when groups change; back it up to avoid losing state.
-- **On‑chain surface** – proposal allowlist and events are defined in the contracts. See [CONTRACTS.md](./CONTRACTS.md#governance) for allowed actions and events mirrored into chat.
+  - `POST /templs` - create a group for a deployed contract; if a `connectContract` factory is supplied the backend also watches governance events.
+  - `POST /join` - verify `hasAccess` on-chain and invite the wallet.
+    - `POST /delegateMute` - priest assigns mute rights to a member.
+    - `DELETE /delegateMute` - revoke a delegate's mute rights.
+    - `POST /mute` - priest or delegate records an escalating mute for a member.
+    - `GET /mutes` - list active mutes for a contract so the frontend can hide messages.
+- **Dependencies** - XMTP JS SDK and an on-chain provider; event watching requires a `connectContract` factory.
+- **Persistence** - group metadata persists to a SQLite database at `backend/groups.db` (or a custom path via `createApp({ dbPath })` in tests). The database is read on startup and updated when groups change; back it up to avoid losing state.
+- **On-chain surface** - proposal allowlist and events are defined in the contracts. See [CONTRACTS.md](./CONTRACTS.md#governance) for allowed actions and events mirrored into chat.
 
 When watching governance events, the backend relays:
-- `ProposalCreated(id, proposer, endTime)` → sends `{ type: 'proposal', id, proposer, endTime }` to the group. Human‑readable metadata (title/description) is not on‑chain and should be sent by clients as a regular XMTP message alongside the id.
+- `ProposalCreated(id, proposer, endTime)` → sends `{ type: 'proposal', id, proposer, endTime }` to the group. Human-readable metadata (title/description) is not on-chain and should be sent by clients as a regular XMTP message alongside the id.
 - `VoteCast(id, voter, support, timestamp)` → sends `{ type: 'vote', id, voter, support, timestamp }`.
 - `PriestChanged(oldPriest, newPriest)` → updates the stored priest, deletes all delegate rows, clears the mute table for that contract, and announces `{ type: 'priest-changed', ... }` in chat so a new priest always starts from a clean moderation slate.
 
@@ -143,42 +147,40 @@ sequenceDiagram
 - Invitations require real inboxIds; the server resolves them and waits for visibility before inviting.
 - After creation or join it syncs and records XMTP stats.
 - The XMTP Node DB uses SQLCipher with a 32-byte key. Provide `BACKEND_DB_ENC_KEY` or a key is derived from the bot private key and environment; avoid zero-keys in production.
- - When `EPHEMERAL_CREATOR` is enabled (default), `/templs` uses a fresh XMTP identity to create the group and set metadata. The server’s invite-bot identity is included as a member at creation time and used only for invitations thereafter.
+- When `EPHEMERAL_CREATOR` is enabled (default), `/templs` uses a fresh XMTP identity to create the group and set metadata. The server’s invite-bot identity is included as a member at creation time and used only for invitations thereafter.
 
 ### Debug endpoints
 When `ENABLE_DEBUG_ENDPOINTS=1`, these endpoints assist tests and local debugging:
-- `GET /debug/group?contractAddress=<addr>&refresh=1` – returns server inboxId, stored/resolved groupId, and (when available) members.
-- `GET /debug/conversations` – returns a count and the first few conversation ids seen by the server.
-- `GET /debug/membership?contractAddress=<addr>&inboxId=<id>` – whether server group view contains `inboxId`.
-- `GET /debug/last-join` – last join metadata (consumed by e2e diagnostics; the frontend may re-register via `/templs` and retry `/join` automatically when this endpoint shows a missing contract).
-- `GET /debug/inbox-state?inboxId=<id>&env=<local|dev|production>` – raw XMTP inbox state.
- - `POST /debug/send` – send a free‑form message to a group's conversation (for discovery warmup and diagnostics).
+- `GET /debug/group?contractAddress=<addr>&refresh=1` - returns server inboxId, stored/resolved groupId, and (when available) members.
+- `GET /debug/conversations` - returns a count and the first few conversation ids seen by the server.
+- `GET /debug/membership?contractAddress=<addr>&inboxId=<id>` - whether server group view contains `inboxId`.
+- `GET /debug/last-join` - last join metadata (consumed by e2e diagnostics; the frontend may re-register via `/templs` and retry `/join` automatically when this endpoint shows a missing contract).
+- `GET /debug/inbox-state?inboxId=<id>&env=<local|dev|production>` - raw XMTP inbox state.
+ - `POST /debug/send` - send a free-form message to a group's conversation (for discovery warmup and diagnostics).
 
 #### Running against a local XMTP node
 See the [E2E Environments](../README.md#e2e-environments) section of the README for full setup details. In short, setting `E2E_XMTP_LOCAL=1` starts `xmtp-local-node` and sets `XMTP_ENV=local`; otherwise Playwright runs against XMTP production with a random `BOT_PRIVATE_KEY`.
 
 ## Security considerations
-- All state-changing endpoints require EIP‑712 typed signatures (with `chainId`, `nonce`, `issuedAt`, `expiry`). The backend verifies signatures and enforces replay protection by recording used signatures in SQLite.
+- All state-changing endpoints require EIP-712 typed signatures (with `chainId`, `nonce`, `issuedAt`, `expiry`). The backend verifies signatures and enforces replay protection by recording used signatures in SQLite.
 - The service resolves XMTP inboxIds server-side; client-provided inboxIds are ignored in normal environments. In local/test fallback modes (e.g., E2E), if network resolution is unavailable the server may deterministically accept a provided inboxId or generate one to keep tests moving.
 - The bot key must be stored securely; compromise allows muting or invitation of arbitrary members.
 - Governance events are forwarded to the group chat; untrusted RPC data could mislead voters.
 - RPC responses are assumed honest; use a trusted provider.
 
-### Production Checklist
+### Production checklist
 - `NODE_ENV=production` and `REQUIRE_CONTRACT_VERIFY=1` (enforce chainId/code/priest checks).
 - `BACKEND_DB_ENC_KEY` must be set (32-byte hex) to encrypt the XMTP Node DB. The server refuses to boot without it in production.
 - Set and align `BACKEND_SERVER_ID` with `VITE_BACKEND_SERVER_ID` so signatures are bound to this server.
+- Leave all test-only toggles (`DISABLE_XMTP_WAIT`, debug endpoints) disabled in production.
+
 ### Additional endpoints
-
-- `GET /templs` – list known TEMPLs from persistence. Returns `{ templs: [{ contract, priest } ...] }` by default; add `?include=groupId` to include `groupId` in each record.
-
-### Debug endpoints
-- Do not enable any test‑only flags in production (e.g., `DISABLE_XMTP_WAIT`).
+- `GET /templs` - list known templs from persistence. Returns `{ templs: [{ contract, priest } ...] }` by default; add `?include=groupId` to include `groupId` in each record.
 
 ## Runbooks
 
 ### Regenerate the invite-bot key
-1. **Announce downtime** – group invites will pause while the bot identity rotates.
+1. **Announce downtime** - group invites will pause while the bot identity rotates.
 2. **Stop the backend** service.
 3. **Back up `backend/groups.db`**: `cp backend/groups.db backend/groups.db.bak.$(date +%s)`.
 4. **Choose the key source**:
@@ -195,12 +197,12 @@ See the [E2E Environments](../README.md#e2e-environments) section of the README 
 5. **Restart the backend** and confirm the server logs “Using provided BACKEND_DB_ENC_KEY”.
 
 ### XMTP outage response
-1. **Detect symptoms** – watch application logs for repeated `XMTP boot not ready`, `Member identity not registered`, or add-member failures.
-2. **Check XMTP status** – use `npx @xmtp/probe status --env ${XMTP_ENV:-dev}` (or your internal monitoring) to confirm the network issue.
-3. **Drain join traffic** – surface maintenance mode (HTTP 503) by temporarily setting `REQUIRE_CONTRACT_VERIFY=1` and `DISABLE_XMTP_WAIT=0` while returning a custom message from your load balancer, or shut down `/join` at the edge.
-4. **Stabilize the bot** – restart the backend once to clear any stalled rotations. Watch for `XMTP boot not ready` log repetition; if it persists, increase `XMTP_BOOT_MAX_TRIES` and ensure the bot wallet still has an available installation slot.
-5. **Recover conversations** – after XMTP resolves the incident, run `curl -s http://localhost:3001/templs?include=groupId` to verify groups are synced, then trigger a manual `POST /join` with a test wallet to confirm invites succeed.
-6. **Post-incident** – re-enable regular traffic, rotate logs, and capture metrics (duration, impacted wallets) for follow-up.
+1. **Detect symptoms** - watch application logs for repeated `XMTP boot not ready`, `Member identity not registered`, or add-member failures.
+2. **Check XMTP status** - use `npx @xmtp/probe status --env ${XMTP_ENV:-dev}` (or your internal monitoring) to confirm the network issue.
+3. **Drain join traffic** - surface maintenance mode (HTTP 503) by temporarily setting `REQUIRE_CONTRACT_VERIFY=1` and `DISABLE_XMTP_WAIT=0` while returning a custom message from your load balancer, or shut down `/join` at the edge.
+4. **Stabilize the bot** - restart the backend once to clear any stalled rotations. Watch for `XMTP boot not ready` log repetition; if it persists, increase `XMTP_BOOT_MAX_TRIES` and ensure the bot wallet still has an available installation slot.
+5. **Recover conversations** - after XMTP resolves the incident, run `curl -s http://localhost:3001/templs?include=groupId` to verify groups are synced, then trigger a manual `POST /join` with a test wallet to confirm invites succeed.
+6. **Post-incident** - re-enable regular traffic, rotate logs, and capture metrics (duration, impacted wallets) for follow-up.
 
 ## Next
 Head to [FRONTEND.md](./FRONTEND.md) to see how the browser app integrates with these endpoints and how to exercise them locally.

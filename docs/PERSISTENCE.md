@@ -1,13 +1,13 @@
-# Persistence Overview
+# Persistence Map
 
 Understand what lives on-chain, inside SQLite, and within XMTP client databases so you can reason about backup, security, and local development. Read this right after the shared utilities to connect helpers with stored data.
 
-## Why this doc
+## Why this map matters
 - Identify every storage location touched by the stack and what data resides there.
 - Learn how the backend manages replay protection, moderation state, and bot keys in SQLite.
 - See how XMTP Node/Browser databases behave so you can avoid OPFS/SQLCipher pitfalls.
 
-This document outlines where TEMPL persists state, the storage technologies in play, and how data flows through the system.
+This document outlines where Templ persists state, the storage technologies in play, and how cult memory flows through the system.
 
 | Storage          | Location                                            | Encryption                   | Usage                                            |
 | ---------------- | --------------------------------------------------- | ---------------------------- | ------------------------------------------------ |
@@ -15,7 +15,7 @@ This document outlines where TEMPL persists state, the storage technologies in p
 | XMTP Node DB     | `xmtp-<env>-<inboxId>.db3` in process CWD           | SQLCipher via `dbEncryptionKey` | Client identity and conversation metadata   |
 | XMTP Browser DB  | OPFS `xmtp-<env>-<inboxId>.db3` per origin          | none                         | Browser client identity and metadata             |
 
-## Storage Relationships
+## Storage relationships
 
 ```mermaid
 graph LR
@@ -29,33 +29,37 @@ graph LR
 
 ## Backend DB (SQLite)
 
+Where the invite-bot keeps its receipts:
+
 - Default file: `backend/groups.db` (override with `DB_PATH`).
-- Purpose: maps on‑chain TEMPL contracts to XMTP `groupId`, and stores moderation state.
-- Startup: the `groups` table is mirrored to an in‑memory `Map()` so the server can restore groups on boot.
- - Invite‑bot key: on first boot without `BOT_PRIVATE_KEY`, the backend generates and persists a private key under `kv.bot_private_key` so the invite‑bot identity remains stable across restarts.
+- Purpose: maps on-chain templ contracts to XMTP `groupId`, and stores moderation state.
+- Startup: the `groups` table is mirrored to an in-memory `Map()` so the server can restore groups on boot.
+- Invite-bot key: on first boot without `BOT_PRIVATE_KEY`, the backend generates and persists a private key under `kv.bot_private_key` so the invite-bot identity remains stable across restarts.
 
 ### Tables
 
 - `groups(contract TEXT PRIMARY KEY, groupId TEXT, priest TEXT)`
-  - Maps on‑chain contract → XMTP group id and priest EOA.
-  - Written on POST `/templs`; re‑read on server boot.
+  - Maps on-chain contract → XMTP group id and priest EOA.
+  - Written on POST `/templs`; re-read on server boot.
 - `mutes(contract TEXT, target TEXT, count INTEGER, until INTEGER, PRIMARY KEY(contract, target))`
   - Moderation strikes and mute expiry per address per contract; written on POST `/mute`.
 - `delegates(contract TEXT, delegate TEXT, PRIMARY KEY(contract, delegate))`
   - Delegated moderation rights; written on POST/DELETE `/delegateMute`.
 - `signatures(sig TEXT PRIMARY KEY, usedAt INTEGER)`
-  - Server‑side replay protection store for typed signatures.
+  - Server-side replay protection store for typed signatures.
  - `kv(key TEXT PRIMARY KEY, value TEXT)`
-   - Generic key–value store; the backend saves the persistent invite‑bot private key here under `key = 'bot_private_key'` when no `BOT_PRIVATE_KEY` env is provided.
+   - Generic key-value store; the backend saves the persistent invite-bot private key here under `key = 'bot_private_key'` when no `BOT_PRIVATE_KEY` env is provided.
 
 ## XMTP Node DB
+
+Server-side memory palace for the invite-bot:
 
 - File: `xmtp-<env>-<inboxId>.db3` in the server working directory.
 - Encryption: SQLCipher; key supplied by `dbEncryptionKey`.
 - Holds client identity, installation info, and conversation metadata.
 - Reused across runs for the same inboxId when opened with the same `dbEncryptionKey`.
 - Key material derivation:
-  - Production: supply `BACKEND_DB_ENC_KEY` (32‑byte hex). The server refuses to boot without it.
+  - Production: supply `BACKEND_DB_ENC_KEY` (32-byte hex). The server refuses to boot without it.
   - Dev/Test fallback: derived from bot private key + environment. Do not use in production.
 
 ### XMTP identity model (Node)
@@ -63,15 +67,17 @@ graph LR
 - `inboxId`: stable per identity (EOA/SCW) on XMTP.
 - Installations: devices/agents attached to an inbox; XMTP dev network caps installs at 10.
 - Installation rotation: changing the signer nonce (in `getIdentifier`) rotates installations under the same inboxId.
-- Local DB reuse: opening the same inboxId with the same `dbEncryptionKey` re‑attaches to the same SQLCipher DB.
+- Local DB reuse: opening the same inboxId with the same `dbEncryptionKey` re-attaches to the same SQLCipher DB.
 
 ## XMTP Browser DB
 
-- Storage: OPFS (`xmtp-<env>-<inboxId>.db3` per origin). Not host‑visible; not encrypted.
+Where browsers stash their cult credentials:
+
+- Storage: OPFS (`xmtp-<env>-<inboxId>.db3` per origin). Not host-visible; not encrypted.
 - OPFS uses exclusive “synchronous access handles.” Multiple handles or rapid client churn can trigger `NoModificationAllowedError: createSyncAccessHandle`.
 - Guidance: run a single client per page, avoid frequent teardown, and reuse a stable installation where possible.
 
-## Data Flows & Endpoints
+## Data flows & endpoints
 
 ```mermaid
 flowchart TD
@@ -81,23 +87,23 @@ flowchart TD
     nodeDB <--> browserDB[("XMTP Browser DB")]
 ```
 
-- POST `/templs` (create/register a TEMPL group)
-  - Verifies priest EIP‑712 signature (`action: 'create'`, with chainId, nonce, issuedAt, expiry, server).
-  - Optionally verifies on‑chain `priest()` and code when `REQUIRE_CONTRACT_VERIFY=1` (or in production).
+- POST `/templs` (create/register a templ group)
+  - Verifies priest EIP-712 signature (`action: 'create'`, with chainId, nonce, issuedAt, expiry, server).
+  - Optionally verifies on-chain `priest()` and code when `REQUIRE_CONTRACT_VERIFY=1` (or in production).
   - Resolves priest inbox via XMTP, waits for readiness, and creates the group; sends a warm “templ-created” message.
-  - Persists `{ contract, groupId, priest }` to SQLite + in‑memory cache.
+  - Persists `{ contract, groupId, priest }` to SQLite + in-memory cache.
 - POST `/join` (purchase check + invite member)
-  - Verifies member EIP‑712 signature (`action: 'join'`, with chainId, nonce, issuedAt, expiry, server) and rejects replays.
-  - Calls on‑chain `hasAccess(member)`; rejects when false.
-  - Resolves member inboxId via XMTP network; ignores arbitrary client‑supplied inboxIds unless running local test fallback.
-  - Adds the member to the group; re‑syncs and sends a warm “member-joined” message; returns `groupId`.
+  - Verifies member EIP-712 signature (`action: 'join'`, with chainId, nonce, issuedAt, expiry, server) and rejects replays.
+  - Calls on-chain `hasAccess(member)`; rejects when false.
+  - Resolves member inboxId via XMTP network; ignores arbitrary client-supplied inboxIds unless running local test fallback.
+  - Adds the member to the group; re-syncs and sends a warm “member-joined” message; returns `groupId`.
 - POST/DELETE `/delegateMute` (delegate moderation)
-  - Priest EIP‑712 signature (`action: 'delegateMute'`) controls rows in the `delegates` table.
+  - Priest EIP-712 signature (`action: 'delegateMute'`) controls rows in the `delegates` table.
 - POST `/mute` (escalating mute)
-  - Priest or delegate EIP‑712 signature (`action: 'mute'`) records escalating `count` and `until` in `mutes`.
+  - Priest or delegate EIP-712 signature (`action: 'mute'`) records escalating `count` and `until` in `mutes`.
 - Identity and membership live in XMTP; SQLite stores group mapping and moderation state but not membership or messages.
 
-## FAQ
+## FAQ (storage myths)
 
 This section answers common questions about what data is stored. It clarifies that chat messages and membership live in XMTP.
 

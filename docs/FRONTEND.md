@@ -1,8 +1,8 @@
-# TEMPL Frontend
+# Templ Frontend
 
-Guide to running, configuring, and testing the Vite + React client that deploys templs, signs purchases, and mirrors governance. Pair this with the backend doc so you know which endpoints the UI hits.
+This is the pilgrim interface-the Vite + React app that deploys templs, signs tributes, and mirrors governance. Pair it with the backend manual so you know which endpoints power each button.
 
-## Why this doc
+## Why this playbook matters
 - Set up environment variables for local dev, staging, and production builds.
 - Understand developer workflows: hot reload, unit tests, Playwright e2e, and XMTP local mode.
 - Learn which flows the UI implements (deploy, join, chat, moderate) and how it uses shared helpers.
@@ -14,7 +14,7 @@ Guide to running, configuring, and testing the Vite + React client that deploys 
 
 ## Setup
 
-Install dependencies:
+Summon dependencies:
 
 ```bash
 npm --prefix frontend ci
@@ -22,17 +22,17 @@ npm --prefix frontend ci
 
 ## Environment variables
 
-Global variables such as `RPC_URL` live in the project `.env`; see the [README's environment variables](../README.md#environment-variables).
+These toggles shape the cult experience in the browser. Global variables such as `RPC_URL` live in the project `.env`; see the [README's environment variables](../README.md#environment-variables).
 
 | Name | Description | Default |
 | --- | --- | --- |
 | `VITE_XMTP_ENV` | XMTP environment for the Browser SDK (`local`, `dev`, `production`). Defaults to `dev` on `localhost`/`127.0.0.1` and `production` elsewhere. | `dev` (localhost) / `production` |
 | `VITE_E2E_DEBUG` | Enables debug helpers (`window.__XMTP`, etc.) during E2E runs. | `0` |
 | `E2E_XMTP_LOCAL` | When `1`, Playwright E2E tests connect to a local XMTP node instead of production. | `0` |
-| `VITE_BACKEND_SERVER_ID` | String identifier that must match the backend `BACKEND_SERVER_ID` to bind EIP‑712 signatures to your deployment. | — |
-| `VITE_TEMPL_FACTORY_ADDRESS` | Optional: preloads the factory address so the creation form is read-only. Leave blank to supply it interactively. | — |
-| `VITE_TEMPL_FACTORY_PROTOCOL_RECIPIENT` | Optional: expected factory protocol recipient (display-only). Useful for demos/tests. | — |
-| `VITE_TEMPL_FACTORY_PROTOCOL_PERCENT` | Optional: expected factory protocol percentage (display-only). | — |
+| `VITE_BACKEND_SERVER_ID` | String identifier that must match the backend `BACKEND_SERVER_ID` to bind EIP-712 signatures to your deployment. | - |
+| `VITE_TEMPL_FACTORY_ADDRESS` | Optional: preloads the factory address so the creation form is read-only. Leave blank to supply it interactively. | - |
+| `VITE_TEMPL_FACTORY_PROTOCOL_RECIPIENT` | Optional: expected factory protocol recipient (display-only). Useful for demos/tests. | - |
+| `VITE_TEMPL_FACTORY_PROTOCOL_PERCENT` | Optional: expected factory protocol percentage (display-only). | - |
 | `VITE_E2E_NO_PURCHASE` | Skip the on-chain purchase step during E2E/dev runs when access is pre-seeded. | `0` |
 | `VITE_ENABLE_BACKEND_FALLBACK` | When `1`, enables debug fallbacks that query backend `/debug` endpoints for membership snapshots. | `0` |
 | `TEMPL_ENABLE_LOCAL_FALLBACK` | Node-unit toggle that lets tests merge localStorage templ registries with the backend list; keep `0` in production so the UI always reflects real `/templs` data. | `0` |
@@ -45,22 +45,26 @@ Start a hot-reloading dev server:
 npm --prefix frontend run dev
 ```
 
-## Tests & Lint
+## Tests & lint
+
+Keep rituals stable with these commands:
 
 ```bash
 npm --prefix frontend test
 npm --prefix frontend run lint
 npm --prefix frontend run build
-npm --prefix frontend run test:e2e                          # end‑to‑end (Playwright)
+npm --prefix frontend run test:e2e                          # end-to-end (Playwright)
 ```
 To run e2e against a local XMTP node: clone `xmtp-local-node`, run `npm run xmtp:local:up`, execute tests with `E2E_XMTP_LOCAL=1`, then `npm run xmtp:local:down`.
 
 E2E artifacts (videos, traces, screenshots) are saved under `frontend/test-results/`.
 ## Architecture
 
+How the frontend guides initiates through the experience:
+
 - **Wallet connection** via `ethers` and `window.ethereum`.
-- **Default configuration** – all members have 1 vote.
-- **Governance** – members create proposals and vote from the chat; `watchProposals` updates the UI when events fire. The backend mirrors on‑chain events into the group as JSON so clients see real‑time updates. The quick-action UI encodes the allowlisted DAO calls: pause/unpause, withdraw the entire available treasury balance of a chosen asset to the connected wallet (demo helper), disband the full available balance of any token (entry-fee token, donated ERC‑20, or native ETH) into member rewards, and reprice the entry fee or adjust the non-protocol fee splits. Proposal titles/descriptions are not stored on-chain; they are shared only in XMTP messages next to the on-chain proposal id.
+- **Default configuration** - all members have one vote.
+- **Governance** - members create proposals and vote from the chat; `watchProposals` updates the UI when events fire. The backend mirrors on-chain events into the group as JSON so clients see real-time updates. The quick-action UI encodes the allowlisted DAO calls: pause/unpause, withdraw the entire available treasury balance of a chosen asset to the connected wallet (demo helper), disband the full available balance of any token (entry-fee token, donated ERC-20, or native ETH) into member rewards, and reprice the entry fee or adjust the non-protocol fee splits. Proposal titles/descriptions are not stored on-chain; they are shared only in XMTP messages next to the on-chain proposal id.
 
 See backend endpoints in [BACKEND.md](./BACKEND.md#architecture) for `POST /templs`, `POST /join`, `POST/DELETE /delegateMute`, `POST /mute`, and `GET /mutes`.
 
@@ -73,7 +77,7 @@ flowchart LR
     C --> D[Moderate\ndelegateMute/muteMember]
 ```
 
-## Notes
+## Notes & tips
 - `VITE_XMTP_ENV` defaults to `dev` on localhost and `production` elsewhere; override for `local` nodes.
 - `VITE_E2E_DEBUG=1` exposes `window.__XMTP` helpers for diagnostics.
 - When debug helpers are enabled, the join flow automatically re-registers the contract with `/templs` if a 404 is encountered and retries the join; production runs continue to rely solely on the primary invite path.
