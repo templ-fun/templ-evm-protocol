@@ -53,6 +53,16 @@ describe("Reentrancy protection", function () {
         templ.connect(attacker).purchaseAccess()
       ).to.be.revertedWithCustomError(templ, "ReentrancyGuardReentrantCall");
     });
+
+    it("returns true for normal transfers when no callback is set", async function () {
+      const [, sender, receiver] = accounts;
+
+      await token.mint(sender.address, ENTRY_FEE);
+      const tx = await token.connect(sender).transfer(receiver.address, ENTRY_FEE);
+      await tx.wait();
+
+      expect(await token.balanceOf(receiver.address)).to.equal(ENTRY_FEE);
+    });
   });
 
   describe("claimMemberPool", function () {
