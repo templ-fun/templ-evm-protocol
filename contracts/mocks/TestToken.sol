@@ -14,16 +14,9 @@ contract TestToken is ERC20 {
     {
         _decimals = decimals_;
     }
-    /// @notice Return token decimals
-    function decimals() public view override returns (uint8) {
-        return _decimals;
-    }
+
     /// @notice Mint tokens to an address (testing only)
     function mint(address to, uint256 amount) external {
         _mint(to, amount);
-    }
-    /// @notice Burn tokens from an address (testing only)
-    function burn(address from, uint256 amount) external {
-        _burn(from, amount);
     }
 }
