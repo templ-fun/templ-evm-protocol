@@ -114,6 +114,60 @@ describe("TemplFactory", function () {
         expect(await templ.burnAddress()).to.equal("0x000000000000000000000000000000000000dEaD");
     });
 
+    it("reverts when deployed with zero protocol recipient", async function () {
+        const Factory = await ethers.getContractFactory("TemplFactory");
+        await expect(Factory.deploy(ethers.ZeroAddress, 10)).to.be.revertedWithCustomError(
+            Factory,
+            "InvalidRecipient"
+        );
+    });
+
+    it("reverts when protocol percent exceeds total", async function () {
+        const [, , protocolRecipient] = await ethers.getSigners();
+        const Factory = await ethers.getContractFactory("TemplFactory");
+        await expect(Factory.deploy(protocolRecipient.address, 101)).to.be.revertedWithCustomError(
+            Factory,
+            "InvalidPercentageSplit"
+        );
+    });
+
+    it("reverts when creating templ with missing token", async function () {
+        const [, , protocolRecipient] = await ethers.getSigners();
+        const Factory = await ethers.getContractFactory("TemplFactory");
+        const factory = await Factory.deploy(protocolRecipient.address, 10);
+        await factory.waitForDeployment();
+
+        await expect(factory.createTempl(ethers.ZeroAddress, ENTRY_FEE)).to.be.revertedWithCustomError(
+            factory,
+            "InvalidRecipient"
+        );
+    });
+
+    it("reverts when creating templ with entry fee below minimum", async function () {
+        const [, , protocolRecipient] = await ethers.getSigners();
+        const token = await deployToken("LowFee", "LOW");
+        const Factory = await ethers.getContractFactory("TemplFactory");
+        const factory = await Factory.deploy(protocolRecipient.address, 10);
+        await factory.waitForDeployment();
+
+        await expect(factory.createTempl(await token.getAddress(), 9)).to.be.revertedWithCustomError(
+            factory,
+            "EntryFeeTooSmall"
+        );
+    });
+
+    it("reverts when creating templ with entry fee not divisible by ten", async function () {
+        const [, , protocolRecipient] = await ethers.getSigners();
+        const token = await deployToken("Modulo", "MOD");
+        const Factory = await ethers.getContractFactory("TemplFactory");
+        const factory = await Factory.deploy(protocolRecipient.address, 10);
+        await factory.waitForDeployment();
+
+        await expect(
+            factory.createTempl(await token.getAddress(), ENTRY_FEE + 5n)
+        ).to.be.revertedWithCustomError(factory, "InvalidEntryFee");
+    });
+
     it("patches optional fields to defaults when config omits them", async function () {
         const [deployer, , protocolRecipient] = await ethers.getSigners();
         const token = await deployToken("Patched", "PTC");

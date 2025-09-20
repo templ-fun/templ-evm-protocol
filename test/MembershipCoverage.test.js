@@ -60,6 +60,10 @@ describe("Membership coverage extras", function () {
     expect(
       await templ.getClaimableExternalToken(memberA.address, otherToken.target)
     ).to.equal(0n);
+
+    await expect(
+      templ.connect(memberA).claimExternalToken(otherToken.target)
+    ).to.be.revertedWithCustomError(templ, "NoRewardsToClaim");
   });
 
   it("guards member pool claim and exposes zero-available treasury info", async function () {

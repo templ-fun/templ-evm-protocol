@@ -97,6 +97,44 @@ describe("Treasury coverage extras", function () {
     );
   });
 
+  it("reuses registered external tokens without duplicating entries", async function () {
+    const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE });
+    const [, , memberA, memberB] = accounts;
+
+    await mintToUsers(token, [memberA, memberB], ENTRY_FEE * 6n);
+    await purchaseAccess(templ, token, [memberA, memberB]);
+
+    const OtherToken = await ethers.getContractFactory("contracts/mocks/TestToken.sol:TestToken");
+    const otherToken = await OtherToken.deploy("Repeat", "RPT", 18);
+    await otherToken.mint(memberA.address, ethers.parseUnits("9", 18));
+    await otherToken.connect(memberA).transfer(await templ.getAddress(), ethers.parseUnits("9", 18));
+
+    await templ
+      .connect(memberA)
+      .createProposalDisbandTreasury(otherToken.target, VOTING_PERIOD);
+    await templ.connect(memberA).vote(0, true);
+    await templ.connect(memberB).vote(0, true);
+    await ethers.provider.send("evm_increaseTime", [VOTING_PERIOD + DAY]);
+    await ethers.provider.send("evm_mine", []);
+    await templ.executeProposal(0);
+
+    await otherToken.mint(memberB.address, ethers.parseUnits("4", 18));
+    await otherToken.connect(memberB).transfer(await templ.getAddress(), ethers.parseUnits("4", 18));
+
+    await templ
+      .connect(memberB)
+      .createProposalDisbandTreasury(otherToken.target, VOTING_PERIOD);
+    await templ.connect(memberA).vote(1, true);
+    await templ.connect(memberB).vote(1, true);
+    await ethers.provider.send("evm_increaseTime", [VOTING_PERIOD + DAY]);
+    await ethers.provider.send("evm_mine", []);
+    await templ.executeProposal(1);
+
+    const tokens = await templ.getExternalRewardTokens();
+    const occurrences = tokens.filter((addr) => addr === otherToken.target).length;
+    expect(occurrences).to.equal(1);
+  });
+
   it("reverts when withdrawing more access tokens than available after accounting for the pool", async function () {
     const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE });
     const [, priest, member, voter] = accounts;

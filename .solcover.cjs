@@ -1,4 +1,4 @@
 module.exports = {
   istanbulFolder: 'coverage/contracts',
-  skipFiles: ['mocks']
+  skipFiles: ['contracts/mocks']
 };

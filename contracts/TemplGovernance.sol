@@ -150,15 +150,15 @@ abstract contract TemplGovernance is TemplTreasury {
         if (_proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
         Proposal storage proposal = proposals[_proposalId];
 
-        if (proposal.quorumExempt) {
-            if (block.timestamp < proposal.endTime) revert TemplErrors.VotingNotEnded();
-        } else {
+        if (!proposal.quorumExempt) {
             if (proposal.quorumReachedAt == 0) {
                 revert TemplErrors.QuorumNotReached();
             }
             if (block.timestamp < proposal.quorumReachedAt + executionDelayAfterQuorum) {
                 revert TemplErrors.ExecutionDelayActive();
             }
+        } else {
+            if (block.timestamp < proposal.endTime) revert TemplErrors.VotingNotEnded();
         }
         if (proposal.executed) revert TemplErrors.AlreadyExecuted();
 
@@ -324,11 +324,12 @@ abstract contract TemplGovernance is TemplTreasury {
         proposal.eligibleVoters = memberList.length;
         proposal.quorumReachedAt = 0;
         proposal.quorumExempt = false;
-        if (proposal.eligibleVoters > 0) {
-            if (proposal.yesVotes * 100 >= quorumPercent * proposal.eligibleVoters) {
-                proposal.quorumReachedAt = block.timestamp;
-                proposal.endTime = block.timestamp + executionDelayAfterQuorum;
-            }
+        if (
+            proposal.eligibleVoters != 0 &&
+            proposal.yesVotes * 100 >= quorumPercent * proposal.eligibleVoters
+        ) {
+            proposal.quorumReachedAt = block.timestamp;
+            proposal.endTime = block.timestamp + executionDelayAfterQuorum;
         }
         hasActiveProposal[msg.sender] = true;
         activeProposalId[msg.sender] = proposalId;
