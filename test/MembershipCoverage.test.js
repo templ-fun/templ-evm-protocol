@@ -66,6 +66,18 @@ describe("Membership coverage extras", function () {
     ).to.be.revertedWithCustomError(templ, "NoRewardsToClaim");
   });
 
+  it("reverts when non-members attempt to claim external rewards", async function () {
+    const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE });
+    const [, , member, outsider] = accounts;
+
+    await mintToUsers(token, [member], ENTRY_FEE * 3n);
+    await purchaseAccess(templ, token, [member]);
+
+    await expect(
+      templ.connect(outsider).claimExternalToken(ethers.ZeroAddress)
+    ).to.be.revertedWithCustomError(templ, "NotMember");
+  });
+
   it("guards member pool claim and exposes zero-available treasury info", async function () {
     const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE });
     const [, , member] = accounts;
@@ -120,6 +132,39 @@ describe("Membership coverage extras", function () {
     const gasPaid = receipt.gasUsed * receipt.gasPrice;
     const after = await ethers.provider.getBalance(memberA.address);
     expect(after + gasPaid - before).to.be.gt(0n);
+  });
+
+  it("reverts when ETH external reward claims cannot transfer funds", async function () {
+    const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE });
+    const [, priest, memberA, memberB] = accounts;
+
+    await mintToUsers(token, [memberA, memberB], ENTRY_FEE * 6n);
+
+    const Claimer = await ethers.getContractFactory("contracts/mocks/RevertingClaimer.sol:RevertingClaimer");
+    const claimer = await Claimer.deploy();
+    await claimer.waitForDeployment();
+
+    // Seed contract with tokens and join as member
+    await token.mint(claimer.target, ENTRY_FEE);
+    await claimer.purchaseMembership(await templ.getAddress(), await token.getAddress(), ENTRY_FEE);
+
+    await purchaseAccess(templ, token, [memberA, memberB]);
+
+    const donation = ethers.parseUnits("3", 18);
+    await priest.sendTransaction({ to: await templ.getAddress(), value: donation });
+
+    await templ
+      .connect(memberA)
+      .createProposalDisbandTreasury(ethers.ZeroAddress, VOTING_PERIOD);
+    await templ.connect(memberA).vote(0, true);
+    await templ.connect(memberB).vote(0, true);
+    await ethers.provider.send("evm_increaseTime", [VOTING_PERIOD + DAY]);
+    await ethers.provider.send("evm_mine", []);
+    await templ.executeProposal(0);
+
+    await expect(
+      claimer.claimExternal(await templ.getAddress(), ethers.ZeroAddress)
+    ).to.be.revertedWithCustomError(templ, "ProposalExecutionFailed");
   });
 
   it("reverts when claiming access token or non-existent external rewards", async function () {

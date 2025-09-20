@@ -32,5 +32,13 @@ describe("ChangePriest governance action", function () {
     // Priest updated
     expect(await templ.priest()).to.equal(newPriest.address);
   });
-});
 
+  it("reverts when changePriestDAO is called externally", async function () {
+    const { templ, accounts } = await deployTempl({ entryFee: ENTRY_FEE });
+    const [, , member] = accounts;
+
+    await expect(
+      templ.connect(member).changePriestDAO(member.address)
+    ).to.be.revertedWithCustomError(templ, "NotDAO");
+  });
+});
