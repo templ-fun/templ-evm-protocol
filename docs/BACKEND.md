@@ -1,6 +1,13 @@
 # TEMPL Backend
 
-See the [README](../README.md#architecture) for how the backend fits into TEMPL and the flows in [CORE_FLOW_DOCS.MD](./CORE_FLOW_DOCS.MD); this document covers setup, configuration, and operations.
+Operational handbook for the Express bot that turns on-chain state into XMTP invitations. Read this after the contract deep-dive so the API signatures make sense.
+
+## Why this doc
+- Configure the service for local dev, staging, and production with the right env flags.
+- Understand the endpoints that the frontend and scripts call (`/templs`, `/join`, moderation routes, debug helpers).
+- Learn how the backend protects itself (EIP-712 signatures, replay protection, XMTP identity rotation) and how to respond when XMTP misbehaves.
+
+For an architectural refresher, revisit [README.md#component-overview](../README.md#component-overview) and the diagrams in [CORE_FLOW_DOCS.MD](./CORE_FLOW_DOCS.MD).
 
 ## Setup
 Install dependencies:
@@ -194,3 +201,6 @@ See the [E2E Environments](../README.md#e2e-environments) section of the README 
 4. **Stabilize the bot** – restart the backend once to clear any stalled rotations. Watch for `XMTP boot not ready` log repetition; if it persists, increase `XMTP_BOOT_MAX_TRIES` and ensure the bot wallet still has an available installation slot.
 5. **Recover conversations** – after XMTP resolves the incident, run `curl -s http://localhost:3001/templs?include=groupId` to verify groups are synced, then trigger a manual `POST /join` with a test wallet to confirm invites succeed.
 6. **Post-incident** – re-enable regular traffic, rotate logs, and capture metrics (duration, impacted wallets) for follow-up.
+
+## Next
+Head to [FRONTEND.md](./FRONTEND.md) to see how the browser app integrates with these endpoints and how to exercise them locally.

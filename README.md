@@ -3,146 +3,140 @@
 [![CircleCI](https://dl.circleci.com/status-badge/img/gh/MarcoWorms/templ/tree/main.svg?style=svg&circle-token=CCIPRJ_MhZ5NbNKhpfEAwFSEGDkUH_61036d1e9e936102be414dfd8d86a9318181746a)](https://dl.circleci.com/status-badge/redirect/gh/MarcoWorms/templ/tree/main)
 [![coverage](https://codecov.io/github/MarcoWorms/templ/graph/badge.svg?token=M8SPKQX6UD)](https://codecov.io/github/MarcoWorms/templ)
 
+DAO-governed, token-gated private groups with on-chain treasury management and XMTP messaging. Visit [templ.fun](https://templ.fun) for the public demo.
 
-DAO‑governed token‑gated private groups with onchain treasury management and XMTP messaging
+## System at a Glance
+- Smart contracts on Base enforce access with a one-time ERC-20 entry fee and typed governance.
+- An Express bot watches the chain, owns the XMTP group, and only invites wallets that purchased access.
+- A React client deploys contracts, guides purchases, mirrors proposals, and embeds chat.
+- Shared helpers keep EIP-712 signatures, XMTP polling, and test utilities consistent across the stack.
 
-<p align="center">
-<img width="300" alt="TEMPL logo" src="https://github.com/user-attachments/assets/fa3513b4-75e4-4dbf-a1fb-73e9e27d766f" />
-</p>
-<p align="center">
-<a href="https://templ.fun">TEMPL.fun</a>
-</p>
+```mermaid
+graph TD
+  Users[DAO members\n& deployers] -->|Deploy & govern| Contracts[TEMPL Contracts]
+  Users -->|Join & chat| Frontend[React Frontend]
+  Frontend -->|Invite request| Backend[Express/XMTP Bot]
+  Contracts -->|Events| Backend
+  Backend -->|Invites & updates| XMTP[XMTP Network]
+  Backend -->|Mirrors events| Frontend
+```
 
-## Architecture
+## Read in this Order
+1. **[docs/TEMPL_TECH_SPEC.MD](./docs/TEMPL_TECH_SPEC.MD)** — protocol motivation, economic rules, and governance model.
+2. **[docs/CORE_FLOW_DOCS.MD](./docs/CORE_FLOW_DOCS.MD)** — diagrams for deploy, join, moderation, voting, and treasury moves.
+3. **Implementation deep-dives**
+   - [docs/CONTRACTS.md](./docs/CONTRACTS.md) — Solidity modules, invariants, and typed actions.
+   - [docs/BACKEND.md](./docs/BACKEND.md) — API surface, env configuration, runbooks.
+   - [docs/FRONTEND.md](./docs/FRONTEND.md) — Vite app flows, env flags, testing.
+   - [docs/SHARED.md](./docs/SHARED.md) — cross-package signing/XMTP helpers.
+4. **Operations & tooling**
+   - [docs/PERSISTENCE.md](./docs/PERSISTENCE.md) — storage map (SQLite, XMTP node/browser DBs).
+   - [docs/TEST_LOCALLY.md](./docs/TEST_LOCALLY.md) — quick path to run the full stack.
+   - [scripts/README.md](./scripts/README.md) — deploy/test scripts you will call repeatedly.
 
-A TEMPL combines three pieces:
-- **Smart contracts** on Base gate membership with `purchaseAccess`; a `TemplFactory` fixes the protocol share (recipient + percentage) while allowing per-templ burn/treasury/member splits.
-- **Backend bot** creates the XMTP group with an ephemeral key and only invites paid wallets thereafter (no persistent owner/admin keys retained).
-- **React frontend** deploys contracts, verifies purchases and hosts chat.
-The frontend buys access and requests an invite; the backend can mirror contract events in chat.
+Each doc ends with a pointer to the next item so you can read straight through without context switching.
+
+## Component Overview
+- **Contracts** (`contracts/`) — modular TEMPL implementation (`TemplBase`, `TemplMembership`, `TemplTreasury`, `TemplGovernance`, `TEMPL`, `TemplFactory`) plus Hardhat config and tests.
+- **Backend** (`backend/`) — Node 22 Express server that creates XMTP groups with an ephemeral key, promotes a persistent invite-bot, and exposes `/templs`, `/join`, and moderation endpoints.
+- **Frontend** (`frontend/`) — Vite + React interface for deploying, joining, chatting, and submitting proposals.
+- **Shared utilities** (`shared/`) — ESM helpers for signing, XMTP waits, and deterministic tests consumed by all packages.
+- **Scripts** (`scripts/`) — deployment, wallet generation, and CI orchestration helpers.
+
+Primary deploy/join flow:
 
 ```mermaid
 sequenceDiagram
+    participant User
     participant Frontend
-    participant Backend
     participant Contracts
-
-    Frontend->>Contracts: purchaseAccess()
-    Frontend->>Backend: POST /join
-    Contracts-->>Backend: Purchase event
-    Backend-->>Frontend: Invite & updates
+    participant Backend
+    participant XMTP
+    User->>Frontend: Connect wallet & start flow
+    Frontend->>Contracts: deployTempl() / purchaseAccess()
+    Contracts-->>Backend: AccessPurchased / Proposal events
+    Frontend->>Backend: POST /templs & /join (signed EIP-712)
+    Backend->>XMTP: newGroup / addMembers
+    XMTP-->>Frontend: group discovered
+    Backend-->>Frontend: mirror governance + moderation
 ```
 
-## Documentation
-Use the docs below to dive into each component:
+## Getting Started
 
-- [TEMPL_TECH_SPEC](./docs/TEMPL_TECH_SPEC.MD) – TEMPL protocol technical specifications
-- [CORE_FLOW_DOCS](./docs/CORE_FLOW_DOCS.MD) – core flow service diagrams
-- [CONTRACTS](./docs/CONTRACTS.md) – smart‑contract specification
-- [BACKEND](./docs/BACKEND.md) – XMTP group invite bot and API
-- [FRONTEND](./docs/FRONTEND.md) – React client
-- [PERSISTENCE](./docs/PERSISTENCE.md) – data storage and XMTP DBs
-- [TEST_LOCALLY](./docs/TEST_LOCALLY.md) – fast local end‑to‑end setup
- 
-## Prerequisites
-- Node `22.18.0` (enforced via `engines` in `package.json`).
-- After installing (e.g., `npm ci`), enable hooks with `npm run prepare` (Husky).
-  
-## Monorepo Structure
-- `contracts/` – Hardhat + Solidity 0.8.23 (modularized across `TemplBase`, `TemplMembership`, `TemplTreasury`, `TemplGovernance`, and concrete `TEMPL`)
-- `backend/` – Node service with XMTP bot and HTTP API
-- `frontend/` – Vite + React demo app with Playwright e2e
-- `shared/` – JS utilities shared by backend and frontend
-- `deployments/` – network-specific contract records
-- `scripts/` – Hardhat deployment and utility scripts
-- `test/` – Hardhat contract tests
-- `artifacts/` – compiled contract artifacts
-- `cache/` – Hardhat compilation cache
+### Prerequisites
+- Node.js `22.18.0`
+- `npm ci` in the repo root installs top-level dependencies.
+- Run `npm run prepare` once to install Husky hooks.
 
-## Quick Start
-1. **Install**
-   Install all dependencies with locked versions:
-   ```bash
-   npm ci
-   npm --prefix backend ci
-   npm --prefix frontend ci
-   ```
+### Install
+```bash
+npm ci
+npm --prefix backend ci
+npm --prefix frontend ci
+```
 
-2. **Test**
-   Run the full suite locally:
-   ```bash
-   npm run test:all
-   ```
+### Test the Monorepo
+```bash
+npm run test:all
+```
+This aggregates contract tests, Slither, backend `node --test`, frontend Vitest, and Playwright e2e. Review package docs for individual commands when iterating locally.
 
-   See component docs for individual commands.
+### Run the Apps (dev)
+```bash
+npm --prefix backend start
+npm --prefix frontend run dev
+```
+The backend expects `backend/.env` with `RPC_URL`, `BOT_PRIVATE_KEY`, `ALLOWED_ORIGINS`, and `BACKEND_SERVER_ID`. The frontend reads matching `VITE_*` variables; see component docs for full matrices.
 
-3. **Run**
-   Start the backend and frontend services:
-   ```bash
-   npm --prefix backend start
-   npm --prefix frontend run dev
-   ```
-   The backend expects environment variables like `BOT_PRIVATE_KEY`, `RPC_URL`, and `ALLOWED_ORIGINS` in `backend/.env`. See [BACKEND.md](./docs/BACKEND.md) and [FRONTEND.md](./docs/FRONTEND.md) for details.
+## Repository Layout
+- `contracts/` — Hardhat project, Solidity 0.8.23 contracts, tests under `test/`.
+- `backend/` — Express service, `src/` for code, `test/` for `node --test`, coverage reports under `coverage/`.
+- `frontend/` — Vite app, `src/`, `e2e/` Playwright specs, `dist/` build output.
+- `shared/` — shared JS utilities.
+- `scripts/` — helper scripts (`deploy.js`, `gen-wallets.js`, `test-all.sh`).
+- `deployments/` — network artifacts written by deployment scripts.
+- `artifacts/`, `cache/` — Hardhat build outputs.
 
-## Commands
-- Contracts: `npm run compile`, `npm test`, `npm run node`, `npm run deploy:local`, `npm run slither`, `npm run coverage`
-- Backend: `npm --prefix backend start`, `npm --prefix backend test`, `npm --prefix backend run coverage`, `npm --prefix backend run lint`, `npm --prefix backend run lint:fix`
-- Frontend: `npm --prefix frontend run dev`, `npm --prefix frontend test`, `npm --prefix frontend run coverage`, `npm --prefix frontend run test:e2e`, `npm --prefix frontend run build`, `npm --prefix frontend run preview`
-- Integration (end‑to‑end core flows): `npm --prefix frontend run test -- src/core-flows.integration.test.js`
+## Everyday Commands
+| Domain | Commands |
+| --- | --- |
+| Contracts | `npm run compile`, `npm test`, `npm run node`, `npm run deploy:local`, `npm run slither`, `npm run coverage` |
+| Backend | `npm --prefix backend start`, `npm --prefix backend test`, `npm --prefix backend run lint`, `npm --prefix backend run coverage` |
+| Frontend | `npm --prefix frontend run dev`, `npm --prefix frontend test`, `npm --prefix frontend run lint`, `npm --prefix frontend run build`, `npm --prefix frontend run test:e2e` |
+| Shared | `npm --prefix shared test` or run specific files through frontend/backend runners |
+| CI mirror | `./scripts/test-all.sh` |
 
-## Environment Variables
+## Configuration & Environment
+Essential variables to set early:
 
-Minimal local setup requires only a handful of variables:
-
-| Variable | Description | Location |
+| Variable | Location | Purpose |
 | --- | --- | --- |
-| `RPC_URL` | RPC endpoint for Base network | `.env`, `backend/.env` |
-| `PRIVATE_KEY` | Deployer wallet key for contract deployments | `.env` |
-| `FACTORY_ADDRESS` | Optional; reuse an existing `TemplFactory` instead of deploying a new one | `.env` |
-| `PRIEST_ADDRESS` | Address that will hold the priest role for the templ created by `scripts/deploy.js` | `.env` |
-| `PROTOCOL_FEE_RECIPIENT` | Address receiving the factory’s protocol share | `.env` |
-| `BURN_PERCENT` / `TREASURY_PERCENT` / `MEMBER_POOL_PERCENT` | Percentages allocated to burn, treasury, and member pool (default 30/30/30) | `.env` |
-| `PROTOCOL_PERCENT` | Percentage forwarded to the protocol recipient (default 10) | `.env` |
-| `QUORUM_PERCENT` (optional) | Override quorum percentage for governance (default 33) | `.env` |
-| `EXECUTION_DELAY_SECONDS` (optional) | Override execution delay after quorum (default 7 days) | `.env` |
-| `BURN_ADDRESS` (optional) | Override burn destination address (default `0x000000000000000000000000000000000000dEaD`) | `.env` |
+| `RPC_URL` | `backend/.env`, deploy scripts | Provider for on-chain reads/writes |
+| `BOT_PRIVATE_KEY` | `backend/.env` | XMTP invite-bot identity (Hardhat key in local dev) |
+| `BACKEND_DB_ENC_KEY` | `backend/.env` (prod) | SQLCipher key for XMTP Node DB (32-byte hex) |
+| `ALLOWED_ORIGINS` | `backend/.env` | CORS allowlist |
+| `BACKEND_SERVER_ID` / `VITE_BACKEND_SERVER_ID` | Backend + frontend env | Shared identifier bound into typed signatures |
+| `VITE_XMTP_ENV` / `XMTP_ENV` | Frontend `.env`, backend `.env` | Target XMTP network (`local`, `dev`, `production`) |
+| `TEMPL_ENABLE_LOCAL_FALLBACK` | Frontend env/tests | Merge local registry with `/templs` (tests only) |
 
-`createTempl(token, entryFee)` on the factory uses the defaults above (priest = caller, 30/30/30 split, quorum 33%, 7 day execution delay, canonical dead burn address). Providing `BURN_PERCENT`/`TREASURY_PERCENT`/`MEMBER_POOL_PERCENT` (and the optional overrides) lets `scripts/deploy.js` call `createTemplWithConfig` with custom values.
-| `TOKEN_ADDRESS` | ERC‑20 address required for templ creation | `.env` |
-| `ENTRY_FEE` | Entry fee (wei) charged to join the templ | `.env` |
-| `BOT_PRIVATE_KEY` | XMTP invite-bot wallet key (auto-generated if omitted) | `backend/.env` |
-| `ALLOWED_ORIGINS` | Comma-separated frontend origins allowed to call the backend | `backend/.env` |
-| `BACKEND_DB_ENC_KEY` | 32-byte hex key to encrypt XMTP Node DB. Required in production; in dev/test the backend derives a fallback from the bot key if omitted. | `backend/.env` |
-| `EPHEMERAL_CREATOR` | Use a fresh, throwaway key to create groups (default and recommended for prod) | `backend/.env` |
-| `XMTP_BOOT_MAX_TRIES` | Max boot retries for XMTP client initialization | `backend/.env` |
-| `REQUIRE_CONTRACT_VERIFY` | When `1` (required in prod), backend verifies contract code and on-chain priest | `backend/.env` |
-| `XMTP_METADATA_UPDATES` | Set to `0` to skip name/description updates on XMTP groups (keep at `1` in prod) | `backend/.env` |
-| `BACKEND_SERVER_ID` | String identifier bound into EIP-712 signatures (must match frontend’s `VITE_BACKEND_SERVER_ID`) | `backend/.env` |
-| `TEMPL_ENABLE_LOCAL_FALLBACK` | Optional frontend/debug toggle that lets tests merge local templ registries with the `/templs` API; leave unset in production | env when running tests |
+Each package doc expands on optional flags (`DISABLE_XMTP_WAIT`, `RATE_LIMIT_STORE`, debug toggles). Production setups must align backend and frontend server IDs and provide encryption keys; refer to [docs/BACKEND.md](./docs/BACKEND.md#environment-variables) and [docs/CONTRACTS.md](./docs/CONTRACTS.md#configuration--deployment) for full matrices.
 
-See [BACKEND.md#environment-variables](./docs/BACKEND.md#environment-variables) and [CONTRACTS.md#configuration--deployment](./docs/CONTRACTS.md#configuration--deployment) for complete lists.
+## Deploying to Production
+1. Populate `.env` (root) for scripts and `backend/.env` for the bot. Required fields: provider URL, `FACTORY_ADDRESS` (optional), fees, quorum/delay, bot key, server IDs, and `BACKEND_DB_ENC_KEY`.
+2. Run `npm run test:all` plus `npm run slither` to satisfy CI requirements.
+3. Deploy via `npx hardhat run scripts/deploy.js --network <network>`. Record factory + templ addresses and the XMTP group ID emitted by the backend.
+4. Host the backend with `NODE_ENV=production` and `REQUIRE_CONTRACT_VERIFY=1`. Align `ALLOWED_ORIGINS` with your frontend domain.
+5. Build and host the frontend (`npm --prefix frontend run build`). Ensure runtime `VITE_*` variables match backend configuration.
+6. Keep `DISABLE_XMTP_WAIT`, `VITE_ENABLE_BACKEND_FALLBACK`, and other test toggles disabled in production.
 
-## Deploying to production
-1. Create a `.env` file in the project root for deployment scripts and a `backend/.env` for the bot. Required variables are documented in [CONTRACTS.md#configuration](./docs/CONTRACTS.md#configuration) and [BACKEND.md#environment-variables](./docs/BACKEND.md#environment-variables).
-2. Run the full test suite and Slither analysis.
-3. Deploy with `scripts/deploy.js`. The script deploys `TemplFactory` when a `FACTORY_ADDRESS` isn’t provided, then creates a templ instance with the configured percentages. Record the templ contract address and the XMTP group ID returned by the backend.
-4. Host the backend bot and set `ALLOWED_ORIGINS` to the permitted frontend URL(s). In production, contract address is verified on‑chain and the `priest` address must match the deployed contract.
-5. Build the frontend (`npm --prefix frontend run build`) and serve the static files.
+### Production Checklist
+- Shared server id (`BACKEND_SERVER_ID` == `VITE_BACKEND_SERVER_ID`).
+- Provide `BACKEND_DB_ENC_KEY`; backend refuses to boot without it in production.
+- Monitor XMTP install counts (max 10 per inbox; 256 action cap per inbox run).
+- Use trusted RPC endpoints; backend assumes honest responses when guarding invites.
 
-### Production Configuration
-- Set `NODE_ENV=production` for the backend. In this mode, `/templs` chain/priest checks are always enforced; set `REQUIRE_CONTRACT_VERIFY=1` to enable the same verification in other environments.
-- Provide `BACKEND_DB_ENC_KEY` (32‑byte hex). The backend will refuse to boot without it in production.
-- If `BOT_PRIVATE_KEY` is omitted, the backend generates one and stores it in the SQLite DB (table `kv`, key `bot_private_key`) so the invite-bot identity remains stable.
-- Bind signatures to your deployment by setting a shared server id:
-  - Backend: `BACKEND_SERVER_ID="templ-prod-<region>"`
-  - Frontend: `VITE_BACKEND_SERVER_ID="templ-prod-<region>"`
-  These values are included in the EIP‑712 messages and must match; this prevents signatures from being replayed against a different server.
--
-Do not use test‑only flags in production (e.g., `DISABLE_XMTP_WAIT`, `TEMPL_ENABLE_LOCAL_FALLBACK`, `VITE_ENABLE_BACKEND_FALLBACK`).
-
-## Core flows
-
-High‑level sequence for deploying, joining, and messaging (see [CORE_FLOW_DOCS.MD](./docs/CORE_FLOW_DOCS.MD) for full diagrams):
+## Core Flows
+High-level deploy → join → chat sequence (see [docs/CORE_FLOW_DOCS.MD](./docs/CORE_FLOW_DOCS.MD) for expanded diagrams):
 
 ```mermaid
 sequenceDiagram
@@ -151,79 +145,39 @@ sequenceDiagram
     participant B as Backend
     participant X as XMTP
 
-    Note over F: deployTempl
-    F->>C: deployTempl()
-    C-->>F: contract address
-    F->>B: POST /templs {contract}
+    Note over F,B: deployTempl
+    F->>C: createTempl()
+    C-->>F: templ address
+    F->>B: POST /templs
     B->>X: newGroup
-    B-->>F: {groupId}
 
     Note over F: purchaseAndJoin
     F->>C: purchaseAccess()
-    C-->>F: membership granted
+    C-->>F: membership
     F->>B: POST /join
     B->>X: addMembers
-    B-->>F: {groupId}
 
-    Note over F: messaging
-    F->>X: send message
-    X-->>F: receive message
+    Note over F,X: chat & govern
+    F->>X: send/receive
+    C-->>B: Proposal/Vote events
+    B->>X: mirror updates
 ```
 
-Core flows include TEMPL creation, paid onboarding, chat, moderation, proposal drafting, voting, and execution.
-
 ## XMTP Essentials
-- Environments: set `XMTP_ENV`/`VITE_XMTP_ENV` to `dev`, `production`, or `local`.
-- Identity: messages route to an `inboxId` with multiple installations (devices/agents). XMTP caps installs at 10 per inbox. Install/Revoke count as inbox action and each inbox has only 256 actions before it requires rotation by increasing the nonce of the transaction.
-- Databases: Node client DB is SQLCipher‑encrypted (see `BACKEND_DB_ENC_KEY`); browser DB lives in OPFS per origin (not encrypted). See [PERSISTENCE.md](./docs/PERSISTENCE.md).
-- Discovery: after joins/creation, clients sync conversations; the backend may send a small warm message to help discovery.
-- Resolution: the backend resolves inboxIds from the network and ignores client‑supplied ids except in explicit local/test fallback modes.
+- Set `XMTP_ENV`/`VITE_XMTP_ENV` to `dev`, `production`, or `local`. Playwright defaults to `dev`; set `E2E_XMTP_LOCAL=1` to boot the bundled local node.
+- Inbox identities are shared across installations; XMTP dev caps installs at 10 per inbox and ~256 total actions. Rotate wallets or reuse local DBs to stay under caps.
+- Node-side XMTP DBs are SQLCipher-encrypted; browsers store OPFS files per origin (not encrypted). Avoid running multiple clients for the same inbox on one page.
+- Backend resolves inbox IDs server-side and enforces invite sequencing; client-provided IDs are ignored outside local/test fallbacks.
 
 ## Security & Hardening
+- **Contracts** — one-member-one-vote governance, typed proposal actions (pause/config/withdraw/disband/change priest), non-reentrant handlers, member pool cannot be withdrawn except via disband. No arbitrary external calls.
+- **Backend** — EIP-712 signatures include `{ action, contract, chainId, nonce, issuedAt, expiry, server }`, stored in SQLite for replay protection. Production mode enforces on-chain priest and bytecode checks on `/templs`.
+- **Operations** — never enable debug/test flags (`DISABLE_XMTP_WAIT`, `VITE_ENABLE_BACKEND_FALLBACK`, etc.) in production. Protect bot keys and encryption keys; compromise allows unauthorized invites/mutes.
 
-- Contracts
-  - Proposal execution is restricted to an allowlist of safe DAO actions; arbitrary external calls are disabled.
-  - Governance actions are allowlisted to: pause/unpause (`setPausedDAO`), reprice entry fee and optionally adjust the non-protocol fee splits (`updateConfigDAO` with token changes disabled), move treasury in part (`withdrawTreasuryDAO`), change the priest (`changePriestDAO`), and disband the full balance of any token into member rewards (`disbandTreasuryDAO(token)`).
-  - Voting is one member‑one vote; proposer auto‑YES; votes are changeable until eligibility closes. Before quorum, any member may vote; after quorum is reached, only members who joined before `quorumReachedAt` may vote (late joiners revert).
-  - Governance may move the access‑token treasury and any tokens or ETH held by the contract (including donations) via proposals. The member pool cannot be withdrawn; it is only claimable by members. Arbitrary external calls remain disabled.
-- Backend API
-  - EIP‑712 typed signatures must include `{ action, contract, nonce, issuedAt, expiry, chainId, server }`.
-  - Bind signatures to your deployment by setting a shared server id: `BACKEND_SERVER_ID` and `VITE_BACKEND_SERVER_ID` must match.
-  - Server enforces replay protection (SQLite `signatures` table). In production (or when `REQUIRE_CONTRACT_VERIFY=1`), the server verifies contract code, chainId, and that on‑chain `priest()` equals the signing address on `/templs`.
-  - Debug endpoints are disabled by default; when enabled, they are restricted to localhost.
-  - CORS must be set via `ALLOWED_ORIGINS` for standalone deployments.
-  - Rate‑limit store: auto‑uses Redis when `REDIS_URL` is set; otherwise falls back to in‑memory (not recommended for production).
-- Identity resolution
-  - The backend resolves XMTP inboxIds server‑side and waits for visibility before inviting. Client‑supplied inboxIds are ignored in normal environments. In local/test fallback modes (e.g., E2E), if network resolution is unavailable the server may deterministically accept a provided inboxId or generate one to keep tests moving.
-- Data at rest
-  - XMTP Node DB is SQLCipher‑encrypted; provide `BACKEND_DB_ENC_KEY` (32‑byte hex). The server refuses to boot without it in production.
-  - Browser DB lives in OPFS (not encrypted); avoid multiple clients per page to prevent access‑handle contention.
-- Operational notes
-  - Do not use test‑only flags in production (e.g., `DISABLE_XMTP_WAIT`).
-  - XMTP dev network caps installs at 10 per inbox and ~256 total actions; tests rotate wallets or reuse local DBs to avoid the cap.
-  - RPC responses are assumed honest; use a trusted provider.
-  - For auditors: see CONTRACTS.md for custom errors, events, invariants, fee splits, and DAO constraints. CI runs tests and Slither.
+## Operational References
+- **E2E environments** — defaults to XMTP dev; set `E2E_XMTP_LOCAL=1` to start `xmtp-local-node`. Details live in [docs/TEST_LOCALLY.md](./docs/TEST_LOCALLY.md).
+- **Debug endpoints** — enable with `ENABLE_DEBUG_ENDPOINTS=1`; see [docs/BACKEND.md#debug-endpoints](./docs/BACKEND.md#debug-endpoints) for `/debug/group`, `/debug/conversations`, `/debug/membership`, `/debug/last-join`, `/debug/inbox-state`, `/debug/send`.
+- **Troubleshooting** — `npm run test:all` failures often stem from port contention (8545/3001/5173) or XMTP readiness; component docs include runbooks for XMTP outages, bot key rotation, and DB encryption.
 
-
-## E2E Environments
-- Default: XMTP dev
-  - Playwright sets `XMTP_ENV=dev` for backend and `VITE_XMTP_ENV=dev` for frontend by default. Override with `E2E_XMTP_ENV=production` if you want to target production.
-- Local XMTP: set `E2E_XMTP_LOCAL=1`
-  - Playwright starts `xmtp-local-node`, sets `XMTP_ENV=local` and `VITE_XMTP_ENV=local`
-  - Local-only repro tests are enabled
-
-## Debug Endpoints (backend)
-- Requires `ENABLE_DEBUG_ENDPOINTS=1` on the backend.
-- `GET /debug/group?contractAddress=<addr>&refresh=1`
-- `GET /debug/conversations`
-- `GET /debug/membership?contractAddress=<addr>&inboxId=<id>`
-- `GET /debug/last-join`
-- `GET /debug/inbox-state?inboxId=<id>&env=production`
- - `POST /debug/send` – send a free‑form message to a group conversation for discovery warmup
-
-Additional listing helper:
-- `GET /templs` – lists known TEMPLs `{ templs: [...] }`. Use `?include=groupId` to include `groupId` in the response objects.
-
-## Troubleshooting test:all
-- If backend tests appear to “hang”, ensure network gating isn’t blocking. The backend skips XMTP readiness checks in test mode by default. You can also set `DISABLE_XMTP_WAIT=1` for the backend during tests.
-- For e2e, ensure ports 8545/3001/5179 are free.
+## Next Step
+Continue with the protocol deep dive in [docs/TEMPL_TECH_SPEC.MD](./docs/TEMPL_TECH_SPEC.MD). Every subsequent doc links forward so you can walk the entire stack without backtracking.

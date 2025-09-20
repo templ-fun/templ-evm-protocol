@@ -1,6 +1,13 @@
 # Persistence Overview
 
-This document outlines where TEMPL persists state, the storage technologies in play, and how data flows through the system. It consolidates all persistence details into a single reference.
+Understand what lives on-chain, inside SQLite, and within XMTP client databases so you can reason about backup, security, and local development. Read this right after the shared utilities to connect helpers with stored data.
+
+## Why this doc
+- Identify every storage location touched by the stack and what data resides there.
+- Learn how the backend manages replay protection, moderation state, and bot keys in SQLite.
+- See how XMTP Node/Browser databases behave so you can avoid OPFS/SQLCipher pitfalls.
+
+This document outlines where TEMPL persists state, the storage technologies in play, and how data flows through the system.
 
 | Storage          | Location                                            | Encryption                   | Usage                                            |
 | ---------------- | --------------------------------------------------- | ---------------------------- | ------------------------------------------------ |
@@ -114,3 +121,6 @@ This section answers common questions about what data is stored. It clarifies th
   - Use fresh funded wallets and reuse OPFS DBs when possible.
   - Avoid multiple browser clients for the same inbox on a single page.
   - Backend Node client reuses its local SQLCipher DB; clearing `groups.db` is safe.
+
+## Next
+Follow the hands-on setup in [TEST_LOCALLY.md](./TEST_LOCALLY.md) to exercise these storage layers end-to-end.

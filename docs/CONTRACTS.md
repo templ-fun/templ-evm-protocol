@@ -1,5 +1,13 @@
 # TEMPL Contracts
 
+Understand the Solidity modules that guarantee membership rules, treasury custody, and governance invariants. Use this alongside the flow diagrams to connect method names with runtime behavior.
+
+## What you’ll learn
+- Module layout and how responsibilities split across `TemplBase`, `TemplMembership`, `TemplTreasury`, `TemplGovernance`, `TEMPL`, and `TemplFactory`.
+- Economic model for entry fees, reward remainders, and external reward pools.
+- Governance constraints: proposal lifecycle, quorum, execution, and allowed actions.
+- Deployment hooks and invariants auditors rely on.
+
 ## Overview
 Solidity 0.8.23. Core contract is `contracts/TEMPL.sol` with shared errors in `contracts/TemplErrors.sol`. See `README.md#architecture` for the bigger picture; this document reflects the exact on-chain behavior and interfaces.
 
@@ -168,3 +176,6 @@ sequenceDiagram
 
 ## Tests
 The Hardhat suite exercises: fee splits and counters, reentrancy guards, one‑member/one‑vote rules (proposer auto‑YES), post‑quorum voting eligibility, typed DAO actions (pause/config/withdraw/changePriest/disband), proposal pagination, and all public views.
+
+## Next
+Continue to [BACKEND.md](./BACKEND.md) for API behavior, environment setup, and operational runbooks.

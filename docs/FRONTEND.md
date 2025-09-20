@@ -1,6 +1,11 @@
 # TEMPL Frontend
 
-See the [README](../README.md#architecture) for how the frontend fits into TEMPL and the flows in [CORE_FLOW_DOCS.MD](./CORE_FLOW_DOCS.MD); this doc covers local development and testing.
+Guide to running, configuring, and testing the Vite + React client that deploys templs, signs purchases, and mirrors governance. Pair this with the backend doc so you know which endpoints the UI hits.
+
+## Why this doc
+- Set up environment variables for local dev, staging, and production builds.
+- Understand developer workflows: hot reload, unit tests, Playwright e2e, and XMTP local mode.
+- Learn which flows the UI implements (deploy, join, chat, moderate) and how it uses shared helpers.
 
 ## Prerequisites
 
@@ -80,3 +85,6 @@ flowchart LR
 - The app relies on the backend service for invitations; if the service is down no new members can join.
 - Users must share the contract address and group ID manually; there is no routing.
 - Proposal and vote transactions are signed by the connected wallet; proposal actions are restricted to an allowlist (pause/unpause, config, treasury transfers), but users should still review the action and parameters before approving.
+
+## Next
+Review the shared helpers in [SHARED.md](./SHARED.md) to see the utilities both frontend and backend import.

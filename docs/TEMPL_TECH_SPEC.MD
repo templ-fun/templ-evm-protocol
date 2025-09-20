@@ -1,21 +1,34 @@
 # TEMPL Protocol — Technical Specifications
 
+## Why this doc
+- Understand the economic guarantees that every templ instance inherits from the factory.
+- Learn the exact membership + reward lifecycle before you dive into implementation details.
+- Map governance constraints so you can reason about proposal safety and treasury custody.
+
+## How it flows
+1. **Abstract & system overview** — a quick mental model for the full protocol.
+2. **On-chain mechanics** — storage layout, fee splits, membership lifecycle, governance rules.
+3. **Off-chain hooks** — how signatures and XMTP glue the app together.
+4. **Safety notes** — invariants and assumptions that audits rely on.
+
 ## Abstract
 
 TEMPL is a DAO‑governed, token‑gated private group system that combines:
 
-- On‑chain membership with a fixed ERC‑20 entry fee (one‑time, non‑transferable)
-- Automatic fee split when new member joins (burn/treasury/member-pool portions are per-templ; protocol share is fixed by the factory)
-- One‑member‑one‑vote governance over an allowlisted set of safe actions
-- Views and signatures that let a backend enforce access to an XMTP group chat
+- On‑chain membership with a fixed ERC‑20 entry fee (one‑time, non‑transferable).
+- Automatic fee splits when a new member joins (burn/treasury/member-pool portions are per templ; the protocol share is fixed by the factory).
+- One‑member‑one‑vote governance over an allowlisted set of safe actions.
+- Views and signatures that let a backend enforce access to an XMTP group chat.
 
 ## System Overview
 
-- Smart contracts (Solidity 0.8.23) gate membership and manage the treasury and member pool.
-- Backend (Node/Express) creates the XMTP group with a short‑lived ephemeral key, then uses a persistent invite‑bot identity to invite on‑chain members. No persistent owner/admin keys are retained; the bot is not used for banning. It also mirrors governance events and enforces moderation via signatures.
-- Frontend (Vite + React) deploys contracts, buys access, requests invites, and surfaces governance and chat.
+The protocol relies on three cooperating layers:
 
-**High‑level flow (deploy → join → chat):**
+- **Smart contracts** (Solidity 0.8.23) gate membership and manage the treasury and member pool.
+- **Backend** (Node/Express) creates the XMTP group with a short‑lived ephemeral key, then uses a persistent invite‑bot identity to invite on-chain members. No persistent owner/admin keys are retained; the bot is not used for banning. It also mirrors governance events and enforces moderation via signatures.
+- **Frontend** (Vite + React) deploys contracts, buys access, requests invites, and surfaces governance + chat.
+
+### High-level flow (deploy → join → chat)
 
 ```mermaid
 sequenceDiagram
@@ -236,12 +249,15 @@ flowchart LR
 - XMTP Browser DB: OPFS identity and metadata; advise one client per page to avoid OPFS access‑handle contention.
 
 ## Glossary
-- **Priest**: Contract’s designated address with limited special power:
-  - its disband proposals are quorum‑exempt
-  - priests can `/mute` and `/delegateMute` in the TEMPL XMTP chat
-  - priest can be changed via DAO proposal
-- **Treasury**: Portion of access token and any donations held by the contract, withdrawable via proposals.
-- **Member Pool**: Accrual bucket distributed equally to members; claimable pro‑rata by address.
-- **Disband**: Governance action moving the entire available access‑token treasury into the member pool equally.
-- **Quorum**: 33% of eligible voters; eligibility freezes after quorum.
-- **XMTP Group**: Off‑chain chat space created via an ephemeral key; the backend’s bot identity has invite‑only powers to add on‑chain members. No persistent owner/admin keys are retained.
+- **Priest** — Contract’s designated address with limited special power:
+  - its disband proposals are quorum-exempt.
+  - priests can `/mute` and `/delegateMute` in the TEMPL XMTP chat.
+  - priest can be changed via DAO proposal.
+- **Treasury** — Portion of access token and any donations held by the contract, withdrawable via proposals.
+- **Member Pool** — Accrual bucket distributed equally to members; claimable pro-rata by address.
+- **Disband** — Governance action moving the entire available access-token treasury into the member pool equally.
+- **Quorum** — 33% of eligible voters; eligibility freezes after quorum.
+- **XMTP Group** — Off-chain chat space created via an ephemeral key; the backend’s bot identity has invite-only powers to add on-chain members. No persistent owner/admin keys are retained.
+
+## Next
+Move to [CORE_FLOW_DOCS.MD](./CORE_FLOW_DOCS.MD) for step-by-step diagrams of the flows outlined here.

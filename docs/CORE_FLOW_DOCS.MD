@@ -1,6 +1,11 @@
 # Core Flow Service Diagrams
 
-Components and message flows powering TEMPL's core protocol.
+Visual walk-throughs of the interactions between contracts, backend, frontend, and XMTP. Read this after the protocol spec so you can picture the runtime choreography.
+
+## How to use this doc
+- Skim the flow index to jump to a scenario (deploy, join, moderation, governance).
+- Each section starts with a flowchart and is followed by sequence details when additional context helps.
+- Keep [docs/CONTRACTS.md](./CONTRACTS.md) nearby for function definitions referenced in callouts.
 
 ## Flow overview
 - [1. Templ creation](#1-templ-creation)
@@ -231,3 +236,6 @@ Backend resolves inboxIds from the XMTP network via `findInboxIdByIdentifier` an
 ## Errors, Retries & Discovery
 - `/join` may return HTTP 503 until the member identity is visible on XMTP; the frontend should retry.
 - Browsers discover the group by calling `conversations.sync()`, `preferences.sync()`, `conversations.syncAll([...])` and polling/streaming for the conversation id.
+
+## Next
+Dive into [CONTRACTS.md](./CONTRACTS.md) to see how the Solidity modules back these flows.

@@ -1,7 +1,13 @@
 # Test Locally (Fast Path)
 
-This guide spins up a full local stack (Hardhat + backend + frontend) and lets you use pre‑generated wallets in MetaMask to act as the priest and a member. It uses Hardhat’s default accounts; never reuse these keys on real networks.
-You can run against XMTP dev (default) or optionally a local XMTP node.
+Bring the entire stack up on your machine so you can deploy a templ, join as members, and exercise governance without touching production services.
+
+## Why this doc
+- Spin up Hardhat, the backend bot, and the frontend with minimal ceremony.
+- Preload MetaMask with deterministic wallets so you can test priest/member roles quickly.
+- Optionally run against a local XMTP node when you need hermetic e2e tests.
+
+This guide uses Hardhat’s default accounts; never reuse these keys on real networks. XMTP dev is the default target, but you can switch to a local node when needed.
 
 ## Prerequisites
 
@@ -155,3 +161,6 @@ The chat auto‑loads the last 100 messages and any past proposals. Use “Load 
 - Backend CORS: update `ALLOWED_ORIGINS` in `backend/.env` if your frontend origin differs.
 - Ports in use: stop stray `:8545`, `:3001`, or `:5173` processes before restarting.
 - XMTP boot time: the first run may take ~20–60s while the SDK initializes identity and device sync. Subsequent runs are faster.
+
+## Next
+Check [../scripts/README.md](../scripts/README.md) for deployment, wallet, and CI scripts that build on this setup.
