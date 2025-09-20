@@ -42,7 +42,11 @@ describe("TEMPL Contract with DAO Governance", function () {
                     priest.address,
                     priest.address,
                     await token.getAddress(),
-                    invalidFee
+                    invalidFee,
+                    30,
+                    30,
+                    30,
+                    10
                 )
             ).to.be.revertedWithCustomError(TEMPL, "InvalidEntryFee");
         });
@@ -54,7 +58,11 @@ describe("TEMPL Contract with DAO Governance", function () {
                     ethers.ZeroAddress,
                     priest.address,
                     await token.getAddress(),
-                    ENTRY_FEE
+                    ENTRY_FEE,
+                    30,
+                    30,
+                    30,
+                    10
                 )
             ).to.be.revertedWithCustomError(TEMPL, "InvalidRecipient");
         });
@@ -66,7 +74,11 @@ describe("TEMPL Contract with DAO Governance", function () {
                     priest.address,
                     ethers.ZeroAddress,
                     await token.getAddress(),
-                    ENTRY_FEE
+                    ENTRY_FEE,
+                    30,
+                    30,
+                    30,
+                    10
                 )
             ).to.be.revertedWithCustomError(TEMPL, "InvalidRecipient");
         });
@@ -78,7 +90,11 @@ describe("TEMPL Contract with DAO Governance", function () {
                     priest.address,
                     priest.address,
                     ethers.ZeroAddress,
-                    ENTRY_FEE
+                    ENTRY_FEE,
+                    30,
+                    30,
+                    30,
+                    10
                 )
             ).to.be.revertedWithCustomError(TEMPL, "InvalidRecipient");
         });
@@ -90,7 +106,11 @@ describe("TEMPL Contract with DAO Governance", function () {
                     priest.address,
                     priest.address,
                     await token.getAddress(),
-                    0
+                    0,
+                    30,
+                    30,
+                    30,
+                    10
                 )
             ).to.be.revertedWithCustomError(TEMPL, "AmountZero");
         });
@@ -424,7 +444,11 @@ describe("TEMPL Contract with DAO Governance", function () {
             const newFee = ethers.parseUnits("200", 18);
             const callData = encodeUpdateConfigDAO(
                 ethers.ZeroAddress, // Don't change token
-                newFee
+                newFee,
+                false,
+                0,
+                0,
+                0
             );
 
             await templ.connect(user1).createProposal(
@@ -563,7 +587,11 @@ describe("TEMPL Contract with DAO Governance", function () {
         it("Should prevent config changes without DAO approval", async function () {
             await expect(templ.connect(priest).updateConfigDAO(
                 await token.getAddress(),
-                ethers.parseUnits("500", 18)
+                ethers.parseUnits("500", 18),
+                false,
+                0,
+                0,
+                0
             )).to.be.revertedWithCustomError(templ, "NotDAO");
         });
 
@@ -831,7 +859,11 @@ describe("TEMPL Contract with DAO Governance", function () {
                 priest.address,
                 priest.address, // protocolFeeRecipient
                 await token.getAddress(),
-                10 // Minimum allowed
+                10n, // Minimum allowed
+                30,
+                30,
+                30,
+                10
             ]);
 
             await token.connect(user1).approve(await minTempl.getAddress(), 10);
@@ -847,7 +879,11 @@ describe("TEMPL Contract with DAO Governance", function () {
                 priest.address,
                 priest.address, // protocolFeeRecipient
                 await token.getAddress(),
-                9 // Below minimum
+                9,
+                30,
+                30,
+                30,
+                10
             )).to.be.revertedWithCustomError(factory, "EntryFeeTooSmall");
         });
 

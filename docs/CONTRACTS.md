@@ -8,15 +8,18 @@ Solidity 0.8.23. Core contract is `contracts/TEMPL.sol` with shared errors in `c
 - `TemplMembership`: membership lifecycle (`purchaseAccess`, claims, view helpers) and accounting for the member pool.
 - `TemplTreasury`: governance-callable treasury/config/priest handlers and their internal helpers.
 - `TemplGovernance`: proposal creation, voting/quorum logic, execution router, and governance view helpers.
-- `TEMPL`: thin concrete contract wiring the constructor requirements (`priest`, `protocolFeeRecipient`, `token`, `entryFee`) and exposing the payable `receive` hook.
+- `TEMPL`: thin concrete contract wiring the constructor requirements (`priest`, `protocolFeeRecipient`, `token`, `entryFee`, fee splits) and exposing the payable `receive` hook.
+- `TemplFactory`: immutable protocol recipient/basis points plus `createTempl` helper that deploys templ instances with per-templ burn/treasury/member splits.
 
 ## Economic Model
-- 30% Burn: sent to `0x000000000000000000000000000000000000dEaD`.
-- 30% Treasury: DAO-controlled. The `treasuryBalance` counter tracks the entry-fee share; additional tokens/ETH donated directly to the contract are still available to governance via the contract’s free balance (`balanceOf - memberPoolBalance`).
-- 30% Member Pool: claimable by existing members via `claimMemberPool()`.
-- 10% Protocol Fee: forwarded to immutable `protocolFeeRecipient`.
+Entry fees are split according to four configurable basis-point values defined at deployment time (via `TemplFactory`):
 
-Per new member, claimable reward per existing member is `floor(30% / (n-1))` and any remainder is carried forward in `memberRewardRemainder`.
+- **Burn (`burnBP`)** — transferred to `0x000000000000000000000000000000000000dEaD`.
+- **Treasury (`treasuryBP`)** — retained on the contract and counted in `treasuryBalance`. Additional donations accrue to the contract balance and remain governable via `withdrawTreasuryDAO` / `disbandTreasuryDAO`.
+- **Member Pool (`memberPoolBP`)** — retained on the contract and counted in `memberPoolBalance`; claimable by existing members through `claimMemberPool()`.
+- **Protocol (`protocolBP`)** — forwarded to the immutable `protocolFeeRecipient`. This value is fixed per `TemplFactory` instance so every TEMPL created by a factory shares the same protocol fee.
+
+The basis points must sum to 100. When a new member joins, existing members receive `floor(memberPoolShare / (n-1))` tokens each (where `n` is the new member count). Indivisible remainders accumulate in `memberRewardRemainder` and are rolled into the next distribution.
 
 ### Member Pool Mechanics
 - Accrual: Each purchase increases `memberPoolBalance` and `cumulativeMemberRewards`; members track a `rewardSnapshot` at their join time and on claim.
@@ -49,7 +52,7 @@ sequenceDiagram
 - Execution: Any address may call `executeProposal(id)`. Execution is atomic and non‑reentrant.
 - Typed proposals only (no arbitrary calls). The allowed actions are:
   - `setPausedDAO(bool)` — pause/unpause membership purchasing.
-  - `updateConfigDAO(address,uint256)` — update entry fee when `_entryFee > 0`. Changing token is disabled (`_token` must be `address(0)` or the current token), else `TokenChangeDisabled`.
+  - `updateConfigDAO(address,uint256,bool,uint256,uint256,uint256)` — update the entry fee (must remain >0 and multiple of 10) and, when `_updateFeeSplit` is true, adjust the burn/treasury/member basis points. The protocol split comes from the factory and cannot be changed. Token changes are disabled (`_token` must be `address(0)` or the current token), else `TokenChangeDisabled`.
   - `withdrawTreasuryDAO(address,address,uint256,string)` — withdraw a specific amount of any asset (access token, other ERC‑20, or ETH with `address(0)`).
   - `changePriestDAO(address)` — change the priest address via governance.
   - `disbandTreasuryDAO(address token)` — move the full available balance of `token` into a member-distributable pool. When `token == accessToken`, funds roll into the member pool (`memberPoolBalance`) with per-member integer division and any remainder added to `memberRewardRemainder`. When targeting any other ERC‑20 or native ETH (`address(0)`), the amount is recorded in an external rewards pool so members can later claim their share with `claimExternalToken`.
@@ -65,7 +68,7 @@ sequenceDiagram
 
 ### Proposal Types (create functions)
 - `createProposalSetPaused(bool paused, uint256 votingPeriod)`
-- `createProposalUpdateConfig(uint256 newEntryFee, uint256 votingPeriod)`
+- `createProposalUpdateConfig(uint256 newEntryFee, uint256 newBurnBP, uint256 newTreasuryBP, uint256 newMemberPoolBP, bool updateFeeSplit, uint256 votingPeriod)` – set `updateFeeSplit = true` to apply the provided basis points; when false, the existing burn/treasury/member splits remain unchanged and only the fee (or paused state) is updated.
 - `createProposalWithdrawTreasury(address token, address recipient, uint256 amount, string reason, uint256 votingPeriod)`
 - `createProposalChangePriest(address newPriest, uint256 votingPeriod)`
 - `createProposalDisbandTreasury(address token, uint256 votingPeriod)` (`token` can be the access token, another ERC‑20, or `address(0)` for ETH)
@@ -78,7 +81,7 @@ Note: Proposal metadata (title/description) is not stored on‑chain. Keep human
 - Pausing: only blocks `purchaseAccess`; proposing and voting continue while paused.
 
 ## User‑Facing Functions and Views
-- `purchaseAccess()` — one‑time purchase; splits fee 30/30/30/10 via `safeTransferFrom`. Requires balance ≥ entry fee and contract not paused.
+- `purchaseAccess()` — one-time purchase; applies the templ’s configured burn/treasury/member basis points (plus the factory-defined protocol split) via `safeTransferFrom`. Requires balance ≥ entry fee and contract not paused.
 - `vote(uint256 proposalId, bool support)` — cast or change a vote until eligible; emits `VoteCast`.
 - `executeProposal(uint256 proposalId)` — performs the allowlisted action; emits `ProposalExecuted` and action‑specific events.
 - `claimMemberPool()` — withdraw accrued rewards; emits `MemberPoolClaimed`.
@@ -91,7 +94,7 @@ Note: Proposal metadata (title/description) is not stored on‑chain. Keep human
 - `getTreasuryInfo()` — returns `(treasury, memberPool, totalReceived, totalBurnedAmount, totalProtocolFees, protocolAddress)` where
   - `treasury` is the UI‑facing available access‑token balance: `currentBalance(accessToken) - memberPoolBalance` (includes donations), and
   - `totalReceived` tracks only entry‑fee allocations.
-- `getConfig()` — returns `(token, fee, isPaused, purchases, treasury, pool)`.
+- `getConfig()` — returns `(token, fee, isPaused, purchases, treasury, pool, burnBP, treasuryBP, memberPoolBP, protocolBP)`.
 - `getMemberCount()` — number of members; `getVoteWeight(address)` — 1 if member else 0.
 - External reward helpers:
   - `getExternalRewardTokens()` — list of ERC‑20/ETH reward tokens that currently have tracked pools (excludes the access token).
@@ -111,7 +114,7 @@ Note: Proposal metadata (title/description) is not stored on‑chain. Keep human
   - `VoteCast(proposalId,voter,support,timestamp)`
   - `ProposalExecuted(proposalId,success,returnData)`
   - `TreasuryAction(proposalId,token,recipient,amount,description)`
-  - `ConfigUpdated(token,entryFee)`
+  - `ConfigUpdated(token,entryFee,burnBP,treasuryBP,memberPoolBP,protocolBP)`
   - `ContractPaused(isPaused)`
   - `TreasuryDisbanded(proposalId,token,amount,perMember,remainder)`
   - `ExternalRewardClaimed(token,member,amount)`
@@ -130,10 +133,10 @@ sequenceDiagram
     participant MemberPool
     participant Protocol
     User->>TEMPL: purchaseAccess()
-    TEMPL->>Burn: 30% burn
-    TEMPL->>Treasury: 30% entry‑fee share
-    TEMPL->>MemberPool: 30% claimable
-    TEMPL->>Protocol: 10% fee
+    TEMPL->>Burn: burnBP%
+    TEMPL->>Treasury: treasuryBP%
+    TEMPL->>MemberPool: memberPoolBP%
+    TEMPL->>Protocol: protocolBP%
     TEMPL-->>User: Membership granted
 ```
 
@@ -151,8 +154,8 @@ sequenceDiagram
 ```
 
 ## Configuration & Deployment
-- Constructor: `TEMPL(address priest, address protocolFeeRecipient, address token, uint256 entryFee)`; all addresses must be non‑zero. `entryFee` must be ≥10 and divisible by 10, matching deploy-script validation.
-- Env for `scripts/deploy.js` (priest defaults to deployer): `PRIEST_ADDRESS`, `PROTOCOL_FEE_RECIPIENT` (required), `TOKEN_ADDRESS` (required), `ENTRY_FEE` (required), `BASESCAN_API_KEY` (optional).
+- Primary entrypoint is `TemplFactory(address protocolFeeRecipient, uint256 protocolBP)`. Creating a new templ instance calls `createTempl(priest, token, entryFee, burnBP, treasuryBP, memberPoolBP)` with basis points summing to 100. The factory enforces the protocol share and recipient across all templs it creates.
+- `scripts/deploy.js` deploys a factory when none is provided (`FACTORY_ADDRESS`), then creates a templ via the factory using environment variables: `PRIEST_ADDRESS` (defaults to deployer), `PROTOCOL_FEE_RECIPIENT`, `PROTOCOL_BP`, `TOKEN_ADDRESS`, `ENTRY_FEE`, `BURN_BP`, `TREASURY_BP`, `MEMBER_POOL_BP`. Percentages must sum to 100.
 - Commands:
   - Compile/tests: `npm run compile`, `npm test`, `npm run slither`.
   - Deploy example: `npx hardhat run scripts/deploy.js --network base`.

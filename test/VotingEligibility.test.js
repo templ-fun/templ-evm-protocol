@@ -131,7 +131,7 @@ describe("Voting Eligibility Based on Join Time", function () {
             const joinTx = await templ.connect(lateMember).purchaseAccess();
             await joinTx.wait();
 
-            const mappingSlot = 8n;
+            const mappingSlot = 11n; // Updated storage slot after fee config variables
             const encodedKey = ethers.AbiCoder.defaultAbiCoder().encode(
                 ["address", "uint256"],
                 [lateMember.address, mappingSlot]

@@ -9,17 +9,33 @@ import {TemplErrors} from "./TemplErrors.sol";
 abstract contract TemplMembership is TemplBase {
     using SafeERC20 for IERC20;
 
-    constructor(address _protocolFeeRecipient, address _accessToken)
-        TemplBase(_protocolFeeRecipient, _accessToken)
-    {}
+    constructor(
+        address _protocolFeeRecipient,
+        address _accessToken,
+        uint256 _burnBP,
+        uint256 _treasuryBP,
+        uint256 _memberPoolBP,
+        uint256 _protocolBP
+    ) TemplBase(_protocolFeeRecipient, _accessToken, _burnBP, _treasuryBP, _memberPoolBP, _protocolBP) {}
 
     function purchaseAccess() external whenNotPaused notSelf nonReentrant {
         Member storage m = members[msg.sender];
         if (m.purchased) revert TemplErrors.AlreadyPurchased();
 
-        uint256 burnAmount = (entryFee * BURN_BP) / 100;
-        uint256 toContract = (entryFee * (TREASURY_BP + MEMBER_POOL_BP)) / 100;
-        uint256 protocolAmount = (entryFee * PROTOCOL_BP) / 100;
+        uint256 burnAmount = (entryFee * burnBP) / TOTAL_BPS;
+        uint256 treasuryAmount = (entryFee * treasuryBP) / TOTAL_BPS;
+        uint256 memberPoolAmount = (entryFee * memberPoolBP) / TOTAL_BPS;
+        uint256 protocolAmount = (entryFee * protocolBP) / TOTAL_BPS;
+
+        uint256 distributed = burnAmount + treasuryAmount + memberPoolAmount + protocolAmount;
+        if (distributed > entryFee) revert TemplErrors.InvalidFeeSplit();
+        if (distributed < entryFee) {
+            uint256 remainder = entryFee - distributed;
+            treasuryAmount += remainder;
+            distributed += remainder;
+        }
+
+        uint256 toContract = treasuryAmount + memberPoolAmount;
 
         if (IERC20(accessToken).balanceOf(msg.sender) < entryFee) revert TemplErrors.InsufficientBalance();
 
@@ -30,7 +46,7 @@ abstract contract TemplMembership is TemplBase {
         totalPurchases++;
 
         if (memberList.length > 1) {
-            uint256 totalRewards = ((entryFee * MEMBER_POOL_BP) / 100) + memberRewardRemainder;
+            uint256 totalRewards = memberPoolAmount + memberRewardRemainder;
             uint256 rewardPerMember = totalRewards / (memberList.length - 1);
             memberRewardRemainder = totalRewards % (memberList.length - 1);
             cumulativeMemberRewards += rewardPerMember;
@@ -40,12 +56,11 @@ abstract contract TemplMembership is TemplBase {
 
         m.rewardSnapshot = cumulativeMemberRewards;
 
-        uint256 thirtyPercent = (entryFee * 30) / 100;
-        treasuryBalance += thirtyPercent;
-        memberPoolBalance += thirtyPercent;
+        treasuryBalance += treasuryAmount;
+        memberPoolBalance += memberPoolAmount;
         totalBurned += burnAmount;
-        totalToTreasury += thirtyPercent;
-        totalToMemberPool += thirtyPercent;
+        totalToTreasury += treasuryAmount;
+        totalToMemberPool += memberPoolAmount;
         totalToProtocol += protocolAmount;
 
         IERC20 token = IERC20(accessToken);
@@ -57,8 +72,8 @@ abstract contract TemplMembership is TemplBase {
             msg.sender,
             entryFee,
             burnAmount,
-            thirtyPercent,
-            thirtyPercent,
+            treasuryAmount,
+            memberPoolAmount,
             protocolAmount,
             block.timestamp,
             block.number,
@@ -184,11 +199,26 @@ abstract contract TemplMembership is TemplBase {
         bool isPaused,
         uint256 purchases,
         uint256 treasury,
-        uint256 pool
+        uint256 pool,
+        uint256 burnBasisPoints,
+        uint256 treasuryBasisPoints,
+        uint256 memberPoolBasisPoints,
+        uint256 protocolBasisPoints
     ) {
         uint256 current = IERC20(accessToken).balanceOf(address(this));
         uint256 available = current > memberPoolBalance ? current - memberPoolBalance : 0;
-        return (accessToken, entryFee, paused, totalPurchases, available, memberPoolBalance);
+        return (
+            accessToken,
+            entryFee,
+            paused,
+            totalPurchases,
+            available,
+            memberPoolBalance,
+            burnBP,
+            treasuryBP,
+            memberPoolBP,
+            protocolBP
+        );
     }
 
     function getMemberCount() external view returns (uint256) {

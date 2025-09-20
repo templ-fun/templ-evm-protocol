@@ -1,4 +1,4 @@
-import { test, expect, TestToken } from './fixtures.js';
+import { test, expect, TestToken, TemplFactory } from './fixtures.js';
 import { ethers } from 'ethers';
 import { readFileSync } from 'fs';
 import path from 'path';
@@ -25,18 +25,32 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
     // Load TEMPL ABI for on-chain assertions
     templAbi = JSON.parse(readFileSync(path.join(process.cwd(), 'src/contracts/TEMPL.json'))).abi;
 
-    // Deploy a fresh test token
+    // Deploy a fresh test token and factory
     const tokenFactory = new ethers.ContractFactory(
       TestToken.abi,
       TestToken.bytecode,
       wallets.priest
     );
-    const token = await tokenFactory.deploy('Test', 'TEST', 18);
+    let deployNonce = await wallets.priest.getNonce();
+    const token = await tokenFactory.deploy('Test', 'TEST', 18, { nonce: deployNonce++ });
     await token.waitForDeployment();
     const tokenAddress = await token.getAddress();
 
+    const factoryFactory = new ethers.ContractFactory(
+      TemplFactory.abi,
+      TemplFactory.bytecode,
+      wallets.priest
+    );
+    const templFactory = await factoryFactory.deploy(
+      await wallets.delegate.getAddress(),
+      10,
+      { nonce: deployNonce++ }
+    );
+    await templFactory.waitForDeployment();
+    const factoryAddress = await templFactory.getAddress();
+
     // Rotate the UI-connected wallet until the app can initialize XMTP
-    const candidates = [wallets.delegate, wallets.member, wallets.priest];
+    const candidates = [wallets.priest, wallets.delegate, wallets.member];
     let testWallet = null;
     let testAddress = '';
 
@@ -203,25 +217,42 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
     // Core Flow 2: Templ Creation
     dbg('Core Flow 2: Templ Creation');
     await page.fill('input[placeholder*="Token address"]', tokenAddress);
-    await page.fill('input[placeholder*="Protocol fee recipient"]', '0x70997970C51812dc3A010C7d01b50e0d17dc79C8');
+    if (await page.locator('input[placeholder*="Factory address"]:not([readonly])').count()) {
+      await page.fill('input[placeholder*="Factory address"]', factoryAddress);
+    }
     await page.fill('input[placeholder*="Entry fee"]', '100');
-    
+    const entryFeeValue = await page.inputValue('input[placeholder*="Entry fee"]');
+    const burnValue = await page.locator('input[placeholder="Burn"]').inputValue();
+    const treasuryValue = await page.locator('input[placeholder="Treasury"]').inputValue();
+    const memberValue = await page.locator('input[placeholder="Member pool"]').inputValue();
+    const entryFeeWei = BigInt(entryFeeValue || '0');
+    const burnBpNum = Number(burnValue || '0');
+    const treasuryBpNum = Number(treasuryValue || '0');
+    const memberBpNum = Number(memberValue || '0');
+
+    const predictedTempl = await templFactory.createTempl.staticCall(
+      testAddress,
+      tokenAddress,
+      entryFeeWei,
+      burnBpNum,
+      treasuryBpNum,
+      memberBpNum
+    );
+    templAddress = ethers.getAddress(predictedTempl);
+
     await page.click('button:has-text("Deploy")');
 
-    // Get deployed contract address via light DOM marker or localStorage (whichever appears first)
-    const depInfo = page.locator('[data-testid="deploy-info"]');
-    for (let i = 0; i < 3 && !templAddress; i++) { // minimal retries
-      try {
-        if (await depInfo.count() > 0 && await depInfo.isVisible()) {
-          templAddress = (await depInfo.getAttribute('data-contract-address')) || '';
-        }
-      } catch {}
-      if (!templAddress) {
-        try { templAddress = await page.evaluate(() => localStorage.getItem('templ:lastAddress')); } catch {}
-      }
-      if (!templAddress) await page.waitForTimeout(200);
-    }
-    if (!templAddress) throw new Error('Could not resolve deployed contract address');
+    // Wait until contract code is deployed at the predicted address
+    await expect.poll(async () => {
+      const code = await wallets.priest.provider.getCode(templAddress);
+      return code && code !== '0x';
+    }, { timeout: 20000 }).toBe(true);
+
+    try {
+      await page.evaluate((address) => {
+        localStorage.setItem('templ:lastAddress', address);
+      }, templAddress);
+    } catch {}
     console.log('TEMPL deployed at:', templAddress);
     // Assert the contract on-chain state matches input
     const templ = new ethers.Contract(templAddress, templAbi, wallets.priest);
@@ -491,6 +522,7 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
     // Switch back to the original UI wallet to avoid join-time equality edge cases
     await page.reload();
     await page.waitForLoadState('domcontentloaded');
+    const uiTxCache = new Map();
     await page.exposeFunction('e2e_ui_sign', async ({ message }) => {
       if (typeof message === 'string' && message.startsWith('0x')) {
         return await testWallet.signMessage(ethers.getBytes(message));
@@ -508,8 +540,22 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
         gasPrice: tx.gasPrice ? BigInt(tx.gasPrice) : undefined,
         gasLimit: tx.gas || tx.gasLimit ? BigInt(tx.gas || tx.gasLimit) : undefined,
       };
+      const key = JSON.stringify({ to: req.to?.toLowerCase?.() || req.to, data: req.data, value: req.value?.toString?.() || null });
+      if (uiTxCache.has(key)) {
+        return uiTxCache.get(key);
+      }
+      const provider = testWallet.provider;
+      const addr = await testWallet.getAddress();
+      let nextNonce = await provider.getTransactionCount(addr, 'pending');
+      req.nonce = nextNonce;
       const resp = await testWallet.sendTransaction(req);
-      return resp.hash;
+      const hash = resp.hash;
+      uiTxCache.set(key, hash);
+      const usedNonce = typeof resp.nonce === 'bigint' ? Number(resp.nonce) : resp.nonce;
+      if (Number.isFinite(usedNonce)) {
+        nextNonce = usedNonce + 1;
+      }
+      return hash;
     });
     await page.evaluate(async ({ address }) => {
       window.ethereum = {
@@ -573,17 +619,24 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
         return has;
       }, { timeout: 180000 }).toBe(true);
     // Advance time and execute via priest programmatically
-      const member = wallets.member;
-      const templMember = new ethers.Contract(templAddress, templAbi, member);
-      const provider = templMember.runner.provider;
       await fetch('http://localhost:8545', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'evm_increaseTime', params: [7 * 24 * 60 * 60] }) });
       await fetch('http://localhost:8545', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'evm_mine', params: [] }) });
-      const priestAddr = await wallets.priest.getAddress();
-      let priestNonce = await provider.getTransactionCount(priestAddr);
       const lastIdBN = await templPriest.proposalCount();
       const lastId = Number(lastIdBN) - 1;
-      const tx = await templPriest.executeProposal(lastId, { nonce: priestNonce });
-      await tx.wait();
+      const provider = templPriest.runner.provider;
+      const priestAddr = await wallets.priest.getAddress();
+      let executed = false;
+      for (let attempt = 0; attempt < 3 && !executed; attempt++) {
+        const priestNonce = await provider.getTransactionCount(priestAddr, 'pending');
+        try {
+          const tx = await templPriest.executeProposal(lastId, { nonce: priestNonce });
+          await tx.wait();
+          executed = true;
+        } catch (err) {
+          if (err?.code !== 'NONCE_EXPIRED' || attempt === 2) throw err;
+          await new Promise((resolve) => setTimeout(resolve, 200));
+        }
+      }
       const templFinal = new ethers.Contract(templAddress, templAbi, wallets.priest);
       expect(await templFinal.paused()).toBe(true);
 

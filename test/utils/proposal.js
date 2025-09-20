@@ -2,7 +2,9 @@ const { ethers } = require("hardhat");
 
 const IF_SET_PAUSED = new ethers.Interface(["function setPausedDAO(bool)"]);
 const IF_WT = new ethers.Interface(["function withdrawTreasuryDAO(address,address,uint256,string)"]);
-const IF_UC = new ethers.Interface(["function updateConfigDAO(address,uint256)"]);
+const IF_UC = new ethers.Interface([
+  "function updateConfigDAO(address,uint256,bool,uint256,uint256,uint256)"
+]);
 const IF_DISBAND = new ethers.Interface(["function disbandTreasuryDAO(address)"]);
 const IF_DISBAND_LEGACY = new ethers.Interface(["function disbandTreasuryDAO()"]);
 
@@ -19,8 +21,16 @@ async function createProposal({ templ, signer, title, description, callData, vot
     return await tx.wait();
   } catch {}
   try {
-    const [, newFee] = IF_UC.decodeFunctionData("updateConfigDAO", callData);
-    const tx = await conn.createProposalUpdateConfig(newFee, votingPeriod);
+    const [, newFee, updateSplit, burnBP, treasuryBP, memberPoolBP] =
+      IF_UC.decodeFunctionData("updateConfigDAO", callData);
+    const tx = await conn.createProposalUpdateConfig(
+      newFee,
+      burnBP,
+      treasuryBP,
+      memberPoolBP,
+      updateSplit,
+      votingPeriod
+    );
     return await tx.wait();
   } catch {}
   try {

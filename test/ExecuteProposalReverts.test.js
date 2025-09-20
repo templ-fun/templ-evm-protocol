@@ -27,7 +27,9 @@ describe("executeProposal reverts", function () {
     await mintToUsers(token, [owner], ENTRY_FEE);
     await purchaseAccess(templ, token, [owner]);
     await expect(
-      templ.connect(owner).createProposalUpdateConfig(5, 7 * 24 * 60 * 60)
+      templ
+        .connect(owner)
+        .createProposalUpdateConfig(5, 0, 0, 0, false, 7 * 24 * 60 * 60)
     ).to.be.revertedWithCustomError(templ, "EntryFeeTooSmall");
   });
 

@@ -53,7 +53,7 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
     await templ.waitForDeployment();
 
     // hit update wrapper with no-op change
-    await templ.daoUpdate(ethers.ZeroAddress, 0n);
+    await templ.daoUpdate(ethers.ZeroAddress, 0n, false, 0, 0, 0);
     expect(await templ.entryFee()).to.equal(ENTRY_FEE);
 
     // pause/unpause

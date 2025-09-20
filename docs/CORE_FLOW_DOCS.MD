@@ -21,16 +21,16 @@ Components and message flows powering TEMPL's core protocol.
 Legend: F=Frontend, B=Backend, C=Contract, X=XMTP, D=SQLite, M=Member, P=Priest.
 
 ## 1. TEMPL creation
-The backend creates the XMTP group when a TEMPL is deployed. By default it uses a short‑lived ephemeral creator key to create the group, and then operates it via the server’s invite‑bot identity (which invites members but does not need admin privileges).
+The backend creates the XMTP group when a TEMPL is deployed via the factory. By default it uses a short‑lived ephemeral creator key to create the group, and then operates it via the server’s invite‑bot identity (which invites members but does not need admin privileges).
 ```mermaid
 flowchart LR
-    F[Frontend] -->|deploy contract| C[Contract]
+    F[Frontend] -->|factory.createTempl| C[Contract]
     F -->|POST /templs| B[Backend]
     B -->|verify priest and chain in prod| CHAIN[Blockchain]
     B -->|newGroup| X[XMTP]
 ```
 
-- Frontend posts `{contract}`; backend verifies the contract and on-chain priest in production, resolves the priest inbox from the network, creates the group (including the priest), and stores the `groupId`.
+- Frontend calls `TemplFactory.createTempl(...)` to obtain the new templ address, then posts `{contract}`; backend verifies the contract and on-chain priest in production, resolves the priest inbox from the network, creates the group (including the priest), and stores the `groupId`.
 
 ## 2. Pay-to-join
 Members sign a join message, and the backend verifies purchase before inviting them.
@@ -133,7 +133,7 @@ flowchart LR
     C -->|call allowlisted action| C
 ```
 
-- Only pause/unpause, change priest, fee repricing (entry fee only), transfers of assets held by the contract, and disbanding treasury into the member pool are permitted. Token changes remain disabled, and member pool funds cannot be moved.
+- Only pause/unpause, change priest, fee repricing (and optional adjustments to the non-protocol fee splits), transfers of assets held by the contract, and disbanding treasury into the member pool are permitted. Token changes remain disabled, and member pool funds cannot be moved.
 - Arbitrary external calls are disabled.
 
 End-to-end proposal lifecycle (sequence):
@@ -207,7 +207,7 @@ Backend resolves inboxIds from the XMTP network via `findInboxIdByIdentifier` an
 ## Governance Allowlist & Rules
 - Proposal actions are restricted to an allowlist enforced at creation and execution:
   - `setPausedDAO(bool)` — pause/unpause purchases
-  - `updateConfigDAO(address,uint256)` — entry fee only (token change disabled)
+  - `updateConfigDAO(address,uint256,bool,uint256,uint256,uint256)` — entry fee update (must remain >0 and multiple of 10) with optional burn/treasury/member split changes; token change remains disabled
   - `withdrawTreasuryDAO(address,address,uint256,string)` — move a specific amount of any asset held by the contract
   - `changePriestDAO(address)` — change the priest
   - `disbandTreasuryDAO(address token)` — disband the full available balance of the chosen token. Using the access token increases the member pool; other ERC‑20s or ETH become claimable via external reward pools.

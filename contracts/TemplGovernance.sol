@@ -5,9 +5,21 @@ import {TemplTreasury} from "./TemplTreasury.sol";
 import {TemplErrors} from "./TemplErrors.sol";
 
 abstract contract TemplGovernance is TemplTreasury {
-    constructor(address _protocolFeeRecipient, address _accessToken)
-        TemplTreasury(_protocolFeeRecipient, _accessToken)
-    {}
+    constructor(
+        address _protocolFeeRecipient,
+        address _accessToken,
+        uint256 _burnBP,
+        uint256 _treasuryBP,
+        uint256 _memberPoolBP,
+        uint256 _protocolBP
+    ) TemplTreasury(
+        _protocolFeeRecipient,
+        _accessToken,
+        _burnBP,
+        _treasuryBP,
+        _memberPoolBP,
+        _protocolBP
+    ) {}
 
     function createProposalSetPaused(
         bool _paused,
@@ -21,15 +33,26 @@ abstract contract TemplGovernance is TemplTreasury {
 
     function createProposalUpdateConfig(
         uint256 _newEntryFee,
+        uint256 _newBurnBP,
+        uint256 _newTreasuryBP,
+        uint256 _newMemberPoolBP,
+        bool _updateFeeSplit,
         uint256 _votingPeriod
     ) external onlyMember returns (uint256) {
         if (_newEntryFee > 0) {
             if (_newEntryFee < 10) revert TemplErrors.EntryFeeTooSmall();
             if (_newEntryFee % 10 != 0) revert TemplErrors.InvalidEntryFee();
         }
+        if (_updateFeeSplit) {
+            _validateFeeSplit(_newBurnBP, _newTreasuryBP, _newMemberPoolBP, protocolBP);
+        }
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod);
         p.action = Action.UpdateConfig;
         p.newEntryFee = _newEntryFee;
+        p.newBurnBP = _newBurnBP;
+        p.newTreasuryBP = _newTreasuryBP;
+        p.newMemberPoolBP = _newMemberPoolBP;
+        p.updateFeeSplit = _updateFeeSplit;
         return id;
     }
 
@@ -146,7 +169,14 @@ abstract contract TemplGovernance is TemplTreasury {
         if (proposal.action == Action.SetPaused) {
             _setPaused(proposal.paused);
         } else if (proposal.action == Action.UpdateConfig) {
-            _updateConfig(proposal.token, proposal.newEntryFee);
+            _updateConfig(
+                proposal.token,
+                proposal.newEntryFee,
+                proposal.updateFeeSplit,
+                proposal.newBurnBP,
+                proposal.newTreasuryBP,
+                proposal.newMemberPoolBP
+            );
         } else if (proposal.action == Action.WithdrawTreasury) {
             _withdrawTreasury(proposal.token, proposal.recipient, proposal.amount, proposal.reason, _proposalId);
         } else if (proposal.action == Action.DisbandTreasury) {

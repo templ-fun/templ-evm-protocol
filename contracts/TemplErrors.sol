@@ -46,6 +46,8 @@ library TemplErrors {
     error EntryFeeTooSmall();
     /// @notice Thrown when the entry fee is not a multiple of ten.
     error InvalidEntryFee();
+    /// @notice Thrown when fee basis points do not sum correctly or exceed limits.
+    error InvalidFeeSplit();
     /// @notice Thrown when there are no rewards available to claim.
     error NoRewardsToClaim();
     /// @notice Thrown when the member pool lacks sufficient funds.

@@ -6,8 +6,12 @@ import {TEMPL} from "../TEMPL.sol";
 /// @dev Harness that triggers onlyDAO externals via self-calls to cover wrapper paths
 contract DaoCallerHarness is TEMPL {
     /// @dev Passthrough constructor to base TEMPL
-    constructor(address priest, address protocolFeeRecipient, address token, uint256 entryFee)
-        TEMPL(priest, protocolFeeRecipient, token, entryFee)
+    constructor(
+        address priest,
+        address protocolFeeRecipient,
+        address token,
+        uint256 entryFee
+    ) TEMPL(priest, protocolFeeRecipient, token, entryFee, 30, 30, 30, 10)
     {}
     /// @notice Wrapper to call withdrawTreasuryDAO via contract self-call
     function daoWithdraw(address token, address recipient, uint256 amount, string calldata reason) external {
@@ -15,8 +19,15 @@ contract DaoCallerHarness is TEMPL {
     }
     // withdrawAll wrapper removed
     /// @notice Wrapper to call updateConfigDAO via contract self-call
-    function daoUpdate(address token, uint256 fee) external {
-        this.updateConfigDAO(token, fee);
+    function daoUpdate(
+        address token,
+        uint256 fee,
+        bool updateSplit,
+        uint256 burnBP,
+        uint256 treasuryBP,
+        uint256 memberPoolBP
+    ) external {
+        this.updateConfigDAO(token, fee, updateSplit, burnBP, treasuryBP, memberPoolBP);
     }
     /// @notice Wrapper to call setPausedDAO via contract self-call
     function daoPause(bool p) external {

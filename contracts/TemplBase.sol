@@ -10,11 +10,13 @@ abstract contract TemplBase is ReentrancyGuard {
     using SafeERC20 for IERC20;
     using TemplErrors for *;
 
-    uint256 internal constant BURN_BP = 30;
-    uint256 internal constant TREASURY_BP = 30;
-    uint256 internal constant MEMBER_POOL_BP = 30;
-    uint256 internal constant PROTOCOL_BP = 10;
+    uint256 internal constant TOTAL_BPS = 100;
     address internal constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
+
+    uint256 public burnBP;
+    uint256 public treasuryBP;
+    uint256 public memberPoolBP;
+    uint256 public immutable protocolBP;
 
     address public priest;
     address public immutable protocolFeeRecipient;
@@ -50,6 +52,9 @@ abstract contract TemplBase is ReentrancyGuard {
         string reason;
         bool paused;
         uint256 newEntryFee;
+        uint256 newBurnBP;
+        uint256 newTreasuryBP;
+        uint256 newMemberPoolBP;
         uint256 yesVotes;
         uint256 noVotes;
         uint256 endTime;
@@ -60,6 +65,7 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 eligibleVoters;
         uint256 quorumReachedAt;
         bool quorumExempt;
+        bool updateFeeSplit;
     }
 
     uint256 public proposalCount;
@@ -128,7 +134,11 @@ abstract contract TemplBase is ReentrancyGuard {
 
     event ConfigUpdated(
         address indexed token,
-        uint256 entryFee
+        uint256 entryFee,
+        uint256 burnBasisPoints,
+        uint256 treasuryBasisPoints,
+        uint256 memberPoolBasisPoints,
+        uint256 protocolBasisPoints
     );
 
     event ContractPaused(bool isPaused);
@@ -179,11 +189,48 @@ abstract contract TemplBase is ReentrancyGuard {
         _;
     }
 
-    constructor(address _protocolFeeRecipient, address _accessToken) {
+    constructor(
+        address _protocolFeeRecipient,
+        address _accessToken,
+        uint256 _burnBP,
+        uint256 _treasuryBP,
+        uint256 _memberPoolBP,
+        uint256 _protocolBP
+    ) {
         if (_protocolFeeRecipient == address(0) || _accessToken == address(0)) {
             revert TemplErrors.InvalidRecipient();
         }
         protocolFeeRecipient = _protocolFeeRecipient;
         accessToken = _accessToken;
+        protocolBP = _protocolBP;
+        _setFeeSplit(_burnBP, _treasuryBP, _memberPoolBP);
+    }
+
+    function _setFeeSplit(
+        uint256 _burnBP,
+        uint256 _treasuryBP,
+        uint256 _memberPoolBP
+    ) internal {
+        _validateFeeSplit(_burnBP, _treasuryBP, _memberPoolBP, protocolBP);
+        burnBP = _burnBP;
+        treasuryBP = _treasuryBP;
+        memberPoolBP = _memberPoolBP;
+    }
+
+    function _validateFeeSplit(
+        uint256 _burnBP,
+        uint256 _treasuryBP,
+        uint256 _memberPoolBP,
+        uint256 _protocolBP
+    ) internal pure {
+        if (
+            _burnBP > TOTAL_BPS ||
+            _treasuryBP > TOTAL_BPS ||
+            _memberPoolBP > TOTAL_BPS ||
+            _protocolBP > TOTAL_BPS
+        ) revert TemplErrors.InvalidFeeSplit();
+        if (_burnBP + _treasuryBP + _memberPoolBP + _protocolBP != TOTAL_BPS) {
+            revert TemplErrors.InvalidFeeSplit();
+        }
     }
 }

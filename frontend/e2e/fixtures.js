@@ -11,7 +11,12 @@ const tokenArtifactPath = path.join(
   'artifacts/contracts/mocks/TestToken.sol/TestToken.json'
 );
 const TestToken = JSON.parse(readFileSync(tokenArtifactPath, 'utf8'));
-export { TestToken };
+const templFactoryArtifactPath = path.join(
+  repoRoot,
+  'artifacts/contracts/TemplFactory.sol/TemplFactory.json'
+);
+const TemplFactory = JSON.parse(readFileSync(templFactoryArtifactPath, 'utf8'));
+export { TestToken, TemplFactory };
 
 export const test = base.extend({
   // eslint-disable-next-line no-empty-pattern

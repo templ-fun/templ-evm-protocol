@@ -25,6 +25,9 @@ Global variables such as `RPC_URL` live in the project `.env`; see the [README's
 | `VITE_E2E_DEBUG` | Enables debug helpers (`window.__XMTP`, etc.) during E2E runs. | `0` |
 | `E2E_XMTP_LOCAL` | When `1`, Playwright E2E tests connect to a local XMTP node instead of production. | `0` |
 | `VITE_BACKEND_SERVER_ID` | String identifier that must match the backend `BACKEND_SERVER_ID` to bind EIP‑712 signatures to your deployment. | — |
+| `VITE_TEMPL_FACTORY_ADDRESS` | Optional: preloads the factory address so the creation form is read-only. Leave blank to supply it interactively. | — |
+| `VITE_TEMPL_FACTORY_PROTOCOL_RECIPIENT` | Optional: expected factory protocol recipient (display-only). Useful for demos/tests. | — |
+| `VITE_TEMPL_FACTORY_PROTOCOL_BP` | Optional: expected factory protocol basis points (display-only). | — |
 | `VITE_E2E_NO_PURCHASE` | Skip the on-chain purchase step during E2E/dev runs when access is pre-seeded. | `0` |
 | `VITE_ENABLE_BACKEND_FALLBACK` | When `1`, enables debug fallbacks that query backend `/debug` endpoints for membership snapshots. | `0` |
 | `TEMPL_ENABLE_LOCAL_FALLBACK` | Node-unit toggle that lets tests merge localStorage templ registries with the backend list; keep `0` in production so the UI always reflects real `/templs` data. | `0` |
@@ -52,7 +55,7 @@ E2E artifacts (videos, traces, screenshots) are saved under `frontend/test-resul
 
 - **Wallet connection** via `ethers` and `window.ethereum`.
 - **Default configuration** – all members have 1 vote.
-- **Governance** – members create proposals and vote from the chat; `watchProposals` updates the UI when events fire. The backend mirrors on‑chain events into the group as JSON so clients see real‑time updates. The quick-action UI encodes the allowlisted DAO calls: pause/unpause, withdraw the entire available treasury balance of a chosen asset to the connected wallet (demo helper), disband the full available balance of any token (entry-fee token, donated ERC‑20, or native ETH) into member rewards, and reprice the entry fee. Proposal titles/descriptions are not stored on-chain; they are shared only in XMTP messages next to the on-chain proposal id.
+- **Governance** – members create proposals and vote from the chat; `watchProposals` updates the UI when events fire. The backend mirrors on‑chain events into the group as JSON so clients see real‑time updates. The quick-action UI encodes the allowlisted DAO calls: pause/unpause, withdraw the entire available treasury balance of a chosen asset to the connected wallet (demo helper), disband the full available balance of any token (entry-fee token, donated ERC‑20, or native ETH) into member rewards, and reprice the entry fee or adjust the non-protocol fee splits. Proposal titles/descriptions are not stored on-chain; they are shared only in XMTP messages next to the on-chain proposal id.
 
 See backend endpoints in [BACKEND.md](./BACKEND.md#architecture) for `POST /templs`, `POST /join`, `POST/DELETE /delegateMute`, `POST /mute`, and `GET /mutes`.
 

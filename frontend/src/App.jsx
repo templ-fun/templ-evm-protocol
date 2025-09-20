@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { ethers } from 'ethers';
 import { Client } from '@xmtp/browser-sdk';
 import templArtifact from './contracts/TEMPL.json';
+import templFactoryArtifact from './contracts/TemplFactory.json';
 import {
   deployTempl,
   purchaseAndJoin,
@@ -21,7 +22,7 @@ import {
 } from './flows.js';
 import { syncXMTP, waitForConversation } from '../../shared/xmtp.js';
 import './App.css';
-import { BACKEND_URL } from './config.js';
+import { BACKEND_URL, FACTORY_CONFIG } from './config.js';
 
 function App() {
   // Minimal client-side router (no external deps)
@@ -93,8 +94,16 @@ function App() {
 
   // deployment form
   const [tokenAddress, setTokenAddress] = useState('');
-  const [protocolFeeRecipient, setProtocolFeeRecipient] = useState('');
+  const [factoryAddress, setFactoryAddress] = useState(() => FACTORY_CONFIG.address || '');
+  const [protocolFeeRecipient, setProtocolFeeRecipient] = useState(() => FACTORY_CONFIG.protocolFeeRecipient || '');
+  const [protocolBP, setProtocolBP] = useState(() => {
+    const bp = FACTORY_CONFIG.protocolBP;
+    return Number.isFinite(bp) ? bp : 10;
+  });
   const [entryFee, setEntryFee] = useState('');
+  const [burnBP, setBurnBP] = useState('30');
+  const [treasuryBP, setTreasuryBP] = useState('30');
+  const [memberPoolBP, setMemberPoolBP] = useState('30');
   // Governance: all members have 1 vote
 
   // joining form
@@ -119,6 +128,12 @@ function App() {
       window.__templToastT = window.setTimeout(() => setToast(''), 1800);
     } catch {}
   }, []);
+
+  const burnBpNum = Number.isFinite(Number(burnBP)) ? Number(burnBP) : 0;
+  const treasuryBpNum = Number.isFinite(Number(treasuryBP)) ? Number(treasuryBP) : 0;
+  const memberBpNum = Number.isFinite(Number(memberPoolBP)) ? Number(memberPoolBP) : 0;
+  const protocolBpNum = Number.isFinite(Number(protocolBP)) ? Number(protocolBP) : null;
+  const splitTotal = burnBpNum + treasuryBpNum + memberBpNum + (protocolBpNum ?? 0);
 
   // Minimal debug logger: prints only in dev or when explicitly enabled for e2e
   const dlog = (...args) => {
@@ -414,37 +429,137 @@ function App() {
     } catch {}
   }, [xmtp, walletAddress]);
 
+  useEffect(() => {
+    if (!factoryAddress) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        let reader = signer;
+        if (!reader) {
+          if (typeof window !== 'undefined' && window?.ethereum) {
+            try {
+              reader = new ethers.BrowserProvider(window.ethereum);
+            } catch {
+              return;
+            }
+          } else {
+            return;
+          }
+        }
+        const factoryContract = new ethers.Contract(factoryAddress, templFactoryArtifact.abi, reader);
+        const [recipient, bpRaw] = await Promise.all([
+          factoryContract.protocolFeeRecipient(),
+          factoryContract.protocolBP()
+        ]);
+        if (cancelled) return;
+        if (recipient && recipient !== protocolFeeRecipient) {
+          setProtocolFeeRecipient(recipient);
+        }
+        const bpNum = Number(bpRaw);
+        if (!Number.isNaN(bpNum) && bpNum !== protocolBP) {
+          setProtocolBP(bpNum);
+        }
+      } catch (err) {
+        dlog('[app] load factory config failed', err?.message || err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [factoryAddress, signer, protocolFeeRecipient, protocolBP]);
+
   const handleDeploy = useCallback(async () => {
     dlog('[app] handleDeploy clicked', { signer: !!signer, xmtp: !!xmtp });
-    try { console.log('[app] handleDeploy start', { signer: !!signer, xmtp: !!xmtp, tokenAddress, protocolFeeRecipient, entryFee }); } catch {}
-    if (!signer) return;
-    if (!ethers.isAddress(tokenAddress)) return alert('Invalid token address');
-    if (!ethers.isAddress(protocolFeeRecipient))
-      return alert('Invalid protocol fee recipient address');
-    const nums = [entryFee];
-    if (!nums.every((n) => /^\d+$/.test(n))) return alert('Invalid numeric input');
     try {
-      dlog('[app] deploying templ with', { tokenAddress, protocolFeeRecipient, entryFee });
+      console.log('[app] handleDeploy start', {
+        signer: !!signer,
+        xmtp: !!xmtp,
+        tokenAddress,
+        entryFee,
+        burnBP,
+        treasuryBP,
+        memberPoolBP,
+        protocolBP,
+        factoryAddress
+      });
+    } catch {}
+    if (!signer) return;
+    const trimmedFactory = factoryAddress.trim();
+    if (!trimmedFactory) {
+      pushStatus('⚠️ Enter a TemplFactory address');
+      return;
+    }
+    if (!ethers.isAddress(trimmedFactory)) {
+      pushStatus('⚠️ Invalid factory address');
+      return;
+    }
+    if (!ethers.isAddress(tokenAddress)) {
+      alert('Invalid token address');
+      return;
+    }
+    if (!/^\d+$/.test(entryFee)) {
+      alert('Invalid entry fee');
+      return;
+    }
+    const splits = [burnBP, treasuryBP, memberPoolBP];
+    if (!splits.every((n) => /^\d+$/.test(n))) {
+      alert('Basis points must be numeric');
+      return;
+    }
+    const burn = Number(burnBP);
+    const treas = Number(treasuryBP);
+    const member = Number(memberPoolBP);
+    if ([burn, treas, member].some((v) => v < 0)) {
+      alert('Basis points cannot be negative');
+      return;
+    }
+    const protocolShare = Number.isFinite(protocolBP) ? protocolBP : null;
+    if (protocolShare !== null) {
+      const totalSplit = burn + treas + member + protocolShare;
+      if (totalSplit !== 100) {
+        alert(`Fee split must sum to 100. Current total: ${totalSplit}`);
+        return;
+      }
+    }
+    try {
+      dlog('[app] deploying templ with factory', {
+        tokenAddress,
+        entryFee,
+        burnBP,
+        treasuryBP,
+        memberPoolBP,
+        protocolBP,
+        factoryAddress
+      });
       const result = await deployTempl({
         ethers,
         xmtp,
         signer,
         walletAddress,
         tokenAddress,
-        protocolFeeRecipient,
         entryFee,
+        burnBP,
+        treasuryBP,
+        memberPoolBP,
+        factoryAddress: trimmedFactory,
+        factoryArtifact: templFactoryArtifact,
         templArtifact
       });
       dlog('[app] deployTempl returned', result);
-      try { console.log('[app] handleDeploy success', { contract: result.contractAddress, groupId: result.groupId }); } catch {}
-      dlog('[app] deployTempl groupId details', { groupId: result.groupId, has0x: String(result.groupId).startsWith('0x'), len: String(result.groupId).length });
+      try {
+        console.log('[app] handleDeploy success', {
+          contract: result.contractAddress,
+          groupId: result.groupId
+        });
+      } catch {}
+      dlog('[app] deployTempl groupId details', {
+        groupId: result.groupId,
+        has0x: String(result.groupId).startsWith('0x'),
+        len: String(result.groupId).length
+      });
       updateTemplAddress(result.contractAddress);
       setGroup(result.group);
       setGroupId(result.groupId);
       pushStatus('✅ Templ deployed');
-      // Mark created; actual connection flips when the conversation is discovered.
       if (result.groupId) pushStatus('✅ Group created');
-      // Move priest to chat interface
       try {
         localStorage.setItem('templ:lastAddress', result.contractAddress);
         if (result.groupId) localStorage.setItem('templ:lastGroupId', String(result.groupId));
@@ -454,7 +569,7 @@ function App() {
       console.error('[app] deploy failed', err);
       alert(err.message);
     }
-  }, [signer, xmtp, tokenAddress, protocolFeeRecipient, entryFee, walletAddress, updateTemplAddress, pushStatus, navigate]);
+  }, [signer, xmtp, tokenAddress, entryFee, burnBP, treasuryBP, memberPoolBP, protocolBP, factoryAddress, walletAddress, updateTemplAddress, pushStatus, navigate]);
 
   // In e2e debug mode, auto-trigger deploy once inputs are valid to deflake clicks
   useEffect(() => {
@@ -466,13 +581,16 @@ function App() {
     if (autoDeployTriggeredRef.current) return;
     if (!signer) return;
     try {
-      if (ethers.isAddress(tokenAddress) && ethers.isAddress(protocolFeeRecipient) && /^\d+$/.test(entryFee)) {
+      const splitsValid = [burnBP, treasuryBP, memberPoolBP].every((n) => /^\d+$/.test(n));
+      const sumValid = !Number.isFinite(protocolBP) ? true : (Number(burnBP) + Number(treasuryBP) + Number(memberPoolBP) + Number(protocolBP)) === 100;
+      const trimmedFactory = factoryAddress.trim();
+      if (trimmedFactory && ethers.isAddress(trimmedFactory) && ethers.isAddress(tokenAddress) && /^\d+$/.test(entryFee) && splitsValid && sumValid) {
         autoDeployTriggeredRef.current = true;
         // Fire and forget; UI will reflect status
         handleDeploy();
       }
     } catch {}
-  }, [path, signer, tokenAddress, protocolFeeRecipient, entryFee, handleDeploy]);
+  }, [path, signer, factoryAddress, tokenAddress, entryFee, burnBP, treasuryBP, memberPoolBP, protocolBP, handleDeploy]);
 
   const handlePurchaseAndJoin = useCallback(async () => {
     dlog('[app] handlePurchaseAndJoin invoked', {
@@ -1432,12 +1550,49 @@ function App() {
 
         {path === '/create' && (
           <div className="forms space-y-3">
-            <div className="deploy space-y-2">
-              <h2 className="text-xl font-semibold">Create Templ</h2>
-              <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Token address" value={tokenAddress} onChange={(e) => setTokenAddress(e.target.value)} />
-              <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Protocol fee recipient" value={protocolFeeRecipient} onChange={(e) => setProtocolFeeRecipient(e.target.value)} />
-              <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Entry fee" value={entryFee} onChange={(e) => setEntryFee(e.target.value)} />
-                {/* Governance: all votes are equal */}
+        <div className="deploy space-y-2">
+          <h2 className="text-xl font-semibold">Create Templ</h2>
+          <div>
+            <label className="block text-sm font-medium text-black/70 mb-1">Access token address</label>
+            <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Token address" value={tokenAddress} onChange={(e) => setTokenAddress(e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-black/70 mb-1">TemplFactory address</label>
+            <input
+              className={`w-full border border-black/20 rounded px-3 py-2 ${FACTORY_CONFIG.address ? 'bg-black/5' : ''}`}
+              placeholder="Factory address"
+              value={factoryAddress}
+              readOnly={Boolean(FACTORY_CONFIG.address)}
+              onChange={(e) => setFactoryAddress(e.target.value)}
+            />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div>
+              <label className="block text-sm font-medium text-black/70 mb-1">Protocol fee recipient (fixed)</label>
+              <input className="w-full border border-black/20 rounded px-3 py-2 bg-black/5" value={protocolFeeRecipient || 'fetching…'} readOnly />
+            </div>
+                <div>
+                  <label className="block text-sm font-medium text-black/70 mb-1">Protocol basis points</label>
+                  <input className="w-full border border-black/20 rounded px-3 py-2 bg-black/5" value={protocolBpNum ?? 'fetching…'} readOnly />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-black/70 mb-1">Entry fee (wei)</label>
+                <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Entry fee" value={entryFee} onChange={(e) => setEntryFee(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-black/70 mb-1">Fee split (basis points)</label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <input className="border border-black/20 rounded px-3 py-2" placeholder="Burn" value={burnBP} onChange={(e) => setBurnBP(e.target.value)} />
+                  <input className="border border-black/20 rounded px-3 py-2" placeholder="Treasury" value={treasuryBP} onChange={(e) => setTreasuryBP(e.target.value)} />
+                  <input className="border border-black/20 rounded px-3 py-2" placeholder="Member pool" value={memberPoolBP} onChange={(e) => setMemberPoolBP(e.target.value)} />
+                </div>
+                {Number.isFinite(protocolBpNum) && (
+                  <div className={`text-xs mt-1 ${splitTotal === 100 ? 'text-black/60' : 'text-red-600'}`}>
+                    Fee split total: {splitTotal}/100 (includes protocol {protocolBpNum})
+                  </div>
+                )}
+              </div>
               <button className="px-4 py-2 rounded bg-primary text-black font-semibold w-full sm:w-auto" onClick={handleDeploy}>Deploy</button>
             </div>
           </div>

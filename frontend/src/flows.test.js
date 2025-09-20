@@ -50,13 +50,19 @@ describe('templ flows', () => {
   });
 
   it('deployTempl deploys contract and registers group', async () => {
-    const fakeContract = {
-      waitForDeployment: vi.fn(),
-      getAddress: vi.fn().mockResolvedValue('0xDeAd')
+    const wait = vi.fn().mockResolvedValue({});
+    const createTempl = vi.fn().mockResolvedValue({ wait });
+    createTempl.staticCall = vi.fn().mockResolvedValue('0xDeAd');
+    const factoryContract = {
+      protocolFeeRecipient: vi.fn().mockResolvedValue('0xfee'),
+      protocolBP: vi.fn().mockResolvedValue(10n),
+      createTempl
     };
-    const factory = { deploy: vi.fn().mockResolvedValue(fakeContract) };
     const ethers = {
-      ContractFactory: vi.fn().mockImplementation(() => factory)
+      Contract: vi.fn().mockImplementation((address) => {
+        if (address === '0xFactory') return factoryContract;
+        throw new Error(`unexpected contract ${address}`);
+      })
     };
     mockFetchSuccess({ groupId: 'group-1' });
     waitForConversation.mockResolvedValueOnce({ id: 'group-1', consentState: 'allowed' });
@@ -67,17 +73,30 @@ describe('templ flows', () => {
       signer,
       walletAddress: '0xabc',
       tokenAddress: '0xdef',
-      protocolFeeRecipient: '0xfee',
       entryFee: '1',
+      burnBP: '30',
+      treasuryBP: '30',
+      memberPoolBP: '30',
+      factoryAddress: '0xFactory',
+      factoryArtifact: { abi: [] },
       templArtifact
     });
 
-    expect(ethers.ContractFactory).toHaveBeenCalled();
-    expect(factory.deploy).toHaveBeenCalledWith(
+    expect(createTempl.staticCall).toHaveBeenCalledWith(
       '0xabc',
-      '0xfee',
       '0xdef',
       BigInt(1),
+      30n,
+      30n,
+      30n
+    );
+    expect(createTempl).toHaveBeenCalledWith(
+      '0xabc',
+      '0xdef',
+      BigInt(1),
+      30n,
+      30n,
+      30n,
       {}
     );
     expect(signer.signTypedData).toHaveBeenCalled();
@@ -102,13 +121,16 @@ describe('templ flows', () => {
   });
 
   it('deployTempl throws on non-200 backend response', async () => {
-    const fakeContract = {
-      waitForDeployment: vi.fn(),
-      getAddress: vi.fn().mockResolvedValue('0xDeAd')
+    const wait = vi.fn();
+    const createTempl = vi.fn().mockResolvedValue({ wait });
+    createTempl.staticCall = vi.fn().mockResolvedValue('0xDeAd');
+    const factoryContract = {
+      protocolFeeRecipient: vi.fn().mockResolvedValue('0xfee'),
+      protocolBP: vi.fn().mockResolvedValue(10n),
+      createTempl
     };
-    const factory = { deploy: vi.fn().mockResolvedValue(fakeContract) };
     const ethers = {
-      ContractFactory: vi.fn().mockImplementation(() => factory)
+      Contract: vi.fn().mockImplementation(() => factoryContract)
     };
     mockFetchFailure({
       status: 500,
@@ -122,21 +144,28 @@ describe('templ flows', () => {
         signer,
         walletAddress: '0xabc',
         tokenAddress: '0xdef',
-        protocolFeeRecipient: '0xfee',
         entryFee: '1',
+        burnBP: '30',
+        treasuryBP: '30',
+        memberPoolBP: '30',
+        factoryAddress: '0xFactory',
+        factoryArtifact: { abi: [] },
         templArtifact
       })
     ).rejects.toThrow(/Templ registration failed/);
   });
 
   it('deployTempl throws on invalid JSON response', async () => {
-    const fakeContract = {
-      waitForDeployment: vi.fn(),
-      getAddress: vi.fn().mockResolvedValue('0xDeAd')
+    const wait = vi.fn();
+    const createTempl = vi.fn().mockResolvedValue({ wait });
+    createTempl.staticCall = vi.fn().mockResolvedValue('0xDeAd');
+    const factoryContract = {
+      protocolFeeRecipient: vi.fn().mockResolvedValue('0xfee'),
+      protocolBP: vi.fn().mockResolvedValue(10n),
+      createTempl
     };
-    const factory = { deploy: vi.fn().mockResolvedValue(fakeContract) };
     const ethers = {
-      ContractFactory: vi.fn().mockImplementation(() => factory)
+      Contract: vi.fn().mockImplementation(() => factoryContract)
     };
     mockFetchSuccess({});
     await expect(
@@ -146,8 +175,12 @@ describe('templ flows', () => {
         signer,
         walletAddress: '0xabc',
         tokenAddress: '0xdef',
-        protocolFeeRecipient: '0xfee',
         entryFee: '1',
+        burnBP: '30',
+        treasuryBP: '30',
+        memberPoolBP: '30',
+        factoryAddress: '0xFactory',
+        factoryArtifact: { abi: [] },
         templArtifact
       })
     ).rejects.toThrow(/Invalid \/templs response/);
@@ -158,7 +191,7 @@ describe('templ flows', () => {
     const approvalTx = { wait: vi.fn() };
     const templContract = {
       hasAccess: vi.fn().mockResolvedValue(false),
-      getConfig: vi.fn().mockResolvedValue(['0xToken', 100n]),
+      getConfig: vi.fn().mockResolvedValue(['0xToken', 100n, false, 0n, 0n, 0n, 30, 30, 30, 10]),
       purchaseAccess: vi.fn().mockResolvedValue(purchaseTx)
     };
     const erc20 = {
@@ -214,7 +247,7 @@ describe('templ flows', () => {
     const templContract = {
       hasAccess: vi.fn().mockResolvedValue(false),
       purchaseAccess: vi.fn().mockResolvedValue({ wait: vi.fn() }),
-      getConfig: vi.fn().mockResolvedValue(['0xToken', 100n, false, 0n, 0n, 0n])
+      getConfig: vi.fn().mockResolvedValue(['0xToken', 100n, false, 0n, 0n, 0n, 30, 30, 30, 10])
     };
     const erc20 = {
       allowance: vi.fn().mockResolvedValue(0n),

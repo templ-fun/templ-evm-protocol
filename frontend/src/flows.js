@@ -81,29 +81,70 @@ export async function deployTempl({
   signer,
   walletAddress,
   tokenAddress,
-  protocolFeeRecipient,
   entryFee,
+  burnBP,
+  treasuryBP,
+  memberPoolBP,
+  factoryAddress,
+  factoryArtifact,
   templArtifact,
   backendUrl = BACKEND_URL,
   txOptions = {}
 }) {
-  if (!ethers || !signer || !walletAddress || !tokenAddress || !protocolFeeRecipient || !templArtifact) {
+  if (!ethers || !signer || !walletAddress || !tokenAddress || !templArtifact) {
     throw new Error('Missing required deployTempl parameters');
   }
-  const factory = new ethers.ContractFactory(
-    templArtifact.abi,
-    templArtifact.bytecode,
-    signer
-  );
-  const contract = await factory.deploy(
+  if (!factoryAddress || !factoryArtifact) {
+    throw new Error('TemplFactory configuration missing');
+  }
+  const factory = new ethers.Contract(factoryAddress, factoryArtifact.abi, signer);
+  let protocolFeeRecipient;
+  let protocolBpRaw;
+  try {
+    [protocolFeeRecipient, protocolBpRaw] = await Promise.all([
+      factory.protocolFeeRecipient(),
+      factory.protocolBP()
+    ]);
+  } catch (err) {
+    throw new Error(err?.message || 'Unable to read factory configuration');
+  }
+  if (!protocolFeeRecipient || protocolFeeRecipient === ethers.ZeroAddress) {
+    throw new Error('Factory protocol fee recipient not configured');
+  }
+  const burn = BigInt(burnBP ?? 0);
+  const treasury = BigInt(treasuryBP ?? 0);
+  const member = BigInt(memberPoolBP ?? 0);
+  const protocol = BigInt(protocolBpRaw ?? 0n);
+  const totalSplit = burn + treasury + member + protocol;
+  if (totalSplit !== 100n) {
+    throw new Error(`Fee split must equal 100, received ${totalSplit}`);
+  }
+  let normalizedEntryFee;
+  try {
+    normalizedEntryFee = BigInt(entryFee);
+  } catch {
+    throw new Error('Invalid entry fee');
+  }
+  const normalizedToken = String(tokenAddress);
+  const templAddress = await factory.createTempl.staticCall(
     walletAddress,
-    protocolFeeRecipient,
-    tokenAddress,
-    BigInt(entryFee),
+    normalizedToken,
+    normalizedEntryFee,
+    burn,
+    treasury,
+    member
+  );
+  const tx = await factory.createTempl(
+    walletAddress,
+    normalizedToken,
+    normalizedEntryFee,
+    burn,
+    treasury,
+    member,
     txOptions
   );
-  await contract.waitForDeployment();
-  const contractAddress = await contract.getAddress();
+  await tx.wait();
+  const contractAddress = templAddress;
   // Record immediately for tests to discover, even before backend registration
   addToTestRegistry(contractAddress);
   const network = await signer.provider?.getNetwork?.();
@@ -612,8 +653,27 @@ export async function proposeVote({
         tx = await contract.createProposalWithdrawTreasury(p.token, p.recipient, p.amount, p.reason || '', votingPeriod, txOptions); break;
       case 'changePriest':
         tx = await contract.createProposalChangePriest(p.newPriest, votingPeriod, txOptions); break;
-      case 'updateConfig':
-        tx = await contract.createProposalUpdateConfig(p.newEntryFee || 0n, votingPeriod, txOptions); break;
+      case 'updateConfig': {
+        const rawFee = p.newEntryFee ?? 0;
+        let feeBigInt = 0n;
+        try { feeBigInt = rawFee ? BigInt(rawFee) : 0n; } catch {}
+        const newBurn = p.newBurnBP ?? 0;
+        const newTreasury = p.newTreasuryBP ?? 0;
+        const newMember = p.newMemberPoolBP ?? 0;
+        const updateSplit = p.updateFeeSplit !== undefined
+          ? !!p.updateFeeSplit
+          : (newBurn !== 0 || newTreasury !== 0 || newMember !== 0);
+        tx = await contract.createProposalUpdateConfig(
+          feeBigInt,
+          newBurn,
+          newTreasury,
+          newMember,
+          updateSplit,
+          votingPeriod,
+          txOptions
+        );
+        break;
+      }
       case 'disbandTreasury': {
         let tokenAddr;
         const provided = String(p.token ?? '').trim();
@@ -662,9 +722,17 @@ export async function proposeVote({
         const tx = await contract.createProposalChangePriest(newPriest, votingPeriod, txOptions);
         return await waitForProposal(tx);
       }
-      if (fn?.name === 'updateConfigDAO' && fn.inputs.length === 2) {
-        const [, newEntryFee] = full.decodeFunctionData(fn, callData);
-        const tx = await contract.createProposalUpdateConfig(newEntryFee, votingPeriod, txOptions);
+      if (fn?.name === 'updateConfigDAO' && fn.inputs.length === 6) {
+        const [, newEntryFee, updateSplit, burnBP, treasuryBP, memberPoolBP] = full.decodeFunctionData(fn, callData);
+        const tx = await contract.createProposalUpdateConfig(
+          newEntryFee,
+          burnBP,
+          treasuryBP,
+          memberPoolBP,
+          updateSplit,
+          votingPeriod,
+          txOptions
+        );
         return await waitForProposal(tx);
       }
       if (fn?.name === 'disbandTreasuryDAO') {

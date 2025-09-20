@@ -1,4 +1,4 @@
-import { test, expect, TestToken } from './fixtures.js';
+import { test, expect, TestToken, TemplFactory } from './fixtures.js';
 import { ethers } from 'ethers';
 function buildCreateTypedData({ chainId, contractAddress, nonce, issuedAt, expiry }) {
   if (!Number.isFinite(nonce)) nonce = Date.now();
@@ -31,9 +31,15 @@ test.describe('Tech Demo: Realtime multi-user flow', () => {
     // Load TEMPL ABI
     const templAbi = JSON.parse(readFileSync(path.join(process.cwd(), 'src/contracts/TEMPL.json'))).abi;
 
-    // Deploy a fresh ERC-20 TestToken as access token
+    // Deploy a fresh ERC-20 TestToken and TemplFactory
     const tokenFactory = new ethers.ContractFactory(TestToken.abi, TestToken.bytecode, wallets.priest);
-    const token = await tokenFactory.deploy('Test', 'TEST', 18);
+    const factoryFactory = new ethers.ContractFactory(TemplFactory.abi, TemplFactory.bytecode, wallets.priest);
+    let deployNonce = await wallets.priest.getNonce();
+    const templFactory = await factoryFactory.deploy(await wallets.delegate.getAddress(), 10, { nonce: deployNonce++ });
+    await templFactory.waitForDeployment();
+    const factoryAddress = await templFactory.getAddress();
+
+    const token = await tokenFactory.deploy('Test', 'TEST', 18, { nonce: deployNonce++ });
     await token.waitForDeployment();
     const tokenAddress = await token.getAddress();
 
@@ -138,7 +144,9 @@ test.describe('Tech Demo: Realtime multi-user flow', () => {
     await expect(page.locator('h2:has-text("Create Templ")')).toBeVisible();
     await expect(page.locator('.status')).toContainText('Messaging client ready', { timeout: 5000 });
     await page.fill('input[placeholder*="Token address"]', tokenAddress);
-    await page.fill('input[placeholder*="Protocol fee recipient"]', await wallets.priest.getAddress());
+    if (await page.locator('input[placeholder*="Factory address"]:not([readonly])').count()) {
+      await page.fill('input[placeholder*="Factory address"]', factoryAddress);
+    }
     await page.fill('input[placeholder*="Entry fee"]', '100');
     await page.click('button:has-text("Deploy")');
     // Resolve contract address via localStorage (set by the app on deploy); avoid relying on hidden DOM nodes

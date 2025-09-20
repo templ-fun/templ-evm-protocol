@@ -9,9 +9,21 @@ import {TemplErrors} from "./TemplErrors.sol";
 abstract contract TemplTreasury is TemplMembership {
     using SafeERC20 for IERC20;
 
-    constructor(address _protocolFeeRecipient, address _accessToken)
-        TemplMembership(_protocolFeeRecipient, _accessToken)
-    {}
+    constructor(
+        address _protocolFeeRecipient,
+        address _accessToken,
+        uint256 _burnBP,
+        uint256 _treasuryBP,
+        uint256 _memberPoolBP,
+        uint256 _protocolBP
+    ) TemplMembership(
+        _protocolFeeRecipient,
+        _accessToken,
+        _burnBP,
+        _treasuryBP,
+        _memberPoolBP,
+        _protocolBP
+    ) {}
 
     function withdrawTreasuryDAO(
         address token,
@@ -22,8 +34,15 @@ abstract contract TemplTreasury is TemplMembership {
         _withdrawTreasury(token, recipient, amount, reason, 0);
     }
 
-    function updateConfigDAO(address _token, uint256 _entryFee) external onlyDAO {
-        _updateConfig(_token, _entryFee);
+    function updateConfigDAO(
+        address _token,
+        uint256 _entryFee,
+        bool _updateFeeSplit,
+        uint256 _burnBP,
+        uint256 _treasuryBP,
+        uint256 _memberPoolBP
+    ) external onlyDAO {
+        _updateConfig(_token, _entryFee, _updateFeeSplit, _burnBP, _treasuryBP, _memberPoolBP);
     }
 
     function setPausedDAO(bool _paused) external onlyDAO {
@@ -84,14 +103,24 @@ abstract contract TemplTreasury is TemplMembership {
         emit PriestChanged(old, newPriest);
     }
 
-    function _updateConfig(address _token, uint256 _entryFee) internal {
+    function _updateConfig(
+        address _token,
+        uint256 _entryFee,
+        bool _updateFeeSplit,
+        uint256 _burnBP,
+        uint256 _treasuryBP,
+        uint256 _memberPoolBP
+    ) internal {
         if (_token != address(0) && _token != accessToken) revert TemplErrors.TokenChangeDisabled();
         if (_entryFee > 0) {
             if (_entryFee < 10) revert TemplErrors.EntryFeeTooSmall();
             if (_entryFee % 10 != 0) revert TemplErrors.InvalidEntryFee();
             entryFee = _entryFee;
         }
-        emit ConfigUpdated(accessToken, entryFee);
+        if (_updateFeeSplit) {
+            _setFeeSplit(_burnBP, _treasuryBP, _memberPoolBP);
+        }
+        emit ConfigUpdated(accessToken, entryFee, burnBP, treasuryBP, memberPoolBP, protocolBP);
     }
 
     function _setPaused(bool _paused) internal {

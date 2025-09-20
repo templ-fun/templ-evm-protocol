@@ -1,7 +1,14 @@
 const { loadFixture } = require("@nomicfoundation/hardhat-network-helpers");
 const { ethers } = require("hardhat");
 
-async function deployTempl({ entryFee = ethers.parseUnits("100", 18) } = {}) {
+async function deployTempl({
+  entryFee = ethers.parseUnits("100", 18),
+  burnBP = 30,
+  treasuryBP = 30,
+  memberPoolBP = 30,
+  protocolBP = 10,
+  protocolFeeRecipient
+} = {}) {
   async function fixture() {
     const accounts = await ethers.getSigners();
     const [owner, priest] = accounts;
@@ -13,11 +20,16 @@ async function deployTempl({ entryFee = ethers.parseUnits("100", 18) } = {}) {
     await token.waitForDeployment();
 
     const TEMPL = await ethers.getContractFactory("TEMPL");
+    const protocolRecipient = protocolFeeRecipient || priest.address;
     const templ = await TEMPL.deploy(
       priest.address,
-      priest.address,
+      protocolRecipient,
       await token.getAddress(),
-      entryFee
+      entryFee,
+      burnBP,
+      treasuryBP,
+      memberPoolBP,
+      protocolBP
     );
     await templ.waitForDeployment();
     try {

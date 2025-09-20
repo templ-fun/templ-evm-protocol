@@ -5,7 +5,7 @@
 TEMPL is a DAO‑governed, token‑gated private group system that combines:
 
 - On‑chain membership with a fixed ERC‑20 entry fee (one‑time, non‑transferable)
-- Automatic fee split when new member joins 30/30/30/10 (burn/treasury/member‑pool/protocol)
+- Automatic fee split when new member joins (burn/treasury/member-pool portions are per-templ; protocol share is fixed by the factory)
 - One‑member‑one‑vote governance over an allowlisted set of safe actions
 - Views and signatures that let a backend enforce access to an XMTP group chat
 
@@ -51,15 +51,16 @@ Implementation is layered across:
 - `TemplTreasury` (treasury/config/priest handlers)
 - `TemplGovernance` (proposal lifecycle)
 - `TEMPL` (constructor wiring + payable receive)
+- `TemplFactory` (fixes protocol fee basis points + recipient and deploys templ instances)
 
 ### Economic Model (per `purchaseAccess()`)
 
-- Split of `entryFee`:
-  - 30% Burn → `0x000000000000000000000000000000000000dEaD`
-  - 30% Treasury → retained by contract, tracked in `treasuryBalance` (entry-fee share); donations also accrue to the contract balance and are withdrawable via governance.
-  - 30% Member Pool → retained by contract, tracked in `memberPoolBalance`
-  - 10% Protocol → transferred to `protocolFeeRecipient`
-- Member rewards: When a new member joins, the contract increments `cumulativeMemberRewards` by `floor(30% / (n-1))` for existing members (where `n` is new member count). Remainder accumulates in `memberRewardRemainder`.
+- Split of `entryFee` (basis points configurable at deployment time):
+  - Burn (`burnBP`) → `0x000000000000000000000000000000000000dEaD`
+  - Treasury (`treasuryBP`) → retained by contract and tracked in `treasuryBalance`; donations also accrue to the contract balance and remain governable.
+  - Member Pool (`memberPoolBP`) → retained by contract and tracked in `memberPoolBalance`
+  - Protocol (`protocolBP`) → transferred to the factory’s immutable `protocolFeeRecipient`
+- Member rewards: When a new member joins, the contract increments `cumulativeMemberRewards` by `floor(memberPoolShare / (n-1))` for existing members (where `n` is new member count). Remainders accumulate in `memberRewardRemainder`.
 - Donations: Anyone may send ETH/ERC‑20 directly to the contract address. Governance may later withdraw donated assets; the member pool balance remains reserved for members.
 - Leftovers: Any indivisible remainder from reward splits accumulates in `memberRewardRemainder` and is folded into the next distribution so every token is eventually claimable.
 
@@ -125,7 +126,7 @@ flowchart LR
 ### Allowed Actions
 
 - `setPausedDAO(bool)` — pause/unpause purchases.
-- `updateConfigDAO(address,uint256)` — update entry fee only; token changes are disabled (`TokenChangeDisabled`). `_token` must be `address(0)` or the current token.
+- `updateConfigDAO(address,uint256,bool,uint256,uint256,uint256)` — update entry fee and optionally the burn/treasury/member pool basis points. Token changes are disabled (`TokenChangeDisabled`). `_token` must be `address(0)` or the current token. When `_updateFeeSplit` is true the provided basis points must sum with `protocolBP` to 100.
 - `withdrawTreasuryDAO(address token, address recipient, uint256 amount, string reason)` — move a specific amount of any asset held by the contract. For the access token, only the treasury portion is withdrawable; the member pool is preserved.
 - `disbandTreasuryDAO(address token)` — move the full available balance of `token` into a member-distributable pool. With the access token this increases the member pool (`memberPoolBalance`) and remainder; with any other ERC‑20 or ETH the funds are tracked in an external rewards pool that members withdraw via `claimExternalToken`.
 - `changePriestDAO(address)` — change the on‑chain `priest` address.
@@ -135,7 +136,7 @@ Creation helpers (`createProposalX`) initialize proposals with normalized timing
 ### Views and Introspection
 
 - `getTreasuryInfo()` — available treasury (excludes reserved member pool), current pool, totals, protocol recipient.
-- `getConfig()` — token, entry fee, paused flag, member count, available treasury, pool.
+- `getConfig()` — token, entry fee, paused flag, member count, available treasury, pool, burn/treasury/member basis points, and protocol basis points.
 - `getMemberCount()` — number of members.
 - `getVoteWeight(address)` — `1` for members, `0` for non‑members.
 - External reward helpers: `getExternalRewardTokens()`, `getExternalRewardState(address)`, `getClaimableExternalToken(member, token)`, and `claimExternalToken(token)` (handles ERC‑20 or native via `address(0)`).

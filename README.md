@@ -16,7 +16,7 @@ DAO‑governed token‑gated private groups with onchain treasury management and
 ## Architecture
 
 A TEMPL combines three pieces:
-- **Smart contracts** on Base gate membership with `purchaseAccess`.
+- **Smart contracts** on Base gate membership with `purchaseAccess`; a `TemplFactory` fixes the protocol share (recipient + basis points) while allowing per-templ burn/treasury/member splits.
 - **Backend bot** creates the XMTP group with an ephemeral key and only invites paid wallets thereafter (no persistent owner/admin keys retained).
 - **React frontend** deploys contracts, verifies purchases and hosts chat.
 The frontend buys access and requests an invite; the backend can mirror contract events in chat.
@@ -98,6 +98,13 @@ Minimal local setup requires only a handful of variables:
 | --- | --- | --- |
 | `RPC_URL` | RPC endpoint for Base network | `.env`, `backend/.env` |
 | `PRIVATE_KEY` | Deployer wallet key for contract deployments | `.env` |
+| `FACTORY_ADDRESS` | Optional; reuse an existing `TemplFactory` instead of deploying a new one | `.env` |
+| `PRIEST_ADDRESS` | Address that will hold the priest role for the templ created by `scripts/deploy.js` | `.env` |
+| `PROTOCOL_FEE_RECIPIENT` | Address receiving the factory’s protocol share | `.env` |
+| `BURN_BP` / `TREASURY_BP` / `MEMBER_POOL_BP` | Basis points allocated to burn, treasury, and member pool (default 30/30/30) | `.env` |
+| `PROTOCOL_BP` | Basis points forwarded to the protocol recipient (default 10) | `.env` |
+| `TOKEN_ADDRESS` | ERC‑20 address required for templ creation | `.env` |
+| `ENTRY_FEE` | Entry fee (wei) charged to join the templ | `.env` |
 | `BOT_PRIVATE_KEY` | XMTP invite-bot wallet key (auto-generated if omitted) | `backend/.env` |
 | `ALLOWED_ORIGINS` | Comma-separated frontend origins allowed to call the backend | `backend/.env` |
 | `BACKEND_DB_ENC_KEY` | 32-byte hex key to encrypt XMTP Node DB. Required in production; in dev/test the backend derives a fallback from the bot key if omitted. | `backend/.env` |
@@ -113,7 +120,7 @@ See [BACKEND.md#environment-variables](./docs/BACKEND.md#environment-variables) 
 ## Deploying to production
 1. Create a `.env` file in the project root for deployment scripts and a `backend/.env` for the bot. Required variables are documented in [CONTRACTS.md#configuration](./docs/CONTRACTS.md#configuration) and [BACKEND.md#environment-variables](./docs/BACKEND.md#environment-variables).
 2. Run the full test suite and Slither analysis.
-3. Deploy with `scripts/deploy.js` and record the contract address and XMTP group ID.
+3. Deploy with `scripts/deploy.js`. The script deploys `TemplFactory` when a `FACTORY_ADDRESS` isn’t provided, then creates a templ instance with the configured basis points. Record the templ contract address and the XMTP group ID returned by the backend.
 4. Host the backend bot and set `ALLOWED_ORIGINS` to the permitted frontend URL(s). In production, contract address is verified on‑chain and the `priest` address must match the deployed contract.
 5. Build the frontend (`npm --prefix frontend run build`) and serve the static files.
 
@@ -171,7 +178,7 @@ Core flows include TEMPL creation, paid onboarding, chat, moderation, proposal d
 
 - Contracts
   - Proposal execution is restricted to an allowlist of safe DAO actions; arbitrary external calls are disabled.
-  - Governance actions are allowlisted to: pause/unpause (`setPausedDAO`), reprice entry fee only (`updateConfigDAO` with token changes disabled), move treasury in part (`withdrawTreasuryDAO`), change the priest (`changePriestDAO`), and disband the full balance of any token into member rewards (`disbandTreasuryDAO(token)`).
+  - Governance actions are allowlisted to: pause/unpause (`setPausedDAO`), reprice entry fee and optionally adjust the non-protocol fee splits (`updateConfigDAO` with token changes disabled), move treasury in part (`withdrawTreasuryDAO`), change the priest (`changePriestDAO`), and disband the full balance of any token into member rewards (`disbandTreasuryDAO(token)`).
   - Voting is one member‑one vote; proposer auto‑YES; votes are changeable until eligibility closes. Before quorum, any member may vote; after quorum is reached, only members who joined before `quorumReachedAt` may vote (late joiners revert).
   - Governance may move the access‑token treasury and any tokens or ETH held by the contract (including donations) via proposals. The member pool cannot be withdrawn; it is only claimable by members. Arbitrary external calls remain disabled.
 - Backend API

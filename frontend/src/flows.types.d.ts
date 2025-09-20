@@ -7,9 +7,13 @@ export interface DeployRequest {
   signer: any
   walletAddress: Address
   tokenAddress: Address
-  protocolFeeRecipient: Address
   entryFee: number | string | bigint
-  templArtifact: { abi: any; bytecode: string }
+  burnBP: number | string | bigint
+  treasuryBP: number | string | bigint
+  memberPoolBP: number | string | bigint
+  factoryAddress: Address
+  factoryArtifact: { abi: any }
+  templArtifact: { abi: any; bytecode?: string }
   backendUrl?: string
   txOptions?: Record<string, any>
 }
