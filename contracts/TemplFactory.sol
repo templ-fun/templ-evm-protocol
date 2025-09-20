@@ -127,12 +127,6 @@ contract TemplFactory {
         uint256 _treasuryPercent,
         uint256 _memberPoolPercent
     ) internal view {
-        if (
-            _burnPercent > TOTAL_PERCENT ||
-            _treasuryPercent > TOTAL_PERCENT ||
-            _memberPoolPercent > TOTAL_PERCENT ||
-            protocolPercent > TOTAL_PERCENT
-        ) revert TemplErrors.InvalidPercentageSplit();
         if (_burnPercent + _treasuryPercent + _memberPoolPercent + protocolPercent != TOTAL_PERCENT) {
             revert TemplErrors.InvalidPercentageSplit();
         }

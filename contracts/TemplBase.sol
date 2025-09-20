@@ -210,12 +210,16 @@ abstract contract TemplBase is ReentrancyGuard {
         accessToken = _accessToken;
         protocolPercent = _protocolPercent;
         _setPercentSplit(_burnPercent, _treasuryPercent, _memberPoolPercent);
-        quorumPercent = _quorumPercent == 0 ? DEFAULT_QUORUM_PERCENT : _quorumPercent;
-        if (quorumPercent > TOTAL_PERCENT) revert TemplErrors.InvalidPercentage();
+
+        if (_quorumPercent == 0) {
+            quorumPercent = DEFAULT_QUORUM_PERCENT;
+        } else {
+            if (_quorumPercent > TOTAL_PERCENT) revert TemplErrors.InvalidPercentage();
+            quorumPercent = _quorumPercent;
+        }
+
         executionDelayAfterQuorum = _executionDelay == 0 ? DEFAULT_EXECUTION_DELAY : _executionDelay;
-        if (executionDelayAfterQuorum == 0) revert TemplErrors.InvalidExecutionDelay();
         burnAddress = _burnAddress == address(0) ? DEFAULT_BURN_ADDRESS : _burnAddress;
-        if (burnAddress == address(0)) revert TemplErrors.InvalidRecipient();
     }
 
     function _setPercentSplit(
@@ -235,12 +239,6 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 _memberPoolPercent,
         uint256 _protocolPercent
     ) internal pure {
-        if (
-            _burnPercent > TOTAL_PERCENT ||
-            _treasuryPercent > TOTAL_PERCENT ||
-            _memberPoolPercent > TOTAL_PERCENT ||
-            _protocolPercent > TOTAL_PERCENT
-        ) revert TemplErrors.InvalidPercentageSplit();
         if (_burnPercent + _treasuryPercent + _memberPoolPercent + _protocolPercent != TOTAL_PERCENT) {
             revert TemplErrors.InvalidPercentageSplit();
         }

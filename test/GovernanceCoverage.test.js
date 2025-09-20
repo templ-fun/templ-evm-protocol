@@ -225,4 +225,22 @@ describe("Governance coverage gaps", function () {
       "LimitOutOfRange"
     );
   });
+
+  it("reports hasMore as false when remaining proposals are inactive", async function () {
+    const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE });
+    const [, , member, voter] = accounts;
+
+    await mintToUsers(token, [member, voter], ENTRY_FEE * 4n);
+    await purchaseAccess(templ, token, [member, voter]);
+
+    await templ.connect(member).createProposalSetPaused(false, VOTING_PERIOD);
+    await templ.connect(voter).vote(0, true);
+    const delay = Number(await templ.executionDelayAfterQuorum());
+    await ethers.provider.send("evm_increaseTime", [delay + 1]);
+    await ethers.provider.send("evm_mine", []);
+    await templ.executeProposal(0);
+
+    const paged = await templ.getActiveProposalsPaginated(0, 1);
+    expect(paged.hasMore).to.equal(false);
+  });
 });

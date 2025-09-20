@@ -92,6 +92,66 @@ describe("TEMPL Contract with DAO Governance", function () {
             ).to.be.revertedWithCustomError(TEMPL, "InvalidRecipient");
         });
 
+        it("defaults quorum, execution delay and burn address when zero", async function () {
+            const TEMPL = await ethers.getContractFactory("TEMPL");
+            const templZero = await TEMPL.deploy(
+                priest.address,
+                priest.address,
+                await token.getAddress(),
+                ENTRY_FEE,
+                30,
+                30,
+                30,
+                10,
+                0,
+                0,
+                ethers.ZeroAddress
+            );
+            await templZero.waitForDeployment();
+
+            expect(await templZero.quorumPercent()).to.equal(33);
+            expect(await templZero.executionDelayAfterQuorum()).to.equal(7 * 24 * 60 * 60);
+            expect(await templZero.burnAddress()).to.equal("0x000000000000000000000000000000000000dEaD");
+        });
+
+        it("reverts when quorum percent exceeds total", async function () {
+            const TEMPL = await ethers.getContractFactory("TEMPL");
+            await expect(
+                TEMPL.deploy(
+                    priest.address,
+                    priest.address,
+                    await token.getAddress(),
+                    ENTRY_FEE,
+                    30,
+                    30,
+                    30,
+                    10,
+                    120,
+                    7 * 24 * 60 * 60,
+                    "0x000000000000000000000000000000000000dEaD"
+                )
+            ).to.be.revertedWithCustomError(TEMPL, "InvalidPercentage");
+        });
+
+        it("reverts when fee splits do not sum to 100", async function () {
+            const TEMPL = await ethers.getContractFactory("TEMPL");
+            await expect(
+                TEMPL.deploy(
+                    priest.address,
+                    priest.address,
+                    await token.getAddress(),
+                    ENTRY_FEE,
+                    50,
+                    40,
+                    30,
+                    10,
+                    33,
+                    7 * 24 * 60 * 60,
+                    "0x000000000000000000000000000000000000dEaD"
+                )
+            ).to.be.revertedWithCustomError(TEMPL, "InvalidPercentageSplit");
+        });
+
         it("Should revert when access token address is zero", async function () {
             const TEMPL = await ethers.getContractFactory("TEMPL");
             await expect(

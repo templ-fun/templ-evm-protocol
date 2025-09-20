@@ -43,7 +43,6 @@ abstract contract TemplMembership is TemplBase {
         uint256 protocolAmount = (entryFee * protocolPercent) / TOTAL_PERCENT;
 
         uint256 distributed = burnAmount + treasuryAmount + memberPoolAmount + protocolAmount;
-        if (distributed > entryFee) revert TemplErrors.InvalidPercentageSplit();
         if (distributed < entryFee) {
             uint256 remainder = entryFee - distributed;
             treasuryAmount += remainder;
