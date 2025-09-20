@@ -2,6 +2,7 @@
   "name": "templ",
   "version": "1.0.0",
   "description": "TEMPL - Smart contracts for DAO-governed token-gated access",
+  "type": "module",
   "engines": {
     "node": "22.18.0"
   },

@@ -159,7 +159,7 @@ See the [E2E Environments](../README.md#e2e-environments) section of the README 
 
 ### Production Checklist
 - `NODE_ENV=production` and `REQUIRE_CONTRACT_VERIFY=1` (enforce chainId/code/priest checks).
-- `BACKEND_DB_ENC_KEY` must be set (32‑byte hex) to encrypt the XMTP Node DB. The server refuses to boot without it in production.
+- `BACKEND_DB_ENC_KEY` must be set (32-byte hex) to encrypt the XMTP Node DB. The server refuses to boot without it in production.
 - Set and align `BACKEND_SERVER_ID` with `VITE_BACKEND_SERVER_ID` so signatures are bound to this server.
 ### Additional endpoints
 
@@ -167,3 +167,30 @@ See the [E2E Environments](../README.md#e2e-environments) section of the README 
 
 ### Debug endpoints
 - Do not enable any test‑only flags in production (e.g., `DISABLE_XMTP_WAIT`).
+
+## Runbooks
+
+### Regenerate the invite-bot key
+1. **Announce downtime** – group invites will pause while the bot identity rotates.
+2. **Stop the backend** service.
+3. **Back up `backend/groups.db`**: `cp backend/groups.db backend/groups.db.bak.$(date +%s)`.
+4. **Choose the key source**:
+   - Supply a freshly generated key by exporting `BOT_PRIVATE_KEY` (e.g., `export BOT_PRIVATE_KEY=$(node -e "const { ethers } = require('ethers'); console.log(ethers.Wallet.createRandom().privateKey);")`).
+   - Or update the persisted value directly: `sqlite3 backend/groups.db "DELETE FROM kv WHERE key='bot_private_key';"` (the backend will auto-generate and store a new key at boot when the entry is absent).
+5. **Restart the backend**. On boot it logs the invite-bot address; confirm that the address matches expectations and that `/templs` returns existing groups.
+6. **Verify invites** by running a join test wallet through `POST /join`. If the old identity should no longer be trusted, purge any cached XMTP credentials for it.
+
+### Seed or rotate `BACKEND_DB_ENC_KEY`
+1. **Generate a 32-byte hex key**: `export BACKEND_DB_ENC_KEY=$(openssl rand -hex 32)`.
+2. **Stop the backend** service.
+3. **If this is the first key**: set the variable in your process manager (systemd, PM2, etc.) and restart the service. The SQLite/XMTP database will be encrypted with that key moving forward.
+4. **If rotating an existing key**: the existing database must be re-encrypted. Back up `backend/groups.db`, then wipe it (`rm backend/groups.db*`) so the backend recreates it with the new key. After boot, re-register templs with `/templs` so state is repopulated.
+5. **Restart the backend** and confirm the server logs “Using provided BACKEND_DB_ENC_KEY”.
+
+### XMTP outage response
+1. **Detect symptoms** – watch application logs for repeated `XMTP boot not ready`, `Member identity not registered`, or add-member failures.
+2. **Check XMTP status** – use `npx @xmtp/probe status --env ${XMTP_ENV:-dev}` (or your internal monitoring) to confirm the network issue.
+3. **Drain join traffic** – surface maintenance mode (HTTP 503) by temporarily setting `REQUIRE_CONTRACT_VERIFY=1` and `DISABLE_XMTP_WAIT=0` while returning a custom message from your load balancer, or shut down `/join` at the edge.
+4. **Stabilize the bot** – restart the backend once to clear any stalled rotations. Watch for `XMTP boot not ready` log repetition; if it persists, increase `XMTP_BOOT_MAX_TRIES` and ensure the bot wallet still has an available installation slot.
+5. **Recover conversations** – after XMTP resolves the incident, run `curl -s http://localhost:3001/templs?include=groupId` to verify groups are synced, then trigger a manual `POST /join` with a test wallet to confirm invites succeed.
+6. **Post-incident** – re-enable regular traffic, rotate logs, and capture metrics (duration, impacted wallets) for follow-up.

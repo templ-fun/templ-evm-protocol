@@ -162,21 +162,32 @@ export default function templsRouter({ xmtp, groups, persist, database, provider
           if (useEphemeralCreator) {
             const eph = ethers.Wallet.createRandom();
             const ephXmtp = await createXmtpWithRotation(eph);
-            if (typeof ephXmtp?.conversations?.newGroup !== 'function') {
-              throw new Error('Ephemeral XMTP client missing newGroup');
-            }
-            group = await ephXmtp.conversations.newGroup(inboxIds);
             try {
-              if (process.env.XMTP_METADATA_UPDATES !== '0') {
-                try { await group.updateName?.(`Templ ${contractAddress}`); } catch { /* ignore benign sync msgs */ }
-                try { await group.updateDescription?.('Private TEMPL group'); } catch { /* ignore */ }
+              if (typeof ephXmtp?.conversations?.newGroup !== 'function') {
+                throw new Error('Ephemeral XMTP client missing newGroup');
               }
-            } catch { /* ignore */ }
-            try {
-              await syncXMTP(xmtp);
-              const g2 = await xmtp.conversations?.getConversationById?.(group.id);
-              if (g2) group = g2;
-            } catch { /* ignore */ }
+              group = await ephXmtp.conversations.newGroup(inboxIds);
+              try {
+                if (process.env.XMTP_METADATA_UPDATES !== '0') {
+                  try { await group.updateName?.(`Templ ${contractAddress}`); } catch { /* ignore benign sync msgs */ }
+                  try { await group.updateDescription?.('Private TEMPL group'); } catch { /* ignore */ }
+                }
+              } catch { /* ignore */ }
+              try {
+                await syncXMTP(xmtp);
+                const g2 = await xmtp.conversations?.getConversationById?.(group.id);
+                if (g2) group = g2;
+              } catch { /* ignore */ }
+            } finally {
+              try {
+                const maybeClose = /** @type {any} */ (ephXmtp)?.close;
+                if (typeof maybeClose === 'function') {
+                  await maybeClose.call(ephXmtp);
+                }
+              } catch (err) {
+                logger?.warn?.({ err: String(err?.message || err) }, 'Failed to close ephemeral XMTP client');
+              }
+            }
           } else {
             if (typeof xmtp.conversations.newGroup !== 'function') {
               throw new Error('XMTP client does not support newGroup(inboxIds)');
