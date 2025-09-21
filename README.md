@@ -1,9 +1,9 @@
-# TEMPL
+# templ.fun
 
 [![CircleCI](https://dl.circleci.com/status-badge/img/gh/MarcoWorms/templ/tree/main.svg?style=svg&circle-token=CCIPRJ_MhZ5NbNKhpfEAwFSEGDkUH_61036d1e9e936102be414dfd8d86a9318181746a)](https://dl.circleci.com/status-badge/redirect/gh/MarcoWorms/templ/tree/main)
 [![coverage](https://codecov.io/github/MarcoWorms/templ/graph/badge.svg?token=M8SPKQX6UD)](https://codecov.io/github/MarcoWorms/templ)
 
-DAO-governed, token-gated private groups with on-chain treasury management and XMTP messaging. Visit [templ.fun](https://templ.fun) for the public demo.
+DAO-governed, token-gated private groups with on-chain treasury management and XMTP messaging.
 
 ## System at a Glance
 - Smart contracts on Base enforce access with a one-time ERC-20 entry fee and typed governance.
