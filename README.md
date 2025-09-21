@@ -3,22 +3,14 @@
 [![CircleCI](https://dl.circleci.com/status-badge/img/gh/MarcoWorms/templ/tree/main.svg?style=svg&circle-token=CCIPRJ_MhZ5NbNKhpfEAwFSEGDkUH_61036d1e9e936102be414dfd8d86a9318181746a)](https://dl.circleci.com/status-badge/redirect/gh/MarcoWorms/templ/tree/main)
 [![coverage](https://codecov.io/github/MarcoWorms/templ/graph/badge.svg?token=M8SPKQX6UD)](https://codecov.io/github/MarcoWorms/templ)
 
-*Turning coins into cults*
+**Turning coins into cults**
 
-Templ.fun is the sacred ground where coin holders rally, reward each other, and set their token on a deflationary march upward. We converge the energy of everyone already invested in a token so the price goes up together.
+> Templ.fun is the sacred ground where coin holders rally, reward each other, and set their token on a deflationary march upward. We converge the energy of everyone already invested in a token so the price goes up together.
 
-Visit [templ.fun](https://templ.fun) for the live demo.
-
-**System snapshot**
 - Smart contracts on Base gate membership, manage treasuries, and enforce typed governance with ERC-20 entry fees.
 - An Express backend runs the XMTP invite-bot, mirroring governance events and policing access with EIP-712 signatures.
 - A Vite + React client deploys templs, guides purchases, embeds chat, and streams proposal state in real time.
 - Shared utilities keep signing, XMTP polling, and test helpers consistent across packages.
-
-## Mission
-- Converge the energy of people holding the same asset so their coordinated actions amplify price.
-- Turn any token into a capital-coordinated cult that grows demand and shrinks supply.
-- Transform coins into cults - sacred grounds where belief, rewards, and governance compound.
 
 ## Why Now
 Every day more than 100,000 tokens roar into existence. Memecoins already command a $100B+ market and the broader crypto supply floats above $4T. People crave a way to turn passive holding into an active, aligned movement. Templ delivers the rails that upgrade memecoins from jokes into thriving cults with real cash flow.
@@ -42,12 +34,12 @@ By default each tribute is split the moment a new believer walks through the gat
 | Protocol tithe | 10% | Routes to the templ.fun protocol treasury to power future upgrades. |
 
 ### Example: PEPE Palace
-Spin up a “PEPE Palace” with a 2,000,000 PEPE entry fee (~$20). When a new initiate pays the tribute:
+Spin up a “PEPE Palace” with a 1,000,000 PEPE entry fee (~$10). When a new initiate pays the tribute:
 
-- 600,000 PEPE is sent to the burn address.
-- 600,000 PEPE fills the PEPE Palace treasury, ready for member proposals.
-- 600,000 PEPE is split across existing members - each recruit enriches the faithful.
-- 200,000 PEPE flows to the protocol tithe that keeps templ.fun running and funds future upgrades.
+- 300,000 PEPE is sent to the burn address.
+- 300,000 PEPE fills the PEPE Palace treasury, ready for member proposals.
+- 300,000 PEPE is split across existing members - each recruit enriches the faithful.
+- 100,000 PEPE flows to the protocol tithe that keeps templ.fun running and funds future upgrades.
 
 Templs feel like DAOs born *after* a token is liquid. People co-own a narrative, harvest upside, and coordinate spend from day one.
 
