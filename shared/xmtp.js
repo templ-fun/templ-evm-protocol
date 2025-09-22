@@ -3,17 +3,10 @@
 // XMTP utility helpers shared across frontend, backend, and tests
 
 import { waitFor } from './xmtp-wait.js';
+import { isTemplDebugEnabled, isTemplE2EDebug } from './debug.js';
 
 // Minimal debug logger usable in both browser and Node environments
-const __isDebug = (() => {
-  try { if (globalThis?.process?.env?.DEBUG_TEMPL === '1') return true; } catch {}
-  try {
-    // @ts-ignore - vite injects env on import.meta at build time
-    const env = import.meta?.env;
-    if (env?.VITE_E2E_DEBUG === '1') return true;
-  } catch {}
-  return false;
-})();
+const __isDebug = isTemplDebugEnabled();
 const dlog = (...args) => { if (__isDebug) { try { console.log(...args); } catch {} } };
 
 /**
@@ -24,11 +17,10 @@ const dlog = (...args) => { if (__isDebug) { try { console.log(...args); } catch
  */
 export async function syncXMTP(xmtp, retries = 1, delayMs = 1000) {
   // In e2e fast mode, avoid long retries
-  try {
-    // @ts-ignore vite env in browser; process.env in node
-    const fast = (import.meta?.env?.VITE_E2E_DEBUG === '1') || (process?.env?.VITE_E2E_DEBUG === '1');
-    if (fast) { retries = Math.min(retries, 2); delayMs = Math.min(delayMs, 200); }
-  } catch {}
+  if (isTemplE2EDebug()) {
+    retries = Math.min(retries, 2);
+    delayMs = Math.min(delayMs, 200);
+  }
   for (let i = 0; i < retries; i++) {
     try { await xmtp?.conversations?.sync?.(); } catch (err) {
       dlog('conversations.sync failed:', err?.message || String(err));
@@ -54,11 +46,10 @@ export async function syncXMTP(xmtp, retries = 1, delayMs = 1000) {
  */
 export async function waitForConversation({ xmtp, groupId, retries = 60, delayMs = 1000 }) {
   // Fast mode for tests/dev
-  try {
-    // @ts-ignore
-    const fast = (import.meta?.env?.VITE_E2E_DEBUG === '1') || (process?.env?.VITE_E2E_DEBUG === '1');
-    if (fast) { retries = Math.min(retries, 5); delayMs = Math.min(delayMs, 200); }
-  } catch {}
+  if (isTemplE2EDebug()) {
+    retries = Math.min(retries, 5);
+    delayMs = Math.min(delayMs, 200);
+  }
   const norm = (id) => (id || '').toString();
   const wantedRaw = norm(groupId);
   const wantedNo0x = wantedRaw.replace(/^0x/i, '');

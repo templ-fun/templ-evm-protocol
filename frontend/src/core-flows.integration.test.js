@@ -323,18 +323,31 @@ describe('core flows e2e (stubbed)', () => {
     const signer = createSigner('0xPriest00000000000000000000000000000001');
     const xmtp = createStubXMTP();
 
-    const fetchMock = vi.fn()
-      .mockImplementationOnce(async (url, init) => {
-        expect(url).toBe('http://backend/templs');
-        expect(JSON.parse(init.body).contractAddress).toMatch(/^0xtempl/);
+    const fetchMock = vi.fn(async (url, init = {}) => {
+      if (url === 'http://backend/templs') {
+        const payload = JSON.parse(init.body);
+        expect(payload.contractAddress).toMatch(/^0xtempl/);
         return {
           ok: true,
           status: 200,
           json: async () => ({ groupId: 'group-1' })
         };
-      })
-      .mockImplementationOnce(async (url, init) => {
-        expect(url).toBe('http://backend/join');
+      }
+      if (url === 'http://backend/templs?include=groupId') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ templs: [] })
+        };
+      }
+      if (url.startsWith('http://backend/debug/')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({})
+        };
+      }
+      if (url === 'http://backend/join') {
         const body = JSON.parse(init.body);
         expect(body.contractAddress).toMatch(/^0xtempl/);
         return {
@@ -342,7 +355,9 @@ describe('core flows e2e (stubbed)', () => {
           status: 200,
           json: async () => ({ groupId: 'group-1' })
         };
-      });
+      }
+      throw new Error(`Unexpected fetch call: ${url}`);
+    });
     globalThis.fetch = fetchMock;
 
     const result = await deployTempl({

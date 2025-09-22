@@ -51,6 +51,8 @@ Optional switches:
 | `EPHEMERAL_CREATOR` | When `1` (default and recommended), create groups with a fresh, throwaway key | `1` |
 | `CLEAR_DB` | Wipe database on startup (dev-only; leave `0` in prod) | `0` |
 
+The backend centralises these toggles in `backend/src/xmtp/options.js`, keeping invite, join, and debug flows in sync.
+
 See [README.md#environment-variables](../README.md#environment-variables) for minimal setup variables and [PERSISTENCE.md](./PERSISTENCE.md) for database details.
 Startup fails without `RPC_URL`. If `BOT_PRIVATE_KEY` is not provided, the server generates one on first boot and persists it in SQLite (table `kv`, key `bot_private_key`) so the invite-bot identity stays stable across restarts.
 `XMTP_ENV` selects the network (`dev`, `production`, `local`).
@@ -164,6 +166,7 @@ sequenceDiagram
 - After creation or join it syncs and records XMTP stats.
 - The XMTP Node DB uses SQLCipher with a 32-byte key. Provide `BACKEND_DB_ENC_KEY` or a key is derived from the bot private key and environment; avoid zero-keys in production.
 - When `EPHEMERAL_CREATOR` is enabled (default), `/templs` uses a fresh XMTP identity to create the group and set metadata. The server’s invite-bot identity is included as a member at creation time and used only for invitations thereafter.
+- Contract and priest verification live in `backend/src/services/contractValidation.js`; join and registration reuse the same helpers so production checks stay consistent.
 
 ### Debug endpoints
 

@@ -1,81 +1,17 @@
 import { ethers } from 'ethers';
 import { generateInboxId, getInboxIdForIdentifier } from '@xmtp/node-sdk';
 import { syncXMTP } from '../../../shared/xmtp.js';
-
-/** @type {Array<'local'|'dev'|'production'>} */
-const XMTP_ENV_VALUES = ['local', 'dev', 'production'];
-
-/**
- * @param {string} value
- * @returns {value is 'local'|'dev'|'production'}
- */
-function isValidEnv(value) {
-  return XMTP_ENV_VALUES.some((option) => option === value);
-}
-
-/**
- * @returns {'local'|'dev'|'production'}
- */
-function resolveXmtpEnv() {
-  const env = String(process.env.XMTP_ENV || 'dev');
-  if (isValidEnv(env)) {
-    return env;
-  }
-  return 'dev';
-}
-
-function shouldSkipNetworkResolution() {
-  return process.env.DISABLE_XMTP_WAIT === '1' || process.env.NODE_ENV === 'test';
-}
-
-function shouldUseEphemeralCreator() {
-  return process.env.EPHEMERAL_CREATOR !== '0';
-}
-
-function shouldUpdateMetadata() {
-  return process.env.XMTP_METADATA_UPDATES !== '0';
-}
-
-function requireVerification() {
-  return process.env.REQUIRE_CONTRACT_VERIFY === '1' || process.env.NODE_ENV === 'production';
-}
-
-async function verifyContractAndPriest({
-  contractAddress,
-  priestAddress,
-  provider,
-  providedChainId,
-}) {
-  if (!requireVerification()) return;
-  if (!provider) {
-    throw Object.assign(new Error('Verification required but no provider configured'), { statusCode: 500 });
-  }
-  try {
-    const net = await provider.getNetwork();
-    const expectedChainId = Number(net.chainId);
-    if (Number.isFinite(providedChainId) && providedChainId !== expectedChainId) {
-      throw Object.assign(new Error('ChainId mismatch'), { statusCode: 400 });
-    }
-  } catch {/* ignore */}
-  let code;
-  try {
-    code = await provider.getCode(contractAddress);
-  } catch {
-    throw Object.assign(new Error('Unable to verify contract'), { statusCode: 400 });
-  }
-  if (!code || code === '0x') {
-    throw Object.assign(new Error('Not a contract'), { statusCode: 400 });
-  }
-  try {
-    const contract = new ethers.Contract(contractAddress, ['function priest() view returns (address)'], provider);
-    const onchainPriest = (await contract.priest())?.toLowerCase?.();
-    if (onchainPriest !== priestAddress.toLowerCase()) {
-      throw Object.assign(new Error('Priest does not match on-chain'), { statusCode: 403 });
-    }
-  } catch {
-    throw Object.assign(new Error('Unable to verify priest on-chain'), { statusCode: 400 });
-  }
-}
+import {
+  resolveXmtpEnv,
+  shouldSkipNetworkResolution,
+  shouldUseEphemeralCreator,
+  shouldUpdateMetadata,
+  shouldVerifyContracts
+} from '../xmtp/options.js';
+import {
+  ensureContractDeployed,
+  ensurePriestMatchesOnChain
+} from './contractValidation.js';
 
 function normaliseInboxId(id) {
   return String(id || '').replace(/^0x/i, '');
@@ -87,11 +23,10 @@ async function resolvePriestInboxId({ priestIdentifier, xmtp, logger }) {
     inboxIds.push(xmtp.inboxId);
   }
 
-  let priestInboxAdded = false;
   const skipNetwork = shouldSkipNetworkResolution();
+  const envOpt = resolveXmtpEnv();
+  let priestInboxAdded = false;
   if (!skipNetwork) {
-    /** @type {'local'|'dev'|'production'} */
-    const envOpt = resolveXmtpEnv();
     try {
       const resolved = await getInboxIdForIdentifier(priestIdentifier, envOpt);
       if (resolved) {
@@ -195,7 +130,7 @@ async function finaliseRegistration({ contractAddress, priestAddress, group, gro
     group,
     groupId: group?.id,
     priest: priestAddress.toLowerCase(),
-    memberSet: new Set(),
+    memberSet: new Set()
   };
   const key = contractAddress.toLowerCase();
   groups.set(key, record);
@@ -216,12 +151,10 @@ export async function registerTempl(body, context) {
 
   logger?.info?.({ contract: contractAddress, priest: priestAddress }, 'Received templ registration request');
 
-  await verifyContractAndPriest({
-    contractAddress,
-    priestAddress,
-    provider,
-    providedChainId: Number(body?.chainId),
-  });
+  if (shouldVerifyContracts()) {
+    await ensureContractDeployed({ provider, contractAddress, chainId: Number(body?.chainId) });
+    await ensurePriestMatchesOnChain({ provider, contractAddress, priestAddress });
+  }
 
   let beforeIds = [];
   try {
@@ -246,7 +179,7 @@ export async function registerTempl(body, context) {
       logger,
       useEphemeral,
       disableWait,
-      createXmtpWithRotation: createXmtp,
+      createXmtpWithRotation: createXmtp
     });
   } catch (err) {
     const msg = String(err?.message || '');
@@ -263,7 +196,7 @@ export async function registerTempl(body, context) {
   logger?.info?.({
     contract: contractAddress.toLowerCase(),
     groupId: group.id,
-    groupName: group.name,
+    groupName: group.name
   }, 'Group created successfully');
 
   try {

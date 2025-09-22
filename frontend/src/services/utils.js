@@ -1,41 +1,24 @@
 // Shared helpers for frontend flows
 
-// Minimal debug logger usable in both browser and Node tests
-const __isDebug = (() => {
-  // Node tests: opt-in via DEBUG_TEMPL=1
-  try { if (globalThis?.process?.env?.DEBUG_TEMPL === '1') return true; } catch {}
-  // Browser (Vite): import.meta.env.VITE_E2E_DEBUG
-  try {
-    // @ts-ignore - vite injects env on import.meta at build time
-    const env = import.meta?.env;
-    if (env?.VITE_E2E_DEBUG === '1') return true;
-  } catch {}
-  return false;
-})();
+import { isTemplDebugEnabled, isTemplE2EDebug, isTemplTestEnv, readTemplEnv } from '../../../shared/debug.js';
 
+// Minimal debug logger usable in both browser and Node tests
 export const dlog = (...args) => {
-  if (!__isDebug) return;
+  if (!isTemplDebugEnabled()) return;
   try { console.log(...args); } catch {}
 };
 
-export const isDebugEnabled = () => __isDebug;
+export const isDebugEnabled = () => isTemplDebugEnabled();
 
 export function isE2ETestEnv() {
-  try { if (globalThis?.process?.env?.NODE_ENV === 'test') return true; } catch {}
-  try {
-    // @ts-ignore - vite env
-    if (import.meta?.env?.VITE_E2E_DEBUG === '1') return true;
-  } catch {}
-  return false;
+  return isTemplTestEnv() || isTemplE2EDebug();
 }
 
 export function allowLocalTemplFallback() {
-  try { if (globalThis?.process?.env?.TEMPL_ENABLE_LOCAL_FALLBACK === '1') return true; } catch {}
-  try {
-    // @ts-ignore - vite env
-    if (import.meta?.env?.VITE_ENABLE_BACKEND_FALLBACK === '1') return true;
-  } catch {}
-  return false;
+  const fallbackFlag = readTemplEnv('TEMPL_ENABLE_LOCAL_FALLBACK');
+  if (fallbackFlag === '1' || fallbackFlag?.toLowerCase?.() === 'true') return true;
+  const viteFallback = readTemplEnv('VITE_ENABLE_BACKEND_FALLBACK');
+  return viteFallback === '1' || viteFallback?.toLowerCase?.() === 'true';
 }
 
 export function addToTestRegistry(address) {
