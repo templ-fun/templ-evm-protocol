@@ -3,6 +3,7 @@
 Documentation for the Vite + React app that deploys templs, handles purchases, and mirrors governance. Pair it with the backend manual so you know which endpoints power each flow.
 
 ## Why this document matters
+
 - Set up environment variables for local dev, staging, and production builds.
 - Understand developer workflows: hot reload, unit tests, Playwright e2e, and XMTP local mode.
 - Learn which flows the UI implements (deploy, join, chat, moderate) and how it uses shared helpers.
@@ -55,9 +56,11 @@ npm --prefix frontend run lint
 npm --prefix frontend run build
 npm --prefix frontend run test:e2e                          # end-to-end (Playwright)
 ```
+
 To run e2e against a local XMTP node: clone `xmtp-local-node`, run `npm run xmtp:local:up`, execute tests with `E2E_XMTP_LOCAL=1`, then `npm run xmtp:local:down`.
 
 E2E artifacts (videos, traces, screenshots) are saved under `frontend/test-results/`.
+
 ## Architecture
 
 Frontend responsibilities:
@@ -78,6 +81,7 @@ flowchart LR
 ```
 
 ## Notes and tips
+
 - `VITE_XMTP_ENV` defaults to `dev` on localhost and `production` elsewhere; override for `local` nodes.
 - `VITE_E2E_DEBUG=1` exposes `window.__XMTP` helpers for diagnostics.
 - When debug helpers are enabled, the join flow automatically re-registers the contract with `/templs` if a 404 is encountered and retries the join; production runs continue to rely solely on the primary invite path.
@@ -85,10 +89,12 @@ flowchart LR
 - The chat exposes a single `Claim` button that sweeps both member-pool rewards and any external token pools using `claimExternalToken`; external balances remain visible for transparency.
 
 ## Security considerations
+
 - Membership verification happens on-chain; bypassing the backend would require membership proof.
 - The app relies on the backend service for invitations; if the service is down no new members can join.
 - Users must share the contract address and group ID manually; there is no routing.
 - Proposal and vote transactions are signed by the connected wallet; proposal actions are restricted to an allowlist (pause/unpause, config, treasury transfers), but users should still review the action and parameters before approving.
 
 ## Next
+
 Review the shared helpers in [SHARED.md](./SHARED.md) to see the utilities both frontend and backend import.

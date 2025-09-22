@@ -1,11 +1,13 @@
 # Templ Protocol Technical Specifications
 
 ## Why this document exists
+
 - Understand the economic guarantees every templ instance inherits from the factory.
 - Follow the full membership and reward lifecycle before diving into implementation details.
 - Map the governance guardrails that keep treasuries safe while priests and members steer proposals.
 
 ## How to use this guide
+
 1. **Abstract and system overview** - quick mental model for the whole stack.
 2. **On-chain mechanics** - storage layout, fee math, membership lifecycle, governance rules.
 3. **Off-chain integration** - signatures, bots, and XMTP hooks that secure access.
@@ -59,6 +61,7 @@ sequenceDiagram
 ## On-chain mechanics (`contracts/TEMPL.sol`)
 
 Everything on-chain is modular so each templ instance inherits the same safeguards:
+
 - `TemplBase` (storage, immutables, modifiers)
 - `TemplMembership` (purchase + claims)
 - `TemplTreasury` (treasury/config/priest handlers)
@@ -261,6 +264,7 @@ flowchart LR
 - XMTP Browser DB: OPFS identity and metadata; advise one client per page to avoid OPFS access-handle contention.
 
 ## Cult glossary
+
 - **Priest** - Contract’s designated address with limited special power:
   - its disband proposals are quorum-exempt.
   - priests can `/mute` and `/delegateMute` in the Templ XMTP chat.
@@ -272,4 +276,5 @@ flowchart LR
 - **XMTP Group** - Off-chain chat space created via an ephemeral key; the backend’s bot identity has invite-only powers to add on-chain members. No persistent owner/admin keys are retained.
 
 ## Next
+
 Move to [CORE_FLOW_DOCS.MD](./CORE_FLOW_DOCS.MD) for step-by-step diagrams of the flows outlined here.

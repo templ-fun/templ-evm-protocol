@@ -3,6 +3,7 @@
 Bring the entire stack up on your machine so you can deploy a templ, join as members, and exercise governance without touching production services.
 
 ## Why this guide matters
+
 - Spin up Hardhat, the backend bot, and the frontend with minimal setup.
 - Preload MetaMask with deterministic wallets so you can test priest/member roles quickly.
 - Optionally run against a local XMTP node when you need hermetic e2e tests.
@@ -18,7 +19,7 @@ This guide uses Hardhat’s default accounts; never reuse these keys on real net
 
 Terminal A:
 
-```
+```bash
 npm run node
 ```
 
@@ -28,7 +29,7 @@ This boots Hardhat at `http://127.0.0.1:8545` with 20 funded test accounts.
 
 Create `backend/.env` with the local RPC and a bot key (Hardhat account #0):
 
-```
+```bash
 RPC_URL=http://127.0.0.1:8545
 BOT_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 ALLOWED_ORIGINS=http://localhost:5173
@@ -37,7 +38,7 @@ ENABLE_DEBUG_ENDPOINTS=1
 
 Terminal B:
 
-```
+```bash
 npm --prefix backend start
 ```
 
@@ -49,7 +50,7 @@ Tip: to target a local XMTP node instead of dev, set `XMTP_ENV=local` in `backen
 
 Terminal C:
 
-```
+```bash
 npm --prefix frontend run dev
 ```
 
@@ -62,13 +63,13 @@ To target a local XMTP node instead, set `VITE_XMTP_ENV=local` in `frontend/.env
 
 By default, Hardhat’s first 20 accounts are static. XMTP imposes per-address installation limits over time. For clean local tests, generate fresh wallets and fund them from Hardhat #0:
 
-```
+```bash
 npm run gen:wallets
 ```
 
 This writes `wallets.local.json` and prints private keys for import. You can also mint TestToken to them in one go if you already deployed the token:
 
-```
+```bash
 npm run gen:wallets -- --token <TestTokenAddress>
 ```
 
@@ -98,13 +99,13 @@ These are Hardhat defaults, funded automatically.
 
 Use Hardhat console (Terminal A or a new one):
 
-```
+```bash
 npx hardhat console --network localhost
 ```
 
 In the console:
 
-```
+```bash
 const [deployer] = await ethers.getSigners();
 const Token = await ethers.getContractFactory("TestToken");
 const token = await Token.deploy("Test", "TEST", 18);
@@ -163,4 +164,5 @@ The chat auto-loads the last 100 messages and any past proposals. Use “Load pr
 - XMTP boot time: the first run may take ~20-60s while the SDK initializes identity and device sync. Subsequent runs are faster.
 
 ## Next
+
 Check [../scripts/README.md](../scripts/README.md) for deployment, wallet, and CI scripts that build on this setup.

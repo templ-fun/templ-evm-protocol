@@ -3,6 +3,7 @@
 Understand what lives on-chain, inside SQLite, and within XMTP client databases so you can reason about backup, security, and local development. Read this right after the shared utilities to connect helpers with stored data.
 
 ## Why this document matters
+
 - Identify every storage location touched by the stack and what data resides there.
 - Learn how the backend manages replay protection, moderation state, and bot keys in SQLite.
 - See how XMTP Node/Browser databases behave so you can avoid OPFS/SQLCipher pitfalls.
@@ -47,8 +48,8 @@ Where the invite-bot persists state:
   - Delegated moderation rights; written on POST/DELETE `/delegateMute`.
 - `signatures(sig TEXT PRIMARY KEY, usedAt INTEGER)`
   - Server-side replay protection store for typed signatures.
- - `kv(key TEXT PRIMARY KEY, value TEXT)`
-   - Generic key-value store; the backend saves the persistent invite-bot private key here under `key = 'bot_private_key'` when no `BOT_PRIVATE_KEY` env is provided.
+- `kv(key TEXT PRIMARY KEY, value TEXT)`
+  - Generic key-value store; the backend saves the persistent invite-bot private key here under `key = 'bot_private_key'` when no `BOT_PRIVATE_KEY` env is provided.
 
 ## XMTP Node DB
 
@@ -129,4 +130,5 @@ This section answers common questions about what data is stored. It clarifies th
   - Backend Node client reuses its local SQLCipher DB; clearing `groups.db` is safe.
 
 ## Next
+
 Follow the hands-on setup in [TEST_LOCALLY.md](./TEST_LOCALLY.md) to exercise these storage layers end-to-end.
