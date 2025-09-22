@@ -1,174 +1,148 @@
 // @ts-check
 
+import { readTemplEnv } from './debug.js';
+
 /**
  * EIP-712 typed-data builders for all backend-authenticated actions.
  * Domain values should be constructed with the actual chainId. We intentionally
  * do not include a verifyingContract so the domain binds to chain and app name.
  */
 
+const DEFAULT_EXPIRY_MS = 5 * 60_000;
+
+const BASE_FIELDS = [
+  { name: 'action', type: 'string' },
+  { name: 'contract', type: 'address' },
+  { name: 'server', type: 'string' },
+  { name: 'nonce', type: 'uint256' },
+  { name: 'issuedAt', type: 'uint256' },
+  { name: 'expiry', type: 'uint256' }
+];
+
+const ACTION_CONFIG = {
+  create: {
+    primaryType: 'Create',
+    types: { Create: BASE_FIELDS },
+    buildMessage: ({ contractAddress, server }) => ({
+      action: 'create',
+      contract: contractAddress,
+      server
+    })
+  },
+  join: {
+    primaryType: 'Join',
+    types: { Join: BASE_FIELDS },
+    buildMessage: ({ contractAddress, server }) => ({
+      action: 'join',
+      contract: contractAddress,
+      server
+    })
+  },
+  delegateMute: {
+    primaryType: 'DelegateMute',
+    types: {
+      DelegateMute: [
+        ...BASE_FIELDS.slice(0, 3),
+        { name: 'delegate', type: 'address' },
+        ...BASE_FIELDS.slice(3)
+      ]
+    },
+    buildMessage: ({ contractAddress, delegateAddress, server }) => ({
+      action: 'delegateMute',
+      contract: contractAddress,
+      delegate: delegateAddress,
+      server
+    })
+  },
+  mute: {
+    primaryType: 'Mute',
+    types: {
+      Mute: [
+        ...BASE_FIELDS.slice(0, 3),
+        { name: 'target', type: 'address' },
+        ...BASE_FIELDS.slice(3)
+      ]
+    },
+    buildMessage: ({ contractAddress, targetAddress, server }) => ({
+      action: 'mute',
+      contract: contractAddress,
+      target: targetAddress,
+      server
+    })
+  }
+};
+
 function getServerId() {
-  try {
-    // Browser (Vite)
-    // @ts-ignore
-    const env = import.meta?.env;
-    // @ts-ignore
-    const v = env?.VITE_BACKEND_SERVER_ID;
-    if (typeof v === 'string' && v.trim().length > 0) return v.trim();
-  } catch {}
-  try {
-    // Node (or any JS env with process on globalThis)
-    const g = /** @type {any} */ (globalThis);
-    const v = g?.process?.env?.BACKEND_SERVER_ID;
-    if (typeof v === 'string' && v.trim().length > 0) return v.trim();
-  } catch {}
+  const explicit = readTemplEnv('VITE_BACKEND_SERVER_ID') || readTemplEnv('BACKEND_SERVER_ID');
+  if (typeof explicit === 'string' && explicit.trim().length > 0) {
+    return explicit.trim();
+  }
   return 'templ-dev';
 }
 
-/**
- * Build EIP-712 typed data for creating a TEMPL group.
- * @param {object} p
- * @param {number} p.chainId
- * @param {string} p.contractAddress
- * @param {number} [p.nonce] - client-provided unique number to prevent replay
- * @param {number} [p.issuedAt] - ms epoch
- * @param {number} [p.expiry] - ms epoch
- */
-export function buildCreateTypedData({ chainId, contractAddress, nonce, issuedAt, expiry }) {
-  if (!Number.isFinite(nonce)) nonce = Date.now();
-  if (!Number.isFinite(issuedAt)) issuedAt = Date.now();
-  if (!Number.isFinite(expiry)) expiry = Date.now() + 5 * 60_000;
-  const domain = { name: 'TEMPL', version: '1', chainId };
-  const types = {
-    Create: [
-      { name: 'action', type: 'string' },
-      { name: 'contract', type: 'address' },
-      { name: 'server', type: 'string' },
-      { name: 'nonce', type: 'uint256' },
-      { name: 'issuedAt', type: 'uint256' },
-      { name: 'expiry', type: 'uint256' },
-    ]
+function buildDomain(chainId) {
+  return { name: 'TEMPL', version: '1', chainId };
+}
+
+function withTemporalDefaults(message, { nonce, issuedAt, expiry }) {
+  const now = Date.now();
+  return {
+    ...message,
+    nonce: Number.isFinite(nonce) ? nonce : message.nonce ?? now,
+    issuedAt: Number.isFinite(issuedAt) ? issuedAt : message.issuedAt ?? now,
+    expiry: Number.isFinite(expiry) ? expiry : message.expiry ?? now + DEFAULT_EXPIRY_MS
   };
-  const message = {
-    action: 'create',
-    contract: contractAddress,
-    server: getServerId(),
-    nonce,
-    issuedAt,
-    expiry,
+}
+
+function buildTemplTypedData(kind, options) {
+  const config = ACTION_CONFIG[kind];
+  if (!config) {
+    throw new Error(`Unknown templ typed-data action: ${kind}`);
+  }
+  const server = getServerId();
+  const message = config.buildMessage({ ...options, server });
+  const finalMessage = withTemporalDefaults(message, options);
+  return {
+    domain: buildDomain(options.chainId),
+    types: config.types,
+    primaryType: config.primaryType,
+    message: finalMessage
   };
-  return { domain, types, primaryType: 'Create', message };
 }
 
 /**
- * Build EIP-712 typed data for joining a TEMPL group.
- * @param {object} p
- * @param {number} p.chainId
- * @param {string} p.contractAddress
- * @param {number} [p.nonce]
- * @param {number} [p.issuedAt]
- * @param {number} [p.expiry]
+ * Build EIP-712 typed data for creating a Templ group.
  */
-export function buildJoinTypedData({ chainId, contractAddress, nonce, issuedAt, expiry }) {
-  if (!Number.isFinite(nonce)) nonce = Date.now();
-  if (!Number.isFinite(issuedAt)) issuedAt = Date.now();
-  if (!Number.isFinite(expiry)) expiry = Date.now() + 5 * 60_000;
-  const domain = { name: 'TEMPL', version: '1', chainId };
-  const types = {
-    Join: [
-      { name: 'action', type: 'string' },
-      { name: 'contract', type: 'address' },
-      { name: 'server', type: 'string' },
-      { name: 'nonce', type: 'uint256' },
-      { name: 'issuedAt', type: 'uint256' },
-      { name: 'expiry', type: 'uint256' },
-    ]
-  };
-  const message = {
-    action: 'join',
-    contract: contractAddress,
-    server: getServerId(),
-    nonce,
-    issuedAt,
-    expiry,
-  };
-  return { domain, types, primaryType: 'Join', message };
+export function buildCreateTypedData(options) {
+  const { contractAddress } = options;
+  return buildTemplTypedData('create', { ...options, contractAddress });
+}
+
+/**
+ * Build EIP-712 typed data for joining a Templ group.
+ */
+export function buildJoinTypedData(options) {
+  const { contractAddress } = options;
+  return buildTemplTypedData('join', { ...options, contractAddress });
 }
 
 /**
  * Build EIP-712 typed data for delegate-mute action.
- * @param {object} p
- * @param {number} p.chainId
- * @param {string} p.contractAddress
- * @param {string} p.delegateAddress
- * @param {number} [p.nonce]
- * @param {number} [p.issuedAt]
- * @param {number} [p.expiry]
  */
-export function buildDelegateTypedData({ chainId, contractAddress, delegateAddress, nonce, issuedAt, expiry }) {
-  if (!Number.isFinite(nonce)) nonce = Date.now();
-  if (!Number.isFinite(issuedAt)) issuedAt = Date.now();
-  if (!Number.isFinite(expiry)) expiry = Date.now() + 5 * 60_000;
-  const domain = { name: 'TEMPL', version: '1', chainId };
-  const types = {
-    DelegateMute: [
-      { name: 'action', type: 'string' },
-      { name: 'contract', type: 'address' },
-      { name: 'delegate', type: 'address' },
-      { name: 'server', type: 'string' },
-      { name: 'nonce', type: 'uint256' },
-      { name: 'issuedAt', type: 'uint256' },
-      { name: 'expiry', type: 'uint256' },
-    ]
-  };
-  const message = {
-    action: 'delegateMute',
-    contract: contractAddress,
-    delegate: delegateAddress,
-    server: getServerId(),
-    nonce,
-    issuedAt,
-    expiry,
-  };
-  return { domain, types, primaryType: 'DelegateMute', message };
+export function buildDelegateTypedData(options) {
+  const { contractAddress, delegateAddress } = options;
+  return buildTemplTypedData('delegateMute', { ...options, contractAddress, delegateAddress });
 }
 
 /**
  * Build EIP-712 typed data for mute action.
- * @param {object} p
- * @param {number} p.chainId
- * @param {string} p.contractAddress
- * @param {string} p.targetAddress
- * @param {number} [p.nonce]
- * @param {number} [p.issuedAt]
- * @param {number} [p.expiry]
  */
-export function buildMuteTypedData({ chainId, contractAddress, targetAddress, nonce, issuedAt, expiry }) {
-  if (!Number.isFinite(nonce)) nonce = Date.now();
-  if (!Number.isFinite(issuedAt)) issuedAt = Date.now();
-  if (!Number.isFinite(expiry)) expiry = Date.now() + 5 * 60_000;
-  const domain = { name: 'TEMPL', version: '1', chainId };
-  const types = {
-    Mute: [
-      { name: 'action', type: 'string' },
-      { name: 'contract', type: 'address' },
-      { name: 'target', type: 'address' },
-      { name: 'server', type: 'string' },
-      { name: 'nonce', type: 'uint256' },
-      { name: 'issuedAt', type: 'uint256' },
-      { name: 'expiry', type: 'uint256' },
-    ]
-  };
-  const message = {
-    action: 'mute',
-    contract: contractAddress,
-    target: targetAddress,
-    server: getServerId(),
-    nonce,
-    issuedAt,
-    expiry,
-  };
-  return { domain, types, primaryType: 'Mute', message };
+export function buildMuteTypedData(options) {
+  const { contractAddress, targetAddress } = options;
+  return buildTemplTypedData('mute', { ...options, contractAddress, targetAddress });
 }
+
+export { buildTemplTypedData };
 
 // String builders retained for compatibility; default flows use typed data.
 export function buildDelegateMessage(contract, delegate) {

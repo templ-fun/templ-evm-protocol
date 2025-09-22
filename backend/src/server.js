@@ -26,29 +26,17 @@ const TEMPL_EVENT_ABI = [
 
 export { logger, createXmtpWithRotation, waitForInboxReady, XMTP_ENV };
 
-export function createApp(opts) {
-  /** @type {{xmtp:any, hasPurchased:(contract:string,member:string)=>Promise<boolean>, connectContract?: (address:string)=>{on: Function}, dbPath?: string, db?: any, rateLimitStore?: import('express-rate-limit').Store}} */
-  // @ts-ignore - runtime validation below
-  const { xmtp, hasPurchased, connectContract: providedConnectContract, dbPath, db, rateLimitStore, provider } =
-    opts || {};
-  const connectContract = providedConnectContract ?? (provider ? ((address) => new ethers.Contract(address, TEMPL_EVENT_ABI, provider)) : null);
-  const app = express();
-  const allowedOrigins =
-    process.env.ALLOWED_ORIGINS?.split(',')
-      .map((o) => o.trim())
-      .filter(Boolean) ?? ['http://localhost:5173'];
-  app.use(cors({ origin: allowedOrigins }));
-  app.use(express.json());
-  app.use(helmet());
-  const store = rateLimitStore ?? new MemoryStore();
-  // In tests/e2e runs we disable rate limiting to avoid 429s during heavy polling
-  if (process.env.NODE_ENV !== 'test') {
-    const limiter = rateLimit({ windowMs: 60_000, max: 100, store });
-    app.use(limiter);
-  }
+function buildAllowedOrigins() {
+  const env = process.env.ALLOWED_ORIGINS;
+  if (!env) return ['http://localhost:5173'];
+  return env
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+}
 
-  const groups = new Map();
-  const lastJoin = { at: 0, payload: null };
+function initializeDatabase({ dbPath, db }) {
+  const owned = !db;
   const database =
     db ??
     new Database(dbPath ?? new URL('../groups.db', import.meta.url).pathname);
@@ -66,16 +54,183 @@ export function createApp(opts) {
   );
   const deleteDelegatesStmt = database.prepare('DELETE FROM delegates WHERE contract = ?');
   const deleteMutesStmt = database.prepare('DELETE FROM mutes WHERE contract = ?');
-
-  function persist(contract, record) {
+  const persist = (contract, record) => {
     database
-      .prepare(
-        'INSERT OR REPLACE INTO groups (contract, groupId, priest) VALUES (?, ?, ?)'
-      )
-      .run(contract, (record.groupId || record.group?.id), record.priest);
+      .prepare('INSERT OR REPLACE INTO groups (contract, groupId, priest) VALUES (?, ?, ?)')
+      .run(contract, record.groupId || record.group?.id || null, record.priest);
+  };
+  const close = () => {
+    if (!owned) return;
+    try { database.close(); } catch {/* ignore close errors */}
+  };
+  return { database, persist, deleteDelegatesStmt, deleteMutesStmt, close };
+}
+
+function createContractWatcher({ connectContract, groups, persist, ensureGroup, deleteDelegatesStmt, deleteMutesStmt, logger }) {
+  if (!connectContract) {
+    return { watchContract: () => {} };
+  }
+  const listenerRegistry = new Map();
+  const watchContract = (contractAddress, record) => {
+    if (!contractAddress || !record) return;
+    const key = String(contractAddress).toLowerCase();
+    if (listenerRegistry.has(key)) {
+      listenerRegistry.get(key).record = record;
+      return;
+    }
+    let contract;
+    try {
+      contract = connectContract(contractAddress);
+    } catch (err) {
+      logger?.warn?.({ err: String(err?.message || err), contract: contractAddress }, 'Failed to connect contract listeners');
+      return;
+    }
+    if (!contract || typeof contract.on !== 'function') {
+      return;
+    }
+
+    const wrapListener = (label, fn) => (...args) => {
+      try {
+        const maybe = fn(...args);
+        if (maybe && typeof maybe.then === 'function') {
+          maybe.catch((err) => {
+            logger?.warn?.({ err: String(err?.message || err), contract: key }, label);
+          });
+        }
+      } catch (err) {
+        logger?.warn?.({ err: String(err?.message || err), contract: key }, label);
+      }
+    };
+
+    const handleProposal = wrapListener('Contract listener error', async (id, proposer, endTime) => {
+      const group = record.group || await ensureGroup(record);
+      if (!group?.send) return;
+      try {
+        await group.send(
+          JSON.stringify({
+            type: 'proposal',
+            id: Number(id),
+            proposer,
+            endTime: Number(endTime)
+          })
+        );
+      } catch (err) {
+        logger?.warn?.({ err: String(err?.message || err), contract: key }, 'Failed to relay ProposalCreated');
+      }
+    });
+
+    const handleVote = wrapListener('Contract listener error', async (id, voter, support, timestamp) => {
+      const group = record.group || await ensureGroup(record);
+      if (!group?.send) return;
+      try {
+        await group.send(
+          JSON.stringify({
+            type: 'vote',
+            id: Number(id),
+            voter,
+            support: Boolean(support),
+            timestamp: Number(timestamp)
+          })
+        );
+      } catch (err) {
+        logger?.warn?.({ err: String(err?.message || err), contract: key }, 'Failed to relay VoteCast');
+      }
+    });
+
+    const handlePriestChanged = wrapListener('Contract listener error', async (oldPriest, newPriest) => {
+      const oldKey = String(oldPriest || '').toLowerCase();
+      const nextKey = String(newPriest || '').toLowerCase();
+      record.priest = nextKey;
+      groups.set(key, record);
+      persist(key, record);
+      let delegatesCleared = 0;
+      let mutesCleared = 0;
+      try {
+        const res = deleteDelegatesStmt.run(key);
+        delegatesCleared = Number(res?.changes || 0);
+      } catch (err) {
+        logger?.warn?.({ err: String(err?.message || err), contract: key }, 'Failed clearing delegates on priest change');
+      }
+      try {
+        const res = deleteMutesStmt.run(key);
+        mutesCleared = Number(res?.changes || 0);
+      } catch (err) {
+        logger?.warn?.({ err: String(err?.message || err), contract: key }, 'Failed clearing mutes on priest change');
+      }
+      logger?.info?.({ contract: key, oldPriest: oldKey, newPriest: nextKey, delegatesCleared, mutesCleared }, 'Priest updated from contract event');
+
+      const group = record.group || await ensureGroup(record);
+      if (!group?.send) return;
+      try {
+        await group.send(
+          JSON.stringify({
+            type: 'priest-changed',
+            oldPriest: oldKey,
+            newPriest: nextKey,
+            delegatesCleared,
+            mutesCleared
+          })
+        );
+      } catch (err) {
+        logger?.warn?.({ err: String(err?.message || err), contract: key }, 'Failed to announce priest change');
+      }
+    });
+
+    contract.on('ProposalCreated', handleProposal);
+    contract.on('VoteCast', handleVote);
+    contract.on('PriestChanged', handlePriestChanged);
+
+    listenerRegistry.set(key, { contract, record, handlers: { handleProposal, handleVote, handlePriestChanged } });
+    record.contract = contract;
+  };
+
+  return { watchContract };
+}
+
+async function restoreGroupsFromPersistence({ database, groups, watchContract, logger }) {
+  try {
+    const rows = database
+      .prepare('SELECT contract, groupId, priest FROM groups')
+      .all();
+    for (const row of rows) {
+      const key = String(row?.contract || '').toLowerCase();
+      if (!key) continue;
+      const record = {
+        group: null,
+        groupId: row?.groupId || null,
+        priest: row?.priest ? String(row.priest).toLowerCase() : null,
+        memberSet: new Set()
+      };
+      groups.set(key, record);
+      if (watchContract) {
+        watchContract(row.contract || key, record);
+      }
+    }
+  } catch (err) {
+    logger?.warn?.({ err: String(err?.message || err) }, 'Failed to restore groups from persistence');
+  }
+}
+
+export function createApp(opts) {
+  /** @type {{xmtp:any, hasPurchased:(contract:string,member:string)=>Promise<boolean>, connectContract?: (address:string)=>{on: Function}, dbPath?: string, db?: any, rateLimitStore?: import('express-rate-limit').Store}} */
+  // @ts-ignore - runtime validation below
+  const { xmtp, hasPurchased, connectContract: providedConnectContract, dbPath, db, rateLimitStore, provider } =
+    opts || {};
+  const connectContract = providedConnectContract ?? (provider ? ((address) => new ethers.Contract(address, TEMPL_EVENT_ABI, provider)) : null);
+  const app = express();
+  app.use(cors({ origin: buildAllowedOrigins() }));
+  app.use(express.json());
+  app.use(helmet());
+  const store = rateLimitStore ?? new MemoryStore();
+  // In tests/e2e runs we disable rate limiting to avoid 429s during heavy polling
+  if (process.env.NODE_ENV !== 'test') {
+    const limiter = rateLimit({ windowMs: 60_000, max: 100, store });
+    app.use(limiter);
   }
 
-  const listenerRegistry = new Map();
+  const groups = new Map();
+  const lastJoin = { at: 0, payload: null };
+  const { database, persist, deleteDelegatesStmt, deleteMutesStmt, close: closeDatabase } = initializeDatabase({ dbPath, db });
 
   async function ensureGroup(record) {
     if (record?.group) return record.group;
@@ -93,145 +248,9 @@ export function createApp(opts) {
     return record?.group || null;
   }
 
-  const watchContract = connectContract
-    ? (contractAddress, record) => {
-        if (!contractAddress || !record) return;
-        const key = String(contractAddress).toLowerCase();
-        if (listenerRegistry.has(key)) {
-          // Update cached record reference so handlers retain latest object
-          listenerRegistry.get(key).record = record;
-          return;
-        }
-        let contract;
-        try {
-          contract = connectContract(contractAddress);
-        } catch (err) {
-          logger?.warn?.({ err: String(err?.message || err), contract: contractAddress }, 'Failed to connect contract listeners');
-          return;
-        }
-        if (!contract || typeof contract.on !== 'function') {
-          return;
-        }
+  const { watchContract } = createContractWatcher({ connectContract, groups, persist, ensureGroup, deleteDelegatesStmt, deleteMutesStmt, logger });
 
-        const wrapListener = (label, fn) => (...args) => {
-          try {
-            const maybe = fn(...args);
-            if (maybe && typeof maybe.then === 'function') {
-              maybe.catch((err) => {
-                logger?.warn?.({ err: String(err?.message || err), contract: key }, label);
-              });
-            }
-          } catch (err) {
-            logger?.warn?.({ err: String(err?.message || err), contract: key }, label);
-          }
-        };
-
-        const handleProposal = wrapListener('Contract listener error', async (id, proposer, endTime) => {
-          const group = record.group || await ensureGroup(record);
-          if (!group?.send) return;
-          try {
-            await group.send(
-              JSON.stringify({
-                type: 'proposal',
-                id: Number(id),
-                proposer,
-                endTime: Number(endTime)
-              })
-            );
-          } catch (err) {
-            logger?.warn?.({ err: String(err?.message || err), contract: key }, 'Failed to relay ProposalCreated');
-          }
-        });
-
-        const handleVote = wrapListener('Contract listener error', async (id, voter, support, timestamp) => {
-          const group = record.group || await ensureGroup(record);
-          if (!group?.send) return;
-          try {
-            await group.send(
-              JSON.stringify({
-                type: 'vote',
-                id: Number(id),
-                voter,
-                support: Boolean(support),
-                timestamp: Number(timestamp)
-              })
-            );
-          } catch (err) {
-            logger?.warn?.({ err: String(err?.message || err), contract: key }, 'Failed to relay VoteCast');
-          }
-        });
-
-        const handlePriestChanged = wrapListener('Contract listener error', async (oldPriest, newPriest) => {
-          const oldKey = String(oldPriest || '').toLowerCase();
-          const nextKey = String(newPriest || '').toLowerCase();
-          record.priest = nextKey;
-          groups.set(key, record);
-          persist(key, record);
-          let delegatesCleared = 0;
-          let mutesCleared = 0;
-          try {
-            const res = deleteDelegatesStmt.run(key);
-            delegatesCleared = Number(res?.changes || 0);
-          } catch (err) {
-            logger?.warn?.({ err: String(err?.message || err), contract: key }, 'Failed clearing delegates on priest change');
-          }
-          try {
-            const res = deleteMutesStmt.run(key);
-            mutesCleared = Number(res?.changes || 0);
-          } catch (err) {
-            logger?.warn?.({ err: String(err?.message || err), contract: key }, 'Failed clearing mutes on priest change');
-          }
-          logger?.info?.({ contract: key, oldPriest: oldKey, newPriest: nextKey, delegatesCleared, mutesCleared }, 'Priest updated from contract event');
-
-          const group = record.group || await ensureGroup(record);
-          if (!group?.send) return;
-          try {
-            await group.send(
-              JSON.stringify({
-                type: 'priest-changed',
-                oldPriest: oldKey,
-                newPriest: nextKey,
-                delegatesCleared,
-                mutesCleared
-              })
-            );
-          } catch (err) {
-            logger?.warn?.({ err: String(err?.message || err), contract: key }, 'Failed to announce priest change');
-          }
-        });
-
-        contract.on('ProposalCreated', handleProposal);
-        contract.on('VoteCast', handleVote);
-        contract.on('PriestChanged', handlePriestChanged);
-
-        listenerRegistry.set(key, { contract, record, handlers: { handleProposal, handleVote, handlePriestChanged } });
-        record.contract = contract;
-      }
-    : null;
-
-  (async () => {
-    try {
-      const rows = database
-        .prepare('SELECT contract, groupId, priest FROM groups')
-        .all();
-      for (const row of rows) {
-        const key = String(row?.contract || '').toLowerCase();
-        if (!key) continue;
-        const record = {
-          group: null,
-          groupId: row?.groupId || null,
-          priest: row?.priest ? String(row.priest).toLowerCase() : null,
-          memberSet: new Set()
-        };
-        groups.set(key, record);
-        if (watchContract) {
-          watchContract(row.contract || key, record);
-        }
-      }
-    } catch (err) {
-      logger?.warn?.({ err: String(err?.message || err) }, 'Failed to restore groups from persistence');
-    }
-  })();
+  void restoreGroupsFromPersistence({ database, groups, watchContract, logger });
 
   const context = { xmtp, hasPurchased, database, groups, persist, lastJoin, provider, watchContract, ensureGroup };
 
@@ -245,7 +264,7 @@ export function createApp(opts) {
 
   app.close = async () => {
     await store.shutdown?.();
-    database.close();
+    closeDatabase();
   };
 
   return app;

@@ -1,78 +1,16 @@
 import { Client as NodeXmtpClient, generateInboxId, getInboxIdForIdentifier } from '@xmtp/node-sdk';
-import { waitForInboxReady, XMTP_ENV } from '../xmtp/index.js';
+import { waitForInboxReady } from '../xmtp/index.js';
 import { syncXMTP } from '../../../shared/xmtp.js';
+import {
+  resolveXmtpEnv,
+  isFastEnv,
+  allowDeterministicInbox,
+  shouldVerifyContracts
+} from '../xmtp/options.js';
+import { ensureContractDeployed } from './contractValidation.js';
 
-/** @type {Array<'local'|'dev'|'production'>} */
-const XMTP_ENV_VALUES = ['local', 'dev', 'production'];
-
-/**
- * @param {string} value
- * @returns {value is 'local'|'dev'|'production'}
- */
-function isValidEnv(value) {
-  return XMTP_ENV_VALUES.some((option) => option === value);
-}
-
-/**
- * @returns {'local'|'dev'|'production'}
- */
-function resolveXmtpEnv() {
-  const env = String(XMTP_ENV || 'dev');
-  if (isValidEnv(env)) {
-    return env;
-  }
-  return 'dev';
-}
-
-function isFastEnv() {
-  return process.env.NODE_ENV === 'test' || process.env.DISABLE_XMTP_WAIT === '1';
-}
-
-function allowDeterministicInbox() {
-  return resolveXmtpEnv() === 'local' || process.env.NODE_ENV === 'test';
-}
-
-function requireVerification() {
-  return process.env.REQUIRE_CONTRACT_VERIFY === '1' || process.env.NODE_ENV === 'production';
-}
-
-async function verifyContract({ contractAddress, provider, chainId }) {
-  if (!requireVerification()) return;
-  if (!provider) {
-    throw Object.assign(new Error('Verification required but no provider configured'), { statusCode: 500 });
-  }
-  try {
-    const net = await provider.getNetwork();
-    const expectedChainId = Number(net.chainId);
-    if (Number.isFinite(chainId) && chainId !== expectedChainId) {
-      throw Object.assign(new Error('ChainId mismatch'), { statusCode: 400 });
-    }
-  } catch {/* ignore */}
-  try {
-    const code = await provider.getCode(contractAddress);
-    if (!code || code === '0x') {
-      throw Object.assign(new Error('Not a contract'), { statusCode: 400 });
-    }
-  } catch {
-    throw Object.assign(new Error('Unable to verify contract'), { statusCode: 400 });
-  }
-}
-
-async function ensureGroupHandle({ record, xmtp, ensureGroup, logger }) {
-  try {
-    if (!record.group && typeof ensureGroup === 'function') {
-      record.group = await ensureGroup(record);
-    }
-    if (!record.group && record.groupId && xmtp?.conversations?.getConversationById) {
-      const maybe = await xmtp.conversations.getConversationById(record.groupId);
-      if (maybe) {
-        record.group = maybe;
-      }
-    }
-  } catch (err) {
-    logger?.warn?.({ err: err?.message || err }, 'Rehydrate group failed');
-  }
-  return record.group;
+function templError(message, statusCode) {
+  return Object.assign(new Error(message), { statusCode });
 }
 
 function normaliseHex(value) {
@@ -90,12 +28,28 @@ function parseProvidedInboxId(value) {
   return null;
 }
 
+async function hydrateGroup(record, { ensureGroup, xmtp, logger }) {
+  try {
+    if (!record.group && typeof ensureGroup === 'function') {
+      record.group = await ensureGroup(record);
+    }
+    if (!record.group && record.groupId && xmtp?.conversations?.getConversationById) {
+      const maybe = await xmtp.conversations.getConversationById(record.groupId);
+      if (maybe) {
+        record.group = maybe;
+      }
+    }
+  } catch (err) {
+    logger?.warn?.({ err: err?.message || err }, 'Rehydrate group failed');
+  }
+  return record.group;
+}
+
 async function waitForInboxId({ identifier, xmtp, allowDeterministic }) {
-  /** @type {'local'|'dev'|'production'} */
   const envOpt = resolveXmtpEnv();
-  const isTest = isFastEnv();
-  let tries = isTest ? 8 : 180;
-  const delayMs = envOpt === 'local' ? 200 : (isTest ? 150 : 1000);
+  const fast = isFastEnv();
+  let tries = fast ? 8 : 180;
+  const delayMs = envOpt === 'local' ? 200 : fast ? 150 : 1000;
   for (let i = 0; i < tries; i++) {
     try {
       if (typeof xmtp?.findInboxIdByIdentifier === 'function') {
@@ -116,7 +70,6 @@ async function waitForInboxId({ identifier, xmtp, allowDeterministic }) {
 }
 
 async function ensureInstallationsReady({ inboxId, xmtp, lastJoin, logger }) {
-  /** @type {'local'|'dev'|'production'} */
   const envOpt = resolveXmtpEnv();
   const isLocal = envOpt === 'local';
   const max = isLocal ? 40 : 60;
@@ -173,11 +126,11 @@ async function ensureInstallationsReady({ inboxId, xmtp, lastJoin, logger }) {
     lastJoin.payload = lastJoin.payload || {};
     lastJoin.payload.keyPackageProbe = {
       installationIds: candidateInstallationIds,
-      statuses: Object.keys(lastStatuses || {}),
+      statuses: Object.keys(lastStatuses || {})
     };
     lastJoin.payload.inboxStateProbe = {
       installationCount: Array.isArray(lastInboxState?.installations) ? lastInboxState.installations.length : null,
-      identifierCount: Array.isArray(lastInboxState?.identifiers) ? lastInboxState.identifiers.length : null,
+      identifierCount: Array.isArray(lastInboxState?.identifiers) ? lastInboxState.identifiers.length : null
     };
   } catch (err) {
     logger?.warn?.({ err: err?.message || err }, 'Failed to record join probes');
@@ -185,16 +138,14 @@ async function ensureInstallationsReady({ inboxId, xmtp, lastJoin, logger }) {
 }
 
 async function ensureMemberInGroup({ group, inboxId }) {
-  /** @type {'local'|'dev'|'production'} */
-  const env = resolveXmtpEnv();
-  const isTest = isFastEnv();
-  const max = isTest ? 3 : (env === 'local' ? 30 : 60);
-  const delay = isTest ? 100 : (env === 'local' ? 150 : 500);
+  const envOpt = resolveXmtpEnv();
+  const fast = isFastEnv();
+  const max = fast ? 3 : envOpt === 'local' ? 30 : 60;
+  const delay = fast ? 100 : envOpt === 'local' ? 150 : 500;
   for (let i = 0; i < max; i++) {
     try { await group?.sync?.(); } catch {/* ignore */}
     const members = Array.isArray(group?.members) ? group.members : [];
-    const norm = (s) => normaliseHex(s);
-    if (members.some((m) => norm(m) === norm(inboxId))) return;
+    if (members.some((m) => normaliseHex(m) === normaliseHex(inboxId))) return;
     await new Promise((resolve) => setTimeout(resolve, delay));
   }
 }
@@ -218,30 +169,62 @@ async function syncAndWarm({ group, xmtp, contractAddress, memberAddress }) {
       await group.send(JSON.stringify({ type: 'member-joined', address: memberAddress }));
     }
   } catch {/* ignore */}
-  const META_UPDATES = process.env.XMTP_METADATA_UPDATES !== '0';
-  if (!META_UPDATES) return;
+  if (process.env.XMTP_METADATA_UPDATES === '0') return;
   try {
     if (typeof group?.updateDescription === 'function') {
       await group.updateDescription('Member joined');
     }
   } catch (err) {
-    if (!String(err?.message || '').includes('succeeded')) {/* ignore */}
+    if (!String(err?.message || '').includes('succeeded')) {/* ignore metadata update errors unless success string is missing */}
   }
   try {
     if (typeof group?.updateName === 'function') {
       await group.updateName(`Templ ${contractAddress}`);
     }
   } catch (err) {
-    if (!String(err?.message || '').includes('succeeded')) {/* ignore */}
+    if (!String(err?.message || '').includes('succeeded')) {/* ignore metadata update errors unless success string is missing */}
+  }
+}
+
+async function addMemberToGroup({ group, inboxId, memberIdentifier, logger }) {
+  try {
+    if (typeof group.addMembers === 'function') {
+      await group.addMembers([inboxId]);
+      logger?.info?.({ inboxId }, 'addMembers([inboxId]) succeeded');
+      return;
+    }
+    if (typeof group.addMembersByInboxId === 'function') {
+      await group.addMembersByInboxId([inboxId]);
+      logger?.info?.({ inboxId }, 'addMembersByInboxId([inboxId]) succeeded');
+      return;
+    }
+    if (typeof group.addMembersByIdentifiers === 'function') {
+      await group.addMembersByIdentifiers([memberIdentifier]);
+      logger?.info?.({ member: memberIdentifier.identifier }, 'addMembersByIdentifiers succeeded');
+      return;
+    }
+    throw new Error('XMTP group does not support adding members');
+  } catch (err) {
+    if (!String(err?.message || '').includes('succeeded')) {
+      throw err;
+    }
+  }
+}
+
+async function verifyPurchase({ hasPurchased, contractAddress, memberAddress }) {
+  let purchased;
+  try {
+    purchased = await hasPurchased(contractAddress, memberAddress);
+  } catch {
+    throw templError('Purchase check failed', 500);
+  }
+  if (!purchased) {
+    throw templError('Access not purchased', 403);
   }
 }
 
 export async function joinTempl(body, context) {
-  const {
-    contractAddress,
-    memberAddress,
-    chainId,
-  } = body;
+  const { contractAddress, memberAddress, chainId } = body;
   const {
     hasPurchased,
     groups,
@@ -249,45 +232,38 @@ export async function joinTempl(body, context) {
     lastJoin,
     provider,
     xmtp,
-    ensureGroup,
+    ensureGroup
   } = context;
 
   const record = groups.get(contractAddress.toLowerCase());
   if (!record) {
-    throw Object.assign(new Error('Unknown Templ'), { statusCode: 404 });
+    throw templError('Unknown Templ', 404);
   }
 
-  let purchased;
-  try {
-    purchased = await hasPurchased(contractAddress, memberAddress);
-  } catch {
-    throw Object.assign(new Error('Purchase check failed'), { statusCode: 500 });
-  }
-  if (!purchased) {
-    throw Object.assign(new Error('Access not purchased'), { statusCode: 403 });
+  await verifyPurchase({ hasPurchased, contractAddress, memberAddress });
+
+  if (shouldVerifyContracts()) {
+    await ensureContractDeployed({ provider, contractAddress, chainId: Number(chainId) });
   }
 
-  await verifyContract({ contractAddress, provider, chainId: Number(chainId) });
-
-  const group = await ensureGroupHandle({ record, xmtp, ensureGroup, logger });
+  const group = await hydrateGroup(record, { ensureGroup, xmtp, logger });
   if (!group) {
-    throw Object.assign(new Error('Group not ready yet; retry shortly'), { statusCode: 503 });
+    throw templError('Group not ready yet; retry shortly', 503);
   }
 
   const memberIdentifier = { identifier: memberAddress.toLowerCase(), identifierKind: 0 };
-  const allowDeterministic = allowDeterministicInbox();
   const providedInboxId = parseProvidedInboxId(body?.inboxId || body?.memberInboxId);
+  const allowDeterministic = allowDeterministicInbox();
   const resolvedInboxId = await waitForInboxId({ identifier: memberIdentifier, xmtp, allowDeterministic });
   let inboxId = resolvedInboxId;
   if (!inboxId && allowDeterministic) {
     inboxId = providedInboxId || null;
   }
   if (!inboxId) {
-    throw Object.assign(new Error('Member identity not registered yet; retry shortly'), { statusCode: 503 });
+    throw templError('Member identity not registered yet; retry shortly', 503);
   }
 
   if (resolvedInboxId && providedInboxId && normaliseHex(resolvedInboxId) !== normaliseHex(providedInboxId)) {
-    // prefer resolved value; no action needed besides logging
     logger?.info?.({ resolvedInboxId, providedInboxId }, 'Resolved inbox overrides provided value');
   }
 
@@ -301,29 +277,12 @@ export async function joinTempl(body, context) {
     member: memberAddress.toLowerCase(),
     inboxId,
     serverInboxId: xmtp?.inboxId || null,
-    groupId: group?.id || record.groupId || null,
+    groupId: group?.id || record.groupId || null
   };
   const beforeAgg = xmtp?.debugInformation?.apiAggregateStatistics?.();
   logger?.info?.(joinMeta, 'Inviting member by inboxId');
 
-  try {
-    if (typeof group.addMembers === 'function') {
-      await group.addMembers([inboxId]);
-      logger?.info?.({ inboxId }, 'addMembers([inboxId]) succeeded');
-    } else if (typeof group.addMembersByInboxId === 'function') {
-      await group.addMembersByInboxId([inboxId]);
-      logger?.info?.({ inboxId }, 'addMembersByInboxId([inboxId]) succeeded');
-    } else if (typeof group.addMembersByIdentifiers === 'function') {
-      await group.addMembersByIdentifiers([memberIdentifier]);
-      logger?.info?.({ member: memberAddress.toLowerCase() }, 'addMembersByIdentifiers succeeded');
-    } else {
-      throw new Error('XMTP group does not support adding members');
-    }
-  } catch (err) {
-    if (!String(err?.message || '').includes('succeeded')) {
-      throw err;
-    }
-  }
+  await addMemberToGroup({ group, inboxId, memberIdentifier, logger });
 
   try {
     await syncXMTP(xmtp);

@@ -4,6 +4,7 @@ import { buildCreateTypedData } from '../../../shared/signing.js';
 import { logger } from '../logger.js';
 import { createXmtpWithRotation } from '../xmtp/index.js';
 import { registerTempl } from '../services/registerTempl.js';
+import { extractTypedRequestParams } from './typed.js';
 
 export default function templsRouter({ xmtp, groups, persist, database, provider, watchContract }) {
   const router = express.Router();
@@ -50,13 +51,7 @@ export default function templsRouter({ xmtp, groups, persist, database, provider
       database,
       addressField: 'priestAddress',
       buildTyped: (req) => {
-        const chainId = Number(req.body?.chainId || 1337);
-        const n = Number(req.body?.nonce);
-        const i = Number(req.body?.issuedAt);
-        const e = Number(req.body?.expiry);
-        const nonce = Number.isFinite(n) ? n : undefined;
-        const issuedAt = Number.isFinite(i) ? i : undefined;
-        const expiry = Number.isFinite(e) ? e : undefined;
+        const { chainId, nonce, issuedAt, expiry } = extractTypedRequestParams(req.body);
         return buildCreateTypedData({ chainId, contractAddress: req.body.contractAddress.toLowerCase(), nonce, issuedAt, expiry });
       }
     }),
