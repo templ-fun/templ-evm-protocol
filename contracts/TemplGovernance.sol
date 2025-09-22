@@ -107,8 +107,15 @@ abstract contract TemplGovernance is TemplTreasury {
         Proposal storage proposal = proposals[_proposalId];
 
         if (block.timestamp >= proposal.endTime) revert TemplErrors.VotingEnded();
-        if (!proposal.quorumExempt && proposal.quorumReachedAt != 0) {
-            if (members[msg.sender].timestamp > proposal.quorumReachedAt) {
+
+        Member storage memberInfo = members[msg.sender];
+
+        if (proposal.quorumReachedAt == 0) {
+            if (_joinedAfterSnapshot(memberInfo, proposal.preQuorumSnapshotBlock, proposal.createdAt)) {
+                revert TemplErrors.JoinedAfterProposal();
+            }
+        } else {
+            if (_joinedAfterSnapshot(memberInfo, proposal.quorumSnapshotBlock, proposal.quorumReachedAt)) {
                 revert TemplErrors.JoinedAfterProposal();
             }
         }
@@ -136,9 +143,13 @@ abstract contract TemplGovernance is TemplTreasury {
         }
 
         if (!proposal.quorumExempt && proposal.quorumReachedAt == 0) {
-            proposal.eligibleVoters = memberList.length;
-            if (proposal.yesVotes * 100 >= quorumPercent * proposal.eligibleVoters) {
+            if (
+                proposal.eligibleVoters != 0 &&
+                proposal.yesVotes * 100 >= quorumPercent * proposal.eligibleVoters
+            ) {
                 proposal.quorumReachedAt = block.timestamp;
+                proposal.quorumSnapshotBlock = block.number;
+                proposal.postQuorumEligibleVoters = memberList.length;
                 proposal.endTime = block.timestamp + executionDelayAfterQuorum;
             }
         }
@@ -222,6 +233,32 @@ abstract contract TemplGovernance is TemplTreasury {
             proposal.endTime,
             proposal.executed,
             passed
+        );
+    }
+
+    function getProposalSnapshots(
+        uint256 _proposalId
+    )
+        external
+        view
+        returns (
+            uint256 eligibleVotersPreQuorum,
+            uint256 eligibleVotersPostQuorum,
+            uint256 preQuorumSnapshotBlock,
+            uint256 quorumSnapshotBlock,
+            uint256 createdAt,
+            uint256 quorumReachedAt
+        )
+    {
+        if (_proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
+        Proposal storage proposal = proposals[_proposalId];
+        return (
+            proposal.eligibleVoters,
+            proposal.postQuorumEligibleVoters,
+            proposal.preQuorumSnapshotBlock,
+            proposal.quorumSnapshotBlock,
+            proposal.createdAt,
+            proposal.quorumReachedAt
         );
     }
 
@@ -316,6 +353,7 @@ abstract contract TemplGovernance is TemplTreasury {
         proposal.proposer = msg.sender;
         proposal.endTime = block.timestamp + period;
         proposal.createdAt = block.timestamp;
+        proposal.preQuorumSnapshotBlock = block.number;
         proposal.executed = false;
         proposal.hasVoted[msg.sender] = true;
         proposal.voteChoice[msg.sender] = true;
@@ -329,10 +367,29 @@ abstract contract TemplGovernance is TemplTreasury {
             proposal.yesVotes * 100 >= quorumPercent * proposal.eligibleVoters
         ) {
             proposal.quorumReachedAt = block.timestamp;
+            proposal.quorumSnapshotBlock = block.number;
+            proposal.postQuorumEligibleVoters = proposal.eligibleVoters;
             proposal.endTime = block.timestamp + executionDelayAfterQuorum;
         }
         hasActiveProposal[msg.sender] = true;
         activeProposalId[msg.sender] = proposalId;
         emit ProposalCreated(proposalId, msg.sender, proposal.endTime);
+    }
+
+    function _joinedAfterSnapshot(
+        Member storage memberInfo,
+        uint256 snapshotBlock,
+        uint256 snapshotTimestamp
+    ) internal view returns (bool) {
+        if (snapshotBlock == 0) {
+            return false;
+        }
+        if (memberInfo.block > snapshotBlock) {
+            return true;
+        }
+        if (memberInfo.block == snapshotBlock && memberInfo.timestamp > snapshotTimestamp) {
+            return true;
+        }
+        return false;
     }
 }

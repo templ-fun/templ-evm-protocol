@@ -77,9 +77,9 @@ sequenceDiagram
 ### Quorum and eligibility
 
 - Quorum threshold: `quorumPercent = 33` (33% yes votes of `eligibleVoters`).
-- On creation: proposer auto-YES, `eligibleVoters = memberList.length`. If quorum is immediately satisfied, `quorumReachedAt` is set and `endTime` is reset to `now + executionDelayAfterQuorum`.
-- Before quorum: any member (including those who joined after creation) may vote; `eligibleVoters` tracks the current member count.
-- After quorum: voting eligibility freezes; only members who joined before `quorumReachedAt` may vote. Late joiners are rejected with `JoinedAfterProposal`. Because Ethereum timestamps are per block, joins mined in the same block that reached quorum remain eligible.
+- On creation: proposer auto-YES, and `eligibleVoters` snapshots the member count at proposal creation. If quorum is immediately satisfied, `quorumReachedAt` is set, `postQuorumEligibleVoters` matches the creation snapshot, and `endTime` is reset to `now + executionDelayAfterQuorum`.
+- Before quorum: only members captured in the creation snapshot may vote; anyone joining later reverts with `JoinedAfterProposal` until quorum is reached.
+- After quorum: a new snapshot is recorded (`postQuorumEligibleVoters` + `quorumSnapshotBlock`). Members who joined before that quorum transaction can still vote; later joiners are rejected with `JoinedAfterProposal`. Because Ethereum timestamps are per block, joins mined in the same block that reached quorum remain eligible.
 - Execution requires a simple majority (`yesVotes > noVotes`) and:
   - if quorum is required: quorum must have been reached and the delay `executionDelayAfterQuorum = 7 days` must have elapsed; otherwise it reverts with `QuorumNotReached` or `ExecutionDelayActive`.
   - priest exception: `createProposalDisbandTreasury(...)` proposed by `priest` is quorum-exempt and respects only its `endTime`.
@@ -99,16 +99,18 @@ Note: Proposal metadata (title/description) is not stored on-chain. Keep human-r
 - Reentrancy: `purchaseAccess`, `claimMemberPool`, and `executeProposal` are non-reentrant.
 - Purchase guard: `purchaseAccess` disallows calls from the DAO address itself (`InvalidSender`).
 - Pausing: only blocks `purchaseAccess`; proposing and voting continue while paused.
+- Token compatibility: access tokens must follow standard ERC-20 semantics. Fee-on-transfer ("taxed") tokens will corrupt fee splits and are unsupported.
 
 ## User-facing functions and views
 
-- `purchaseAccess()` - one-time purchase; applies the templ’s configured burn/treasury/member percentages (plus the factory-defined protocol split) via `safeTransferFrom`. Requires balance ≥ entry fee and contract not paused.
+- `purchaseAccess()` - one-time purchase; applies the templ’s configured burn/treasury/member percentages (plus the factory-defined protocol split) via `safeTransferFrom`. Requires balance ≥ entry fee and contract not paused. Fee-on-transfer/taxed tokens are unsupported because they desync treasury accounting.
 - `vote(uint256 proposalId, bool support)` - cast or change a vote until eligible; emits `VoteCast`.
 - `executeProposal(uint256 proposalId)` - performs the allowlisted action; emits `ProposalExecuted` and action-specific events.
 - `claimMemberPool()` - withdraw accrued rewards; emits `MemberPoolClaimed`.
 - `getActiveProposals()` - returns IDs of active proposals.
 - `getActiveProposalsPaginated(uint256 offset, uint256 limit)` - returns `(ids, hasMore)`; `limit` in [1,100], else `LimitOutOfRange`.
 - `getProposal(uint256 id)` - returns `(proposer, yesVotes, noVotes, endTime, executed, passed)` with `passed` computed according to quorum/delay rules.
+- `getProposalSnapshots(uint256 id)` - returns `(eligibleVotersPreQuorum, eligibleVotersPostQuorum, preQuorumSnapshotBlock, quorumSnapshotBlock, createdAt, quorumReachedAt)` so clients can reason about eligibility windows.
 - `hasVoted(uint256 id, address voter)` - returns `(voted, support)`.
 - `hasAccess(address user)` - returns membership status.
 - `getPurchaseDetails(address user)` - returns `(purchased, timestamp, blockNum)`.

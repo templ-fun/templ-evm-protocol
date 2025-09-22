@@ -66,8 +66,6 @@ abstract contract TemplMembership is TemplBase {
             cumulativeMemberRewards += rewardPerMember;
         }
 
-        _syncExternalRewardSnapshots(msg.sender);
-
         m.rewardSnapshot = cumulativeMemberRewards;
 
         treasuryBalance += treasuryAmount;
@@ -78,6 +76,7 @@ abstract contract TemplMembership is TemplBase {
         totalToProtocol += protocolAmount;
 
         IERC20 token = IERC20(accessToken);
+        // NOTE: Fee-on-transfer tokens are unsupported; transfer-based fees break internal accounting.
         token.safeTransferFrom(msg.sender, burnAddress, burnAmount);
         token.safeTransferFrom(msg.sender, address(this), toContract);
         token.safeTransferFrom(msg.sender, protocolFeeRecipient, protocolAmount);
@@ -129,8 +128,13 @@ abstract contract TemplMembership is TemplBase {
         if (!rewards.exists) {
             return 0;
         }
+        Member storage memberInfo = members[member];
         uint256 accrued = rewards.cumulativeRewards;
+        uint256 baseline = _externalBaselineForMember(rewards, memberInfo);
         uint256 snapshot = memberExternalRewardSnapshots[member][token];
+        if (snapshot < baseline) {
+            snapshot = baseline;
+        }
         return accrued > snapshot ? accrued - snapshot : 0;
     }
 
@@ -246,14 +250,59 @@ abstract contract TemplMembership is TemplBase {
         return 1;
     }
 
-    function _syncExternalRewardSnapshots(address account) internal {
-        uint256 len = externalRewardTokens.length;
-        for (uint256 i = 0; i < len; i++) {
-            address token = externalRewardTokens[i];
-            if (token == accessToken) continue;
-            ExternalRewardState storage rewards = externalRewards[token];
-            if (!rewards.exists) continue;
-            memberExternalRewardSnapshots[account][token] = rewards.cumulativeRewards;
+    function _recordExternalCheckpoint(ExternalRewardState storage rewards) internal {
+        RewardCheckpoint memory checkpoint = RewardCheckpoint({
+            blockNumber: uint64(block.number),
+            timestamp: uint64(block.timestamp),
+            cumulative: rewards.cumulativeRewards
+        });
+        uint256 len = rewards.checkpoints.length;
+        if (len == 0) {
+            rewards.checkpoints.push(checkpoint);
+            return;
         }
+        RewardCheckpoint storage last = rewards.checkpoints[len - 1];
+        if (last.blockNumber == checkpoint.blockNumber) {
+            last.timestamp = checkpoint.timestamp;
+            last.cumulative = checkpoint.cumulative;
+        } else {
+            rewards.checkpoints.push(checkpoint);
+        }
+    }
+
+    function _externalBaselineForMember(
+        ExternalRewardState storage rewards,
+        Member storage memberInfo
+    ) internal view returns (uint256) {
+        RewardCheckpoint[] storage checkpoints = rewards.checkpoints;
+        uint256 len = checkpoints.length;
+        if (len == 0) {
+            return rewards.cumulativeRewards;
+        }
+
+        uint256 memberBlock = memberInfo.block;
+        uint256 memberTimestamp = memberInfo.timestamp;
+        uint256 low = 0;
+        uint256 high = len;
+
+        while (low < high) {
+            uint256 mid = (low + high) >> 1;
+            RewardCheckpoint storage cp = checkpoints[mid];
+            if (memberBlock < cp.blockNumber) {
+                high = mid;
+            } else if (memberBlock > cp.blockNumber) {
+                low = mid + 1;
+            } else if (memberTimestamp < cp.timestamp) {
+                high = mid;
+            } else {
+                low = mid + 1;
+            }
+        }
+
+        if (low == 0) {
+            return 0;
+        }
+
+        return checkpoints[low - 1].cumulative;
     }
 }

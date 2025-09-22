@@ -183,6 +183,8 @@ abstract contract TemplTreasury is TemplMembership {
         rewards.cumulativeRewards += perMember;
         rewards.rewardRemainder = remainder;
 
+        _recordExternalCheckpoint(rewards);
+
         emit TreasuryDisbanded(proposalId, token, amount, perMember, remainder);
     }
 
