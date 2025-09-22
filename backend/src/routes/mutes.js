@@ -1,6 +1,7 @@
 import express from 'express';
 import { requireAddresses, verifyTypedSignature } from '../middleware/validate.js';
 import { buildMuteTypedData } from '../../../shared/signing.js';
+import { extractTypedRequestParams } from './typed.js';
 
 export default function mutesRouter({ groups, database }) {
   const router = express.Router();
@@ -18,13 +19,7 @@ export default function mutesRouter({ groups, database }) {
       database,
       addressField: 'moderatorAddress',
       buildTyped: (req) => {
-        const chainId = Number(req.body?.chainId || 1337);
-        const n = Number(req.body?.nonce);
-        const i = Number(req.body?.issuedAt);
-        const e = Number(req.body?.expiry);
-        const nonce = Number.isFinite(n) ? n : undefined;
-        const issuedAt = Number.isFinite(i) ? i : undefined;
-        const expiry = Number.isFinite(e) ? e : undefined;
+        const { chainId, nonce, issuedAt, expiry } = extractTypedRequestParams(req.body);
         return buildMuteTypedData({ chainId, contractAddress: req.body.contractAddress.toLowerCase(), targetAddress: req.body.targetAddress.toLowerCase(), nonce, issuedAt, expiry });
       }
     }),

@@ -4,6 +4,104 @@ import { buildJoinTypedData } from '../../../shared/signing.js';
 import { waitForConversation } from '../../../shared/xmtp.js';
 import { dlog, isDebugEnabled } from './utils.js';
 import { registerTemplBackend } from './deployment.js';
+import { postJson } from './http.js';
+
+async function resolveAccessConfig({ contract, tokenAddress, amount }) {
+  let resolvedToken = typeof tokenAddress === 'string'
+    ? tokenAddress.trim() || undefined
+    : tokenAddress != null
+      ? String(tokenAddress)
+      : undefined;
+
+  let resolvedAmount;
+  if (amount !== undefined && amount !== null) {
+    try {
+      resolvedAmount = BigInt(amount);
+    } catch {
+      throw new Error('purchaseAccess: invalid amount');
+    }
+  }
+
+  if (!resolvedToken || resolvedAmount === undefined) {
+    try {
+      if (typeof contract.getConfig === 'function') {
+        const cfg = await contract.getConfig();
+        if (!resolvedToken && cfg && typeof cfg[0] === 'string') {
+          resolvedToken = cfg[0];
+        }
+        if (resolvedAmount === undefined && cfg && cfg.length > 1) {
+          try { resolvedAmount = BigInt(cfg[1]); } catch {}
+        }
+      }
+    } catch {}
+  }
+
+  if (!resolvedToken) {
+    try { resolvedToken = await contract.accessToken(); } catch {}
+  }
+  if (resolvedAmount === undefined) {
+    try { resolvedAmount = BigInt(await contract.entryFee()); } catch {}
+  }
+
+  if (!resolvedToken) {
+    throw new Error('purchaseAccess: missing token address');
+  }
+  if (resolvedAmount === undefined) {
+    throw new Error('purchaseAccess: missing entry fee amount');
+  }
+
+  return { token: resolvedToken, amount: resolvedAmount };
+}
+
+async function ensureTokenAllowance({ ethers, signer, owner, token, spender, amount, txOptions }) {
+  const zeroAddress = (typeof ethers?.ZeroAddress === 'string'
+    ? ethers.ZeroAddress
+    : '0x0000000000000000000000000000000000000000').toLowerCase();
+  if (String(token).toLowerCase() === zeroAddress) {
+    return txOptions;
+  }
+  const erc20 = new ethers.Contract(
+    token,
+    [
+      'function allowance(address owner, address spender) view returns (uint256)',
+      'function approve(address spender, uint256 value) returns (bool)'
+    ],
+    signer
+  );
+  let nextOptions = { ...txOptions };
+  try {
+    const current = BigInt(await erc20.allowance(owner, spender));
+    if (current >= amount) {
+      dlog('purchaseAccess: allowance sufficient', { allowance: current.toString(), required: amount.toString() });
+      return nextOptions;
+    }
+    const approvalOverrides = { ...txOptions };
+    if (approvalOverrides && Object.prototype.hasOwnProperty.call(approvalOverrides, 'value')) {
+      delete approvalOverrides.value;
+    }
+    const approval = await erc20.approve(spender, amount, approvalOverrides);
+    let overrideNonce = null;
+    if (approval?.nonce !== undefined && approval?.nonce !== null) {
+      const rawNonce = typeof approval.nonce === 'bigint' ? Number(approval.nonce) : approval.nonce;
+      if (Number.isFinite(rawNonce)) {
+        overrideNonce = rawNonce + 1;
+      }
+    }
+    dlog('purchaseAccess: approval sent', {
+      allowanceBefore: current.toString(),
+      required: amount.toString(),
+      approvalNonce: approval?.nonce,
+      nextNonce: overrideNonce
+    });
+    await approval.wait();
+    if (overrideNonce !== null) {
+      nextOptions = { ...nextOptions, nonce: overrideNonce };
+    }
+  } catch (err) {
+    dlog('purchaseAccess: approval step error', err?.message || err);
+  }
+  return nextOptions;
+}
 
 /**
  * Approve entry fee (if needed) and purchase templ access.
@@ -37,93 +135,22 @@ export async function purchaseAccess({
       if (already) return false;
     }
   } catch {}
-  let resolvedToken = tokenAddress;
-  if (typeof resolvedToken === 'string') {
-    resolvedToken = resolvedToken.trim() || undefined;
-  } else if (resolvedToken != null) {
-    resolvedToken = String(resolvedToken);
-  }
-  let resolvedAmount;
-  if (amount !== undefined && amount !== null) {
-    try {
-      resolvedAmount = BigInt(amount);
-    } catch {
-      throw new Error('purchaseAccess: invalid amount');
-    }
-  }
-  if (!resolvedToken || resolvedAmount === undefined) {
-    try {
-      if (typeof contract.getConfig === 'function') {
-        const cfg = await contract.getConfig();
-        if (!resolvedToken && cfg && typeof cfg[0] === 'string') {
-          resolvedToken = cfg[0];
-        }
-        if (resolvedAmount === undefined && cfg && cfg.length > 1) {
-          try { resolvedAmount = BigInt(cfg[1]); } catch {}
-        }
-      }
-    } catch {}
-  }
-  if (!resolvedToken) {
-    try { resolvedToken = await contract.accessToken(); } catch {}
-  }
-  if (resolvedAmount === undefined) {
-    try {
-      const fee = await contract.entryFee();
-      resolvedAmount = BigInt(fee ?? 0n);
-    } catch {}
-  }
-  if (!resolvedToken) {
-    throw new Error('purchaseAccess: missing token address');
-  }
-  if (resolvedAmount === undefined) {
-    throw new Error('purchaseAccess: missing entry fee amount');
-  }
-  const zeroAddress = (typeof ethers?.ZeroAddress === 'string'
-    ? ethers.ZeroAddress
-    : '0x0000000000000000000000000000000000000000').toLowerCase();
-  const normalizedToken = String(resolvedToken).toLowerCase();
-  if (normalizedToken !== zeroAddress) {
-    const erc20 = new ethers.Contract(
-      resolvedToken,
-      [
-        'function allowance(address owner, address spender) view returns (uint256)',
-        'function approve(address spender, uint256 value) returns (bool)'
-      ],
-      signer
-    );
-    let overrideNonce = null;
-    try {
-      const current = BigInt(await erc20.allowance(memberAddress, templAddress));
-      if (current < resolvedAmount) {
-        const approvalOverrides = { ...txOptions };
-        if (approvalOverrides && Object.prototype.hasOwnProperty.call(approvalOverrides, 'value')) {
-          delete approvalOverrides.value;
-        }
-        const approval = await erc20.approve(templAddress, resolvedAmount, approvalOverrides);
-        if (approval?.nonce !== undefined && approval?.nonce !== null) {
-          const rawNonce = typeof approval.nonce === 'bigint' ? Number(approval.nonce) : approval.nonce;
-          if (Number.isFinite(rawNonce)) {
-            overrideNonce = rawNonce + 1;
-          }
-        }
-        dlog('purchaseAccess: approval sent', {
-          allowanceBefore: current.toString(),
-          required: resolvedAmount.toString(),
-          approvalNonce: approval?.nonce,
-          nextNonce: overrideNonce
-        });
-        await approval.wait();
-      } else {
-        dlog('purchaseAccess: allowance sufficient', { allowance: current.toString(), required: resolvedAmount.toString() });
-      }
-    } catch (err) {
-      dlog('purchaseAccess: approval step error', err?.message || err);
-    }
-    if (overrideNonce !== null) {
-      txOptions = { ...txOptions, nonce: overrideNonce };
-    }
-  }
+  const { token: resolvedToken, amount: resolvedAmount } = await resolveAccessConfig({
+    contract,
+    tokenAddress,
+    amount
+  });
+
+  txOptions = await ensureTokenAllowance({
+    ethers,
+    signer,
+    owner: memberAddress,
+    token: resolvedToken,
+    spender: templAddress,
+    amount: resolvedAmount,
+    txOptions
+  });
+
   const purchaseOverrides = { ...txOptions };
   dlog('purchaseAccess: sending purchase', { overrides: purchaseOverrides });
   const tx = await contract.purchaseAccess(purchaseOverrides);
@@ -206,11 +233,7 @@ export async function purchaseAndJoin({
     expiry: joinTyped.message.expiry
   };
   dlog('purchaseAndJoin: sending join payload', joinPayload);
-  const res = await fetch(`${backendUrl}/join`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(joinPayload)
-  });
+  const res = await postJson(`${backendUrl}/join`, joinPayload);
   try { console.log('[purchaseAndJoin] /join status', res.status); } catch {}
 
   if (res.status === 404 && isDebugEnabled()) {
@@ -226,13 +249,9 @@ export async function purchaseAndJoin({
       dlog('purchaseAndJoin: re-register templ failed', err?.message || err);
     }
     try {
-      const retry = await fetch(`${backendUrl}/join`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...joinPayload,
-          inboxId: xmtp?.inboxId?.replace?.(/^0x/i, '') || undefined
-        })
+      const retry = await postJson(`${backendUrl}/join`, {
+        ...joinPayload,
+        inboxId: xmtp?.inboxId?.replace?.(/^0x/i, '') || undefined
       });
       try { console.log('[purchaseAndJoin] retry join after register status', retry.status); } catch {}
       if (retry.ok) {
@@ -260,11 +279,7 @@ export async function purchaseAndJoin({
         inboxId: xmtp?.inboxId?.replace?.(/^0x/i, '') || undefined
       };
       dlog('purchaseAndJoin: retry join payload', againPayload);
-      const again = await fetch(`${backendUrl}/join`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(againPayload)
-      });
+      const again = await postJson(`${backendUrl}/join`, againPayload);
       try { console.log('[purchaseAndJoin] retry /join status', again.status); } catch {}
       if (again.ok) {
         const data = await again.json();

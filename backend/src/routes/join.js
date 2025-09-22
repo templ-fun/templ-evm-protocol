@@ -3,6 +3,7 @@ import { requireAddresses, verifyTypedSignature } from '../middleware/validate.j
 import { buildJoinTypedData } from '../../../shared/signing.js';
 import { logger } from '../logger.js';
 import { joinTempl } from '../services/joinTempl.js';
+import { extractTypedRequestParams } from './typed.js';
 
 export default function joinRouter({ xmtp, groups, hasPurchased, lastJoin, database, provider, ensureGroup }) {
   const router = express.Router();
@@ -15,13 +16,7 @@ export default function joinRouter({ xmtp, groups, hasPurchased, lastJoin, datab
       database,
       addressField: 'memberAddress',
       buildTyped: (req) => {
-        const chainId = Number(req.body?.chainId || 1337);
-        const n = Number(req.body?.nonce);
-        const i = Number(req.body?.issuedAt);
-        const e = Number(req.body?.expiry);
-        const nonce = Number.isFinite(n) ? n : undefined;
-        const issuedAt = Number.isFinite(i) ? i : undefined;
-        const expiry = Number.isFinite(e) ? e : undefined;
+        const { chainId, nonce, issuedAt, expiry } = extractTypedRequestParams(req.body);
         return buildJoinTypedData({ chainId, contractAddress: req.body.contractAddress.toLowerCase(), nonce, issuedAt, expiry });
       }
     }),

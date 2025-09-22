@@ -3,6 +3,7 @@ import { BACKEND_URL } from '../config.js';
 import { buildCreateTypedData } from '../../../shared/signing.js';
 import { waitForConversation } from '../../../shared/xmtp.js';
 import { addToTestRegistry, dlog, isDebugEnabled } from './utils.js';
+import { postJson } from './http.js';
 
 /**
  * Deploy a new TEMPL contract and register a group with the backend.
@@ -126,11 +127,7 @@ export async function deployTempl({
     expiry: createTyped.message.expiry
   };
   dlog('deployTempl: sending register payload', registerPayload);
-  const res = await fetch(`${backendUrl}/templs`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(registerPayload)
-  });
+  const res = await postJson(`${backendUrl}/templs`, registerPayload);
   dlog('deployTempl: /templs status', res.status);
   try { console.log('[deployTempl] /templs status', res.status); } catch {}
   if (!res.ok) {
@@ -257,11 +254,7 @@ export async function registerTemplBackend({ ethers, signer, walletAddress, temp
       issuedAt: nextTyped.message.issuedAt,
       expiry: nextTyped.message.expiry
     };
-    const retry = await fetch(`${backendUrl}/templs`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(retryPayload)
-    });
+    const retry = await postJson(`${backendUrl}/templs`, retryPayload);
     dlog('registerTemplBackend: retry status', retry.status);
     if (!retry.ok && retry.status !== 409) {
       const body = await retry.text().catch(() => '');

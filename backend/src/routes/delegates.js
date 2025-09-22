@@ -2,6 +2,7 @@ import express from 'express';
 import { requireAddresses, verifyTypedSignature } from '../middleware/validate.js';
 import { buildDelegateTypedData } from '../../../shared/signing.js';
 import { logger } from '../logger.js';
+import { extractTypedRequestParams } from './typed.js';
 
 export default function delegatesRouter({ groups, database }) {
   const router = express.Router();
@@ -19,13 +20,7 @@ export default function delegatesRouter({ groups, database }) {
       database,
       addressField: 'priestAddress',
       buildTyped: (req) => {
-        const chainId = Number(req.body?.chainId || 1337);
-        const n = Number(req.body?.nonce);
-        const i = Number(req.body?.issuedAt);
-        const e = Number(req.body?.expiry);
-        const nonce = Number.isFinite(n) ? n : undefined;
-        const issuedAt = Number.isFinite(i) ? i : undefined;
-        const expiry = Number.isFinite(e) ? e : undefined;
+        const { chainId, nonce, issuedAt, expiry } = extractTypedRequestParams(req.body);
         return buildDelegateTypedData({ chainId, contractAddress: req.body.contractAddress.toLowerCase(), delegateAddress: req.body.delegateAddress.toLowerCase(), nonce, issuedAt, expiry });
       },
       errorMessage: 'Only priest can delegate'
@@ -63,13 +58,7 @@ export default function delegatesRouter({ groups, database }) {
       database,
       addressField: 'priestAddress',
       buildTyped: (req) => {
-        const chainId = Number(req.body?.chainId || 1337);
-        const n = Number(req.body?.nonce);
-        const i = Number(req.body?.issuedAt);
-        const e = Number(req.body?.expiry);
-        const nonce = Number.isFinite(n) ? n : undefined;
-        const issuedAt = Number.isFinite(i) ? i : undefined;
-        const expiry = Number.isFinite(e) ? e : undefined;
+        const { chainId, nonce, issuedAt, expiry } = extractTypedRequestParams(req.body);
         return buildDelegateTypedData({ chainId, contractAddress: req.body.contractAddress.toLowerCase(), delegateAddress: req.body.delegateAddress.toLowerCase(), nonce, issuedAt, expiry });
       },
       errorMessage: 'Only priest can delegate'
