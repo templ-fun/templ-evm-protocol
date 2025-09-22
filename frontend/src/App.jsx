@@ -80,6 +80,13 @@ function App() {
   const [proposeNewPriest, setProposeNewPriest] = useState('');
   const [currentFee, setCurrentFee] = useState(null);
   const [tokenDecimals, setTokenDecimals] = useState(null);
+  const [currentBurnPercent, setCurrentBurnPercent] = useState(null);
+  const [currentTreasuryPercent, setCurrentTreasuryPercent] = useState(null);
+  const [currentMemberPercent, setCurrentMemberPercent] = useState(null);
+  const [currentProtocolPercent, setCurrentProtocolPercent] = useState(null);
+  const [proposeBurnPercent, setProposeBurnPercent] = useState('');
+  const [proposeTreasuryPercent, setProposeTreasuryPercent] = useState('');
+  const [proposeMemberPercent, setProposeMemberPercent] = useState('');
   const [toast, setToast] = useState('');
   const messagesRef = useRef(null);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -134,6 +141,11 @@ function App() {
   const memberPoolPercentNum = Number.isFinite(Number(memberPoolPercent)) ? Number(memberPoolPercent) : 0;
   const protocolPercentNum = Number.isFinite(Number(protocolPercent)) ? Number(protocolPercent) : null;
   const splitTotal = burnPercentNum + treasuryPercentNum + memberPoolPercentNum + (protocolPercentNum ?? 0);
+  const activeProtocolPercent = Number.isFinite(currentProtocolPercent) ? currentProtocolPercent : protocolPercentNum;
+  const parsedBurnInput = Number.isFinite(Number(proposeBurnPercent)) ? Number(proposeBurnPercent) : 0;
+  const parsedTreasuryInput = Number.isFinite(Number(proposeTreasuryPercent)) ? Number(proposeTreasuryPercent) : 0;
+  const parsedMemberInput = Number.isFinite(Number(proposeMemberPercent)) ? Number(proposeMemberPercent) : 0;
+  const proposeSplitTotal = parsedBurnInput + parsedTreasuryInput + parsedMemberInput + (Number.isFinite(activeProtocolPercent) ? activeProtocolPercent : 0);
 
   // Minimal debug logger: prints only in dev or when explicitly enabled for e2e
   const dlog = (...args) => {
@@ -155,13 +167,25 @@ function App() {
         const c = new ethers.Contract(templAddress, templArtifact.abi, providerOrSigner);
         let tokenAddr;
         let fee;
+        let burnPct = null;
+        let treasuryPct = null;
+        let memberPct = null;
+        let protocolPct = null;
         try {
           const cfg = await c.getConfig();
           tokenAddr = cfg[0];
           fee = BigInt(cfg[1] ?? 0n);
+          burnPct = Number(cfg[6]);
+          treasuryPct = Number(cfg[7]);
+          memberPct = Number(cfg[8]);
+          protocolPct = Number(cfg[9]);
         } catch {
           tokenAddr = await c.accessToken();
           fee = BigInt(await c.entryFee());
+          try { burnPct = Number(await c.burnPercent()); } catch {}
+          try { treasuryPct = Number(await c.treasuryPercent()); } catch {}
+          try { memberPct = Number(await c.memberPoolPercent()); } catch {}
+          try { protocolPct = Number(await c.protocolPercent()); } catch {}
         }
         let dec = null;
         try {
@@ -171,6 +195,10 @@ function App() {
         if (!cancelled) {
           setCurrentFee(fee.toString());
           setTokenDecimals(dec);
+          if (Number.isFinite(burnPct)) setCurrentBurnPercent(burnPct);
+          if (Number.isFinite(treasuryPct)) setCurrentTreasuryPercent(treasuryPct);
+          if (Number.isFinite(memberPct)) setCurrentMemberPercent(memberPct);
+          if (Number.isFinite(protocolPct)) setCurrentProtocolPercent(protocolPct);
         }
       } catch {}
     })();
@@ -183,6 +211,18 @@ function App() {
       setProposeFee(String(currentFee));
     }
   }, [proposeAction, currentFee, proposeFee]);
+
+  useEffect(() => {
+    if (currentBurnPercent !== null && proposeBurnPercent === '') {
+      setProposeBurnPercent(String(currentBurnPercent));
+    }
+    if (currentTreasuryPercent !== null && proposeTreasuryPercent === '') {
+      setProposeTreasuryPercent(String(currentTreasuryPercent));
+    }
+    if (currentMemberPercent !== null && proposeMemberPercent === '') {
+      setProposeMemberPercent(String(currentMemberPercent));
+    }
+  }, [currentBurnPercent, currentTreasuryPercent, currentMemberPercent, proposeBurnPercent, proposeTreasuryPercent, proposeMemberPercent]);
 
   async function connectWallet() {
     if (!window.ethereum) return;
@@ -1930,10 +1970,11 @@ function App() {
                 <button className={`btn ${proposeAction==='moveTreasuryToMe'?'btn-primary':''}`} onClick={() => setProposeAction('moveTreasuryToMe')}>Move Treasury To Me</button>
                 <button className={`btn ${proposeAction==='disband'?'btn-primary':''}`} onClick={() => setProposeAction('disband')}>Disband Treasury</button>
                 <button className={`btn ${proposeAction==='reprice'?'btn-primary':''}`} onClick={() => setProposeAction('reprice')}>Reprice Entry Fee</button>
+                <button className={`btn ${proposeAction==='rebalance'?'btn-primary':''}`} onClick={() => setProposeAction('rebalance')}>Adjust Fee Split</button>
                 <button className={`btn ${proposeAction==='changePriest'?'btn-primary':''}`} onClick={() => setProposeAction('changePriest')}>Change Priest</button>
                 <button className={`btn ${proposeAction==='none'?'btn-primary':''}`} onClick={() => setProposeAction('none')}>Custom/None</button>
               </div>
-              <div className="text-xs text-black/60">Tip: Pause/Unpause and Move Treasury encode the call data automatically. Reprice expects a new fee in raw token units.</div>
+              <div className="text-xs text-black/60">Tip: Pause/Unpause and Move Treasury encode the call data automatically. Reprice expects a new fee in raw token units. Adjust Fee Split collects the burn/treasury/member percentages (protocol share stays at the contract’s configured value).</div>
               {proposeAction === 'reprice' && (
                 <div className="text-xs text-black/80 mt-1 flex flex-col gap-2">
                   <div className="flex gap-2 items-center">
@@ -1958,6 +1999,19 @@ function App() {
                     <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Token address or ETH" value={proposeToken} onChange={(e) => setProposeToken(e.target.value)} />
                   </div>
                   <div className="text-xs text-black/60">Leave blank to disband the entry fee token. Enter ETH to target native.</div>
+                </div>
+              )}
+              {proposeAction === 'rebalance' && (
+                <div className="text-xs text-black/80 mt-1 flex flex-col gap-2">
+                  <div>Current split: burn {currentBurnPercent ?? '…'} / treasury {currentTreasuryPercent ?? '…'} / member {currentMemberPercent ?? '…'} / protocol {activeProtocolPercent ?? '…'}</div>
+                  <div className="flex flex-col gap-2">
+                    <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Burn percent" value={proposeBurnPercent} onChange={(e) => setProposeBurnPercent(e.target.value)} />
+                    <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Treasury percent" value={proposeTreasuryPercent} onChange={(e) => setProposeTreasuryPercent(e.target.value)} />
+                    <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Member pool percent" value={proposeMemberPercent} onChange={(e) => setProposeMemberPercent(e.target.value)} />
+                  </div>
+                  {Number.isFinite(activeProtocolPercent) && (
+                    <div className="text-xs text-black/60">Total with protocol share ({activeProtocolPercent}%): {proposeSplitTotal}/100</div>
+                  )}
                 </div>
               )}
               {proposeAction === 'changePriest' && (
@@ -2014,11 +2068,39 @@ function App() {
                   } else if (proposeAction === 'reprice') {
                     try {
                       const newFee = BigInt(String(proposeFee || '0'));
-                      const iface = new ethers.Interface(['function updateConfigDAO(address _token, uint256 _entryFee)']);
-                      callData = iface.encodeFunctionData('updateConfigDAO', [ethers.ZeroAddress, newFee]);
+                      const iface = new ethers.Interface(['function updateConfigDAO(address _token, uint256 _entryFee, bool _updateFeeSplit, uint256 _burnPercent, uint256 _treasuryPercent, uint256 _memberPoolPercent)']);
+                      callData = iface.encodeFunctionData('updateConfigDAO', [ethers.ZeroAddress, newFee, false, 0, 0, 0]);
                       if (!proposeTitle) setProposeTitle('Reprice Entry Fee');
                       if (!proposeDesc) setProposeDesc(`Set new entry fee to ${String(newFee)}`);
                     } catch {}
+                  } else if (proposeAction === 'rebalance') {
+                    try {
+                      if (!Number.isFinite(activeProtocolPercent)) {
+                        throw new Error('Protocol percentage unavailable');
+                      }
+                      const burnValue = Number(proposeBurnPercent);
+                      const treasuryValue = Number(proposeTreasuryPercent);
+                      const memberValue = Number(proposeMemberPercent);
+                      if ([burnValue, treasuryValue, memberValue].some((v) => !Number.isFinite(v) || v < 0)) {
+                        throw new Error('Enter valid percentages for burn, treasury, and member pool');
+                      }
+                      if (![burnValue, treasuryValue, memberValue].every((v) => Number.isInteger(v))) {
+                        throw new Error('Percentages must be whole numbers');
+                      }
+                      const total = burnValue + treasuryValue + memberValue + activeProtocolPercent;
+                      if (total !== 100) {
+                        throw new Error(`Percentages must sum to 100 including protocol share (${activeProtocolPercent}%)`);
+                      }
+                      const iface = new ethers.Interface(['function updateConfigDAO(address _token, uint256 _entryFee, bool _updateFeeSplit, uint256 _burnPercent, uint256 _treasuryPercent, uint256 _memberPoolPercent)']);
+                      callData = iface.encodeFunctionData('updateConfigDAO', [ethers.ZeroAddress, 0, true, burnValue, treasuryValue, memberValue]);
+                      if (!proposeTitle) setProposeTitle('Adjust Fee Split');
+                      if (!proposeDesc) {
+                        setProposeDesc(`Set burn/treasury/member to ${burnValue}/${treasuryValue}/${memberValue}`);
+                      }
+                    } catch (e) {
+                      alert(e?.message || 'Invalid fee split');
+                      return;
+                    }
                   } else if (proposeAction === 'disband') {
                     try {
                       const templ = new ethers.Contract(templAddress, templArtifact.abi, signer);
@@ -2101,6 +2183,9 @@ function App() {
                   setProposeFee('');
                   setProposeToken('');
                   setProposeNewPriest('');
+                  setProposeBurnPercent('');
+                  setProposeTreasuryPercent('');
+                  setProposeMemberPercent('');
                   pushStatus('✅ Proposal submitted');
                 } catch (err) {
                   alert('Proposal failed: ' + (err?.message || String(err)));
