@@ -23,37 +23,28 @@ import {
 import { syncXMTP, waitForConversation } from '../../shared/xmtp.js';
 import './App.css';
 import { BACKEND_URL, FACTORY_CONFIG } from './config.js';
+import { useAppLocation } from './hooks/useAppLocation.js';
+import { useStatusLog } from './hooks/useStatusLog.js';
+
+const DEBUG_ENABLED = (() => {
+  try { return import.meta.env?.DEV || import.meta.env?.VITE_E2E_DEBUG === '1'; } catch { return false; }
+})();
+
+function dlog(...args) {
+  if (!DEBUG_ENABLED) return;
+  try { console.log(...args); } catch {}
+}
 
 function App() {
   // Minimal client-side router (no external deps)
-  const [path, setPath] = useState(() => window.location.pathname || '/');
-  const [query, setQuery] = useState(() => new URLSearchParams(window.location.search));
-  useEffect(() => {
-    const onPop = () => {
-      setPath(window.location.pathname || '/');
-      setQuery(new URLSearchParams(window.location.search));
-    };
-    window.addEventListener('popstate', onPop);
-    return () => window.removeEventListener('popstate', onPop);
-  }, []);
-  const navigate = useCallback((to) => {
-    try {
-      const url = new URL(to, window.location.origin);
-      window.history.pushState({}, '', url.toString());
-      setPath(url.pathname);
-      setQuery(url.searchParams);
-    } catch {
-      // Fallback to hash navigation
-      window.location.assign(to);
-    }
-  }, []);
+  const { path, query, navigate } = useAppLocation();
   const [walletAddress, setWalletAddress] = useState();
   const [signer, setSigner] = useState();
   const [xmtp, setXmtp] = useState();
   const [group, setGroup] = useState();
   const [groupConnected, setGroupConnected] = useState(false);
   const [paused, setPaused] = useState(false);
-  const [status, setStatus] = useState([]);
+  const { status, toast, pushStatus } = useStatusLog();
   const [messages, setMessages] = useState([]); // [{ kind:'text'|'proposal'|'system', content, senderAddress, proposalId, title, description, yes, no }]
   const [messageInput, setMessageInput] = useState('');
   const [proposals, setProposals] = useState([]);
@@ -87,7 +78,6 @@ function App() {
   const [proposeBurnPercent, setProposeBurnPercent] = useState('');
   const [proposeTreasuryPercent, setProposeTreasuryPercent] = useState('');
   const [proposeMemberPercent, setProposeMemberPercent] = useState('');
-  const [toast, setToast] = useState('');
   const messagesRef = useRef(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [hasMoreHistory, setHasMoreHistory] = useState(false);
@@ -127,14 +117,6 @@ function App() {
   const lastProfileBroadcastRef = useRef(0);
   const autoDeployTriggeredRef = useRef(false);
 
-  const pushStatus = useCallback((msg) => {
-    setStatus((s) => [...s, String(msg)]);
-    try {
-      setToast(String(msg));
-      window.clearTimeout(window.__templToastT);
-      window.__templToastT = window.setTimeout(() => setToast(''), 1800);
-    } catch {}
-  }, []);
 
   const burnPercentNum = Number.isFinite(Number(burnPercent)) ? Number(burnPercent) : 0;
   const treasuryPercentNum = Number.isFinite(Number(treasuryPercent)) ? Number(treasuryPercent) : 0;
@@ -146,15 +128,6 @@ function App() {
   const parsedTreasuryInput = Number.isFinite(Number(proposeTreasuryPercent)) ? Number(proposeTreasuryPercent) : 0;
   const parsedMemberInput = Number.isFinite(Number(proposeMemberPercent)) ? Number(proposeMemberPercent) : 0;
   const proposeSplitTotal = parsedBurnInput + parsedTreasuryInput + parsedMemberInput + (Number.isFinite(activeProtocolPercent) ? activeProtocolPercent : 0);
-
-  // Minimal debug logger: prints only in dev or when explicitly enabled for e2e
-  const dlog = (...args) => {
-    try {
-      if (import.meta.env?.DEV || import.meta.env?.VITE_E2E_DEBUG === '1') {
-        console.log(...args);
-      }
-    } catch {}
-  };
 
   // Fetch entry fee and token decimals for display in reprice UI
   useEffect(() => {

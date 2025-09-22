@@ -85,7 +85,7 @@ flowchart LR
 - `VITE_XMTP_ENV` defaults to `dev` on localhost and `production` elsewhere; override for `local` nodes.
 - `VITE_E2E_DEBUG=1` exposes `window.__XMTP` helpers for diagnostics.
 - When debug helpers are enabled, the join flow automatically re-registers the contract with `/templs` if a 404 is encountered and retries the join; production runs continue to rely solely on the primary invite path.
-- The Browser SDK sets `appVersion` for diagnostics and `src/flows.js` is typed via JSDoc.
+- The Browser SDK sets `appVersion` for diagnostics and the core flows now live under `src/services/` with `src/flows.js` exporting a backwards-compatible facade.
 - The chat exposes a single `Claim` button that sweeps both member-pool rewards and any external token pools using `claimExternalToken`; external balances remain visible for transparency.
 
 ## Security considerations

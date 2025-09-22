@@ -107,6 +107,11 @@ The backend enforces who gains access to chat:
 - **Persistence** - group metadata persists to a SQLite database at `backend/groups.db` (or a custom path via `createApp({ dbPath })` in tests). The database is read on startup and updated when groups change; back it up to avoid losing state.
 - **On-chain surface** - proposal allowlist and events are defined in the contracts. See [CONTRACTS.md](./CONTRACTS.md#governance) for allowed actions and events mirrored into chat.
 
+### Code layout
+
+- Request handlers stay thin; `/templs` delegates to `src/services/registerTempl.js`, which encapsulates XMTP inbox resolution, ephemeral creator rotation, and persistence updates before wiring contract listeners.
+- `/join` uses `src/services/joinTempl.js` for membership checks, inbox readiness waits, and invite retries so tests and other callers can reuse the exact production logic.
+
 When watching governance events, the backend relays:
 
 - `ProposalCreated(id, proposer, endTime)` → sends `{ type: 'proposal', id, proposer, endTime }` to the group. Human-readable metadata (title/description) is not on-chain and should be sent by clients as a regular XMTP message alongside the id.
