@@ -121,55 +121,26 @@ describe("Voting Eligibility Based on Join Time", function () {
                 7 * 24 * 60 * 60
             );
 
-            const voteTx = await templ.connect(member2).vote(0, true);
-            const voteReceipt = await voteTx.wait();
-            const quorumBlock = await ethers.provider.getBlock(voteReceipt.blockNumber);
-            const quorumTimestamp = BigInt(quorumBlock.timestamp);
-            const quorumBlockNumber = BigInt(voteReceipt.blockNumber);
-
+            // Batch the quorum-reaching vote and the late join in the same block
             await token.connect(lateMember).approve(await templ.getAddress(), ENTRY_FEE);
-            const joinTx = await templ.connect(lateMember).purchaseAccess();
+            await ethers.provider.send("evm_setAutomine", [false]);
+
+            const voteTxPromise = templ.connect(member2).vote(0, true);
+            const joinTxPromise = templ.connect(lateMember).purchaseAccess();
+
+            await ethers.provider.send("evm_mine");
+            await ethers.provider.send("evm_setAutomine", [true]);
+
+            const voteTx = await voteTxPromise;
+            const joinTx = await joinTxPromise;
+            await voteTx.wait();
             await joinTx.wait();
 
-            const mappingSlot = 11n; // Updated storage slot after fee config variables
-            const encodedKey = ethers.AbiCoder.defaultAbiCoder().encode(
-                ["address", "uint256"],
-                [lateMember.address, mappingSlot]
-            );
-            const baseSlot = BigInt(ethers.keccak256(encodedKey));
-            const templAddress = await templ.getAddress();
-
-            await ethers.provider.send("hardhat_setStorageAt", [
-                templAddress,
-                ethers.toBeHex(baseSlot + 1n, 32),
-                ethers.zeroPadValue(ethers.toBeHex(quorumTimestamp), 32)
-            ]);
-
-            const storedTimestamp = await ethers.provider.getStorage(
-                templAddress,
-                ethers.toBeHex(baseSlot + 1n, 32)
-            );
-            expect(BigInt(storedTimestamp)).to.equal(quorumTimestamp);
-
-            await ethers.provider.send("hardhat_setStorageAt", [
-                templAddress,
-                ethers.toBeHex(baseSlot + 2n, 32),
-                ethers.zeroPadValue(ethers.toBeHex(quorumBlockNumber), 32)
-            ]);
-
-            const storedBlock = await ethers.provider.getStorage(
-                templAddress,
-                ethers.toBeHex(baseSlot + 2n, 32)
-            );
-            expect(BigInt(storedBlock)).to.equal(quorumBlockNumber);
-
-            const memberInfo = await templ.members(lateMember.address);
-            expect(memberInfo.timestamp).to.equal(quorumTimestamp);
-
+            // Late member joined in the quorum block -> allowed to vote post-quorum
             await expect(templ.connect(lateMember).vote(0, true)).to.emit(templ, "VoteCast");
         });
 
-        it("Should track eligible voters dynamically before quorum and freeze eligibility after quorum", async function () {
+        it("Should block members who joined after proposal creation until quorum is reached", async function () {
             // 4 members join initially (avoid auto-quorum at creation)
             await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
             await templ.connect(member1).purchaseAccess();
@@ -192,22 +163,23 @@ describe("Voting Eligibility Based on Join Time", function () {
                 7 * 24 * 60 * 60
             );
 
-            // Now one more member joins BEFORE quorum is reached
+            // One more member joins after proposal creation
             await token.connect(lateMember).approve(await templ.getAddress(), ENTRY_FEE);
             await templ.connect(lateMember).purchaseAccess();
 
-            // Total members is now 5 and the new member can vote pre-quorum
-            expect(await templ.getMemberCount()).to.equal(5);
+            // Late member cannot vote before quorum is reached
+            await expect(templ.connect(lateMember).vote(0, true))
+                .to.be.revertedWithCustomError(templ, "JoinedAfterProposal");
 
-            await ethers.provider.send("evm_increaseTime", [10]);
-            await ethers.provider.send("evm_mine");
+            // Pre-quorum members reach quorum
+            await templ.connect(member2).vote(0, true);
 
-            // Votes before quorum: include the new member
-            await templ.connect(member2).vote(0, false); // still no quorum (yesVotes stays 1)
-            await expect(templ.connect(lateMember).vote(0, true)).to.emit(templ, "VoteCast"); // reaches quorum (2/5)
+            // Late member can vote after quorum since they joined before the quorum transaction
+            await expect(templ.connect(lateMember).vote(0, false)).to.emit(templ, "VoteCast");
 
-            // After quorum, pre-quorum members can still vote; late joiners after quorum cannot (not tested here)
-            await expect(templ.connect(member3).vote(0, true)).to.emit(templ, "VoteCast");
+            const snapshots = await templ.getProposalSnapshots(0);
+            expect(snapshots.eligibleVotersPreQuorum).to.equal(4n);
+            expect(snapshots.eligibleVotersPostQuorum).to.equal(5n);
         });
 
         it("Should prevent gaming the system by adding members after quorum", async function () {

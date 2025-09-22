@@ -97,7 +97,7 @@ sequenceDiagram
 
 How members enter, prove access, and claim rewards:
 
-- `purchaseAccess()` - one-time, guarded by `whenNotPaused` and `notSelf` (DAO cannot purchase). Transfers tokens using SafeERC20 and emits `AccessPurchased` with counters.
+- `purchaseAccess()` - one-time, guarded by `whenNotPaused` and `notSelf` (DAO cannot purchase). Transfers tokens using SafeERC20 and emits `AccessPurchased` with counters. Fee-on-transfer ("taxed") tokens are unsupported — the accounting assumes the contract receives the exact split.
 - `hasAccess(address)` - returns membership boolean.
 - `getPurchaseDetails(address)` - returns `(purchased, timestamp, block)`.
 - Member rewards:
@@ -106,7 +106,7 @@ How members enter, prove access, and claim rewards:
 - External reward pools:
   - Governance can disburse non access-token assets (ERC-20 or ETH) by disbanding them with `disbandTreasuryDAO(token)`.
   - The contract tracks each token in `externalRewards[token]`; members inspect via `getExternalRewardTokens()` / `getExternalRewardState(token)` and withdraw their share using `claimExternalToken(token)` (supports `address(0)` for ETH).
-  - Successful withdrawals emit `ExternalRewardClaimed(token, member, amount)` and update snapshots to prevent double-claims.
+  - Successful withdrawals emit `ExternalRewardClaimed(token, member, amount)` and update per-member snapshots. Membership snapshots are now derived from token-specific checkpoints so joining no longer iterates through the external reward list.
 - Governance constants:
   - `burnAddress` is set at deploy time (defaults to the canonical dead address, but `createTemplWithConfig` can override it).
   - `quorumPercent` and `executionDelayAfterQuorum` are established during deployment via the factory and remain immutable during contract lifetime.
@@ -119,15 +119,13 @@ Governance stays one-member-one-vote with predictable timelines:
 - Proposal bounds: exactly one live proposal per address. A new proposal clears a previous one when it is expired or executed; otherwise creation reverts `ActiveProposalExists`.
 - Voting windows: default `7 days` if `0` is provided; allowed range `[7, 30] days`.
 - Quorum and eligibility:
-  - Quorum: `quorumPercent = 33` of `eligibleVoters` (tracked over time).
+  - Quorum: `quorumPercent = 33` of `eligibleVoters`, where `eligibleVoters` snapshots the member count at proposal creation.
   - Before quorum:
-    - Any member may vote
-    - `eligibleVoters = memberList.length`
+    - Only members recorded in the creation snapshot may vote; later joins revert `JoinedAfterProposal` until quorum is reached.
   - After quorum:
-    - Eligibility freezes at `quorumReachedAt`
-    - Only members who joined before `quorumReachedAt` may vote; late joiners revert `JoinedAfterProposal`. Because timestamps are per block, joins mined in the same block as quorum remain eligible.
-    - Post-quorum window is fixed to 7 days: on first quorum, `endTime` is reset to `now + 7 days`
-    - Voting continues during this 7-day window for eligible voters; after it, `vote()` reverts `VotingEnded`
+    - The contract records `postQuorumEligibleVoters` + `quorumSnapshotBlock` so members who joined before the quorum-reaching transaction can still vote. Joins in the same block remain eligible; later joins revert `JoinedAfterProposal`.
+    - Post-quorum window is fixed to 7 days: on first quorum, `endTime` is reset to `now + 7 days`.
+    - Voting continues during this 7-day window for eligible voters; after it, `vote()` reverts `VotingEnded`.
   - Execution:
     - Majority required: `yesVotes > noVotes`
     - If quorum-exempt: execute after `endTime`
@@ -168,6 +166,7 @@ These helpers expose the templ state without mutating anything:
 - `getVoteWeight(address)` - `1` for members, `0` for non-members.
 - External reward helpers: `getExternalRewardTokens()`, `getExternalRewardState(address)`, `getClaimableExternalToken(member, token)`, and `claimExternalToken(token)` (handles ERC-20 or native via `address(0)`).
 - `getProposal(id)` - proposer, yes/no votes, endTime, executed flag, computed `passed`.
+- `getProposalSnapshots(id)` - exposes `(eligibleVotersPreQuorum, eligibleVotersPostQuorum, preQuorumSnapshotBlock, quorumSnapshotBlock, createdAt, quorumReachedAt)` to reason about eligibility windows.
 - `hasVoted(id, voter)` - whether and how a voter voted (`support`).
 - `getActiveProposals()` / `getActiveProposalsPaginated(offset, limit)` - active proposal ids, with pagination support.
 

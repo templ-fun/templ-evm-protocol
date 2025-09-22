@@ -45,6 +45,12 @@ abstract contract TemplBase is ReentrancyGuard {
     uint256 public cumulativeMemberRewards;
     uint256 public memberRewardRemainder;
 
+    struct RewardCheckpoint {
+        uint64 blockNumber;
+        uint64 timestamp;
+        uint256 cumulative;
+    }
+
     struct Proposal {
         uint256 id;
         address proposer;
@@ -66,9 +72,12 @@ abstract contract TemplBase is ReentrancyGuard {
         mapping(address => bool) hasVoted;
         mapping(address => bool) voteChoice;
         uint256 eligibleVoters;
+        uint256 postQuorumEligibleVoters;
         uint256 quorumReachedAt;
+        uint256 quorumSnapshotBlock;
         bool quorumExempt;
         bool updateFeeSplit;
+        uint256 preQuorumSnapshotBlock;
     }
 
     uint256 public proposalCount;
@@ -165,6 +174,7 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 cumulativeRewards;
         uint256 rewardRemainder;
         bool exists;
+        RewardCheckpoint[] checkpoints;
     }
 
     mapping(address => ExternalRewardState) internal externalRewards;
