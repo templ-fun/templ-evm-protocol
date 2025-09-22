@@ -274,19 +274,23 @@ abstract contract TemplGovernance is TemplTreasury {
 
     function getActiveProposals() external view returns (uint256[] memory) {
         uint256 pc = proposalCount;
-        uint256[] memory temp = new uint256[](pc);
-        uint256 count = 0;
+        uint256 currentTime = block.timestamp;
+        uint256 activeCount = 0;
 
         for (uint256 i = 0; i < pc; i++) {
-            if (block.timestamp < proposals[i].endTime && !proposals[i].executed) {
-                temp[count++] = i;
+            if (_isActiveProposal(proposals[i], currentTime)) {
+                activeCount++;
             }
         }
 
-        uint256[] memory activeIds = new uint256[](count);
-        for (uint256 j = 0; j < count; j++) {
-            activeIds[j] = temp[j];
+        uint256[] memory activeIds = new uint256[](activeCount);
+        uint256 index = 0;
+        for (uint256 i = 0; i < pc; i++) {
+            if (_isActiveProposal(proposals[i], currentTime)) {
+                activeIds[index++] = i;
+            }
         }
+
         return activeIds;
     }
 
@@ -302,20 +306,21 @@ abstract contract TemplGovernance is TemplTreasury {
             return (new uint256[](0), false);
         }
 
+        uint256 currentTime = block.timestamp;
         uint256[] memory tempIds = new uint256[](limit);
         uint256 count = 0;
         uint256 scanned = offset;
 
         for (uint256 i = offset; i < proposalCount && count < limit; i++) {
-            if (block.timestamp < proposals[i].endTime && !proposals[i].executed) {
+            if (_isActiveProposal(proposals[i], currentTime)) {
                 tempIds[count++] = i;
             }
             scanned = i + 1;
         }
-        hasMore = false;
-        if (scanned < proposalCount) {
+
+        if (count == limit && scanned < proposalCount) {
             for (uint256 i = scanned; i < proposalCount; i++) {
-                if (block.timestamp < proposals[i].endTime && !proposals[i].executed) {
+                if (_isActiveProposal(proposals[i], currentTime)) {
                     hasMore = true;
                     break;
                 }
@@ -391,5 +396,9 @@ abstract contract TemplGovernance is TemplTreasury {
             return true;
         }
         return false;
+    }
+
+    function _isActiveProposal(Proposal storage proposal, uint256 currentTime) internal view returns (bool) {
+        return currentTime < proposal.endTime && !proposal.executed;
     }
 }

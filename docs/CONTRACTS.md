@@ -107,8 +107,8 @@ Note: Proposal metadata (title/description) is not stored on-chain. Keep human-r
 - `vote(uint256 proposalId, bool support)` - cast or change a vote until eligible; emits `VoteCast`.
 - `executeProposal(uint256 proposalId)` - performs the allowlisted action; emits `ProposalExecuted` and action-specific events.
 - `claimMemberPool()` - withdraw accrued rewards; emits `MemberPoolClaimed`.
-- `getActiveProposals()` - returns IDs of active proposals.
-- `getActiveProposalsPaginated(uint256 offset, uint256 limit)` - returns `(ids, hasMore)`; `limit` in [1,100], else `LimitOutOfRange`.
+- `getActiveProposals()` - returns IDs of active proposals (uses the same active predicate as pagination so the two endpoints stay consistent in fast-changing blocks).
+- `getActiveProposalsPaginated(uint256 offset, uint256 limit)` - returns `(ids, hasMore)`; `limit` in [1,100], else `LimitOutOfRange`. Results reuse the `getActiveProposals()` filter and only signal `hasMore` when the page filled.
 - `getProposal(uint256 id)` - returns `(proposer, yesVotes, noVotes, endTime, executed, passed)` with `passed` computed according to quorum/delay rules.
 - `getProposalSnapshots(uint256 id)` - returns `(eligibleVotersPreQuorum, eligibleVotersPostQuorum, preQuorumSnapshotBlock, quorumSnapshotBlock, createdAt, quorumReachedAt)` so clients can reason about eligibility windows.
 - `hasVoted(uint256 id, address voter)` - returns `(voted, support)`.
