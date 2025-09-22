@@ -18,7 +18,7 @@
 Templ is a DAO-governed access system that combines:
 
 - On-chain membership with a one-time ERC-20 entry fee (non-transferable, forever binding).
-- Automatic fee splits on every new member (burn/treasury/member-pool chosen per templ; protocol share is factory-fixed).
+- Automatic fee splits on every new member (burn/treasury/member-pool chosen per templ; protocol share comes from the factory configuration and is immutable per factory).
 - One-member-one-vote governance over an allowlisted set of actions.
 - Views and typed signatures so the backend can enforce XMTP group access.
 
@@ -67,7 +67,7 @@ Everything on-chain is modular so each templ instance inherits the same safeguar
 - `TemplTreasury` (treasury/config/priest handlers)
 - `TemplGovernance` (proposal lifecycle)
 - `TEMPL` (constructor wiring + payable receive)
-- `TemplFactory` (fixes protocol fee percentage + recipient and deploys templ instances). `createTempl(token, entryFee)` uses defaults (priest = caller, 30/30/30 split, quorum 33%, execution delay 7 days, burn address `0x000000000000000000000000000000000000dEaD`). `createTemplWithConfig(CreateConfig)` accepts overrides for priest, the three percentages, burn address, quorum percent, and execution delay - percentages must still sum with the immutable protocol percent to 100.
+- `TemplFactory` (fixes protocol fee percentage + recipient and deploys templ instances). `createTempl(token, entryFee)` uses defaults (priest = caller, 30/30/30 split, quorum 33%, execution delay 7 days, burn address `0x000000000000000000000000000000000000dEaD`). `createTemplWithConfig(CreateConfig)` accepts overrides for priest, the three percentages, burn address, quorum percent, and execution delay - percentages must still sum with the factory’s immutable protocol percent to 100.
 
 ### Economic model (per `purchaseAccess()`)
 
@@ -77,7 +77,7 @@ Each purchase applies the same split:
   - Burn (`burnPercent`) → default `0x000000000000000000000000000000000000dEaD` unless overridden at deploy time
   - Treasury (`treasuryPercent`) → retained by contract and tracked in `treasuryBalance`; donations also accrue to the contract balance and remain governable.
   - Member Pool (`memberPoolPercent`) → retained by contract and tracked in `memberPoolBalance`
-  - Protocol (`protocolPercent`) → transferred to the factory’s immutable `protocolFeeRecipient`
+- Protocol (`protocolPercent`) → transferred to the factory’s immutable `protocolFeeRecipient`. The percentage is supplied when the factory is deployed (10% by default in our scripts) and applies to every templ the factory creates.
 - Member rewards: When a new member joins, the contract increments `cumulativeMemberRewards` by `floor(memberPoolShare / (n-1))` for existing members (where `n` is new member count). Remainders accumulate in `memberRewardRemainder`.
 - Donations: Anyone may send ETH/ERC-20 directly to the contract address. Governance may later withdraw donated assets; the member pool balance remains reserved for members.
 - Leftovers: Any indivisible remainder from reward splits accumulates in `memberRewardRemainder` and is folded into the next distribution so every token is eventually claimable.
@@ -124,12 +124,12 @@ Governance stays one-member-one-vote with predictable timelines:
     - Only members recorded in the creation snapshot may vote; later joins revert `JoinedAfterProposal` until quorum is reached.
   - After quorum:
     - The contract records `postQuorumEligibleVoters` + `quorumSnapshotBlock` so members who joined before the quorum-reaching transaction can still vote. Joins in the same block remain eligible; later joins revert `JoinedAfterProposal`.
-    - Post-quorum window is fixed to 7 days: on first quorum, `endTime` is reset to `now + 7 days`.
-    - Voting continues during this 7-day window for eligible voters; after it, `vote()` reverts `VotingEnded`.
+    - Post-quorum window uses the templ’s configured `executionDelayAfterQuorum`: on first quorum, `endTime` is reset to `now + executionDelayAfterQuorum`.
+    - Voting continues during this window for eligible voters; after it, `vote()` reverts `VotingEnded`.
   - Execution:
     - Majority required: `yesVotes > noVotes`
     - If quorum-exempt: execute after `endTime`
-    - Requires quorum: earliest execution at `quorumReachedAt + executionDelayAfterQuorum (7 days)`
+    - Requires quorum: earliest execution at `quorumReachedAt + executionDelayAfterQuorum` (factory default 7 days, but configurable per templ during deployment)
 - Quorum exemption: `createProposalDisbandTreasury` proposed by the `priest` sets `quorumExempt = true` and respects only `endTime`.
 
 ```mermaid

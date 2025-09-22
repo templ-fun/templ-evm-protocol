@@ -31,7 +31,7 @@ Entry fees follow a fixed protocol share; each deployment chooses how the remain
 - **Burn (`burnPercent`)** - transferred to the templ’s configured burn address (defaults to `0x000000000000000000000000000000000000dEaD`).
 - **Treasury (`treasuryPercent`)** - retained on the contract and counted in `treasuryBalance`. Additional donations accrue to the contract balance and remain governable via `withdrawTreasuryDAO` / `disbandTreasuryDAO`.
 - **Member Pool (`memberPoolPercent`)** - retained on the contract and counted in `memberPoolBalance`; claimable by existing members through `claimMemberPool()`.
-- **Protocol (`protocolPercent`)** - forwarded to the immutable `protocolFeeRecipient`. This value is fixed per `TemplFactory` instance so every TEMPL created by a factory shares the same protocol fee.
+- **Protocol (`protocolPercent`)** - forwarded to the immutable `protocolFeeRecipient`. The percentage is chosen when the factory is deployed (10% in our sample scripts) and applies to every TEMPL created by that factory.
 
 The percentages must sum to 100. When a new member joins, existing members receive `floor(memberPoolShare / (n-1))` tokens each (where `n` is the new member count). Indivisible remainders accumulate in `memberRewardRemainder` and are rolled into the next distribution.
 
@@ -81,7 +81,7 @@ sequenceDiagram
 - Before quorum: only members captured in the creation snapshot may vote; anyone joining later reverts with `JoinedAfterProposal` until quorum is reached.
 - After quorum: a new snapshot is recorded (`postQuorumEligibleVoters` + `quorumSnapshotBlock`). Members who joined before that quorum transaction can still vote; later joiners are rejected with `JoinedAfterProposal`. Because Ethereum timestamps are per block, joins mined in the same block that reached quorum remain eligible.
 - Execution requires a simple majority (`yesVotes > noVotes`) and:
-  - if quorum is required: quorum must have been reached and the delay `executionDelayAfterQuorum = 7 days` must have elapsed; otherwise it reverts with `QuorumNotReached` or `ExecutionDelayActive`.
+  - if quorum is required: quorum must have been reached and the contract’s configured `executionDelayAfterQuorum` must have elapsed (default 7 days; customisable via the factory); otherwise it reverts with `QuorumNotReached` or `ExecutionDelayActive`.
   - priest exception: `createProposalDisbandTreasury(...)` proposed by `priest` is quorum-exempt and respects only its `endTime`.
 
 ### Proposal types (create functions)
@@ -128,7 +128,7 @@ Note: Proposal metadata (title/description) is not stored on-chain. Keep human-r
 
 - Key immutables: `protocolFeeRecipient`, `accessToken`, `burnAddress`. Priest is changeable via governance.
 - Key variables: `entryFee` (≥10 and multiple of 10), `paused`, `treasuryBalance` (tracks fee-sourced tokens only), `memberPoolBalance`, counters (`totalBurned`, `totalToTreasury`, `totalToMemberPool`, `totalToProtocol`).
-- Governance constants: `quorumPercent` and `executionDelayAfterQuorum` are set during deployment (factory defaults 33% and 7 days) and remain immutable afterwards.
+- Governance constants: `quorumPercent` and `executionDelayAfterQuorum` are set during deployment (factory defaults 33% and 7 days, but overridable during templ creation) and remain immutable afterwards.
 - External reward claims:
   - `claimExternalToken(address token)` - transfers the caller’s accrued share of the specified external token (ERC-20 or `address(0)` for ETH). Reverts with `NoRewardsToClaim` if nothing is available. Emitted `ExternalRewardClaimed` mirrors successful withdrawals.
 - Events:

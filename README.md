@@ -53,11 +53,11 @@ Fees keep bots at bay, demand proof-of-faith (skin in the game), and continuousl
 
 ### Configurable Splits
 
-The founding Priest can choose any split at deploy time - 30/30/30 is just our default scaffolding. The only constant is the 10% protocol tithe, which keeps the broader Templ Protocol humming.
+The founding Priest can choose any split at deploy time – 30/30/30 is just our default scaffolding. The protocol tithe comes from the factory configuration: whatever percentage and recipient the factory was deployed with is appended to the priest-selected splits so the totals sum to 100. Teams can stand up alternate factories with different protocol percentages, but every templ created through the same factory shares the immutable protocol fee recipient and rate.
 
-### Protocol Tithe (the Fixed 10%)
+### Protocol Tithe (factory-defined)
 
-Every tribute also powers the protocol: the Templ factory forwards a fixed 10% of every entry fee to the templ.fun protocol treasury, funding keeper costs, future rewards programs, and long-term upgrades.
+Every tribute also powers the protocol. The templ factory forwards its configured protocol-share of every entry fee to the templ.fun protocol treasury, funding keeper costs, future rewards programs, and long-term upgrades. The repo’s tooling and examples default to 10%, but the factory owner can pick any percentage when the factory is deployed.
 
 ## Infinite Templs
 
