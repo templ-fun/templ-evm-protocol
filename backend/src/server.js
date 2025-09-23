@@ -52,6 +52,7 @@ function initializeDatabase({ dbPath, db }) {
   database.exec(
     'CREATE TABLE IF NOT EXISTS signatures (sig TEXT PRIMARY KEY, usedAt INTEGER)'
   );
+  database.exec('CREATE INDEX IF NOT EXISTS idx_signatures_used_at ON signatures (usedAt)');
   const deleteDelegatesStmt = database.prepare('DELETE FROM delegates WHERE contract = ?');
   const deleteMutesStmt = database.prepare('DELETE FROM mutes WHERE contract = ?');
   const persist = (contract, record) => {
