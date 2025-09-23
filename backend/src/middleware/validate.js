@@ -1,5 +1,7 @@
 import { ethers } from 'ethers';
 
+const SIGNATURE_RETENTION_MS = 6 * 60 * 60 * 1000; // 6 hours
+
 /**
  * Verify an EIP-712 typed signature and prevent replay by tracking signatures in DB.
  * @param {object} opts
@@ -15,11 +17,13 @@ export function verifyTypedSignature({ database, addressField, buildTyped, error
     throw new Error('verifyTypedSignature requires a database with prepare() for replay protection');
   }
 
-  let insertSig;
-  let hasSig;
+  let insertSig = null;
+  let hasSig = null;
+  let pruneSigs = null;
   try {
     insertSig = database.prepare('INSERT OR IGNORE INTO signatures (sig, usedAt) VALUES (?, ?)');
     hasSig = database.prepare('SELECT 1 FROM signatures WHERE sig = ?');
+    pruneSigs = database.prepare('DELETE FROM signatures WHERE usedAt < ?');
   } catch (err) {
     const suffix = err && typeof err === 'object' && 'message' in err && err.message ? `: ${err.message}` : '';
     const wrappedError = new Error(
@@ -28,6 +32,7 @@ export function verifyTypedSignature({ database, addressField, buildTyped, error
     wrappedError.cause = err;
     throw wrappedError;
   }
+
   return function (req, res, next) {
     try {
       const address = String(req.body?.[addressField] || '').toLowerCase();
@@ -40,12 +45,16 @@ export function verifyTypedSignature({ database, addressField, buildTyped, error
       } catch {
         throw new Error('bad typed');
       }
+      const now = Date.now();
       // Basic expiry check if present
-      if (message?.expiry && Number(message.expiry) < Date.now()) {
+      if (message?.expiry && Number(message.expiry) < now) {
         return res.status(403).json({ error: 'Signature expired' });
       }
       const recovered = ethers.verifyTypedData(domain, types, message, signature).toLowerCase();
       if (recovered !== address) return res.status(403).json({ error: errorMessage });
+      try {
+        pruneSigs?.run?.(now - SIGNATURE_RETENTION_MS);
+      } catch { /* ignore */ }
       // Replay protection: reject reused signatures
       try {
         const seen = hasSig?.get ? hasSig.get(signature) : null;
@@ -53,8 +62,7 @@ export function verifyTypedSignature({ database, addressField, buildTyped, error
       } catch { /* ignore */ }
       try {
         if (insertSig?.run) {
-          const usedAt = Date.now();
-          const result = insertSig.run(signature, usedAt);
+          const result = insertSig.run(signature, now);
           if (typeof result?.changes === 'number' && result.changes === 0) {
             return res.status(409).json({ error: 'Signature already used' });
           }

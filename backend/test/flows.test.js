@@ -81,6 +81,45 @@ test('rejects templ creation when signature reused', async () => {
   await app.close();
 });
 
+test('allows templ creation when stale signature entry is pruned', async () => {
+  const fakeGroup = {
+    id: 'group-pruned',
+    addMembers: async () => {},
+    removeMembers: async () => {}
+  };
+  const fakeXmtp = {
+    inboxId: 'test-inbox-id',
+    conversations: {
+      newGroup: async () => fakeGroup
+    }
+  };
+  const hasPurchased = async () => false;
+  const db = new Database(':memory:');
+  const app = makeApp({ xmtp: fakeXmtp, hasPurchased, db });
+  try {
+    const ctyped = buildCreateTypedData({ chainId: 31337, contractAddress: addresses.contract });
+    const signature = await wallets.priest.signTypedData(ctyped.domain, ctyped.types, ctyped.message);
+    const payload = {
+      contractAddress: addresses.contract,
+      priestAddress: addresses.priest,
+      signature,
+      chainId: 31337,
+      nonce: ctyped.message.nonce,
+      issuedAt: ctyped.message.issuedAt,
+      expiry: ctyped.message.expiry
+    };
+    const staleUsedAt = Date.now() - 24 * 60 * 60 * 1000;
+    db.prepare('INSERT OR REPLACE INTO signatures (sig, usedAt) VALUES (?, ?)').run(signature, staleUsedAt);
+
+    await request(app).post('/templs').send(payload).expect(200, { groupId: fakeGroup.id });
+    const row = db.prepare('SELECT usedAt FROM signatures WHERE sig = ?').get(signature);
+    assert.ok(row?.usedAt > staleUsedAt);
+  } finally {
+    await app.close();
+    db.close();
+  }
+});
+
 test('rejects templ creation with malformed addresses', async () => {
   const fakeGroup = { id: 'group-x', addMembers: async () => {}, removeMembers: async () => {} };
   const fakeXmtp = {

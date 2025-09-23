@@ -65,7 +65,8 @@ sequenceDiagram
 
 - One member = one vote; ballots can be changed until eligibility windows close.
 - One live proposal per address: creating a second while the first is active reverts `ActiveProposalExists`. The slot is cleared on execution, and expired proposals are cleared when a new one is created.
-- Voting period bounds: 7-30 days (`0` defaults to 7 days). Each factory deployment sets defaults that priests can override at deploy time.
+- Voting periods are chosen per proposal: passing `0` defaults to seven days, otherwise proposers may pick any duration between 7 and 30 days. These bounds live in `TemplBase` and are not controlled by factory configuration.
+- Factory-configurable governance parameters cover quorum percentage and the `executionDelayAfterQuorum`; they apply uniformly to every templ deployed by the factory.
 - Execution: Any address may call `executeProposal(id)`. Execution is atomic and non-reentrant.
 - Typed proposals only (no arbitrary calls). The allowed actions are:
   - `setPausedDAO(bool)` - pause/unpause membership purchasing.
@@ -144,7 +145,7 @@ Note: Proposal metadata (title/description) is not stored on-chain. Keep human-r
   - `ExternalRewardClaimed(token,member,amount)`
   - `PriestChanged(oldPriest,newPriest)`
     - Backend listeners purge all delegates/mutes on this event so the incoming priest takes over with a clean moderation slate.
-- Custom errors (from `TemplErrors.sol`): `NotMember`, `NotDAO`, `ContractPausedError`, `AlreadyPurchased`, `InsufficientBalance`, `ActiveProposalExists`, `VotingPeriodTooShort`, `VotingPeriodTooLong`, `InvalidProposal`, `VotingEnded`, `JoinedAfterProposal`, `VotingNotEnded`, `AlreadyExecuted`, `ProposalNotPassed`, `ProposalExecutionFailed`, `InvalidRecipient`, `AmountZero`, `InsufficientTreasuryBalance`, `NoTreasuryFunds`, `EntryFeeTooSmall`, `InvalidEntryFee`, `InvalidPercentageSplit`, `InvalidPercentage`, `InvalidExecutionDelay`, `NoRewardsToClaim`, `InsufficientPoolBalance`, `LimitOutOfRange`, `InvalidSender`, `InvalidCallData`, `TokenChangeDisabled`, `NoMembers`, `QuorumNotReached`, `ExecutionDelayActive`.
+- Custom errors (from `TemplErrors.sol`): `NotMember`, `NotDAO`, `ContractPausedError`, `AlreadyPurchased`, `InsufficientBalance`, `ActiveProposalExists`, `VotingPeriodTooShort`, `VotingPeriodTooLong`, `InvalidProposal`, `VotingEnded`, `JoinedAfterProposal`, `VotingNotEnded`, `AlreadyExecuted`, `ProposalNotPassed`, `ProposalExecutionFailed`, `InvalidRecipient`, `AmountZero`, `InsufficientTreasuryBalance`, `NoTreasuryFunds`, `EntryFeeTooSmall`, `InvalidEntryFee`, `InvalidPercentageSplit`, `InvalidPercentage`, `NoRewardsToClaim`, `InsufficientPoolBalance`, `LimitOutOfRange`, `InvalidSender`, `InvalidCallData`, `TokenChangeDisabled`, `NoMembers`, `QuorumNotReached`, `ExecutionDelayActive`.
 
 ## Flows
 
