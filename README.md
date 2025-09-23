@@ -134,6 +134,16 @@ npm --prefix frontend run dev
 
 The backend expects `backend/.env` with `RPC_URL`, `BOT_PRIVATE_KEY`, `ALLOWED_ORIGINS`, and `BACKEND_SERVER_ID`. The frontend reads matching `VITE_*` variables; see the deep dives below for full matrices.
 
+## E2E Environments
+
+Playwright specs live under `frontend/e2e/` and are invoked with `npm --prefix frontend run test:e2e`. The runner boots a Hardhat node, the backend API, and a built frontend preview before executing tests. By default it targets the XMTP **dev** network and mints a fresh invite-bot key per run so the suite avoids XMTP installation limits.
+
+- **Default (hosted XMTP)** – run `npm --prefix frontend run test:e2e` with no extra flags. The Playwright config sets `XMTP_ENV=dev` for the backend, `VITE_XMTP_ENV=dev` for the frontend, and injects a random `BOT_PRIVATE_KEY` for the invite bot.
+- **Local XMTP node** – clone [`xmtp-local-node`](https://github.com/xmtp/xmtp-local-node) into the repository’s `xmtp-local-node/` directory. Then execute `E2E_XMTP_LOCAL=1 npm --prefix frontend run test:e2e`. When this flag is present the Playwright web servers call `./up` in that directory, set `XMTP_ENV=local`, and point the frontend at the local node. Tear it down with `npm run xmtp:local:down` (or stop the docker compose stack manually) after the suite finishes.
+- **Alternate XMTP targets** – override `E2E_XMTP_ENV` to switch away from the default dev network (e.g., `E2E_XMTP_ENV=production npm --prefix frontend run test:e2e`).
+
+The suite always runs with `VITE_E2E_DEBUG=1` so debug helpers stay enabled, and it reuses `BACKEND_SERVER_ID=templ-dev` across backend/frontend processes. Review `frontend/playwright.config.js` for the full set of environment defaults before extending or debugging E2E runs.
+
 ## Repository Layout
 
 - `contracts/` - Solidity 0.8.23 contracts, Hardhat config, and tests under `test/`.
