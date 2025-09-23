@@ -18,7 +18,8 @@ abstract contract TemplTreasury is TemplMembership {
         uint256 _protocolPercent,
         uint256 _quorumPercent,
         uint256 _executionDelay,
-        address _burnAddress
+        address _burnAddress,
+        bool _priestIsDictator
     ) TemplMembership(
         _protocolFeeRecipient,
         _accessToken,
@@ -28,7 +29,8 @@ abstract contract TemplTreasury is TemplMembership {
         _protocolPercent,
         _quorumPercent,
         _executionDelay,
-        _burnAddress
+        _burnAddress,
+        _priestIsDictator
     ) {}
 
     function withdrawTreasuryDAO(

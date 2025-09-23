@@ -47,6 +47,7 @@ function createStubEthers(state) {
       const quorumPercent = Number(input.quorumPercent ?? DEFAULT_QUORUM_PERCENT);
       const executionDelaySeconds = Number(input.executionDelaySeconds ?? DEFAULT_EXECUTION_DELAY);
       const burnAddress = input.burnAddress ? normalize(input.burnAddress) : DEFAULT_BURN_ADDRESS;
+      const priestIsDictator = input.priestIsDictator === true;
       return {
         priest,
         token,
@@ -56,7 +57,8 @@ function createStubEthers(state) {
         memberPoolPercent,
         quorumPercent,
         executionDelaySeconds,
-        burnAddress
+        burnAddress,
+        priestIsDictator
       };
     }
 
@@ -71,7 +73,8 @@ function createStubEthers(state) {
         memberPoolPercent: config.memberPoolPercent,
         quorumPercent: config.quorumPercent,
         executionDelaySeconds: config.executionDelaySeconds,
-        burnAddress: config.burnAddress
+        burnAddress: config.burnAddress,
+        priestIsDictator: config.priestIsDictator
       });
       state.templs[addr] = {
         accessToken: config.token,
@@ -83,6 +86,7 @@ function createStubEthers(state) {
         quorumPercent: config.quorumPercent,
         executionDelaySeconds: config.executionDelaySeconds,
         burnAddress: config.burnAddress,
+        priestIsDictator: config.priestIsDictator,
         members: new Set()
       };
       state.pendingTempl = null;

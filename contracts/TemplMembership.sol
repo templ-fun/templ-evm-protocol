@@ -18,7 +18,8 @@ abstract contract TemplMembership is TemplBase {
         uint256 _protocolPercent,
         uint256 _quorumPercent,
         uint256 _executionDelay,
-        address _burnAddress
+        address _burnAddress,
+        bool _priestIsDictator
     )
         TemplBase(
             _protocolFeeRecipient,
@@ -29,7 +30,8 @@ abstract contract TemplMembership is TemplBase {
             _protocolPercent,
             _quorumPercent,
             _executionDelay,
-            _burnAddress
+            _burnAddress,
+            _priestIsDictator
         )
     {}
 

@@ -17,6 +17,7 @@ async function main() {
   const QUORUM_PERCENT = process.env.QUORUM_PERCENT !== undefined ? Number(process.env.QUORUM_PERCENT) : undefined;
   const EXECUTION_DELAY_SECONDS = process.env.EXECUTION_DELAY_SECONDS !== undefined ? Number(process.env.EXECUTION_DELAY_SECONDS) : undefined;
   const BURN_ADDRESS = (process.env.BURN_ADDRESS || '').trim();
+  const PRIEST_IS_DICTATOR = /^(?:1|true)$/i.test((process.env.PRIEST_IS_DICTATOR || '').trim());
 
   if (!TOKEN_ADDRESS) {
     throw new Error("TOKEN_ADDRESS not set in environment");
@@ -83,6 +84,7 @@ async function main() {
   console.log("Quorum Percent:", QUORUM_PERCENT ?? 33);
   console.log("Execution Delay (seconds):", EXECUTION_DELAY_SECONDS ?? 7 * 24 * 60 * 60);
   console.log("Burn Address:", effectiveBurnAddress);
+  console.log("Priest Dictatorship:", PRIEST_IS_DICTATOR ? 'enabled' : 'disabled');
   
   if (network.chainId === 8453n) {
     console.log("\n⚠️  Deploying to BASE MAINNET");
@@ -112,7 +114,8 @@ async function main() {
     entryFee: ENTRY_FEE,
     burnPercent: BURN_PERCENT,
     treasuryPercent: TREASURY_PERCENT,
-    memberPoolPercent: MEMBER_POOL_PERCENT
+    memberPoolPercent: MEMBER_POOL_PERCENT,
+    priestIsDictator: PRIEST_IS_DICTATOR
   };
   if (QUORUM_PERCENT !== undefined) templConfig.quorumPercent = QUORUM_PERCENT;
   if (EXECUTION_DELAY_SECONDS !== undefined) templConfig.executionDelaySeconds = EXECUTION_DELAY_SECONDS;
@@ -165,6 +168,7 @@ async function main() {
     quorumPercent: QUORUM_PERCENT ?? 33,
     executionDelaySeconds: EXECUTION_DELAY_SECONDS ?? 7 * 24 * 60 * 60,
     burnAddress: effectiveBurnAddress,
+    priestIsDictator: PRIEST_IS_DICTATOR,
     tokenAddress: TOKEN_ADDRESS,
     entryFee: ENTRY_FEE,
     deployedAt: new Date().toISOString(),

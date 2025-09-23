@@ -17,7 +17,7 @@ Solidity 0.8.23. Core contract lives in `contracts/TEMPL.sol` with shared errors
 
 Each module handles a focused responsibility:
 
-- `TemplBase`: shared storage layout, immutables, counters, events, and modifiers. All other modules inherit it, so audits can focus on a single storage contract.
+- `TemplBase`: shared storage layout, immutables, counters, events, and modifiers (including the `priestIsDictator` flag that toggles priest-only governance). All other modules inherit it, so audits can focus on a single storage contract.
 - `TemplMembership`: membership lifecycle (`purchaseAccess`, claims, view helpers) and accounting for the member pool.
 - `TemplTreasury`: governance-callable treasury/config/priest handlers and their internal helpers.
 - `TemplGovernance`: proposal creation, voting/quorum logic, execution router, and governance view helpers.
@@ -74,6 +74,7 @@ sequenceDiagram
   - `withdrawTreasuryDAO(address,address,uint256,string)` - withdraw a specific amount of any asset (access token, other ERC-20, or ETH with `address(0)`).
   - `changePriestDAO(address)` - change the priest address via governance; the resulting `PriestChanged` event signals the backend to clear all delegate assignments and active mutes so the new priest inherits a clean moderation slate.
   - `disbandTreasuryDAO(address token)` - move the full available balance of `token` into a member-distributable pool. When `token == accessToken`, funds roll into the member pool (`memberPoolBalance`) with per-member integer division and any remainder added to `memberRewardRemainder`. When targeting any other ERC-20 or native ETH (`address(0)`), the amount is recorded in an external rewards pool so members can later claim their share with `claimExternalToken`.
+- Dictatorship toggle: when `priestIsDictator` is `true`, all proposal entrypoints (`createProposal*`, `vote`, `executeProposal`) revert with `DictatorshipEnabled`. Governance actions must be executed via the DAO helper functions above, and `onlyDAO` accepts calls from the priest address (non-priest callers receive `PriestOnly`).
 
 ### Quorum and eligibility
 
@@ -145,7 +146,7 @@ Note: Proposal metadata (title/description) is not stored on-chain. Keep human-r
   - `ExternalRewardClaimed(token,member,amount)`
   - `PriestChanged(oldPriest,newPriest)`
     - Backend listeners purge all delegates/mutes on this event so the incoming priest takes over with a clean moderation slate.
-- Custom errors (from `TemplErrors.sol`): `NotMember`, `NotDAO`, `ContractPausedError`, `AlreadyPurchased`, `InsufficientBalance`, `ActiveProposalExists`, `VotingPeriodTooShort`, `VotingPeriodTooLong`, `InvalidProposal`, `VotingEnded`, `JoinedAfterProposal`, `VotingNotEnded`, `AlreadyExecuted`, `ProposalNotPassed`, `ProposalExecutionFailed`, `InvalidRecipient`, `AmountZero`, `InsufficientTreasuryBalance`, `NoTreasuryFunds`, `EntryFeeTooSmall`, `InvalidEntryFee`, `InvalidPercentageSplit`, `InvalidPercentage`, `NoRewardsToClaim`, `InsufficientPoolBalance`, `LimitOutOfRange`, `InvalidSender`, `InvalidCallData`, `TokenChangeDisabled`, `NoMembers`, `QuorumNotReached`, `ExecutionDelayActive`.
+- Custom errors (from `TemplErrors.sol`): `NotMember`, `NotDAO`, `PriestOnly`, `ContractPausedError`, `AlreadyPurchased`, `InsufficientBalance`, `ActiveProposalExists`, `VotingPeriodTooShort`, `VotingPeriodTooLong`, `InvalidProposal`, `VotingEnded`, `JoinedAfterProposal`, `VotingNotEnded`, `AlreadyExecuted`, `ProposalNotPassed`, `ProposalExecutionFailed`, `InvalidRecipient`, `AmountZero`, `InsufficientTreasuryBalance`, `NoTreasuryFunds`, `EntryFeeTooSmall`, `InvalidEntryFee`, `InvalidPercentageSplit`, `InvalidPercentage`, `NoRewardsToClaim`, `InsufficientPoolBalance`, `LimitOutOfRange`, `InvalidSender`, `InvalidCallData`, `TokenChangeDisabled`, `NoMembers`, `QuorumNotReached`, `ExecutionDelayActive`, `DictatorshipEnabled`.
 
 ## Flows
 
@@ -183,8 +184,8 @@ sequenceDiagram
 
 ## Configuration & Deployment
 
-- Primary entrypoint is `TemplFactory(address protocolFeeRecipient, uint256 protocolPercent)`. Creating a new templ instance can rely on defaults (`createTempl(token, entryFee)`) or a custom struct (`createTemplWithConfig`). Percentages for burn/treasury/member must sum with the factory’s `protocolPercent` to 100. The factory enforces the protocol share and recipient across all templs it creates.
-- `scripts/deploy.js` deploys a factory when none is provided (`FACTORY_ADDRESS`), then creates a templ via the factory using environment variables: `PRIEST_ADDRESS` (defaults to deployer), `PROTOCOL_FEE_RECIPIENT`, `PROTOCOL_PERCENT`, `TOKEN_ADDRESS`, `ENTRY_FEE`, `BURN_PERCENT`, `TREASURY_PERCENT`, `MEMBER_POOL_PERCENT` (plus optional `QUORUM_PERCENT`, `EXECUTION_DELAY_SECONDS`, `BURN_ADDRESS`). Percentages must sum to 100.
+- Primary entrypoint is `TemplFactory(address protocolFeeRecipient, uint256 protocolPercent)`. Creating a new templ instance can rely on defaults (`createTempl(token, entryFee)`) or a custom struct (`createTemplWithConfig`). Percentages for burn/treasury/member must sum with the factory’s `protocolPercent` to 100, and the struct includes a `priestIsDictator` boolean to opt into priest-only governance.
+- `scripts/deploy.js` deploys a factory when none is provided (`FACTORY_ADDRESS`), then creates a templ via the factory using environment variables: `PRIEST_ADDRESS` (defaults to deployer), `PROTOCOL_FEE_RECIPIENT`, `PROTOCOL_PERCENT`, `TOKEN_ADDRESS`, `ENTRY_FEE`, `BURN_PERCENT`, `TREASURY_PERCENT`, `MEMBER_POOL_PERCENT` (plus optional `QUORUM_PERCENT`, `EXECUTION_DELAY_SECONDS`, `BURN_ADDRESS`, `PRIEST_IS_DICTATOR`). Percentages must sum to 100.
 - Commands:
   - Compile/tests: `npm run compile`, `npm test`, `npm run slither`.
   - Deploy example: `npx hardhat run scripts/deploy.js --network base`.

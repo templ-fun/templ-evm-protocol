@@ -18,6 +18,7 @@ Run each script from the repo root unless noted. All commands assume dependencie
 - Deploys `TemplFactory` (when `FACTORY_ADDRESS` is unset) and creates a new templ via `createTemplWithConfig`.
 - Reads configuration from `.env` (fee splits, quorum, delay, burn address) and persists outputs under `deployments/`.
 - Validates invariants locally (percent totals, entry-fee divisibility, quorum/delay bounds) before broadcasting.
+- Recognizes `PRIEST_IS_DICTATOR=1`/`true` to bypass proposal governance and grant the priest instant control of all DAO actions.
 
 **Run:** `npx hardhat run scripts/deploy.js --network <network>`
 
