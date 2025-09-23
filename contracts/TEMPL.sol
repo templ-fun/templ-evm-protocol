@@ -16,7 +16,8 @@ contract TEMPL is TemplGovernance {
         uint256 _protocolPercent,
         uint256 _quorumPercent,
         uint256 _executionDelay,
-        address _burnAddress
+        address _burnAddress,
+        bool _priestIsDictator
     ) TemplGovernance(
         _protocolFeeRecipient,
         _token,
@@ -26,7 +27,8 @@ contract TEMPL is TemplGovernance {
         _protocolPercent,
         _quorumPercent,
         _executionDelay,
-        _burnAddress
+        _burnAddress,
+        _priestIsDictator
     ) {
         if (_priest == address(0)) revert TemplErrors.InvalidRecipient();
         if (_entryFee == 0) {

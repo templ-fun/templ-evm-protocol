@@ -37,7 +37,8 @@ describe("TemplFactory", function () {
             memberPoolPercent,
             quorumPercent,
             executionDelaySeconds,
-            burnAddress: customBurnAddress
+            burnAddress: customBurnAddress,
+            priestIsDictator: false
         };
 
         const templAddress = await factory.createTemplWithConfig.staticCall(config);
@@ -69,6 +70,49 @@ describe("TemplFactory", function () {
         expect(await templ.totalToTreasury()).to.be.gte((ENTRY_FEE * BigInt(treasuryPercent)) / 100n);
     });
 
+    it("enables priest dictatorship when requested in config", async function () {
+        const [, priest, protocolRecipient] = await ethers.getSigners();
+        const token = await deployToken("Dict", "DICT");
+
+        const Factory = await ethers.getContractFactory("TemplFactory");
+        const protocolPercent = 10;
+        const factory = await Factory.deploy(protocolRecipient.address, protocolPercent);
+        await factory.waitForDeployment();
+
+        const config = {
+            priest: priest.address,
+            token: await token.getAddress(),
+            entryFee: ENTRY_FEE,
+            burnPercent: 30,
+            treasuryPercent: 30,
+            memberPoolPercent: 30,
+            quorumPercent: 33,
+            executionDelaySeconds: 7 * 24 * 60 * 60,
+            burnAddress: ethers.ZeroAddress,
+            priestIsDictator: true,
+        };
+
+        const templAddress = await factory.createTemplWithConfig.staticCall(config);
+        const tx = await factory.createTemplWithConfig(config);
+        const receipt = await tx.wait();
+
+        const templ = await ethers.getContractAt("TEMPL", templAddress);
+        expect(await templ.priestIsDictator()).to.equal(true);
+
+        const templCreated = receipt.logs
+            .map((log) => {
+                try {
+                    return factory.interface.parseLog(log);
+                } catch (_) {
+                    return null;
+                }
+            })
+            .find((log) => log && log.name === "TemplCreated");
+
+        expect(templCreated).to.not.equal(undefined);
+        expect(templCreated.args.priestIsDictator).to.equal(true);
+    });
+
     it("reverts when fee split does not sum to 100", async function () {
         const [deployer, , protocolRecipient] = await ethers.getSigners();
         const token = await deployToken("Bad", "BAD");
@@ -86,7 +130,8 @@ describe("TemplFactory", function () {
                 memberPoolPercent: 10,
                 quorumPercent: 33,
                 executionDelaySeconds: 7 * 24 * 60 * 60,
-                burnAddress: ethers.ZeroAddress
+                burnAddress: ethers.ZeroAddress,
+                priestIsDictator: false
             })
         ).to.be.revertedWithCustomError(factory, "InvalidPercentageSplit");
     });
@@ -185,7 +230,8 @@ describe("TemplFactory", function () {
                 memberPoolPercent: 30,
                 quorumPercent: 101,
                 executionDelaySeconds: 7 * 24 * 60 * 60,
-                burnAddress: ethers.ZeroAddress
+                burnAddress: ethers.ZeroAddress,
+                priestIsDictator: false
             })
         ).to.be.revertedWithCustomError(factory, "InvalidPercentage");
     });
@@ -206,7 +252,8 @@ describe("TemplFactory", function () {
             memberPoolPercent: 0,
             quorumPercent: 0,
             executionDelaySeconds: 0,
-            burnAddress: ethers.ZeroAddress
+            burnAddress: ethers.ZeroAddress,
+            priestIsDictator: false
         };
 
         const templAddress = await factory.createTemplWithConfig.staticCall(config);

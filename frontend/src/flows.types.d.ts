@@ -14,6 +14,7 @@ export interface DeployRequest {
   quorumPercent?: number | string | bigint
   executionDelaySeconds?: number | string | bigint
   burnAddress?: Address
+  priestIsDictator?: boolean
   factoryAddress: Address
   factoryArtifact: { abi: any }
   templArtifact: { abi: any; bytecode?: string }

@@ -67,7 +67,7 @@ Everything on-chain is modular so each templ instance inherits the same safeguar
 - `TemplTreasury` (treasury/config/priest handlers)
 - `TemplGovernance` (proposal lifecycle)
 - `TEMPL` (constructor wiring + payable receive)
-- `TemplFactory` (fixes protocol fee percentage + recipient and deploys templ instances). `createTempl(token, entryFee)` uses defaults (priest = caller, 30/30/30 split, quorum 33%, execution delay 7 days, burn address `0x000000000000000000000000000000000000dEaD`). `createTemplWithConfig(CreateConfig)` accepts overrides for priest, the three percentages, burn address, quorum percent, and execution delay - percentages must still sum with the factory’s immutable protocol percent to 100.
+- `TemplFactory` (fixes protocol fee percentage + recipient and deploys templ instances). `createTempl(token, entryFee)` uses defaults (priest = caller, 30/30/30 split, quorum 33%, execution delay 7 days, burn address `0x000000000000000000000000000000000000dEaD`). `createTemplWithConfig(CreateConfig)` accepts overrides for priest, the three percentages, burn address, quorum percent, execution delay, **and** whether the templ launches in priest dictatorship mode (`priestIsDictator`). Percentages must still sum with the factory’s immutable protocol percent to 100.
 
 ### Economic model (per `purchaseAccess()`)
 
@@ -156,6 +156,10 @@ flowchart LR
 
 Creation helpers (`createProposalX`) initialize proposals with normalized timing, proposer auto-YES, and optional quorum exemption for priest-proposed disband.
 
+#### Priest dictatorship mode
+
+Setting `priestIsDictator = true` at deployment disables the proposal pipeline entirely. All `createProposal*`, `vote`, and `executeProposal` calls revert with `DictatorshipEnabled`, and governance actions must be executed through the DAO wrappers (`setPausedDAO`, `updateConfigDAO`, `withdrawTreasuryDAO`, `disbandTreasuryDAO`, `changePriestDAO`). In this mode the `onlyDAO` modifier also allows the priest address to call these functions directly; everyone else receives `PriestOnly`. The factory defaults to DAO governance, so dictatorship must be opted into explicitly.
+
 ### Views and introspection
 
 These helpers expose the templ state without mutating anything:
@@ -173,7 +177,7 @@ These helpers expose the templ state without mutating anything:
 ### Safety spells and invariants
 
 - Non-reentrant: `purchaseAccess`, `claimMemberPool`, `executeProposal`.
-- `onlyDAO` guards administration to self-calls via `executeProposal`.
+- `onlyDAO` guards administration to self-calls via `executeProposal`; when `priestIsDictator` is true it also whitelists the priest address for direct calls.
 - `notSelf` prevents DAO from purchasing membership.
 - `paused` blocks new purchases; proposing/voting continue while paused.
 - Token change disabled in governance; entry fee constrained (≥10 and multiple of 10).

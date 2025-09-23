@@ -23,6 +23,7 @@ abstract contract TemplBase is ReentrancyGuard {
     address public priest;
     address public immutable protocolFeeRecipient;
     address public immutable accessToken;
+    bool public immutable priestIsDictator;
     uint256 public entryFee;
     uint256 public treasuryBalance;
     uint256 public memberPoolBalance;
@@ -188,7 +189,11 @@ abstract contract TemplBase is ReentrancyGuard {
     }
 
     modifier onlyDAO() {
-        if (msg.sender != address(this)) revert TemplErrors.NotDAO();
+        if (priestIsDictator) {
+            if (msg.sender != address(this) && msg.sender != priest) revert TemplErrors.PriestOnly();
+        } else if (msg.sender != address(this)) {
+            revert TemplErrors.NotDAO();
+        }
         _;
     }
 
@@ -211,13 +216,15 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 _protocolPercent,
         uint256 _quorumPercent,
         uint256 _executionDelay,
-        address _burnAddress
+        address _burnAddress,
+        bool _priestIsDictator
     ) {
         if (_protocolFeeRecipient == address(0) || _accessToken == address(0)) {
             revert TemplErrors.InvalidRecipient();
         }
         protocolFeeRecipient = _protocolFeeRecipient;
         accessToken = _accessToken;
+        priestIsDictator = _priestIsDictator;
         protocolPercent = _protocolPercent;
         _setPercentSplit(_burnPercent, _treasuryPercent, _memberPoolPercent);
 

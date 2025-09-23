@@ -69,6 +69,10 @@ Whoever launches a Templ becomes its Priest. Priests set the initial economics, 
 
 Members propose and vote on treasury moves or config changes directly inside the gathering grounds. Governance is on-chain, proposal actions are typed, and the treasury can only move on sanctioned paths. Tribute remainders accrue and keep rewarding the faithful even as distribution sizes shrink.
 
+### Priest Dictatorship (optional)
+
+Factories can deploy templs in a **Priest Dictatorship**. When `priestIsDictator` is set to `true` (use `PRIEST_IS_DICTATOR=1` with `scripts/deploy.js` or include the flag in `TemplFactory.CreateConfig`), proposal tooling is disabled and the priest executes governance actions instantly. Treasury withdrawals, pauses, fee splits, and priest rotations become single calls gated to the priest—no quorum and no execution delay. The default remains full DAO governance; enable dictatorship explicitly when a community wants rapid, priest-driven control.
+
 ## What You Get
 
 - Memecoins upgraded from 1.0 speculation to 2.0 cult coordination with deflationary tokenomics.

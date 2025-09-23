@@ -23,6 +23,7 @@ export async function deployTempl({
   quorumPercent,
   executionDelaySeconds,
   burnAddress,
+  priestIsDictator,
   factoryAddress,
   factoryArtifact,
   templArtifact,
@@ -73,7 +74,8 @@ export async function deployTempl({
     memberPoolPercent: Number(member),
     burnAddress: burnAddress && ethers.isAddress?.(burnAddress)
       ? burnAddress
-      : (ethers.ZeroAddress ?? '0x0000000000000000000000000000000000000000')
+      : (ethers.ZeroAddress ?? '0x0000000000000000000000000000000000000000'),
+    priestIsDictator: priestIsDictator === true
   };
   if (quorumPercent !== undefined && quorumPercent !== null) {
     config.quorumPercent = Number(quorumPercent);
@@ -90,7 +92,8 @@ export async function deployTempl({
     config.priest === walletAddress &&
     config.burnAddress === zeroAddress &&
     config.quorumPercent === undefined &&
-    config.executionDelaySeconds === undefined;
+    config.executionDelaySeconds === undefined &&
+    config.priestIsDictator === false;
 
   let contractAddress;
   if (defaultsRequested) {

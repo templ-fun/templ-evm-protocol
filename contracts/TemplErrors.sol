@@ -8,6 +8,8 @@ library TemplErrors {
     error NotMember();
     /// @notice Thrown when a function restricted to the DAO is called externally.
     error NotDAO();
+    /// @notice Thrown when a function requires the priest caller under dictatorship mode.
+    error PriestOnly();
     /// @notice Thrown when an action is attempted while the contract is paused.
     error ContractPausedError();
     /// @notice Thrown when attempting to purchase access more than once.
@@ -68,4 +70,6 @@ library TemplErrors {
     error ExecutionDelayActive();
     /// @notice Thrown when a provided percentage value is invalid.
     error InvalidPercentage();
+    /// @notice Thrown when priest dictatorship mode disables proposal-based governance.
+    error DictatorshipEnabled();
 }

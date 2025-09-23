@@ -14,7 +14,8 @@ abstract contract TemplGovernance is TemplTreasury {
         uint256 _protocolPercent,
         uint256 _quorumPercent,
         uint256 _executionDelay,
-        address _burnAddress
+        address _burnAddress,
+        bool _priestIsDictator
     ) TemplTreasury(
         _protocolFeeRecipient,
         _accessToken,
@@ -24,13 +25,15 @@ abstract contract TemplGovernance is TemplTreasury {
         _protocolPercent,
         _quorumPercent,
         _executionDelay,
-        _burnAddress
+        _burnAddress,
+        _priestIsDictator
     ) {}
 
     function createProposalSetPaused(
         bool _paused,
         uint256 _votingPeriod
     ) external returns (uint256) {
+        if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod);
         p.action = Action.SetPaused;
         p.paused = _paused;
@@ -45,6 +48,7 @@ abstract contract TemplGovernance is TemplTreasury {
         bool _updateFeeSplit,
         uint256 _votingPeriod
     ) external returns (uint256) {
+        if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         if (_newEntryFee > 0) {
             if (_newEntryFee < 10) revert TemplErrors.EntryFeeTooSmall();
             if (_newEntryFee % 10 != 0) revert TemplErrors.InvalidEntryFee();
@@ -69,6 +73,7 @@ abstract contract TemplGovernance is TemplTreasury {
         string memory _reason,
         uint256 _votingPeriod
     ) external returns (uint256) {
+        if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod);
         p.action = Action.WithdrawTreasury;
         p.token = _token;
@@ -82,6 +87,7 @@ abstract contract TemplGovernance is TemplTreasury {
         address _token,
         uint256 _votingPeriod
     ) external returns (uint256) {
+        if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod);
         p.action = Action.DisbandTreasury;
         p.token = _token;
@@ -96,6 +102,7 @@ abstract contract TemplGovernance is TemplTreasury {
         uint256 _votingPeriod
     ) external returns (uint256) {
         if (_newPriest == address(0)) revert TemplErrors.InvalidRecipient();
+        if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod);
         p.action = Action.ChangePriest;
         p.recipient = _newPriest;
@@ -103,6 +110,7 @@ abstract contract TemplGovernance is TemplTreasury {
     }
 
     function vote(uint256 _proposalId, bool _support) external onlyMember {
+        if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         if (_proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
         Proposal storage proposal = proposals[_proposalId];
 
@@ -158,6 +166,7 @@ abstract contract TemplGovernance is TemplTreasury {
     }
 
     function executeProposal(uint256 _proposalId) external nonReentrant {
+        if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         if (_proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
         Proposal storage proposal = proposals[_proposalId];
 

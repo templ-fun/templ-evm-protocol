@@ -244,7 +244,8 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
         entryFee: entryFeeWei,
         burnPercent: burnPercentNum,
         treasuryPercent: treasuryPercentNum,
-        memberPoolPercent: memberPercentNum
+        memberPoolPercent: memberPercentNum,
+        priestIsDictator: false
       });
     }
     templAddress = ethers.getAddress(predictedTempl);

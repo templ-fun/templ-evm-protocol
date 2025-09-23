@@ -2,8 +2,8 @@
   "_format": "hh-sol-cache-2",
   "files": {
     "/Users/worms/Documents/templ/contracts/TEMPL.sol": {
-      "lastModificationDate": 1758337984114,
-      "contentHash": "f1f10e8d5bf57bf216f19928c95b2290",
+      "lastModificationDate": 1758649801403,
+      "contentHash": "e30a4b9042852e54daffd0970571b21b",
       "sourceName": "contracts/TEMPL.sol",
       "solcConfig": {
         "version": "0.8.23",
@@ -42,8 +42,8 @@
       ]
     },
     "/Users/worms/Documents/templ/contracts/TemplErrors.sol": {
-      "lastModificationDate": 1758337939602,
-      "contentHash": "c8fc0db49564820c4645540606f22571",
+      "lastModificationDate": 1758649737443,
+      "contentHash": "792579e1f07d134dd9c5c27212756a47",
       "sourceName": "contracts/TemplErrors.sol",
       "solcConfig": {
         "version": "0.8.23",
@@ -501,8 +501,8 @@
       ]
     },
     "/Users/worms/Documents/templ/contracts/mocks/TestToken.sol": {
-      "lastModificationDate": 1757626179420,
-      "contentHash": "b9ae338bd3680c5232379925e377b75c",
+      "lastModificationDate": 1758397121363,
+      "contentHash": "af09f4476195c3756e41898567ce927a",
       "sourceName": "contracts/mocks/TestToken.sol",
       "solcConfig": {
         "version": "0.8.23",
@@ -618,8 +618,8 @@
       ]
     },
     "/Users/worms/Documents/templ/contracts/mocks/DaoCallerHarness.sol": {
-      "lastModificationDate": 1758337998065,
-      "contentHash": "42c9fc6b16efd060d00d10dcc6e15c94",
+      "lastModificationDate": 1758649907018,
+      "contentHash": "c77d26812ce8056425f0727f7e3c1460",
       "sourceName": "contracts/mocks/DaoCallerHarness.sol",
       "solcConfig": {
         "version": "0.8.23",
@@ -657,8 +657,8 @@
       ]
     },
     "/Users/worms/Documents/templ/contracts/TemplGovernance.sol": {
-      "lastModificationDate": 1758337912244,
-      "contentHash": "e7b0136e7d98a577ff15cdb1d250b8d7",
+      "lastModificationDate": 1758649859216,
+      "contentHash": "499a0bc561e2d1afc639a0ebe8db26d3",
       "sourceName": "contracts/TemplGovernance.sol",
       "solcConfig": {
         "version": "0.8.23",
@@ -697,8 +697,8 @@
       ]
     },
     "/Users/worms/Documents/templ/contracts/TemplTreasury.sol": {
-      "lastModificationDate": 1758337903413,
-      "contentHash": "a02b1f606037c69983f387f826ef1179",
+      "lastModificationDate": 1758649788752,
+      "contentHash": "716c691177612b8d0d9373a3a0f3f4ef",
       "sourceName": "contracts/TemplTreasury.sol",
       "solcConfig": {
         "version": "0.8.23",
@@ -739,8 +739,8 @@
       ]
     },
     "/Users/worms/Documents/templ/contracts/TemplMembership.sol": {
-      "lastModificationDate": 1758338043919,
-      "contentHash": "24db3e8b24f9416fe0466f0fa2198896",
+      "lastModificationDate": 1758649781756,
+      "contentHash": "7f29a71679ddf9385bc0efa4f0b2a438",
       "sourceName": "contracts/TemplMembership.sol",
       "solcConfig": {
         "version": "0.8.23",
@@ -781,8 +781,8 @@
       ]
     },
     "/Users/worms/Documents/templ/contracts/TemplBase.sol": {
-      "lastModificationDate": 1758337919713,
-      "contentHash": "82213d86e82a9bb309f2499644a465f5",
+      "lastModificationDate": 1758649767976,
+      "contentHash": "a70c2b133dc28462101363f2b8faa6e2",
       "sourceName": "contracts/TemplBase.sol",
       "solcConfig": {
         "version": "0.8.23",
@@ -823,8 +823,8 @@
       ]
     },
     "/Users/worms/Documents/templ/contracts/TemplFactory.sol": {
-      "lastModificationDate": 1758337976659,
-      "contentHash": "6905aceedf522ccef06165274eedcde9",
+      "lastModificationDate": 1758649812469,
+      "contentHash": "a520463d83bf5fdb9794f31b74fb5a97",
       "sourceName": "contracts/TemplFactory.sol",
       "solcConfig": {
         "version": "0.8.23",
@@ -860,6 +860,122 @@
       ],
       "artifacts": [
         "TemplFactory"
+      ]
+    },
+    "/Users/worms/Documents/templ/contracts/mocks/TemplHarness.sol": {
+      "lastModificationDate": 1758649917770,
+      "contentHash": "3e2843efcb74b1139ebbbddeb1715dac",
+      "sourceName": "contracts/mocks/TemplHarness.sol",
+      "solcConfig": {
+        "version": "0.8.23",
+        "settings": {
+          "viaIR": true,
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [
+        "../TEMPL.sol"
+      ],
+      "versionPragmas": [
+        "^0.8.23"
+      ],
+      "artifacts": [
+        "TemplHarness"
+      ]
+    },
+    "/Users/worms/Documents/templ/contracts/mocks/RevertingClaimer.sol": {
+      "lastModificationDate": 1758396231323,
+      "contentHash": "483bcfa54569c043a995ce1b6b8bea1e",
+      "sourceName": "contracts/mocks/RevertingClaimer.sol",
+      "solcConfig": {
+        "version": "0.8.23",
+        "settings": {
+          "viaIR": true,
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [
+        "@openzeppelin/contracts/token/ERC20/IERC20.sol"
+      ],
+      "versionPragmas": [
+        "^0.8.23"
+      ],
+      "artifacts": [
+        "ITemplMinimal",
+        "RevertingClaimer"
+      ]
+    },
+    "/Users/worms/Documents/templ/contracts/mocks/RejectEther.sol": {
+      "lastModificationDate": 1758386455774,
+      "contentHash": "d85b42a0a7873ae3cb3beed30fd88edb",
+      "sourceName": "contracts/mocks/RejectEther.sol",
+      "solcConfig": {
+        "version": "0.8.23",
+        "settings": {
+          "viaIR": true,
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.23"
+      ],
+      "artifacts": [
+        "RejectEther"
       ]
     }
   }

@@ -12,7 +12,20 @@ contract DaoCallerHarness is TEMPL {
         address token,
         uint256 entryFee
     )
-        TEMPL(priest, protocolFeeRecipient, token, entryFee, 30, 30, 30, 10, 33, 7 days, 0x000000000000000000000000000000000000dEaD)
+        TEMPL(
+            priest,
+            protocolFeeRecipient,
+            token,
+            entryFee,
+            30,
+            30,
+            30,
+            10,
+            33,
+            7 days,
+            0x000000000000000000000000000000000000dEaD,
+            false
+        )
     {}
     /// @notice Wrapper to call withdrawTreasuryDAO via contract self-call
     function daoWithdraw(address token, address recipient, uint256 amount, string calldata reason) external {
