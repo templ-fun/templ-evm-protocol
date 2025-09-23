@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import request from 'supertest';
 import { ethers } from 'ethers';
-import { requireAddresses, verifySignature } from '../src/middleware/validate.js';
+import { requireAddresses, verifySignature, verifyTypedSignature } from '../src/middleware/validate.js';
 
 // Positive case for address validation
 test('requireAddresses allows valid addresses', async () => {
@@ -72,4 +72,36 @@ test('verifySignature rejects invalid signature', async () => {
     .send({ address: wallet.address, signature });
   assert.equal(res.status, 403);
   assert.deepEqual(res.body, { error: 'Bad signature' });
+});
+
+test('verifyTypedSignature throws when database is missing prepare', () => {
+  assert.throws(
+    () =>
+      verifyTypedSignature({
+        database: {},
+        addressField: 'memberAddress',
+        buildTyped: () => ({ domain: {}, types: {}, primaryType: 'Example', message: {} }),
+      }),
+    /requires a database with prepare\(\)/
+  );
+});
+
+test('verifyTypedSignature throws when database.prepare fails', () => {
+  const prepareError = new Error('boom');
+  const database = {
+    prepare() {
+      throw prepareError;
+    },
+  };
+  try {
+    verifyTypedSignature({
+      database,
+      addressField: 'memberAddress',
+      buildTyped: () => ({ domain: {}, types: {}, primaryType: 'Example', message: {} }),
+    });
+    assert.fail('Expected verifyTypedSignature to throw');
+  } catch (err) {
+    assert.equal(err.cause, prepareError);
+    assert.match(err.message, /failed to prepare replay statements: boom/);
+  }
 });
