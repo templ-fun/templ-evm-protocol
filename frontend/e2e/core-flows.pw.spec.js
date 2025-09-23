@@ -233,7 +233,10 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
     const treasuryPercentNum = Number(treasuryValue || '0');
     const memberPercentNum = Number(memberValue || '0');
 
-    const defaultsRequested = burnPercentNum === 30 && treasuryPercentNum === 30 && memberPercentNum === 30;
+    const defaultsRequested =
+      (burnPercentNum === 30 || burnPercentNum === -1) &&
+      (treasuryPercentNum === 30 || treasuryPercentNum === -1) &&
+      (memberPercentNum === 30 || memberPercentNum === -1);
     let predictedTempl;
     if (defaultsRequested) {
       predictedTempl = await templFactory.createTempl.staticCall(tokenAddress, entryFeeWei);

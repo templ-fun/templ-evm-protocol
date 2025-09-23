@@ -26,6 +26,7 @@ import {
 import { createSignerMock, createXMTPMock } from '../test-utils/mocks.js';
 
 const templArtifact = { abi: [], bytecode: '0x' };
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 const originalFetch = globalThis.fetch;
 let xmtp;
 let signer;
@@ -169,6 +170,61 @@ describe('templ flows', () => {
         templArtifact
       })
     ).rejects.toThrow(/Invalid \/templs response/);
+  });
+
+  it('deployTempl forwards -1 sentinel for default fee splits', async () => {
+    const wait = vi.fn().mockResolvedValue({});
+    const createTemplWithConfig = vi.fn().mockResolvedValue({ wait });
+    createTemplWithConfig.staticCall = vi.fn().mockResolvedValue('0xDeAd');
+    const factoryContract = {
+      protocolFeeRecipient: vi.fn().mockResolvedValue('0xfee'),
+      protocolPercent: vi.fn().mockResolvedValue(10n),
+      createTemplWithConfig
+    };
+    const ethers = {
+      Contract: vi.fn().mockImplementation((address) => {
+        if (address === '0xFactory') return factoryContract;
+        throw new Error(`unexpected contract ${address}`);
+      })
+    };
+    mockFetchSuccess({ groupId: 'group-1' });
+    waitForConversation.mockResolvedValueOnce({ id: 'group-1', consentState: 'allowed' });
+
+    await deployTempl({
+      ethers,
+      xmtp,
+      signer,
+      walletAddress: '0xabc',
+      tokenAddress: '0xdef',
+      entryFee: '100',
+      burnPercent: '-1',
+      treasuryPercent: '50',
+      memberPoolPercent: '10',
+      factoryAddress: '0xFactory',
+      factoryArtifact: { abi: [] },
+      templArtifact
+    });
+
+    expect(createTemplWithConfig.staticCall).toHaveBeenCalledWith({
+      priest: '0xabc',
+      token: '0xdef',
+      entryFee: BigInt(100),
+      burnPercent: -1,
+      treasuryPercent: 50,
+      memberPoolPercent: 10,
+      burnAddress: ZERO_ADDRESS,
+      priestIsDictator: false
+    });
+    expect(createTemplWithConfig).toHaveBeenCalledWith({
+      priest: '0xabc',
+      token: '0xdef',
+      entryFee: BigInt(100),
+      burnPercent: -1,
+      treasuryPercent: 50,
+      memberPoolPercent: 10,
+      burnAddress: ZERO_ADDRESS,
+      priestIsDictator: false
+    }, {});
   });
 
   it('purchaseAccess approves token and purchases membership when needed', async () => {

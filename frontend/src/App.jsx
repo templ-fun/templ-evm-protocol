@@ -35,6 +35,33 @@ function dlog(...args) {
   try { console.log(...args); } catch {}
 }
 
+const DEFAULT_BURN_PERCENT = 30;
+const DEFAULT_TREASURY_PERCENT = 30;
+const DEFAULT_MEMBER_PERCENT = 30;
+
+function parseSplitInput(value, defaultValue) {
+  if (value === undefined || value === null) {
+    return { isValid: false, raw: NaN, effective: NaN, usesDefault: false };
+  }
+  const trimmed = String(value).trim();
+  if (trimmed === '-1') {
+    return { isValid: true, raw: -1, effective: defaultValue, usesDefault: true };
+  }
+  if (!/^\d+$/.test(trimmed)) {
+    return { isValid: false, raw: NaN, effective: NaN, usesDefault: false };
+  }
+  const numeric = Number(trimmed);
+  if (numeric > 100) {
+    return { isValid: false, raw: numeric, effective: NaN, usesDefault: false };
+  }
+  return {
+    isValid: true,
+    raw: numeric,
+    effective: numeric,
+    usesDefault: numeric === defaultValue
+  };
+}
+
 function App() {
   // Minimal client-side router (no external deps)
   const { path, query, navigate } = useAppLocation();
@@ -118,11 +145,15 @@ function App() {
   const autoDeployTriggeredRef = useRef(false);
 
 
-  const burnPercentNum = Number.isFinite(Number(burnPercent)) ? Number(burnPercent) : 0;
-  const treasuryPercentNum = Number.isFinite(Number(treasuryPercent)) ? Number(treasuryPercent) : 0;
-  const memberPoolPercentNum = Number.isFinite(Number(memberPoolPercent)) ? Number(memberPoolPercent) : 0;
+  const burnSplit = parseSplitInput(burnPercent, DEFAULT_BURN_PERCENT);
+  const treasurySplit = parseSplitInput(treasuryPercent, DEFAULT_TREASURY_PERCENT);
+  const memberSplit = parseSplitInput(memberPoolPercent, DEFAULT_MEMBER_PERCENT);
   const protocolPercentNum = Number.isFinite(Number(protocolPercent)) ? Number(protocolPercent) : null;
-  const splitTotal = burnPercentNum + treasuryPercentNum + memberPoolPercentNum + (protocolPercentNum ?? 0);
+  const splitsAreValid = burnSplit.isValid && treasurySplit.isValid && memberSplit.isValid;
+  const splitTotal =
+    splitsAreValid && protocolPercentNum !== null
+      ? burnSplit.effective + treasurySplit.effective + memberSplit.effective + protocolPercentNum
+      : null;
   const activeProtocolPercent = Number.isFinite(currentProtocolPercent) ? currentProtocolPercent : protocolPercentNum;
   const parsedBurnInput = Number.isFinite(Number(proposeBurnPercent)) ? Number(proposeBurnPercent) : 0;
   const parsedTreasuryInput = Number.isFinite(Number(proposeTreasuryPercent)) ? Number(proposeTreasuryPercent) : 0;
@@ -512,21 +543,17 @@ function App() {
       alert('Invalid entry fee');
       return;
     }
-    const splits = [burnPercent, treasuryPercent, memberPoolPercent];
-    if (!splits.every((n) => /^\d+$/.test(n))) {
-      alert('Percentages must be numeric');
-      return;
-    }
-    const burn = Number(burnPercent);
-    const treas = Number(treasuryPercent);
-    const member = Number(memberPoolPercent);
-    if ([burn, treas, member].some((v) => v < 0)) {
-      alert('Percentages cannot be negative');
+    const burnConfig = parseSplitInput(burnPercent, DEFAULT_BURN_PERCENT);
+    const treasuryConfig = parseSplitInput(treasuryPercent, DEFAULT_TREASURY_PERCENT);
+    const memberConfig = parseSplitInput(memberPoolPercent, DEFAULT_MEMBER_PERCENT);
+    if (![burnConfig, treasuryConfig, memberConfig].every((info) => info.isValid)) {
+      alert('Percentages must be whole numbers between 0 and 100, or -1 to use defaults');
       return;
     }
     const protocolShare = Number.isFinite(protocolPercent) ? protocolPercent : null;
     if (protocolShare !== null) {
-      const totalSplit = burn + treas + member + protocolShare;
+      const totalSplit =
+        burnConfig.effective + treasuryConfig.effective + memberConfig.effective + protocolShare;
       if (totalSplit !== 100) {
         alert(`Fee split must sum to 100. Current total: ${totalSplit}`);
         return;
@@ -594,8 +621,18 @@ function App() {
     if (autoDeployTriggeredRef.current) return;
     if (!signer) return;
     try {
-      const splitsValid = [burnPercent, treasuryPercent, memberPoolPercent].every((n) => /^\d+$/.test(n));
-      const sumValid = !Number.isFinite(protocolPercent) ? true : (Number(burnPercent) + Number(treasuryPercent) + Number(memberPoolPercent) + Number(protocolPercent)) === 100;
+      const burnConfig = parseSplitInput(burnPercent, DEFAULT_BURN_PERCENT);
+      const treasuryConfig = parseSplitInput(treasuryPercent, DEFAULT_TREASURY_PERCENT);
+      const memberConfig = parseSplitInput(memberPoolPercent, DEFAULT_MEMBER_PERCENT);
+      const splitsValid = burnConfig.isValid && treasuryConfig.isValid && memberConfig.isValid;
+      const protocolShare = Number.isFinite(protocolPercent) ? Number(protocolPercent) : null;
+      const sumValid =
+        protocolShare === null
+          ? true
+          : burnConfig.isValid &&
+            treasuryConfig.isValid &&
+            memberConfig.isValid &&
+            burnConfig.effective + treasuryConfig.effective + memberConfig.effective + protocolShare === 100;
       const trimmedFactory = factoryAddress.trim();
       if (trimmedFactory && ethers.isAddress(trimmedFactory) && ethers.isAddress(tokenAddress) && /^\d+$/.test(entryFee) && splitsValid && sumValid) {
         autoDeployTriggeredRef.current = true;
@@ -1600,9 +1637,10 @@ function App() {
                   <input className="border border-black/20 rounded px-3 py-2" placeholder="Treasury" value={treasuryPercent} onChange={(e) => setTreasuryPercent(e.target.value)} />
                   <input className="border border-black/20 rounded px-3 py-2" placeholder="Member pool" value={memberPoolPercent} onChange={(e) => setMemberPoolPercent(e.target.value)} />
                 </div>
+                <div className="text-xs text-black/60 mt-1">Use -1 to keep the factory default for any bucket.</div>
                 {Number.isFinite(protocolPercentNum) && (
                   <div className={`text-xs mt-1 ${splitTotal === 100 ? 'text-black/60' : 'text-red-600'}`}>
-                    Fee split total: {splitTotal}/100 (includes protocol {protocolPercentNum})
+                    Fee split total: {splitTotal === null ? '—' : splitTotal}/100 (includes protocol {protocolPercentNum})
                   </div>
                 )}
               </div>

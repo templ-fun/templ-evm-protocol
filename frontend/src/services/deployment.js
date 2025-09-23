@@ -5,6 +5,48 @@ import { waitForConversation } from '../../../shared/xmtp.js';
 import { addToTestRegistry, dlog, isDebugEnabled } from './utils.js';
 import { postJson } from './http.js';
 
+const DEFAULT_BURN_PERCENT = 30;
+const DEFAULT_TREASURY_PERCENT = 30;
+const DEFAULT_MEMBER_PERCENT = 30;
+const SENTINEL_DEFAULT = -1n;
+
+/**
+ * Normalize a percentage input so the factory can distinguish between
+ * explicit zeroes and requests to use default fee splits.
+ * @param {number | string | bigint | undefined | null} value
+ * @param {number} defaultValue
+ */
+function normalizePercent(value, defaultValue) {
+  if (value === undefined || value === null) {
+    return { raw: -1, effective: defaultValue, usesDefault: true };
+  }
+  if (typeof value === 'string' && value.trim() === '') {
+    return { raw: -1, effective: defaultValue, usesDefault: true };
+  }
+  const candidate = typeof value === 'string' ? value.trim() : value;
+  let normalized;
+  try {
+    normalized = BigInt(candidate);
+  } catch {
+    throw new Error('Percentages must be integers');
+  }
+  if (normalized === SENTINEL_DEFAULT) {
+    return { raw: -1, effective: defaultValue, usesDefault: true };
+  }
+  if (normalized < 0n) {
+    throw new Error('Percentages cannot be negative (use -1 to keep factory defaults)');
+  }
+  if (normalized > 100n) {
+    throw new Error('Percentages must be 100 or less');
+  }
+  const rawNumber = Number(normalized);
+  return {
+    raw: rawNumber,
+    effective: rawNumber,
+    usesDefault: rawNumber === defaultValue
+  };
+}
+
 /**
  * Deploy a new TEMPL contract and register a group with the backend.
  * @param {import('../flows.types').DeployRequest} params
@@ -50,11 +92,15 @@ export async function deployTempl({
   if (!protocolFeeRecipient || protocolFeeRecipient === ethers.ZeroAddress) {
     throw new Error('Factory protocol fee recipient not configured');
   }
-  const burn = BigInt(burnPercent ?? 30);
-  const treasury = BigInt(treasuryPercent ?? 30);
-  const member = BigInt(memberPoolPercent ?? 30);
+  const burnInfo = normalizePercent(burnPercent, DEFAULT_BURN_PERCENT);
+  const treasuryInfo = normalizePercent(treasuryPercent, DEFAULT_TREASURY_PERCENT);
+  const memberInfo = normalizePercent(memberPoolPercent, DEFAULT_MEMBER_PERCENT);
   const protocol = BigInt(protocolPercentRaw ?? 0n);
-  const totalSplit = burn + treasury + member + protocol;
+  const totalSplit =
+    BigInt(burnInfo.effective) +
+    BigInt(treasuryInfo.effective) +
+    BigInt(memberInfo.effective) +
+    protocol;
   if (totalSplit !== 100n) {
     throw new Error(`Fee split must equal 100, received ${totalSplit}`);
   }
@@ -69,9 +115,9 @@ export async function deployTempl({
     priest: walletAddress,
     token: normalizedToken,
     entryFee: normalizedEntryFee,
-    burnPercent: Number(burn),
-    treasuryPercent: Number(treasury),
-    memberPoolPercent: Number(member),
+    burnPercent: burnInfo.raw,
+    treasuryPercent: treasuryInfo.raw,
+    memberPoolPercent: memberInfo.raw,
     burnAddress: burnAddress && ethers.isAddress?.(burnAddress)
       ? burnAddress
       : (ethers.ZeroAddress ?? '0x0000000000000000000000000000000000000000'),
@@ -86,9 +132,9 @@ export async function deployTempl({
 
   const zeroAddress = ethers.ZeroAddress ?? '0x0000000000000000000000000000000000000000';
   const defaultsRequested =
-    Number(burn) === 30 &&
-    Number(treasury) === 30 &&
-    Number(member) === 30 &&
+    burnInfo.usesDefault &&
+    treasuryInfo.usesDefault &&
+    memberInfo.usesDefault &&
     config.priest === walletAddress &&
     config.burnAddress === zeroAddress &&
     config.quorumPercent === undefined &&

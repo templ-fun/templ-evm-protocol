@@ -136,6 +136,97 @@ describe("TemplFactory", function () {
         ).to.be.revertedWithCustomError(factory, "InvalidPercentageSplit");
     });
 
+    it("allows zero percent splits while enforcing immutable protocol share", async function () {
+        const [, priest, protocolRecipient, member] = await ethers.getSigners();
+        const token = await deployToken("Zero", "ZERO");
+        const Factory = await ethers.getContractFactory("TemplFactory");
+        const protocolPercent = 10;
+        const factory = await Factory.deploy(protocolRecipient.address, protocolPercent);
+        await factory.waitForDeployment();
+
+        const config = {
+            priest: priest.address,
+            token: await token.getAddress(),
+            entryFee: ENTRY_FEE,
+            burnPercent: 0,
+            treasuryPercent: 60,
+            memberPoolPercent: 30,
+            quorumPercent: 33,
+            executionDelaySeconds: 7 * 24 * 60 * 60,
+            burnAddress: ethers.ZeroAddress,
+            priestIsDictator: false
+        };
+
+        const templAddress = await factory.createTemplWithConfig.staticCall(config);
+        await (await factory.createTemplWithConfig(config)).wait();
+
+        const templ = await ethers.getContractAt("TEMPL", templAddress);
+        expect(await templ.burnPercent()).to.equal(0);
+        expect(await templ.treasuryPercent()).to.equal(60);
+        expect(await templ.memberPoolPercent()).to.equal(30);
+        expect(await templ.protocolPercent()).to.equal(protocolPercent);
+
+        await mintToUsers(token, [member], ENTRY_FEE * 5n);
+        await purchaseAccess(templ, token, [member]);
+
+        expect(await templ.totalBurned()).to.equal(0);
+        expect(await templ.totalToProtocol()).to.equal((ENTRY_FEE * BigInt(protocolPercent)) / 100n);
+    });
+
+    it("uses factory defaults when -1 sentinel percentages are provided", async function () {
+        const [, priest, protocolRecipient] = await ethers.getSigners();
+        const token = await deployToken("Sentinel", "SENT");
+        const Factory = await ethers.getContractFactory("TemplFactory");
+        const protocolPercent = 10;
+        const factory = await Factory.deploy(protocolRecipient.address, protocolPercent);
+        await factory.waitForDeployment();
+
+        const config = {
+            priest: priest.address,
+            token: await token.getAddress(),
+            entryFee: ENTRY_FEE,
+            burnPercent: -1,
+            treasuryPercent: 50,
+            memberPoolPercent: 10,
+            quorumPercent: 33,
+            executionDelaySeconds: 7 * 24 * 60 * 60,
+            burnAddress: ethers.ZeroAddress,
+            priestIsDictator: false
+        };
+
+        const templAddress = await factory.createTemplWithConfig.staticCall(config);
+        await (await factory.createTemplWithConfig(config)).wait();
+
+        const templ = await ethers.getContractAt("TEMPL", templAddress);
+        expect(await templ.burnPercent()).to.equal(30);
+        expect(await templ.treasuryPercent()).to.equal(50);
+        expect(await templ.memberPoolPercent()).to.equal(10);
+        expect(await templ.protocolPercent()).to.equal(protocolPercent);
+    });
+
+    it("reverts when negative percentages other than the sentinel are provided", async function () {
+        const [, priest, protocolRecipient] = await ethers.getSigners();
+        const token = await deployToken("Neg", "NEG");
+        const Factory = await ethers.getContractFactory("TemplFactory");
+        const factory = await Factory.deploy(protocolRecipient.address, 10);
+        await factory.waitForDeployment();
+
+        await expect(
+            factory.createTemplWithConfig({
+                priest: priest.address,
+                token: await token.getAddress(),
+                entryFee: ENTRY_FEE,
+                burnPercent: -2,
+                treasuryPercent: 60,
+                memberPoolPercent: 20,
+                quorumPercent: 33,
+                executionDelaySeconds: 7 * 24 * 60 * 60,
+                burnAddress: ethers.ZeroAddress,
+                priestIsDictator: false
+            })
+        ).to.be.revertedWithCustomError(factory, "InvalidPercentage");
+    });
+
     it("defaults splits, priest, quorum and delay when using simple create", async function () {
         const [deployer, , protocolRecipient] = await ethers.getSigners();
         const token = await deployToken("Defaults", "DEF");
@@ -247,9 +338,9 @@ describe("TemplFactory", function () {
             priest: ethers.ZeroAddress,
             token: await token.getAddress(),
             entryFee: ENTRY_FEE,
-            burnPercent: 0,
-            treasuryPercent: 0,
-            memberPoolPercent: 0,
+            burnPercent: -1,
+            treasuryPercent: -1,
+            memberPoolPercent: -1,
             quorumPercent: 0,
             executionDelaySeconds: 0,
             burnAddress: ethers.ZeroAddress,

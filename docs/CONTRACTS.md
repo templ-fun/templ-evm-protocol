@@ -184,7 +184,7 @@ sequenceDiagram
 
 ## Configuration & Deployment
 
-- Primary entrypoint is `TemplFactory(address protocolFeeRecipient, uint256 protocolPercent)`. Creating a new templ instance can rely on defaults (`createTempl(token, entryFee)`) or a custom struct (`createTemplWithConfig`). Percentages for burn/treasury/member must sum with the factory’s `protocolPercent` to 100, and the struct includes a `priestIsDictator` boolean to opt into priest-only governance.
+- Primary entrypoint is `TemplFactory(address protocolFeeRecipient, uint256 protocolPercent)`. Creating a new templ instance can rely on defaults (`createTempl(token, entryFee)`) or a custom struct (`createTemplWithConfig`). Each of the burn/treasury/member percentages may be explicitly set to `0`; providing `-1` for an individual split instructs the factory to reuse its default. After resolving sentinels the three values must sum with the factory’s `protocolPercent` to 100, and the struct includes a `priestIsDictator` boolean to opt into priest-only governance.
 - `scripts/deploy.js` deploys a factory when none is provided (`FACTORY_ADDRESS`), then creates a templ via the factory using environment variables: `PRIEST_ADDRESS` (defaults to deployer), `PROTOCOL_FEE_RECIPIENT`, `PROTOCOL_PERCENT`, `TOKEN_ADDRESS`, `ENTRY_FEE`, `BURN_PERCENT`, `TREASURY_PERCENT`, `MEMBER_POOL_PERCENT` (plus optional `QUORUM_PERCENT`, `EXECUTION_DELAY_SECONDS`, `BURN_ADDRESS`, `PRIEST_IS_DICTATOR`). Percentages must sum to 100.
 - Commands:
   - Compile/tests: `npm run compile`, `npm test`, `npm run slither`.

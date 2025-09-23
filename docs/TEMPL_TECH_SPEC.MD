@@ -67,7 +67,7 @@ Everything on-chain is modular so each templ instance inherits the same safeguar
 - `TemplTreasury` (treasury/config/priest handlers)
 - `TemplGovernance` (proposal lifecycle)
 - `TEMPL` (constructor wiring + payable receive)
-- `TemplFactory` (fixes protocol fee percentage + recipient and deploys templ instances). `createTempl(token, entryFee)` uses defaults (priest = caller, 30/30/30 split, quorum 33%, execution delay 7 days, burn address `0x000000000000000000000000000000000000dEaD`). `createTemplWithConfig(CreateConfig)` accepts overrides for priest, the three percentages, burn address, quorum percent, execution delay, **and** whether the templ launches in priest dictatorship mode (`priestIsDictator`). Percentages must still sum with the factory’s immutable protocol percent to 100.
+- `TemplFactory` (fixes protocol fee percentage + recipient and deploys templ instances). `createTempl(token, entryFee)` uses defaults (priest = caller, 30/30/30 split, quorum 33%, execution delay 7 days, burn address `0x000000000000000000000000000000000000dEaD`). `createTemplWithConfig(CreateConfig)` accepts overrides for priest, the three percentages, burn address, quorum percent, execution delay, **and** whether the templ launches in priest dictatorship mode (`priestIsDictator`). Percentages may now be set to `0` for any bucket; pass `-1` for an individual split to reuse the factory default. After resolving sentinels, the three percentages must still sum with the factory’s immutable protocol percent to 100.
 
 ### Economic model (per `purchaseAccess()`)
 

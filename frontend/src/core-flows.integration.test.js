@@ -9,6 +9,20 @@ import templFactoryArtifact from './contracts/TemplFactory.json';
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
+const DEFAULT_BURN_PERCENT = 30;
+const DEFAULT_TREASURY_PERCENT = 30;
+const DEFAULT_MEMBER_PERCENT = 30;
+
+function resolvePercentInput(value, defaultValue) {
+  if (value === undefined || value === null) return defaultValue;
+  const num = Number(value);
+  if (Number.isNaN(num)) {
+    throw new Error('invalid percent');
+  }
+  if (num === -1) return defaultValue;
+  return num;
+}
+
 function createStubEthers(state) {
   const normalize = (addr) => (addr ? addr.toLowerCase() : ZERO_ADDRESS);
   const DEFAULT_BURN_ADDRESS = '0x000000000000000000000000000000000000dead';
@@ -41,9 +55,9 @@ function createStubEthers(state) {
       if (token === ZERO_ADDRESS) throw new Error('token required');
       if (input.entryFee === undefined) throw new Error('entry fee required');
       const entryFee = typeof input.entryFee === 'bigint' ? input.entryFee : BigInt(input.entryFee);
-      const burnPercent = Number(input.burnPercent ?? 30);
-      const treasuryPercent = Number(input.treasuryPercent ?? 30);
-      const memberPoolPercent = Number(input.memberPoolPercent ?? 30);
+      const burnPercent = resolvePercentInput(input.burnPercent, DEFAULT_BURN_PERCENT);
+      const treasuryPercent = resolvePercentInput(input.treasuryPercent, DEFAULT_TREASURY_PERCENT);
+      const memberPoolPercent = resolvePercentInput(input.memberPoolPercent, DEFAULT_MEMBER_PERCENT);
       const quorumPercent = Number(input.quorumPercent ?? DEFAULT_QUORUM_PERCENT);
       const executionDelaySeconds = Number(input.executionDelaySeconds ?? DEFAULT_EXECUTION_DELAY);
       const burnAddress = input.burnAddress ? normalize(input.burnAddress) : DEFAULT_BURN_ADDRESS;
