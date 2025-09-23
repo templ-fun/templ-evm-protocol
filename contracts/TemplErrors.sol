@@ -68,6 +68,4 @@ library TemplErrors {
     error ExecutionDelayActive();
     /// @notice Thrown when a provided percentage value is invalid.
     error InvalidPercentage();
-    /// @notice Thrown when the execution delay is invalid.
-    error InvalidExecutionDelay();
 }
