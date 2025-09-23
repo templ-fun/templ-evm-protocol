@@ -10,7 +10,7 @@ Documentation for the Vite + React app that deploys templs, handles purchases, a
 
 ## Prerequisites
 
-- Node.js `22.18.0` and the repo-wide setup steps from the [root README](../README.md#quick-start).
+- Node.js `22.18.0` and the repo-wide setup steps from the [root README](../README.md#developer-quickstart).
 - Environment variables like `VITE_XMTP_ENV`, `VITE_E2E_DEBUG`, and `E2E_XMTP_LOCAL` configure the frontend. See [Environment variables](#environment-variables) for details.
 
 ## Setup
