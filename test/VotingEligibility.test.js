@@ -125,16 +125,17 @@ describe("Voting Eligibility Based on Join Time", function () {
             await token.connect(lateMember).approve(await templ.getAddress(), ENTRY_FEE);
             await ethers.provider.send("evm_setAutomine", [false]);
 
-            const voteTxPromise = templ.connect(member2).vote(0, true);
-            const joinTxPromise = templ.connect(lateMember).purchaseAccess();
+            const txOverrides = { gasLimit: 1_000_000 };
+            // Use a lower gas limit override so both txs fit in the manual block mining step.
+            const voteTxPromise = templ.connect(member2).vote(0, true, txOverrides);
+            const joinTxPromise = templ.connect(lateMember).purchaseAccess({ ...txOverrides });
+
+            const [voteTx, joinTx] = await Promise.all([voteTxPromise, joinTxPromise]);
 
             await ethers.provider.send("evm_mine");
             await ethers.provider.send("evm_setAutomine", [true]);
 
-            const voteTx = await voteTxPromise;
-            const joinTx = await joinTxPromise;
-            await voteTx.wait();
-            await joinTx.wait();
+            await Promise.all([voteTx.wait(), joinTx.wait()]);
 
             // Late member joined in the quorum block -> allowed to vote post-quorum
             await expect(templ.connect(lateMember).vote(0, true)).to.emit(templ, "VoteCast");
