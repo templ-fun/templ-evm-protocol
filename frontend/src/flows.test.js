@@ -207,6 +207,47 @@ describe('templ flows', () => {
     expect(result).toBe(true);
   });
 
+  it('purchaseAccess resets allowance before approving when token requires zero-first approvals', async () => {
+    const purchaseTx = { wait: vi.fn() };
+    const resetApprovalTx = { wait: vi.fn(), nonce: 5 };
+    const approvalTx = { wait: vi.fn(), nonce: 6 };
+    const templContract = {
+      hasAccess: vi.fn().mockResolvedValue(false),
+      getConfig: vi.fn().mockResolvedValue(['0xToken', 100n, false, 0n, 0n, 0n, 30, 30, 30, 10]),
+      purchaseAccess: vi.fn().mockResolvedValue(purchaseTx)
+    };
+    const erc20 = {
+      allowance: vi.fn().mockResolvedValue(50n),
+      approve: vi.fn()
+        .mockResolvedValueOnce(resetApprovalTx)
+        .mockResolvedValueOnce(approvalTx)
+    };
+    const Contract = vi.fn().mockImplementation((address, abi) => {
+      if (Array.isArray(abi) && abi.some((s) => String(s).includes('allowance'))) return erc20;
+      return templContract;
+    });
+    const ethers = { Contract, ZeroAddress: '0x0000000000000000000000000000000000000000' };
+
+    const result = await purchaseAccess({
+      ethers,
+      signer,
+      walletAddress: '0xabc',
+      templAddress: '0xTempl',
+      templArtifact,
+      txOptions: { gasLimit: 123n }
+    });
+
+    expect(templContract.getConfig).toHaveBeenCalled();
+    expect(erc20.allowance).toHaveBeenCalledWith('0xabc', '0xTempl');
+    expect(erc20.approve).toHaveBeenNthCalledWith(1, '0xTempl', 0n, { gasLimit: 123n });
+    expect(resetApprovalTx.wait).toHaveBeenCalled();
+    expect(erc20.approve).toHaveBeenNthCalledWith(2, '0xTempl', 100n, { gasLimit: 123n, nonce: 6 });
+    expect(approvalTx.wait).toHaveBeenCalled();
+    expect(templContract.purchaseAccess).toHaveBeenCalledWith({ gasLimit: 123n, nonce: 7 });
+    expect(purchaseTx.wait).toHaveBeenCalled();
+    expect(result).toBe(true);
+  });
+
   it('purchaseAccess short-circuits when membership already granted', async () => {
     const templContract = {
       hasAccess: vi.fn().mockResolvedValue(true),

@@ -75,27 +75,56 @@ async function ensureTokenAllowance({ ethers, signer, owner, token, spender, amo
       dlog('purchaseAccess: allowance sufficient', { allowance: current.toString(), required: amount.toString() });
       return nextOptions;
     }
-    const approvalOverrides = { ...txOptions };
-    if (approvalOverrides && Object.prototype.hasOwnProperty.call(approvalOverrides, 'value')) {
-      delete approvalOverrides.value;
+    const approvalOverridesBase = { ...txOptions };
+    if (approvalOverridesBase && Object.prototype.hasOwnProperty.call(approvalOverridesBase, 'value')) {
+      delete approvalOverridesBase.value;
     }
-    const approval = await erc20.approve(spender, amount, approvalOverrides);
-    let overrideNonce = null;
-    if (approval?.nonce !== undefined && approval?.nonce !== null) {
-      const rawNonce = typeof approval.nonce === 'bigint' ? Number(approval.nonce) : approval.nonce;
-      if (Number.isFinite(rawNonce)) {
-        overrideNonce = rawNonce + 1;
+
+    const sendApproval = async (value, overrides, logContext) => {
+      const approvalTx = await erc20.approve(spender, value, overrides);
+      let overrideNonce = null;
+      if (approvalTx?.nonce !== undefined && approvalTx?.nonce !== null) {
+        const rawNonce = typeof approvalTx.nonce === 'bigint' ? Number(approvalTx.nonce) : approvalTx.nonce;
+        if (Number.isFinite(rawNonce)) {
+          overrideNonce = rawNonce + 1;
+        }
+      }
+      dlog('purchaseAccess: approval sent', {
+        ...logContext,
+        approvalValue: typeof value === 'bigint' ? value.toString() : String(value),
+        approvalNonce: approvalTx?.nonce,
+        nextNonce: overrideNonce
+      });
+      await approvalTx.wait();
+      return overrideNonce;
+    };
+
+    let nextNonceOverride = null;
+    const zeroFirstReset = current > 0n && amount > 0n && current < amount;
+    let approvalOverridesForAmount = approvalOverridesBase;
+
+    if (zeroFirstReset) {
+      const overrideNonce = await sendApproval(0n, approvalOverridesBase, {
+        allowanceBefore: current.toString(),
+        required: amount.toString(),
+        approvalStage: 'reset'
+      });
+      if (overrideNonce !== null) {
+        nextNonceOverride = overrideNonce;
+        approvalOverridesForAmount = { ...approvalOverridesForAmount, nonce: overrideNonce };
       }
     }
-    dlog('purchaseAccess: approval sent', {
-      allowanceBefore: current.toString(),
+
+    const finalNonce = await sendApproval(amount, approvalOverridesForAmount, {
+      allowanceBefore: zeroFirstReset ? '0' : current.toString(),
       required: amount.toString(),
-      approvalNonce: approval?.nonce,
-      nextNonce: overrideNonce
+      approvalStage: 'set'
     });
-    await approval.wait();
-    if (overrideNonce !== null) {
-      nextOptions = { ...nextOptions, nonce: overrideNonce };
+    if (finalNonce !== null) {
+      nextNonceOverride = finalNonce;
+    }
+    if (nextNonceOverride !== null) {
+      nextOptions = { ...nextOptions, nonce: nextNonceOverride };
     }
   } catch (err) {
     dlog('purchaseAccess: approval step error', err?.message || err);
