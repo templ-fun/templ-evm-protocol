@@ -49,8 +49,8 @@ Below are the core utilities shared across the stack:
 
 ## Tests
 
-- `shared/signing.test.js` exercises the typed-data builders and legacy string helpers. It runs under Vitest when available and falls back to Node’s test runner otherwise.
-- Run with `npm test shared/signing.test.js` (Hardhat’s Mocha harness) or `npm --prefix frontend test -- shared/signing.test.js` (Vitest); the dynamic loader picks the available runner.
+- `shared/signing.test.js` exercises the typed-data builders and legacy string helpers. It runs exclusively under Node’s built-in test runner or Vitest; Hardhat/Mocha is not supported.
+- Run with `node --test shared/signing.test.js` for the built-in runner, or `npm --prefix frontend test -- shared/signing.test.js` to execute it through Vitest.
 
 ---
 
