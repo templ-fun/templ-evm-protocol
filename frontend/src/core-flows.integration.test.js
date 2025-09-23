@@ -4,6 +4,7 @@ import {
   deployTempl,
   purchaseAndJoin
 } from './flows.js';
+import { deriveDefaultSplit } from './services/deployment.js';
 import templArtifact from './contracts/TEMPL.json';
 import templFactoryArtifact from './contracts/TemplFactory.json';
 
@@ -41,9 +42,10 @@ function createStubEthers(state) {
       if (token === ZERO_ADDRESS) throw new Error('token required');
       if (input.entryFee === undefined) throw new Error('entry fee required');
       const entryFee = typeof input.entryFee === 'bigint' ? input.entryFee : BigInt(input.entryFee);
-      const burnPercent = Number(input.burnPercent ?? 30);
-      const treasuryPercent = Number(input.treasuryPercent ?? 30);
-      const memberPoolPercent = Number(input.memberPoolPercent ?? 30);
+      const defaults = deriveDefaultSplit(BigInt(state.protocolPercent ?? 0));
+      const burnPercent = Number(input.burnPercent ?? defaults.burn);
+      const treasuryPercent = Number(input.treasuryPercent ?? defaults.treasury);
+      const memberPoolPercent = Number(input.memberPoolPercent ?? defaults.member);
       const quorumPercent = Number(input.quorumPercent ?? DEFAULT_QUORUM_PERCENT);
       const executionDelaySeconds = Number(input.executionDelaySeconds ?? DEFAULT_EXECUTION_DELAY);
       const burnAddress = input.burnAddress ? normalize(input.burnAddress) : DEFAULT_BURN_ADDRESS;

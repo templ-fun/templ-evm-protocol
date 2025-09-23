@@ -5,6 +5,22 @@ const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
 describe("TemplFactory", function () {
     const ENTRY_FEE = ethers.parseUnits("100", 18);
 
+    function expectedDefaults(protocolPercent) {
+        const remaining = 100 - protocolPercent;
+        const base = Math.floor(remaining / 3);
+        const remainder = remaining % 3;
+        let burn = base;
+        let treasury = base;
+        let member = base;
+        if (remainder > 0) {
+            burn += 1;
+            if (remainder > 1) {
+                treasury += 1;
+            }
+        }
+        return { burn, treasury, member };
+    }
+
     async function deployToken(name = "Test", symbol = "TEST") {
         const Token = await ethers.getContractFactory("contracts/mocks/TestToken.sol:TestToken");
         const token = await Token.deploy(name, symbol, 18);
@@ -94,8 +110,10 @@ describe("TemplFactory", function () {
     it("defaults splits, priest, quorum and delay when using simple create", async function () {
         const [deployer, , protocolRecipient] = await ethers.getSigners();
         const token = await deployToken("Defaults", "DEF");
+        const protocolPercent = 10;
+        const expected = expectedDefaults(protocolPercent);
         const Factory = await ethers.getContractFactory("TemplFactory");
-        const factory = await Factory.deploy(protocolRecipient.address, 10);
+        const factory = await Factory.deploy(protocolRecipient.address, protocolPercent);
         await factory.waitForDeployment();
 
         const templAddress = await factory.createTempl.staticCall(await token.getAddress(), ENTRY_FEE);
@@ -105,13 +123,34 @@ describe("TemplFactory", function () {
         const templ = await ethers.getContractAt("TEMPL", templAddress);
 
         expect(await templ.priest()).to.equal(deployer.address);
-        expect(await templ.burnPercent()).to.equal(30);
-        expect(await templ.treasuryPercent()).to.equal(30);
-        expect(await templ.memberPoolPercent()).to.equal(30);
-        expect(await templ.protocolPercent()).to.equal(10);
+        expect(await templ.burnPercent()).to.equal(expected.burn);
+        expect(await templ.treasuryPercent()).to.equal(expected.treasury);
+        expect(await templ.memberPoolPercent()).to.equal(expected.member);
+        expect(await templ.protocolPercent()).to.equal(protocolPercent);
         expect(await templ.quorumPercent()).to.equal(33);
         expect(await templ.executionDelayAfterQuorum()).to.equal(7 * 24 * 60 * 60);
         expect(await templ.burnAddress()).to.equal("0x000000000000000000000000000000000000dEaD");
+    });
+
+    it("computes default split when protocol percent not divisible by three", async function () {
+        const [deployer, , protocolRecipient] = await ethers.getSigners();
+        const token = await deployToken("Uneven", "UVN");
+        const protocolPercent = 17;
+        const expected = expectedDefaults(protocolPercent);
+        const Factory = await ethers.getContractFactory("TemplFactory");
+        const factory = await Factory.deploy(protocolRecipient.address, protocolPercent);
+        await factory.waitForDeployment();
+
+        const templAddress = await factory.createTempl.staticCall(await token.getAddress(), ENTRY_FEE);
+        await (await factory.createTempl(await token.getAddress(), ENTRY_FEE)).wait();
+
+        const templ = await ethers.getContractAt("TEMPL", templAddress);
+        expect(await templ.priest()).to.equal(deployer.address);
+        expect(await templ.burnPercent()).to.equal(expected.burn);
+        expect(await templ.treasuryPercent()).to.equal(expected.treasury);
+        expect(await templ.memberPoolPercent()).to.equal(expected.member);
+        expect(await templ.protocolPercent()).to.equal(protocolPercent);
+        expect(expected.burn + expected.treasury + expected.member + protocolPercent).to.equal(100);
     });
 
     it("reverts when deployed with zero protocol recipient", async function () {
@@ -214,12 +253,13 @@ describe("TemplFactory", function () {
 
         const templ = await ethers.getContractAt("TEMPL", templAddress);
 
+        const expected = expectedDefaults(10);
         expect(await templ.priest()).to.equal(deployer.address);
         expect(await templ.quorumPercent()).to.equal(33);
         expect(await templ.executionDelayAfterQuorum()).to.equal(7 * 24 * 60 * 60);
         expect(await templ.burnAddress()).to.equal("0x000000000000000000000000000000000000dEaD");
-        expect(await templ.burnPercent()).to.equal(30);
-        expect(await templ.treasuryPercent()).to.equal(30);
-        expect(await templ.memberPoolPercent()).to.equal(30);
+        expect(await templ.burnPercent()).to.equal(expected.burn);
+        expect(await templ.treasuryPercent()).to.equal(expected.treasury);
+        expect(await templ.memberPoolPercent()).to.equal(expected.member);
     });
 });

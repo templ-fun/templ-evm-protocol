@@ -29,12 +29,14 @@ We build the sacred gathering grounds for these cults: on-chain membership, prot
 
 By default each tribute is split the moment a new believer walks through the gates:
 
-| Slice | Percent | What it signals |
+| Slice | Percent (10% protocol tithe) | What it signals |
 | --- | --- | --- |
 | Burn | 30% | Permanent sacrifice to make the token scarcer. |
 | Treasury | 30% | Adds to the cult’s war chest - governed on-chain by members. |
 | Member rewards | 30% | Redistributed to existing members so they evangelize the Templ. |
 | Protocol tithe | 10% | Routes to the templ.fun protocol treasury to power future upgrades. |
+
+<sub>*Factories split the `(100 - protocolPercent)` remainder evenly across burn/treasury/member. When the remainder isn’t divisible by three, the extra 1-2% is assigned deterministically to burn first, then treasury. A 10% protocol share therefore lands on 30/30/30.*</sub>
 
 ### Example: PEPE Palace
 
@@ -53,7 +55,7 @@ Fees keep bots at bay, demand proof-of-faith (skin in the game), and continuousl
 
 ### Configurable Splits
 
-The founding Priest can choose any split at deploy time – 30/30/30 is just our default scaffolding. The protocol tithe comes from the factory configuration: whatever percentage and recipient the factory was deployed with is appended to the priest-selected splits so the totals sum to 100. Teams can stand up alternate factories with different protocol percentages, but every templ created through the same factory shares the immutable protocol fee recipient and rate.
+The founding Priest can choose any split at deploy time – by default we evenly divide the `(100 - protocolPercent)` remainder across burn, treasury, and member rewards (assigning an extra 1-2% to burn first, then treasury when needed). The protocol tithe comes from the factory configuration: whatever percentage and recipient the factory was deployed with is appended to the priest-selected splits so the totals sum to 100. Teams can stand up alternate factories with different protocol percentages, but every templ created through the same factory shares the immutable protocol fee recipient and rate.
 
 ### Protocol Tithe (factory-defined)
 

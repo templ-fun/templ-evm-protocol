@@ -24,6 +24,7 @@ import {
   mockFetchError
 } from '../test-utils/mockFetch.js';
 import { createSignerMock, createXMTPMock } from '../test-utils/mocks.js';
+import { deriveDefaultSplit } from './services/deployment.js';
 
 const templArtifact = { abi: [], bytecode: '0x' };
 const originalFetch = globalThis.fetch;
@@ -169,6 +170,69 @@ describe('templ flows', () => {
         templArtifact
       })
     ).rejects.toThrow(/Invalid \/templs response/);
+  });
+
+  it('deployTempl uses derived defaults for custom protocol percentage', async () => {
+    const wait = vi.fn().mockResolvedValue({});
+    const createTempl = vi.fn().mockResolvedValue({ wait });
+    createTempl.staticCall = vi.fn().mockResolvedValue('0xCafe');
+    const protocolPercent = 17n;
+    const defaults = deriveDefaultSplit(protocolPercent);
+    const factoryContract = {
+      protocolFeeRecipient: vi.fn().mockResolvedValue('0xfee'),
+      protocolPercent: vi.fn().mockResolvedValue(protocolPercent),
+      createTempl
+    };
+    const ethers = {
+      Contract: vi.fn().mockImplementation((address) => {
+        if (address === '0xFactory') return factoryContract;
+        throw new Error(`unexpected contract ${address}`);
+      }),
+      ZeroAddress: '0x0000000000000000000000000000000000000000'
+    };
+    const fetchSpy = mockFetchSuccess({ groupId: 'group-2' });
+    waitForConversation.mockResolvedValueOnce({ id: 'group-2', consentState: 'allowed' });
+
+    await deployTempl({
+      ethers,
+      xmtp,
+      signer,
+      walletAddress: '0xabc',
+      tokenAddress: '0xdef',
+      entryFee: '1',
+      burnPercent: defaults.burn.toString(),
+      treasuryPercent: defaults.treasury.toString(),
+      memberPoolPercent: defaults.member.toString(),
+      factoryAddress: '0xFactory',
+      factoryArtifact: { abi: [] },
+      templArtifact
+    });
+
+    expect(createTempl.staticCall).toHaveBeenCalledWith('0xdef', BigInt(1));
+    expect(createTempl).toHaveBeenCalledWith('0xdef', BigInt(1), {});
+
+    createTempl.mockClear();
+    createTempl.staticCall.mockResolvedValueOnce('0xBEEF');
+    fetchSpy.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ groupId: 'group-3' })
+    });
+    waitForConversation.mockResolvedValueOnce({ id: 'group-3', consentState: 'allowed' });
+
+    await deployTempl({
+      ethers,
+      xmtp,
+      signer,
+      walletAddress: '0xabc',
+      tokenAddress: '0xdef',
+      entryFee: '1',
+      factoryAddress: '0xFactory',
+      factoryArtifact: { abi: [] },
+      templArtifact
+    });
+
+    expect(createTempl.staticCall).toHaveBeenCalledWith('0xdef', BigInt(1));
+    expect(createTempl).toHaveBeenCalledWith('0xdef', BigInt(1), {});
   });
 
   it('purchaseAccess approves token and purchases membership when needed', async () => {

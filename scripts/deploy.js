@@ -3,6 +3,36 @@ const fs = require("fs");
 const path = require("path");
 require("dotenv").config();
 
+function deriveDefaultSplitNumbers(protocolPercent) {
+  if (!Number.isInteger(protocolPercent)) {
+    throw new Error('PROTOCOL_PERCENT must be an integer between 0 and 100');
+  }
+  if (protocolPercent < 0 || protocolPercent > 100) {
+    throw new Error('PROTOCOL_PERCENT must be between 0 and 100');
+  }
+  const protocol = BigInt(protocolPercent);
+  const remaining = 100n - protocol;
+  const baseShare = remaining / 3n;
+  const remainder = remaining % 3n;
+
+  let burn = baseShare;
+  let treasury = baseShare;
+  let member = baseShare;
+
+  if (remainder > 0n) {
+    burn += 1n;
+    if (remainder > 1n) {
+      treasury += 1n;
+    }
+  }
+
+  return {
+    burn: Number(burn),
+    treasury: Number(treasury),
+    member: Number(member)
+  };
+}
+
 async function main() {
   const [deployer] = await hre.ethers.getSigners();
   const PRIEST_ADDRESS = process.env.PRIEST_ADDRESS || deployer.address;
@@ -10,10 +40,18 @@ async function main() {
   const TOKEN_ADDRESS = process.env.TOKEN_ADDRESS;
   const ENTRY_FEE = process.env.ENTRY_FEE;
   const FACTORY_ADDRESS_ENV = process.env.FACTORY_ADDRESS;
-  const BURN_PERCENT = Number(process.env.BURN_PERCENT ?? process.env.BURN_BP ?? '30');
-  const TREASURY_PERCENT = Number(process.env.TREASURY_PERCENT ?? process.env.TREASURY_BP ?? '30');
-  const MEMBER_POOL_PERCENT = Number(process.env.MEMBER_POOL_PERCENT ?? process.env.MEMBER_POOL_BP ?? '30');
   const PROTOCOL_PERCENT = Number(process.env.PROTOCOL_PERCENT ?? process.env.PROTOCOL_BP ?? '10');
+  if (!Number.isFinite(PROTOCOL_PERCENT)) {
+    throw new Error('PROTOCOL_PERCENT must be a valid number');
+  }
+  const defaults = deriveDefaultSplitNumbers(PROTOCOL_PERCENT);
+  const BURN_PERCENT = Number(process.env.BURN_PERCENT ?? process.env.BURN_BP ?? String(defaults.burn));
+  const TREASURY_PERCENT = Number(
+    process.env.TREASURY_PERCENT ?? process.env.TREASURY_BP ?? String(defaults.treasury)
+  );
+  const MEMBER_POOL_PERCENT = Number(
+    process.env.MEMBER_POOL_PERCENT ?? process.env.MEMBER_POOL_BP ?? String(defaults.member)
+  );
   const QUORUM_PERCENT = process.env.QUORUM_PERCENT !== undefined ? Number(process.env.QUORUM_PERCENT) : undefined;
   const EXECUTION_DELAY_SECONDS = process.env.EXECUTION_DELAY_SECONDS !== undefined ? Number(process.env.EXECUTION_DELAY_SECONDS) : undefined;
   const BURN_ADDRESS = (process.env.BURN_ADDRESS || '').trim();

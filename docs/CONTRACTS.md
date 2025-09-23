@@ -33,6 +33,8 @@ Entry fees follow a fixed protocol share; each deployment chooses how the remain
 - **Member Pool (`memberPoolPercent`)** - retained on the contract and counted in `memberPoolBalance`; claimable by existing members through `claimMemberPool()`.
 - **Protocol (`protocolPercent`)** - forwarded to the immutable `protocolFeeRecipient`. The percentage is chosen when the factory is deployed (10% in our sample scripts) and applies to every TEMPL created by that factory.
 
+Factory defaults divide the `(100 - protocolPercent)` remainder evenly across burn/treasury/member, assigning the first leftover percent (when the remainder isn’t divisible by three) to burn and the second to treasury. Alternate factories with different protocol percentages therefore inherit appropriately adjusted defaults (e.g., a 17% protocol share yields 28/28/27).
+
 The percentages must sum to 100. When a new member joins, existing members receive `floor(memberPoolShare / (n-1))` tokens each (where `n` is the new member count). Indivisible remainders accumulate in `memberRewardRemainder` and are rolled into the next distribution.
 
 ### Member pool mechanics

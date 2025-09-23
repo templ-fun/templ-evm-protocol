@@ -5,6 +5,31 @@ import { waitForConversation } from '../../../shared/xmtp.js';
 import { addToTestRegistry, dlog, isDebugEnabled } from './utils.js';
 import { postJson } from './http.js';
 
+const TOTAL_PERCENT = 100n;
+
+export function deriveDefaultSplit(protocolPercentInput) {
+  const protocol = BigInt(protocolPercentInput ?? 0n);
+  if (protocol < 0n || protocol > TOTAL_PERCENT) {
+    throw new RangeError(`Invalid protocol percent: ${protocol.toString()}`);
+  }
+  const remaining = TOTAL_PERCENT - protocol;
+  const baseShare = remaining / 3n;
+  const remainder = remaining % 3n;
+
+  let burn = baseShare;
+  let treasury = baseShare;
+  let member = baseShare;
+
+  if (remainder > 0n) {
+    burn += 1n;
+    if (remainder > 1n) {
+      treasury += 1n;
+    }
+  }
+
+  return { burn, treasury, member };
+}
+
 /**
  * Deploy a new TEMPL contract and register a group with the backend.
  * @param {import('../flows.types').DeployRequest} params
@@ -49,10 +74,11 @@ export async function deployTempl({
   if (!protocolFeeRecipient || protocolFeeRecipient === ethers.ZeroAddress) {
     throw new Error('Factory protocol fee recipient not configured');
   }
-  const burn = BigInt(burnPercent ?? 30);
-  const treasury = BigInt(treasuryPercent ?? 30);
-  const member = BigInt(memberPoolPercent ?? 30);
   const protocol = BigInt(protocolPercentRaw ?? 0n);
+  const defaults = deriveDefaultSplit(protocol);
+  const burn = BigInt(burnPercent ?? defaults.burn);
+  const treasury = BigInt(treasuryPercent ?? defaults.treasury);
+  const member = BigInt(memberPoolPercent ?? defaults.member);
   const totalSplit = burn + treasury + member + protocol;
   if (totalSplit !== 100n) {
     throw new Error(`Fee split must equal 100, received ${totalSplit}`);
@@ -84,9 +110,9 @@ export async function deployTempl({
 
   const zeroAddress = ethers.ZeroAddress ?? '0x0000000000000000000000000000000000000000';
   const defaultsRequested =
-    Number(burn) === 30 &&
-    Number(treasury) === 30 &&
-    Number(member) === 30 &&
+    burn === defaults.burn &&
+    treasury === defaults.treasury &&
+    member === defaults.member &&
     config.priest === walletAddress &&
     config.burnAddress === zeroAddress &&
     config.quorumPercent === undefined &&

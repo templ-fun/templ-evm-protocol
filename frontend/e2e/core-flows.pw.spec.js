@@ -7,6 +7,33 @@ import path from 'path';
 const VERBOSE = process.env.PW_E2E_VERBOSE === '1';
 const dbg = (...args) => { if (VERBOSE) console.log(...args); };
 
+function deriveDefaultSplit(protocolPercentInput) {
+  const protocol = BigInt(protocolPercentInput ?? 0n);
+  if (protocol < 0n || protocol > 100n) {
+    throw new RangeError(`Invalid protocol percent: ${protocol}`);
+  }
+  const remaining = 100n - protocol;
+  const baseShare = remaining / 3n;
+  const remainder = remaining % 3n;
+
+  let burn = baseShare;
+  let treasury = baseShare;
+  let member = baseShare;
+
+  if (remainder > 0n) {
+    burn += 1n;
+    if (remainder > 1n) {
+      treasury += 1n;
+    }
+  }
+
+  return {
+    burn: Number(burn),
+    treasury: Number(treasury),
+    member: Number(member)
+  };
+}
+
 test.describe('TEMPL E2E - All 7 Core Flows', () => {
   let templAddress;
   let templAbi;
@@ -233,7 +260,12 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
     const treasuryPercentNum = Number(treasuryValue || '0');
     const memberPercentNum = Number(memberValue || '0');
 
-    const defaultsRequested = burnPercentNum === 30 && treasuryPercentNum === 30 && memberPercentNum === 30;
+    const protocolPercent = await templFactory.protocolPercent();
+    const defaults = deriveDefaultSplit(protocolPercent);
+    const defaultsRequested =
+      burnPercentNum === defaults.burn &&
+      treasuryPercentNum === defaults.treasury &&
+      memberPercentNum === defaults.member;
     let predictedTempl;
     if (defaultsRequested) {
       predictedTempl = await templFactory.createTempl.staticCall(tokenAddress, entryFeeWei);

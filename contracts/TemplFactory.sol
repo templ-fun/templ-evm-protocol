@@ -6,9 +6,6 @@ import {TemplErrors} from "./TemplErrors.sol";
 
 contract TemplFactory {
     uint256 internal constant TOTAL_PERCENT = 100;
-    uint256 internal constant DEFAULT_BURN_PERCENT = 30;
-    uint256 internal constant DEFAULT_TREASURY_PERCENT = 30;
-    uint256 internal constant DEFAULT_MEMBER_POOL_PERCENT = 30;
     uint256 internal constant DEFAULT_QUORUM_PERCENT = 33;
     uint256 internal constant DEFAULT_EXECUTION_DELAY = 7 days;
     address internal constant DEFAULT_BURN_ADDRESS = 0x000000000000000000000000000000000000dEaD;
@@ -27,6 +24,9 @@ contract TemplFactory {
 
     address public immutable protocolFeeRecipient;
     uint256 public immutable protocolPercent;
+    uint256 internal immutable defaultBurnPercent;
+    uint256 internal immutable defaultTreasuryPercent;
+    uint256 internal immutable defaultMemberPoolPercent;
 
     event TemplCreated(
         address indexed templ,
@@ -47,6 +47,10 @@ contract TemplFactory {
         if (_protocolPercent > TOTAL_PERCENT) revert TemplErrors.InvalidPercentageSplit();
         protocolFeeRecipient = _protocolFeeRecipient;
         protocolPercent = _protocolPercent;
+        (uint256 burnPercent, uint256 treasuryPercent, uint256 memberPercent) = _deriveDefaultSplit(_protocolPercent);
+        defaultBurnPercent = burnPercent;
+        defaultTreasuryPercent = treasuryPercent;
+        defaultMemberPoolPercent = memberPercent;
     }
 
     function createTempl(address _token, uint256 _entryFee) external returns (address templAddress) {
@@ -54,9 +58,9 @@ contract TemplFactory {
             priest: msg.sender,
             token: _token,
             entryFee: _entryFee,
-            burnPercent: DEFAULT_BURN_PERCENT,
-            treasuryPercent: DEFAULT_TREASURY_PERCENT,
-            memberPoolPercent: DEFAULT_MEMBER_POOL_PERCENT,
+            burnPercent: defaultBurnPercent,
+            treasuryPercent: defaultTreasuryPercent,
+            memberPoolPercent: defaultMemberPoolPercent,
             quorumPercent: DEFAULT_QUORUM_PERCENT,
             executionDelaySeconds: DEFAULT_EXECUTION_DELAY,
             burnAddress: DEFAULT_BURN_ADDRESS
@@ -79,9 +83,9 @@ contract TemplFactory {
             cfg.burnAddress = DEFAULT_BURN_ADDRESS;
         }
         if (cfg.burnPercent == 0 && cfg.treasuryPercent == 0 && cfg.memberPoolPercent == 0) {
-            cfg.burnPercent = DEFAULT_BURN_PERCENT;
-            cfg.treasuryPercent = DEFAULT_TREASURY_PERCENT;
-            cfg.memberPoolPercent = DEFAULT_MEMBER_POOL_PERCENT;
+            cfg.burnPercent = defaultBurnPercent;
+            cfg.treasuryPercent = defaultTreasuryPercent;
+            cfg.memberPoolPercent = defaultMemberPoolPercent;
         }
         return _deploy(cfg);
     }
@@ -129,6 +133,27 @@ contract TemplFactory {
     ) internal view {
         if (_burnPercent + _treasuryPercent + _memberPoolPercent + protocolPercent != TOTAL_PERCENT) {
             revert TemplErrors.InvalidPercentageSplit();
+        }
+    }
+
+    function _deriveDefaultSplit(uint256 _protocolPercent)
+        internal
+        pure
+        returns (uint256 burnPercent, uint256 treasuryPercent, uint256 memberPercent)
+    {
+        uint256 remainingPercent = TOTAL_PERCENT - _protocolPercent;
+        uint256 baseShare = remainingPercent / 3;
+        uint256 remainder = remainingPercent % 3;
+
+        burnPercent = baseShare;
+        treasuryPercent = baseShare;
+        memberPercent = baseShare;
+
+        if (remainder > 0) {
+            burnPercent += 1;
+            if (remainder > 1) {
+                treasuryPercent += 1;
+            }
         }
     }
 }
