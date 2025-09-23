@@ -1,5 +1,7 @@
 import { ethers } from 'ethers';
 
+const SIGNATURE_RETENTION_MS = 6 * 60 * 60 * 1000; // 6 hours
+
 /**
  * Verify an EIP-712 typed signature and prevent replay by tracking signatures in DB.
  * @param {object} opts
@@ -13,10 +15,12 @@ export function verifyTypedSignature({ database, addressField, buildTyped, error
   // Strict verification path; no header-based bypass in any environment.
   let insertSig = null;
   let hasSig = null;
+  let pruneSigs = null;
   try {
     if (database?.prepare) {
       insertSig = database.prepare('INSERT OR IGNORE INTO signatures (sig, usedAt) VALUES (?, ?)');
       hasSig = database.prepare('SELECT 1 FROM signatures WHERE sig = ?');
+      pruneSigs = database.prepare('DELETE FROM signatures WHERE usedAt < ?');
     }
   } catch { /* ignore - fallback to no-op replay checks */ }
   return function (req, res, next) {
@@ -31,12 +35,16 @@ export function verifyTypedSignature({ database, addressField, buildTyped, error
       } catch {
         throw new Error('bad typed');
       }
+      const now = Date.now();
       // Basic expiry check if present
-      if (message?.expiry && Number(message.expiry) < Date.now()) {
+      if (message?.expiry && Number(message.expiry) < now) {
         return res.status(403).json({ error: 'Signature expired' });
       }
       const recovered = ethers.verifyTypedData(domain, types, message, signature).toLowerCase();
       if (recovered !== address) return res.status(403).json({ error: errorMessage });
+      try {
+        pruneSigs?.run?.(now - SIGNATURE_RETENTION_MS);
+      } catch { /* ignore */ }
       // Replay protection: reject reused signatures
       try {
         const seen = hasSig?.get ? hasSig.get(signature) : null;
@@ -44,8 +52,7 @@ export function verifyTypedSignature({ database, addressField, buildTyped, error
       } catch { /* ignore */ }
       try {
         if (insertSig?.run) {
-          const usedAt = Date.now();
-          const result = insertSig.run(signature, usedAt);
+          const result = insertSig.run(signature, now);
           if (typeof result?.changes === 'number' && result.changes === 0) {
             return res.status(409).json({ error: 'Signature already used' });
           }
