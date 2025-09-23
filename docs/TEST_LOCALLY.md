@@ -44,7 +44,7 @@ npm --prefix backend start
 
 The backend listens on `http://localhost:3001`.
 
-Tip: to target a local XMTP node instead of dev, set `XMTP_ENV=local` in `backend/.env` and start a local node as described in `xmtp-local-node/README.md`.
+Tip: to target a local XMTP node instead of dev, set `XMTP_ENV=local` in `backend/.env` and follow the official XMTP instructions at <https://github.com/xmtp/xmtp-local-node> (included here as a git submodule). If you did not clone with `--recurse-submodules`, run `git submodule update --init xmtp-local-node` first. Run `./up` from that repo to start the Dockerized node and keep the process alive in another terminal.
 
 ## 3) Start the frontend (Vite dev)
 
