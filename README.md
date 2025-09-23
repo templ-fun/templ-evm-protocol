@@ -29,7 +29,7 @@ We build the sacred gathering grounds for these cults: on-chain membership, prot
 
 By default each tribute is split the moment a new believer walks through the gates:
 
-| Slice | Percent (10% protocol tithe) | What it signals |
+| Slice | Percent | What it signals |
 | --- | --- | --- |
 | Burn | 30% | Permanent sacrifice to make the token scarcer. |
 | Treasury | 30% | Adds to the cult’s war chest - governed on-chain by members. |
