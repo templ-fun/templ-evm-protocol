@@ -53,7 +53,7 @@ Fees keep bots at bay, demand proof-of-faith (skin in the game), and continuousl
 
 ### Configurable Splits
 
-The founding Priest can choose any split at deploy time – 30/30/30 is just our default scaffolding. The protocol tithe comes from the factory configuration: whatever percentage and recipient the factory was deployed with is appended to the priest-selected splits so the totals sum to 100. Teams can stand up alternate factories with different protocol percentages, but every templ created through the same factory shares the immutable protocol fee recipient and rate.
+The founding Priest can choose any split at deploy time – 30/30/30 is just our default scaffolding. The protocol tithe comes from the factory configuration: whatever percentage and recipient the factory was deployed with is appended to the priest-selected splits so the totals sum to 100. Any burn/treasury/member slice may be explicitly set to `0%`, and when calling `createTemplWithConfig` (or piping values through `scripts/deploy.js`) you can pass `-1` for a slice to reuse the factory default while tweaking the others. Teams can stand up alternate factories with different protocol percentages, but every templ created through the same factory shares the immutable protocol fee recipient and rate.
 
 ### Protocol Tithe (factory-defined)
 
