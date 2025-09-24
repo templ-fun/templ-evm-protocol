@@ -12,14 +12,15 @@ contract TemplFactory {
     uint256 internal constant DEFAULT_QUORUM_PERCENT = 33;
     uint256 internal constant DEFAULT_EXECUTION_DELAY = 7 days;
     address internal constant DEFAULT_BURN_ADDRESS = 0x000000000000000000000000000000000000dEaD;
+    int256 internal constant USE_DEFAULT_PERCENT = -1;
 
     struct CreateConfig {
         address priest;
         address token;
         uint256 entryFee;
-        uint256 burnPercent;
-        uint256 treasuryPercent;
-        uint256 memberPoolPercent;
+        int256 burnPercent;
+        int256 treasuryPercent;
+        int256 memberPoolPercent;
         uint256 quorumPercent;
         uint256 executionDelaySeconds;
         address burnAddress;
@@ -56,9 +57,9 @@ contract TemplFactory {
             priest: msg.sender,
             token: _token,
             entryFee: _entryFee,
-            burnPercent: DEFAULT_BURN_PERCENT,
-            treasuryPercent: DEFAULT_TREASURY_PERCENT,
-            memberPoolPercent: DEFAULT_MEMBER_POOL_PERCENT,
+            burnPercent: int256(DEFAULT_BURN_PERCENT),
+            treasuryPercent: int256(DEFAULT_TREASURY_PERCENT),
+            memberPoolPercent: int256(DEFAULT_MEMBER_POOL_PERCENT),
             quorumPercent: DEFAULT_QUORUM_PERCENT,
             executionDelaySeconds: DEFAULT_EXECUTION_DELAY,
             burnAddress: DEFAULT_BURN_ADDRESS,
@@ -81,11 +82,6 @@ contract TemplFactory {
         if (cfg.burnAddress == address(0)) {
             cfg.burnAddress = DEFAULT_BURN_ADDRESS;
         }
-        if (cfg.burnPercent == 0 && cfg.treasuryPercent == 0 && cfg.memberPoolPercent == 0) {
-            cfg.burnPercent = DEFAULT_BURN_PERCENT;
-            cfg.treasuryPercent = DEFAULT_TREASURY_PERCENT;
-            cfg.memberPoolPercent = DEFAULT_MEMBER_POOL_PERCENT;
-        }
         return _deploy(cfg);
     }
 
@@ -94,16 +90,19 @@ contract TemplFactory {
         if (cfg.entryFee < 10) revert TemplErrors.EntryFeeTooSmall();
         if (cfg.entryFee % 10 != 0) revert TemplErrors.InvalidEntryFee();
         if (cfg.quorumPercent > TOTAL_PERCENT) revert TemplErrors.InvalidPercentage();
-        _validatePercentSplit(cfg.burnPercent, cfg.treasuryPercent, cfg.memberPoolPercent);
+        uint256 burnPercent = _resolvePercent(cfg.burnPercent, DEFAULT_BURN_PERCENT);
+        uint256 treasuryPercent = _resolvePercent(cfg.treasuryPercent, DEFAULT_TREASURY_PERCENT);
+        uint256 memberPoolPercent = _resolvePercent(cfg.memberPoolPercent, DEFAULT_MEMBER_POOL_PERCENT);
+        _validatePercentSplit(burnPercent, treasuryPercent, memberPoolPercent);
 
         TEMPL templ = new TEMPL(
             cfg.priest,
             protocolFeeRecipient,
             cfg.token,
             cfg.entryFee,
-            cfg.burnPercent,
-            cfg.treasuryPercent,
-            cfg.memberPoolPercent,
+            burnPercent,
+            treasuryPercent,
+            memberPoolPercent,
             protocolPercent,
             cfg.quorumPercent,
             cfg.executionDelaySeconds,
@@ -117,14 +116,22 @@ contract TemplFactory {
             cfg.priest,
             cfg.token,
             cfg.entryFee,
-            cfg.burnPercent,
-            cfg.treasuryPercent,
-            cfg.memberPoolPercent,
+            burnPercent,
+            treasuryPercent,
+            memberPoolPercent,
             cfg.quorumPercent,
             cfg.executionDelaySeconds,
             cfg.burnAddress,
             cfg.priestIsDictator
         );
+    }
+
+    function _resolvePercent(int256 rawPercent, uint256 defaultPercent) internal pure returns (uint256) {
+        if (rawPercent == USE_DEFAULT_PERCENT) {
+            return defaultPercent;
+        }
+        if (rawPercent < 0) revert TemplErrors.InvalidPercentage();
+        return uint256(rawPercent);
     }
 
     function _validatePercentSplit(

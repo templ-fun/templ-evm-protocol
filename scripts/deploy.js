@@ -3,6 +3,33 @@ const fs = require("fs");
 const path = require("path");
 require("dotenv").config();
 
+const DEFAULT_BURN_PERCENT = 30;
+const DEFAULT_TREASURY_PERCENT = 30;
+const DEFAULT_MEMBER_POOL_PERCENT = 30;
+const USE_DEFAULT_PERCENT = -1;
+
+function readSplitPercent(label, primaryEnv, fallbackEnv, defaultValue) {
+  const raw = primaryEnv ?? fallbackEnv;
+  if (raw === undefined || raw.trim() === '') {
+    return { configValue: defaultValue, resolvedPercent: defaultValue, usedDefault: true };
+  }
+
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`${label} must be a valid number`);
+  }
+
+  if (parsed === USE_DEFAULT_PERCENT) {
+    return { configValue: USE_DEFAULT_PERCENT, resolvedPercent: defaultValue, usedDefault: true };
+  }
+
+  if (parsed < 0) {
+    throw new Error(`${label} cannot be negative (use -1 to fall back to the factory default)`);
+  }
+
+  return { configValue: parsed, resolvedPercent: parsed, usedDefault: false };
+}
+
 async function main() {
   const [deployer] = await hre.ethers.getSigners();
   const PRIEST_ADDRESS = process.env.PRIEST_ADDRESS || deployer.address;
@@ -10,10 +37,11 @@ async function main() {
   const TOKEN_ADDRESS = process.env.TOKEN_ADDRESS;
   const ENTRY_FEE = process.env.ENTRY_FEE;
   const FACTORY_ADDRESS_ENV = process.env.FACTORY_ADDRESS;
-  const BURN_PERCENT = Number(process.env.BURN_PERCENT ?? process.env.BURN_BP ?? '30');
-  const TREASURY_PERCENT = Number(process.env.TREASURY_PERCENT ?? process.env.TREASURY_BP ?? '30');
-  const MEMBER_POOL_PERCENT = Number(process.env.MEMBER_POOL_PERCENT ?? process.env.MEMBER_POOL_BP ?? '30');
-  const PROTOCOL_PERCENT = Number(process.env.PROTOCOL_PERCENT ?? process.env.PROTOCOL_BP ?? '10');
+  const burnPercent = readSplitPercent('BURN_PERCENT', process.env.BURN_PERCENT, process.env.BURN_BP, DEFAULT_BURN_PERCENT);
+  const treasuryPercent = readSplitPercent('TREASURY_PERCENT', process.env.TREASURY_PERCENT, process.env.TREASURY_BP, DEFAULT_TREASURY_PERCENT);
+  const memberPoolPercent = readSplitPercent('MEMBER_POOL_PERCENT', process.env.MEMBER_POOL_PERCENT, process.env.MEMBER_POOL_BP, DEFAULT_MEMBER_POOL_PERCENT);
+  const rawProtocolPercent = process.env.PROTOCOL_PERCENT ?? process.env.PROTOCOL_BP ?? '10';
+  const PROTOCOL_PERCENT = Number(rawProtocolPercent);
   const QUORUM_PERCENT = process.env.QUORUM_PERCENT !== undefined ? Number(process.env.QUORUM_PERCENT) : undefined;
   const EXECUTION_DELAY_SECONDS = process.env.EXECUTION_DELAY_SECONDS !== undefined ? Number(process.env.EXECUTION_DELAY_SECONDS) : undefined;
   const BURN_ADDRESS = (process.env.BURN_ADDRESS || '').trim();
@@ -28,10 +56,14 @@ async function main() {
   if (!ENTRY_FEE) {
     throw new Error("ENTRY_FEE not set in environment");
   }
-  if ([BURN_PERCENT, TREASURY_PERCENT, MEMBER_POOL_PERCENT, PROTOCOL_PERCENT].some((value) => !Number.isFinite(value))) {
-    throw new Error("All percentage values must be valid numbers");
+  if (!Number.isFinite(PROTOCOL_PERCENT)) {
+    throw new Error('PROTOCOL_PERCENT must be a valid number');
   }
-  const totalSplit = BURN_PERCENT + TREASURY_PERCENT + MEMBER_POOL_PERCENT + PROTOCOL_PERCENT;
+  if (PROTOCOL_PERCENT < 0 || PROTOCOL_PERCENT > 100) {
+    throw new Error('PROTOCOL_PERCENT must be between 0 and 100');
+  }
+
+  const totalSplit = burnPercent.resolvedPercent + treasuryPercent.resolvedPercent + memberPoolPercent.resolvedPercent + PROTOCOL_PERCENT;
   if (totalSplit !== 100) {
     throw new Error(`Fee split must sum to 100 percent; received ${totalSplit}`);
   }
@@ -62,17 +94,34 @@ async function main() {
   console.log("Protocol Fee Recipient:", PROTOCOL_FEE_RECIPIENT);
   console.log("Token Address:", TOKEN_ADDRESS);
   console.log("Factory Address (env):", FACTORY_ADDRESS_ENV || '<will deploy>');
-  console.log("Fee Split (%): burn=%d treasury=%d memberPool=%d protocol=%d", BURN_PERCENT, TREASURY_PERCENT, MEMBER_POOL_PERCENT, PROTOCOL_PERCENT);
 
-  const burnAmount = (entryFee * BigInt(BURN_PERCENT)) / 100n;
-  const treasuryAmount = (entryFee * BigInt(TREASURY_PERCENT)) / 100n;
-  const memberPoolAmount = (entryFee * BigInt(MEMBER_POOL_PERCENT)) / 100n;
+  const describeSplit = (info) => {
+    if (info.configValue === USE_DEFAULT_PERCENT) {
+      return `${info.resolvedPercent} (default via -1)`;
+    }
+    if (info.usedDefault) {
+      return `${info.resolvedPercent} (default)`;
+    }
+    return String(info.resolvedPercent);
+  };
+
+  console.log(
+    "Fee Split (%): burn=%s treasury=%s memberPool=%s protocol=%d",
+    describeSplit(burnPercent),
+    describeSplit(treasuryPercent),
+    describeSplit(memberPoolPercent),
+    PROTOCOL_PERCENT
+  );
+
+  const burnAmount = (entryFee * BigInt(burnPercent.resolvedPercent)) / 100n;
+  const treasuryAmount = (entryFee * BigInt(treasuryPercent.resolvedPercent)) / 100n;
+  const memberPoolAmount = (entryFee * BigInt(memberPoolPercent.resolvedPercent)) / 100n;
   const protocolAmount = (entryFee * BigInt(PROTOCOL_PERCENT)) / 100n;
   console.log("\nEntry Fee:", entryFee.toString());
   console.log("Fee Split:");
-  console.log(`  - ${BURN_PERCENT}% Burn:`, burnAmount.toString());
-  console.log(`  - ${TREASURY_PERCENT}% DAO Treasury:`, treasuryAmount.toString());
-  console.log(`  - ${MEMBER_POOL_PERCENT}% Member Pool:`, memberPoolAmount.toString());
+  console.log(`  - ${burnPercent.resolvedPercent}% Burn:`, burnAmount.toString());
+  console.log(`  - ${treasuryPercent.resolvedPercent}% DAO Treasury:`, treasuryAmount.toString());
+  console.log(`  - ${memberPoolPercent.resolvedPercent}% Member Pool:`, memberPoolAmount.toString());
   console.log(`  - ${PROTOCOL_PERCENT}% Protocol Fee:`, protocolAmount.toString());
   
   console.log("\nDeploying from:", deployer.address);
@@ -112,9 +161,9 @@ async function main() {
     priest: PRIEST_ADDRESS,
     token: TOKEN_ADDRESS,
     entryFee: ENTRY_FEE,
-    burnPercent: BURN_PERCENT,
-    treasuryPercent: TREASURY_PERCENT,
-    memberPoolPercent: MEMBER_POOL_PERCENT,
+    burnPercent: burnPercent.configValue,
+    treasuryPercent: treasuryPercent.configValue,
+    memberPoolPercent: memberPoolPercent.configValue,
     priestIsDictator: PRIEST_IS_DICTATOR
   };
   if (QUORUM_PERCENT !== undefined) templConfig.quorumPercent = QUORUM_PERCENT;
@@ -161,9 +210,9 @@ async function main() {
     priestAddress: PRIEST_ADDRESS,
     protocolFeeRecipient: PROTOCOL_FEE_RECIPIENT,
     factoryAddress,
-    burnPercent: BURN_PERCENT,
-    treasuryPercent: TREASURY_PERCENT,
-    memberPoolPercent: MEMBER_POOL_PERCENT,
+    burnPercent: burnPercent.resolvedPercent,
+    treasuryPercent: treasuryPercent.resolvedPercent,
+    memberPoolPercent: memberPoolPercent.resolvedPercent,
     protocolPercent: PROTOCOL_PERCENT,
     quorumPercent: QUORUM_PERCENT ?? 33,
     executionDelaySeconds: EXECUTION_DELAY_SECONDS ?? 7 * 24 * 60 * 60,
