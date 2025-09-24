@@ -35,6 +35,8 @@
 .chat-name { font-size: 12px; color: inherit; text-decoration: underline; text-underline-offset: 3px; background: none; border: none; cursor: pointer; padding: 0; }
 .chat-time { font-size: 10px; color: var(--text-muted); }
 .chat-text { white-space: pre-wrap; word-wrap: break-word; }
+.chat-moderation { margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap; }
+.chat-moderation .btn { padding: 2px 8px; font-size: 12px; line-height: 1.4; }
 .chat-item--system { text-align: center; font-size: 12px; color: var(--text-muted); padding: 4px 0; }
 
 .chat-item--poll .chat-poll { border: 1px solid var(--border); border-radius: 12px; padding: 10px; background: #fff; width: 100%; }

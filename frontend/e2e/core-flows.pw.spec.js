@@ -484,7 +484,7 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
     const templAddressLower = templAddress.toLowerCase();
     await expect(page.locator(`[data-testid="templ-list"] [data-address="${templAddressLower}"]`)).toBeVisible();
     // Muting controls should not be visible for non-priests
-    await expect(page.locator('.muting-controls')).toBeHidden();
+    await expect(page.locator('[data-testid="moderation-controls"]')).toHaveCount(0);
     // Extra diagnostics right before messaging
     try {
       const dbg3 = await fetch(`http://localhost:3001/debug/group?contractAddress=${templAddress}`).then(r => r.json());
@@ -518,13 +518,13 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
     const sendBtn = page.locator('[data-testid="chat-send"]');
     await expect(sendBtn).toBeEnabled({ timeout: 15000 });
     const messageInput = page.locator('[data-testid="chat-input"]');
-    const body = 'Hello TEMPL! ' + Date.now();
-    await messageInput.fill(body);
-    await expect(messageInput).toHaveValue(body);
+    const memberMessage = 'Hello TEMPL! ' + Date.now();
+    await messageInput.fill(memberMessage);
+    await expect(messageInput).toHaveValue(memberMessage);
     await sendBtn.click();
     dbg('Sent via UI');
     let sentOk = false;
-    try { await expect(page.locator('.messages')).toContainText(body, { timeout: 15000 }); sentOk = true; } catch {}
+    try { await expect(page.locator('.chat-list')).toContainText(memberMessage, { timeout: 15000 }); sentOk = true; } catch {}
     if (!sentOk) {
       try { await expect(page.locator('.status')).toContainText('Message sent', { timeout: 5000 }); sentOk = true; } catch {}
     }
@@ -656,17 +656,94 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
 
       // (extra actions such as reprice and disband are covered in contract/integration tests)
       
-      // Core Flow 8: Priest Muting (bonus - we are the priest)
-      console.log('Core Flow 8: Priest Muting');
-      const muteControls = page.locator('.muting-controls');
-      if (await muteControls.isVisible()) {
-        await page.fill('input[placeholder*="Address to mute"]', '0x70997970C51812dc3A010C7d01b50e0d17dc79C8');
-        await page.click('button:has-text("Mute Address")');
-        console.log('✅ Priest muting controls work');
+      // Core Flow 8: Priest Moderation Controls (mute + delegate)
+      console.log('Core Flow 8: Priest Moderation Controls');
+      const priestWallet = wallets.priest;
+      const priestAddress = await priestWallet.getAddress();
+      await page.exposeFunction('e2e_priest_sign', async ({ message }) => {
+        if (typeof message === 'string' && message.startsWith('0x')) {
+          return await priestWallet.signMessage(ethers.getBytes(message));
+        }
+        return await priestWallet.signMessage(message);
+      });
+      await page.exposeFunction('e2e_priest_signTyped', async ({ domain, types, message }) => {
+        const sanitizedTypes = { ...(types || {}) };
+        if (sanitizedTypes.EIP712Domain) delete sanitizedTypes.EIP712Domain;
+        return await priestWallet.signTypedData(domain, sanitizedTypes, message);
+      });
+      let priestNextNonce = null;
+      await page.exposeFunction('e2e_priest_send', async (tx) => {
+        const req = {
+          to: tx.to || undefined,
+          data: tx.data || undefined,
+          value: tx.value ? BigInt(tx.value) : undefined,
+          gasPrice: tx.gasPrice ? BigInt(tx.gasPrice) : undefined,
+          gasLimit: tx.gas || tx.gasLimit ? BigInt(tx.gas || tx.gasLimit) : undefined,
+        };
+        const provider = priestWallet.provider;
+        let pendingNonce = await provider.getTransactionCount(priestAddress, 'pending');
+        if (priestNextNonce !== null && pendingNonce < priestNextNonce) {
+          pendingNonce = priestNextNonce;
+        }
+        req.nonce = pendingNonce;
+        const resp = await priestWallet.sendTransaction(req);
+        lastSentTxHash = resp.hash;
+        const usedNonce = typeof resp.nonce === 'bigint' ? Number(resp.nonce) : resp.nonce;
+        if (Number.isFinite(usedNonce)) priestNextNonce = usedNonce + 1;
+        return resp.hash;
+      });
+      await page.evaluate(async ({ address }) => {
+        window.ethereum = {
+          isMetaMask: true,
+          selectedAddress: address,
+          request: async ({ method, params }) => {
+            if (method === 'eth_requestAccounts' || method === 'eth_accounts') return [address];
+            if (method === 'eth_chainId') return '0x7a69';
+            if (method === 'personal_sign' || method === 'eth_sign') {
+              const data = (params && params[0]) || '';
+              // @ts-ignore
+              return await window.e2e_priest_sign({ message: data });
+            }
+            if (method === 'eth_signTypedData' || method === 'eth_signTypedData_v4') {
+              const [_addr, typed] = params || [];
+              const payload = typeof typed === 'string' ? JSON.parse(typed) : typed;
+              // @ts-ignore
+              return await window.e2e_priest_signTyped(payload);
+            }
+            if (method === 'eth_sendTransaction') {
+              const [tx] = params || [];
+              // @ts-ignore
+              return await window.e2e_priest_send(tx);
+            }
+            const response = await fetch('http://127.0.0.1:8545', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ jsonrpc: '2.0', method, params, id: 1 })
+            });
+            const result = await response.json();
+            if (result.error) throw new Error(result.error.message);
+            return result.result;
+          },
+          on: () => {},
+          removeListener: () => {}
+        };
+      }, { address: priestAddress });
+      await page.click('button:has-text("Connect Wallet")');
+      await page.click('button:has-text("Chat")');
+      const memberAddress = (await wallets.member.getAddress()).toLowerCase();
+      const moderationControls = page.locator(`[data-testid="moderation-controls"][data-address="${memberAddress}"]`);
+      await expect(moderationControls).toBeVisible({ timeout: 15000 });
+      const delegateButton = moderationControls.locator('[data-testid="delegate-button"]');
+      if (await delegateButton.count()) {
+        await delegateButton.first().click();
       }
+      const muteButton = moderationControls.locator('[data-testid="mute-button"]');
+      await muteButton.first().click();
+      await expect(moderationControls).toHaveCount(0);
+      console.log('✅ Priest moderation controls muted the member');
       
     console.log('✅ All 7 Core Flows Tested Successfully!');
-    const screenshotPath = path.resolve(process.cwd(), '..', 'test-results', 'e2e', 'all-flows-complete.png');
+    const screenshotPath = path.resolve(process.cwd(), '..', 'pw-results', 'e2e', 'all-flows-complete.png');
     await page.screenshot({ path: screenshotPath, fullPage: true });
   });
 });

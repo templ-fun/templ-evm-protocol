@@ -15,6 +15,9 @@ import {
   claimExternalToken,
   watchProposals,
   fetchActiveMutes,
+  fetchDelegates,
+  delegateMute,
+  muteMember,
   listTempls,
   getTreasuryInfo,
   getClaimable,
@@ -54,6 +57,7 @@ function App() {
   const [profileAvatar, setProfileAvatar] = useState('');
   const [profileOpen, setProfileOpen] = useState(false);
   const [mutes, setMutes] = useState([]);
+  const [delegates, setDelegates] = useState([]);
   const [templList, setTemplList] = useState([]);
   const [treasuryInfo, setTreasuryInfo] = useState(null);
   const [claimable, setClaimable] = useState(null);
@@ -88,6 +92,9 @@ function App() {
   
   // muting form
   const [isPriest, setIsPriest] = useState(false);
+  const walletAddressLower = walletAddress ? walletAddress.toLowerCase() : '';
+  const isDelegate = walletAddressLower ? delegates.includes(walletAddressLower) : false;
+  const canModerate = isPriest || isDelegate;
 
   // deployment form
   const [tokenAddress, setTokenAddress] = useState('');
@@ -1173,6 +1180,34 @@ function App() {
     };
   }, [templAddress]);
 
+  useEffect(() => {
+    if (!templAddress) return;
+    let cancelled = false;
+    const loadDelegates = async () => {
+      try {
+        const list = await fetchDelegates({ contractAddress: templAddress });
+        if (!cancelled) {
+          const normalized = list
+            .map((addr) => {
+              try { return addr?.toLowerCase?.() ?? ''; } catch { return ''; }
+            })
+            .filter(Boolean);
+          setDelegates(Array.from(new Set(normalized)));
+        }
+      } catch {
+        if (!cancelled) {
+          // keep previous delegates on transient failures
+        }
+      }
+    };
+    loadDelegates();
+    const id = setInterval(loadDelegates, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [templAddress]);
+
   // Load templ list for landing/join
   useEffect(() => {
     (async () => {
@@ -1356,8 +1391,86 @@ function App() {
     });
   }
 
-  // moderation actions are available via contract-level APIs and backend endpoints,
-  // but there is no dedicated form in the chat UI anymore
+  async function handleMuteMember(target) {
+    if (!templAddress || !signer || !walletAddress) return;
+    let targetAddress;
+    try {
+      targetAddress = ethers.getAddress(target);
+    } catch {
+      alert('Mute failed: invalid address');
+      return;
+    }
+    if (targetAddress.toLowerCase() === walletAddressLower) {
+      alert('You cannot mute yourself');
+      return;
+    }
+    try {
+      await muteMember({
+        signer,
+        contractAddress: templAddress,
+        moderatorAddress: walletAddress,
+        targetAddress
+      });
+      const lower = targetAddress.toLowerCase();
+      setMutes((prev) => Array.from(new Set([...(prev || []), lower])));
+      setMessages((prev) => prev.filter((item) => {
+        try {
+          const sender = (item?.senderAddress || '').toLowerCase();
+          return sender !== lower;
+        } catch {
+          return true;
+        }
+      }));
+      pushStatus('✅ Member muted');
+    } catch (err) {
+      const msg = err?.message || String(err || 'mute failed');
+      alert('Mute failed: ' + msg);
+    }
+  }
+
+  async function handleDelegateMember(target) {
+    if (!templAddress || !signer || !walletAddress || !isPriest) return;
+    let delegateAddress;
+    try {
+      delegateAddress = ethers.getAddress(target);
+    } catch {
+      alert('Delegate failed: invalid address');
+      return;
+    }
+    if (delegateAddress.toLowerCase() === walletAddressLower) {
+      alert('You already have moderation rights');
+      return;
+    }
+    try {
+      const delegated = await delegateMute({
+        signer,
+        contractAddress: templAddress,
+        priestAddress: walletAddress,
+        delegateAddress
+      });
+      if (delegated) {
+        const lower = delegateAddress.toLowerCase();
+        setDelegates((prev) => Array.from(new Set([...(prev || []), lower])));
+        try {
+          const refreshed = await fetchDelegates({ contractAddress: templAddress });
+          const normalized = refreshed
+            .map((entry) => {
+              try { return entry?.toLowerCase?.() ?? ''; } catch { return ''; }
+            })
+            .filter(Boolean);
+          if (normalized.length) {
+            setDelegates(Array.from(new Set(normalized)));
+          }
+        } catch {}
+        pushStatus('✅ Delegate granted');
+      }
+    } catch (err) {
+      const msg = err?.message || String(err || 'delegate failed');
+      alert('Delegate failed: ' + msg);
+    }
+  }
+
+  // moderation actions surface inline in chat when the viewer has rights
 
   async function handleExecuteProposal(proposalId) {
     if (!templAddress || !signer) return;
@@ -1871,8 +1984,12 @@ function App() {
               }
               const mine = walletAddress && m.senderAddress && m.senderAddress.toLowerCase() === walletAddress.toLowerCase();
               const addr = (m.senderAddress || '').toLowerCase();
+              if (!mine && addr && mutes.includes(addr)) {
+                return null;
+              }
               const prof = profilesByAddress[addr] || {};
               const display = (mine ? (profileName || 'You') : (prof.name || shorten(m.senderAddress)));
+              const isDelegated = delegates.includes(addr);
               return (
                 <div key={i} className={`chat-item ${mine ? 'is-mine' : ''}`}>
                   {!mine && (
@@ -1886,6 +2003,29 @@ function App() {
                       <span className="chat-time">{formatTime(new Date())}</span>
                     </div>
                     <div className="chat-text">{m.content}</div>
+                    {canModerate && !mine && addr && (
+                      <div
+                        className="chat-moderation"
+                        data-testid="moderation-controls"
+                        data-address={addr}
+                        data-delegated={isDelegated ? 'true' : 'false'}
+                      >
+                        {isPriest && !isDelegated && (
+                          <button
+                            className="btn btn-xs"
+                            data-testid="delegate-button"
+                            onClick={() => handleDelegateMember(addr)}
+                          >Delegate</button>
+                        )}
+                        <button
+                          className="btn btn-xs btn-outline"
+                          data-testid="mute-button"
+                          data-address={addr}
+                          disabled={mutes.includes(addr)}
+                          onClick={() => handleMuteMember(addr)}
+                        >{mutes.includes(addr) ? 'Muted' : 'Mute'}</button>
+                      </div>
+                    )}
                   </div>
                 </div>
               );

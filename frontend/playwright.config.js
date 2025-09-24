@@ -20,7 +20,7 @@ const BOT_PK = randomPrivKeyHex();
 
 export default defineConfig({
   timeout: 240 * 1000,
-  outputDir: './test-results',
+  outputDir: './pw-results',
   testDir: './e2e',
   testMatch: /.*\.pw\.spec\.js/,
   fullyParallel: false,
@@ -103,7 +103,7 @@ export default defineConfig({
       timeout: 120 * 1000,
     },
     {
-      command: 'npm run build && npm run preview -- --port 5179',
+      command: 'npm run build -- --outDir pw-dist && npm run preview -- --port 5179 --outDir pw-dist',
       port: 5179,
       env: {
         VITE_E2E_DEBUG: '1',

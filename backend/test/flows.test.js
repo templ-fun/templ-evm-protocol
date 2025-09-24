@@ -1206,6 +1206,11 @@ test('updates priest when PriestChanged fires and persists to disk', async () =>
       })
       .expect(200, { delegated: true });
 
+    const delegatesRes = await request(app1)
+      .get(`/delegates?contractAddress=${addresses.contract}`)
+      .expect(200);
+    assert.deepEqual(delegatesRes.body.delegates.map((d) => d.toLowerCase()), [addresses.member.toLowerCase()]);
+
     const initialMuteTyped = buildMuteTypedData({
       chainId: 31337,
       contractAddress: addresses.contract,
@@ -1242,6 +1247,11 @@ test('updates priest when PriestChanged fires and persists to disk', async () =>
       .get(`/mutes?contractAddress=${addresses.contract}`)
       .expect(200);
     assert.equal(afterMutes.body.mutes.length, 0);
+
+    const afterDelegates = await request(app1)
+      .get(`/delegates?contractAddress=${addresses.contract}`)
+      .expect(200);
+    assert.equal(afterDelegates.body.delegates.length, 0);
 
     const oldDelegateMuteTyped = buildMuteTypedData({
       chainId: 31337,

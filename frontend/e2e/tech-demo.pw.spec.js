@@ -413,6 +413,6 @@ test.describe('Tech Demo: Realtime multi-user flow', () => {
     await expect(page.locator('.messages')).toContainText('GM from u2', { timeout: 5000 });
     await expect(page.locator('.messages')).toContainText('GM from u3', { timeout: 5000 });
 
-    await page.screenshot({ path: 'test-results/tech-demo-complete.png', fullPage: true });
+    await page.screenshot({ path: 'pw-results/tech-demo-complete.png', fullPage: true });
   });
 });

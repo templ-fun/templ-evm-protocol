@@ -80,5 +80,26 @@ export default function delegatesRouter({ groups, database }) {
     }
   );
 
+  router.get(
+    '/delegates',
+    requireAddresses(['contractAddress']),
+    (req, res) => {
+      const contractAddress = String(req.query.contractAddress || '').toLowerCase();
+      try {
+        const record = groups.get(contractAddress);
+        if (!record) {
+          return res.status(404).json({ error: 'Unknown Templ' });
+        }
+        const rows = database
+          .prepare('SELECT delegate FROM delegates WHERE contract = ?')
+          .all(contractAddress);
+        const delegates = rows.map((row) => row.delegate);
+        return res.json({ delegates });
+      } catch (err) {
+        return res.status(500).json({ error: err?.message || 'Failed to load delegates' });
+      }
+    }
+  );
+
   return router;
 }

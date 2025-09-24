@@ -6,8 +6,8 @@ export default defineConfig({
   define: {
     global: 'globalThis'
   },
-  // Use a writable cache directory to avoid EACCES in CI/sandboxed envs
-  cacheDir: 'test-results/.vite',
+  // Use a project-local cache directory to avoid EACCES in sandboxed envs
+  cacheDir: '.vite-cache',
   optimizeDeps: {
     // Some XMTP browser SDK worker code may not be compatible with optimizer
     exclude: ['workers'],

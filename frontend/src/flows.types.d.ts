@@ -80,6 +80,7 @@ export function watchProposals(args: { ethers: any; provider: any; templAddress:
 export function delegateMute(args: { signer: any; contractAddress: Address; priestAddress: Address; delegateAddress: Address; backendUrl?: string }): Promise<boolean>
 export function muteMember(args: { signer: any; contractAddress: Address; moderatorAddress: Address; targetAddress: Address; backendUrl?: string }): Promise<number>
 export function fetchActiveMutes(args: { contractAddress: Address; backendUrl?: string }): Promise<Array<{ address: Address; count: number; until: number }>>
+export function fetchDelegates(args: { contractAddress: Address; backendUrl?: string }): Promise<Address[]>
 export function getTreasuryInfo(args: { ethers: any; providerOrSigner: any; templAddress: Address; templArtifact: any }): Promise<{ treasury: string; memberPool: string; totalReceived: string; totalBurnedAmount: string; totalProtocolFees: string; protocolAddress: Address }>
 export function getClaimable(args: { ethers: any; providerOrSigner: any; templAddress: Address; templArtifact: any; memberAddress: Address }): Promise<string>
 export function getExternalRewards(args: { ethers: any; providerOrSigner: any; templAddress: Address; templArtifact: any; memberAddress?: Address }): Promise<Array<{ token: Address; poolBalance: string; cumulativeRewards: string; remainder: string; claimable: string }>>

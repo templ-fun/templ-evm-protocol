@@ -1,8 +1,8 @@
 import { defineConfig, configDefaults, coverageConfigDefaults } from 'vitest/config'
 
 export default defineConfig({
-  // Use a writable cache directory for Vite transforms
-  cacheDir: 'test-results/.vite',
+  // Use a project-local cache directory for Vite transforms
+  cacheDir: '.vitest-cache',
   test: {
     // Avoid worker teardown issues in constrained sandboxes by using forks pool
     pool: 'forks',

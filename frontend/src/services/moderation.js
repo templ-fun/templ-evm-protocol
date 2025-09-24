@@ -65,3 +65,13 @@ export async function fetchActiveMutes({ contractAddress, backendUrl = BACKEND_U
   }
   return data.mutes;
 }
+
+export async function fetchDelegates({ contractAddress, backendUrl = BACKEND_URL }) {
+  const res = await fetch(`${backendUrl}/delegates?contractAddress=${contractAddress}`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  if (!data || !Array.isArray(data.delegates)) {
+    throw new Error('Invalid /delegates response');
+  }
+  return data.delegates;
+}
