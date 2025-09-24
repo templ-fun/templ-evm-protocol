@@ -95,6 +95,9 @@ export async function proposeVote({
         tx = await contract.createProposalDisbandTreasury(tokenAddr, votingPeriod, txOptions);
         break;
       }
+      case 'setDictatorship':
+        tx = await contract.createProposalSetDictatorship(!!p.enable, votingPeriod, txOptions);
+        break;
       default:
         throw new Error('Unknown action: ' + action);
     }
@@ -136,6 +139,11 @@ export async function proposeVote({
           votingPeriod,
           txOptions
         );
+        return await waitForProposal(tx);
+      }
+      if (fn?.name === 'setDictatorshipDAO' && fn.inputs.length === 1) {
+        const [enable] = full.decodeFunctionData(fn, callData);
+        const tx = await contract.createProposalSetDictatorship(enable, votingPeriod, txOptions);
         return await waitForProposal(tx);
       }
       if (fn?.name === 'disbandTreasuryDAO') {

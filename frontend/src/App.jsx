@@ -69,7 +69,7 @@ function App() {
   const [proposeOpen, setProposeOpen] = useState(false);
   const [proposeTitle, setProposeTitle] = useState('');
   const [proposeDesc, setProposeDesc] = useState('');
-  const [proposeAction, setProposeAction] = useState('none'); // none | pause | unpause | moveTreasuryToMe | reprice | disband | changePriest
+  const [proposeAction, setProposeAction] = useState('none'); // none | pause | unpause | moveTreasuryToMe | reprice | disband | changePriest | enableDictatorship | disableDictatorship
   const [proposeFee, setProposeFee] = useState('');
   const [proposeToken, setProposeToken] = useState('');
   const [proposeNewPriest, setProposeNewPriest] = useState('');
@@ -82,6 +82,7 @@ function App() {
   const [proposeBurnPercent, setProposeBurnPercent] = useState('');
   const [proposeTreasuryPercent, setProposeTreasuryPercent] = useState('');
   const [proposeMemberPercent, setProposeMemberPercent] = useState('');
+  const [isDictatorship, setIsDictatorship] = useState(null);
   const messagesRef = useRef(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [hasMoreHistory, setHasMoreHistory] = useState(false);
@@ -167,6 +168,10 @@ function App() {
           try { memberPct = Number(await c.memberPoolPercent()); } catch {}
           try { protocolPct = Number(await c.protocolPercent()); } catch {}
         }
+        let dictatorshipState = null;
+        try {
+          dictatorshipState = await c.priestIsDictator();
+        } catch {}
         let dec = null;
         try {
           const erc20 = new ethers.Contract(tokenAddr, ['function decimals() view returns (uint8)'], providerOrSigner);
@@ -179,6 +184,11 @@ function App() {
           if (Number.isFinite(treasuryPct)) setCurrentTreasuryPercent(treasuryPct);
           if (Number.isFinite(memberPct)) setCurrentMemberPercent(memberPct);
           if (Number.isFinite(protocolPct)) setCurrentProtocolPercent(protocolPct);
+          if (dictatorshipState !== null) {
+            setIsDictatorship(Boolean(dictatorshipState));
+          } else {
+            setIsDictatorship(null);
+          }
         }
       } catch {}
     })();
@@ -2077,7 +2087,7 @@ function App() {
               <input className="w-full border border-black/20 rounded px-3 py-2 mb-2" placeholder="Title" value={proposeTitle} onChange={(e) => setProposeTitle(e.target.value)} />
               <input className="w-full border border-black/20 rounded px-3 py-2 mb-3" placeholder="Description (optional)" value={proposeDesc} onChange={(e) => setProposeDesc(e.target.value)} />
               <div className="text-sm mb-2">Quick Actions</div>
-              <div className="flex gap-2 mb-2">
+              <div className="flex flex-wrap gap-2 mb-2">
                 <button className={`btn ${proposeAction==='pause'?'btn-primary':''}`} onClick={() => setProposeAction('pause')}>Pause DAO</button>
                 <button className={`btn ${proposeAction==='unpause'?'btn-primary':''}`} onClick={() => setProposeAction('unpause')}>Unpause DAO</button>
                 <button className={`btn ${proposeAction==='moveTreasuryToMe'?'btn-primary':''}`} onClick={() => setProposeAction('moveTreasuryToMe')}>Move Treasury To Me</button>
@@ -2085,8 +2095,30 @@ function App() {
                 <button className={`btn ${proposeAction==='reprice'?'btn-primary':''}`} onClick={() => setProposeAction('reprice')}>Reprice Entry Fee</button>
                 <button className={`btn ${proposeAction==='rebalance'?'btn-primary':''}`} onClick={() => setProposeAction('rebalance')}>Adjust Fee Split</button>
                 <button className={`btn ${proposeAction==='changePriest'?'btn-primary':''}`} onClick={() => setProposeAction('changePriest')}>Change Priest</button>
-                <button className={`btn ${proposeAction==='none'?'btn-primary':''}`} onClick={() => setProposeAction('none')}>Custom/None</button>
+                <button
+                  className={`btn ${proposeAction==='enableDictatorship'?'btn-primary':''}`}
+                  onClick={() => setProposeAction('enableDictatorship')}
+                  disabled={isDictatorship === true}
+                  title={isDictatorship === true ? 'Already in priest dictatorship mode' : 'Enable priest dictatorship'}
+                >Enable Dictatorship</button>
+                <button
+                  className={`btn ${proposeAction==='disableDictatorship'?'btn-primary':''}`}
+                  onClick={() => setProposeAction('disableDictatorship')}
+                  disabled={isDictatorship === false}
+                  title={isDictatorship === false ? 'Already in member democracy mode' : 'Enable member democracy'}
+                >Enable Democracy</button>
+                {/* <button className={`btn ${proposeAction==='none'?'btn-primary':''}`} onClick={() => setProposeAction('none')}>Custom/None</button> */}
               </div>
+              <div className="text-xs text-black/60 mb-2">
+                Governance mode: {isDictatorship === null ? 'Loading...' : isDictatorship ? 'Priest dictatorship (no standard proposals allowed)' : 'Member democracy (full proposal flow)'}
+              </div>
+              {(proposeAction === 'enableDictatorship' || proposeAction === 'disableDictatorship') && (
+                <div className="text-xs text-black/80 mb-2">
+                  {proposeAction === 'enableDictatorship'
+                    ? 'Enabling dictatorship lets the priest execute governance actions instantly until members vote it back off.'
+                    : 'Returning to democracy requires member voting and restores proposal-based governance.'}
+                </div>
+              )}
               <div className="text-xs text-black/60">Tip: Pause/Unpause and Move Treasury encode the call data automatically. Reprice expects a new fee in raw token units. Adjust Fee Split collects the burn/treasury/member percentages (protocol share stays at the contract’s configured value).</div>
               {proposeAction === 'reprice' && (
                 <div className="text-xs text-black/80 mt-1 flex flex-col gap-2">
@@ -2248,6 +2280,21 @@ function App() {
                       if (!proposeDesc) setProposeDesc(`Set new priest to ${addr}`);
                     } catch (e) {
                       alert(e?.message || 'Invalid address');
+                      return;
+                    }
+                  } else if (proposeAction === 'enableDictatorship' || proposeAction === 'disableDictatorship') {
+                    try {
+                      const enable = proposeAction === 'enableDictatorship';
+                      const iface = new ethers.Interface(['function setDictatorshipDAO(bool)']);
+                      callData = iface.encodeFunctionData('setDictatorshipDAO', [enable]);
+                      if (!proposeTitle) setProposeTitle(enable ? 'Enable Dictatorship' : 'Return to Democracy');
+                      if (!proposeDesc) {
+                        setProposeDesc(enable
+                          ? 'Enable priest dictatorship so governance actions execute instantly.'
+                          : 'Disable priest dictatorship to restore member voting.');
+                      }
+                    } catch (e) {
+                      alert(e?.message || 'Failed to encode governance mode change');
                       return;
                     }
                   }

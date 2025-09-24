@@ -325,6 +325,36 @@ describe('templ flows', () => {
     expect(result).toEqual({ receipt: expect.any(Object), proposalId: null });
   });
 
+  it('proposeVote decodes setDictatorship call data', async () => {
+    const wait = vi.fn().mockResolvedValue({ logs: [] });
+    const contract = {
+      createProposalSetDictatorship: vi.fn().mockResolvedValue({ wait })
+    };
+    const interfaceInstance = {
+      getFunction: vi.fn(() => ({ name: 'setDictatorshipDAO', inputs: [{}] })),
+      decodeFunctionData: vi.fn(() => [true]),
+      parseLog: vi.fn()
+    };
+    const ethers = {
+      Contract: vi.fn().mockReturnValue(contract),
+      Interface: vi.fn(() => interfaceInstance),
+      ZeroAddress: '0x0',
+      isAddress: () => true
+    };
+    const result = await proposeVote({
+      ethers,
+      signer: {},
+      templAddress: '0xtempl',
+      templArtifact,
+      callData: '0xabcdef'
+    });
+    expect(ethers.Interface).toHaveBeenCalled();
+    expect(interfaceInstance.getFunction).toHaveBeenCalledWith('0xabcdef');
+    expect(interfaceInstance.decodeFunctionData).toHaveBeenCalledWith(expect.objectContaining({ name: 'setDictatorshipDAO' }), '0xabcdef');
+    expect(contract.createProposalSetDictatorship).toHaveBeenCalledWith(true, 0, {});
+    expect(result).toEqual({ receipt: expect.any(Object), proposalId: null });
+  });
+
   it('voteOnProposal calls vote', async () => {
     const contract = { vote: vi.fn().mockResolvedValue({ wait: vi.fn() }) };
     const ethers = { Contract: vi.fn().mockReturnValue(contract) };
