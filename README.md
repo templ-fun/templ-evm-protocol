@@ -138,15 +138,34 @@ npm --prefix frontend run dev
 
 The backend expects `backend/.env` with `RPC_URL`, `BOT_PRIVATE_KEY`, `ALLOWED_ORIGINS`, and `BACKEND_SERVER_ID`. The frontend reads matching `VITE_*` variables; see the deep dives below for full matrices.
 
-## E2E Environments
+## Environment Variables
 
-Playwright specs live under `frontend/e2e/` and are invoked with `npm --prefix frontend run test:e2e`. The runner boots a Hardhat node, the backend API, and a built frontend preview before executing tests. By default it targets the XMTP **dev** network and mints a fresh invite-bot key per run so the suite avoids XMTP installation limits.
+Templ spans contracts, an Express backend, and a React frontend, so most workflows hinge on a shared set of environment flags. The tables in [docs/BACKEND.md](./docs/BACKEND.md#environment-variables) and [docs/FRONTEND.md](./docs/FRONTEND.md#environment-variables) dive into every option; the crib notes below cover the minimum you need to boot each surface and how defaults behave across environments.
 
-- **Default (hosted XMTP)** – run `npm --prefix frontend run test:e2e` with no extra flags. The Playwright config sets `XMTP_ENV=dev` for the backend, `VITE_XMTP_ENV=dev` for the frontend, and injects a random `BOT_PRIVATE_KEY` for the invite bot.
-- **Local XMTP node** – clone [`xmtp-local-node`](https://github.com/xmtp/xmtp-local-node) into the repository’s `xmtp-local-node/` directory. Then execute `E2E_XMTP_LOCAL=1 npm --prefix frontend run test:e2e`. When this flag is present the Playwright web servers call `./up` in that directory, set `XMTP_ENV=local`, and point the frontend at the local node. Tear it down with `npm run xmtp:local:down` (or stop the docker compose stack manually) after the suite finishes.
-- **Alternate XMTP targets** – override `E2E_XMTP_ENV` to switch away from the default dev network (e.g., `E2E_XMTP_ENV=production npm --prefix frontend run test:e2e`).
+### Local defaults
 
-The suite always runs with `VITE_E2E_DEBUG=1` so debug helpers stay enabled, and it reuses `BACKEND_SERVER_ID=templ-dev` across backend/frontend processes. Review `frontend/playwright.config.js` for the full set of environment defaults before extending or debugging E2E runs.
+- **Backend** – provide an `RPC_URL` for on-chain reads, a `BOT_PRIVATE_KEY` (or let the server mint and persist one automatically), `ALLOWED_ORIGINS`, and a `BACKEND_SERVER_ID` that matches the frontend. Optional toggles like `ENABLE_DEBUG_ENDPOINTS`, `CLEAR_DB`, and `XMTP_ENV` stay development-friendly by default. Encryption falls back to a derived key unless you supply `BACKEND_DB_ENC_KEY` yourself. 【F:docs/BACKEND.md†L23-L63】【F:docs/SHARED.md†L21-L28】
+- **Frontend** – Vite only exposes `VITE_*` variables to the browser. The app auto-selects `VITE_XMTP_ENV=dev` on localhost and `production` elsewhere; you only need to set `VITE_BACKEND_SERVER_ID` (matching the backend) and any optional factory overrides when locking down deployments. 【F:docs/FRONTEND.md†L23-L56】
+
+### E2E harness defaults
+
+`npm --prefix frontend run test:e2e` spins up a Hardhat chain, the backend, and a built frontend preview. The Playwright config injects every required variable so you can run the suite with zero manual `.env` files: it generates a fresh `BOT_PRIVATE_KEY`, reuses `BACKEND_SERVER_ID=templ-dev` on both sides, pins `RPC_URL`/`ALLOWED_ORIGINS`, enables debug helpers, and selects the XMTP target automatically (`dev` by default or `local` when `E2E_XMTP_LOCAL=1`). It also keeps `VITE_E2E_DEBUG=1` so Playwright can poke debug affordances while it drives the UI. 【F:frontend/playwright.config.js†L55-L121】
+
+Layer on the following flags to steer the harness at different XMTP networks:
+
+- **Hosted XMTP (default)** – run `npm --prefix frontend run test:e2e` as-is to target the dev network with ephemeral bot keys.
+- **Local XMTP node** – clone [`xmtp-local-node`](https://github.com/xmtp/xmtp-local-node) into `xmtp-local-node/` and execute `E2E_XMTP_LOCAL=1 npm --prefix frontend run test:e2e` to boot the local docker-compose stack before tests.
+- **Alternate XMTP targets** – provide `E2E_XMTP_ENV=<env>` (e.g., `production`) to override the default network while keeping the rest of the wiring intact.
+
+Check `frontend/playwright.config.js` for the full matrix of defaults before extending or debugging E2E runs. 【F:frontend/playwright.config.js†L1-L121】
+
+### Production deployment checklist
+
+Lock production down by providing explicit secrets and disabling all debug fallbacks:
+
+- Set `NODE_ENV=production`, `REQUIRE_CONTRACT_VERIFY=1`, and a trusted `RPC_URL` so the backend enforces chainId/code/priest checks against a real provider. 【F:docs/BACKEND.md†L64-L115】
+- Supply hardened credentials: a persisted `BOT_PRIVATE_KEY`, `BACKEND_DB_ENC_KEY` (32-byte hex), `BACKEND_SERVER_ID`, and matching `VITE_BACKEND_SERVER_ID`. Leave `ENABLE_DEBUG_ENDPOINTS`, `CLEAR_DB`, and other test toggles at `0`. 【F:docs/BACKEND.md†L34-L82】【F:docs/BACKEND.md†L152-L162】
+- Configure the frontend build with the production XMTP environment, backend identifiers, and any factory metadata you want surfaced (`VITE_XMTP_ENV=production`, `VITE_TEMPL_FACTORY_*`). 【F:docs/FRONTEND.md†L32-L56】
 
 ## Repository Layout
 
