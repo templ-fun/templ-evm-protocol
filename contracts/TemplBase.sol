@@ -23,7 +23,7 @@ abstract contract TemplBase is ReentrancyGuard {
     address public priest;
     address public immutable protocolFeeRecipient;
     address public immutable accessToken;
-    bool public immutable priestIsDictator;
+    bool public priestIsDictator;
     uint256 public entryFee;
     uint256 public treasuryBalance;
     uint256 public memberPoolBalance;
@@ -79,6 +79,7 @@ abstract contract TemplBase is ReentrancyGuard {
         bool quorumExempt;
         bool updateFeeSplit;
         uint256 preQuorumSnapshotBlock;
+        bool setDictatorship;
     }
 
     uint256 public proposalCount;
@@ -95,6 +96,7 @@ abstract contract TemplBase is ReentrancyGuard {
         WithdrawTreasury,
         DisbandTreasury,
         ChangePriest,
+        SetDictatorship,
         Undefined
     }
 
@@ -207,6 +209,8 @@ abstract contract TemplBase is ReentrancyGuard {
         _;
     }
 
+    event DictatorshipModeChanged(bool enabled);
+
     constructor(
         address _protocolFeeRecipient,
         address _accessToken,
@@ -259,5 +263,11 @@ abstract contract TemplBase is ReentrancyGuard {
         if (_burnPercent + _treasuryPercent + _memberPoolPercent + _protocolPercent != TOTAL_PERCENT) {
             revert TemplErrors.InvalidPercentageSplit();
         }
+    }
+
+    function _updateDictatorship(bool _enabled) internal {
+        if (priestIsDictator == _enabled) revert TemplErrors.DictatorshipUnchanged();
+        priestIsDictator = _enabled;
+        emit DictatorshipModeChanged(_enabled);
     }
 }

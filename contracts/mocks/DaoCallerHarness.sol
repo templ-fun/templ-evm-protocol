@@ -55,6 +55,10 @@ contract DaoCallerHarness is TEMPL {
     function daoChangePriest(address newPriest) external {
         this.changePriestDAO(newPriest);
     }
+    /// @notice Wrapper to call setDictatorshipDAO via contract self-call
+    function daoSetDictatorship(bool enabled) external {
+        this.setDictatorshipDAO(enabled);
+    }
 
     /// @dev Test helper to set action to an undefined value (testing only)
     function setUndefinedAction(uint256 proposalId) external {

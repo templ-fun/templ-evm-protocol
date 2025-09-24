@@ -65,6 +65,10 @@ abstract contract TemplTreasury is TemplMembership {
         _changePriest(newPriest);
     }
 
+    function setDictatorshipDAO(bool enabled) external onlyDAO {
+        _updateDictatorship(enabled);
+    }
+
     function _withdrawTreasury(
         address token,
         address recipient,

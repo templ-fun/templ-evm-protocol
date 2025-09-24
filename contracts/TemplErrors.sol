@@ -72,4 +72,6 @@ library TemplErrors {
     error InvalidPercentage();
     /// @notice Thrown when priest dictatorship mode disables proposal-based governance.
     error DictatorshipEnabled();
+    /// @notice Thrown when attempting to toggle dictatorship to its current state.
+    error DictatorshipUnchanged();
 }

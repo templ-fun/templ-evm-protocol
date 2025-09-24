@@ -67,7 +67,7 @@ Everything on-chain is modular so each templ instance inherits the same safeguar
 - `TemplTreasury` (treasury/config/priest handlers)
 - `TemplGovernance` (proposal lifecycle)
 - `TEMPL` (constructor wiring + payable receive)
-- `TemplFactory` (fixes protocol fee percentage + recipient and deploys templ instances). `createTempl(token, entryFee)` uses defaults (priest = caller, 30/30/30 split, quorum 33%, execution delay 7 days, burn address `0x000000000000000000000000000000000000dEaD`). `createTemplWithConfig(CreateConfig)` accepts overrides for priest, the three percentages, burn address, quorum percent, execution delay, **and** whether the templ launches in priest dictatorship mode (`priestIsDictator`). Percentages must still sum with the factory’s immutable protocol percent to 100.
+- `TemplFactory` (fixes protocol fee percentage + recipient and deploys templ instances). `createTempl(token, entryFee)` uses defaults (priest = caller, 30/30/30 split, quorum 33%, execution delay 7 days, burn address `0x000000000000000000000000000000000000dEaD`). `createTemplWithConfig(CreateConfig)` accepts overrides for priest, the three percentages, burn address, quorum percent, execution delay, **and** whether the templ launches in priest dictatorship mode (`priestIsDictator`). Percentages must still sum with the factory’s immutable protocol percent to 100, and the mode can later be flipped by governance.
 
 ### Economic model (per `purchaseAccess()`)
 
@@ -158,7 +158,7 @@ Creation helpers (`createProposalX`) initialize proposals with normalized timing
 
 #### Priest dictatorship mode
 
-Setting `priestIsDictator = true` at deployment disables the proposal pipeline entirely. All `createProposal*`, `vote`, and `executeProposal` calls revert with `DictatorshipEnabled`, and governance actions must be executed through the DAO wrappers (`setPausedDAO`, `updateConfigDAO`, `withdrawTreasuryDAO`, `disbandTreasuryDAO`, `changePriestDAO`). In this mode the `onlyDAO` modifier also allows the priest address to call these functions directly; everyone else receives `PriestOnly`. The factory defaults to DAO governance, so dictatorship must be opted into explicitly.
+Setting `priestIsDictator = true` at deployment disables regular proposal tooling. All `createProposal*`, `vote`, and `executeProposal` calls revert with `DictatorshipEnabled` **except** for the dedicated `createProposalSetDictatorship(...)` helper, which stays available so members can vote the system back to democracy. Governance actions must be executed through the DAO wrappers (`setPausedDAO`, `updateConfigDAO`, `withdrawTreasuryDAO`, `disbandTreasuryDAO`, `changePriestDAO`, `setDictatorshipDAO`). In this mode the `onlyDAO` modifier also allows the priest address to call these functions directly; everyone else receives `PriestOnly`. The factory defaults to DAO governance, so dictatorship must be opted into explicitly and can be toggled later through proposals.
 
 ### Views and introspection
 

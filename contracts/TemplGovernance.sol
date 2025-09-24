@@ -109,10 +109,24 @@ abstract contract TemplGovernance is TemplTreasury {
         return id;
     }
 
+    function createProposalSetDictatorship(
+        bool _enable,
+        uint256 _votingPeriod
+    ) external returns (uint256) {
+        if (priestIsDictator == _enable) revert TemplErrors.DictatorshipUnchanged();
+        (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod);
+        p.action = Action.SetDictatorship;
+        p.setDictatorship = _enable;
+        return id;
+    }
+
     function vote(uint256 _proposalId, bool _support) external onlyMember {
-        if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         if (_proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
         Proposal storage proposal = proposals[_proposalId];
+
+        if (priestIsDictator && proposal.action != Action.SetDictatorship) {
+            revert TemplErrors.DictatorshipEnabled();
+        }
 
         if (block.timestamp >= proposal.endTime) revert TemplErrors.VotingEnded();
 
@@ -166,9 +180,12 @@ abstract contract TemplGovernance is TemplTreasury {
     }
 
     function executeProposal(uint256 _proposalId) external nonReentrant {
-        if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         if (_proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
         Proposal storage proposal = proposals[_proposalId];
+
+        if (priestIsDictator && proposal.action != Action.SetDictatorship) {
+            revert TemplErrors.DictatorshipEnabled();
+        }
 
         if (!proposal.quorumExempt) {
             if (proposal.quorumReachedAt == 0) {
@@ -209,6 +226,8 @@ abstract contract TemplGovernance is TemplTreasury {
             _disbandTreasury(proposal.token, _proposalId);
         } else if (proposal.action == Action.ChangePriest) {
             _changePriest(proposal.recipient);
+        } else if (proposal.action == Action.SetDictatorship) {
+            _updateDictatorship(proposal.setDictatorship);
         } else {
             revert TemplErrors.InvalidCallData();
         }

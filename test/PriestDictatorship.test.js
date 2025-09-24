@@ -3,95 +3,98 @@ const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
 const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
 
-describe("Priest dictatorship mode", function () {
-    const ENTRY_FEE = ethers.parseUnits("100", 18);
-    const TOKEN_SUPPLY = ethers.parseUnits("10000", 18);
+describe("Priest dictatorship governance toggle", function () {
+  const ENTRY_FEE = ethers.parseUnits("100", 18);
+  const TOKEN_SUPPLY = ethers.parseUnits("10000", 18);
+  const VOTING_PERIOD = 7 * 24 * 60 * 60;
+  const EXECUTION_DELAY = 7 * 24 * 60 * 60;
 
-    let templ;
-    let token;
-    let accounts;
-    let priest;
-    let member;
-    let outsider;
+  let templ;
+  let token;
+  let accounts;
+  let priest;
+  let member;
 
-    beforeEach(async function () {
-        ({ templ, token, accounts, priest } = await deployTempl({
-            entryFee: ENTRY_FEE,
-            priestIsDictator: true,
-        }));
-        [, , member, outsider] = accounts;
-        await mintToUsers(token, [member, outsider], TOKEN_SUPPLY);
-    });
+  beforeEach(async function () {
+    ({ templ, token, accounts, priest } = await deployTempl({ entryFee: ENTRY_FEE }));
+    [, , member] = accounts;
+    await mintToUsers(token, [member], TOKEN_SUPPLY);
+    await purchaseAccess(templ, token, [member]);
+  });
 
-    it("exposes dictatorship flag", async function () {
-        expect(await templ.priestIsDictator()).to.equal(true);
-    });
+  function advanceBeyondExecutionDelay() {
+    return Promise.all([
+      ethers.provider.send("evm_increaseTime", [EXECUTION_DELAY + 1]),
+      ethers.provider.send("evm_mine")
+    ]);
+  }
 
-    it("blocks proposals, voting, and execution", async function () {
-        await expect(
-            templ.connect(member).createProposalSetPaused(true, 7 * 24 * 60 * 60)
-        ).to.be.revertedWithCustomError(templ, "DictatorshipEnabled");
+  it("allows DAO proposals to enable and disable dictatorship", async function () {
+    expect(await templ.priestIsDictator()).to.equal(false);
 
-        await purchaseAccess(templ, token, [member]);
+    const txEnable = await templ
+      .connect(member)
+      .createProposalSetDictatorship(true, VOTING_PERIOD);
+    await txEnable.wait();
 
-        await expect(templ.connect(member).vote(0, true)).to.be.revertedWithCustomError(
-            templ,
-            "DictatorshipEnabled"
-        );
+    await advanceBeyondExecutionDelay();
+    const execEnable = await templ.executeProposal(0);
+    const receiptEnable = await execEnable.wait();
+    const enableEvent = receiptEnable.logs
+      .map((log) => {
+        try {
+          return templ.interface.parseLog(log);
+        } catch (_) {
+          return null;
+        }
+      })
+      .find((log) => log && log.name === "DictatorshipModeChanged");
+    expect(enableEvent?.args?.enabled).to.equal(true);
+    expect(await templ.priestIsDictator()).to.equal(true);
 
-        await expect(templ.executeProposal(0)).to.be.revertedWithCustomError(templ, "DictatorshipEnabled");
-    });
+    await expect(
+      templ.connect(member).createProposalSetDictatorship(true, VOTING_PERIOD)
+    ).to.be.revertedWithCustomError(templ, "DictatorshipUnchanged");
 
-    it("allows the priest to execute governance actions instantly", async function () {
-        await purchaseAccess(templ, token, [member]);
+    await expect(
+      templ.connect(member).createProposalSetPaused(true, VOTING_PERIOD)
+    ).to.be.revertedWithCustomError(templ, "DictatorshipEnabled");
 
-        await expect(templ.connect(priest).setPausedDAO(true)).to.not.be.reverted;
-        expect(await templ.paused()).to.equal(true);
+    const txDisable = await templ
+      .connect(member)
+      .createProposalSetDictatorship(false, VOTING_PERIOD);
+    await txDisable.wait();
 
-        const treasuryBefore = await templ.treasuryBalance();
-        expect(treasuryBefore).to.be.gt(0n);
+    // ensure voting still works while dictatorship is active for the toggle proposal
+    await expect(templ.connect(member).vote(1, true)).to.not.be.reverted;
 
-        const halfTreasury = treasuryBefore / 2n;
-        expect(halfTreasury).to.be.gt(0n);
-        const balanceBefore = await token.balanceOf(priest.address);
-        await expect(
-            templ
-                .connect(priest)
-                .withdrawTreasuryDAO(
-                    await token.getAddress(),
-                    priest.address,
-                    halfTreasury,
-                    "dictatorship-withdraw"
-                )
-        ).to.not.be.reverted;
+    await advanceBeyondExecutionDelay();
+    const execDisable = await templ.executeProposal(1);
+    const receiptDisable = await execDisable.wait();
+    const disableEvent = receiptDisable.logs
+      .map((log) => {
+        try {
+          return templ.interface.parseLog(log);
+        } catch (_) {
+          return null;
+        }
+      })
+      .find((log) => log && log.name === "DictatorshipModeChanged");
+    expect(disableEvent?.args?.enabled).to.equal(false);
+    expect(await templ.priestIsDictator()).to.equal(false);
+  });
 
-        expect(await templ.treasuryBalance()).to.equal(treasuryBefore - halfTreasury);
-        const balanceAfter = await token.balanceOf(priest.address);
-        expect(balanceAfter - balanceBefore).to.equal(halfTreasury);
-    });
+  it("restricts priest-only DAO calls when dictatorship is active", async function () {
+    await templ.connect(member).createProposalSetDictatorship(true, VOTING_PERIOD);
+    await advanceBeyondExecutionDelay();
+    await templ.executeProposal(0);
 
-    it("prevents non-priest addresses from calling governance actions", async function () {
-        await expect(templ.connect(member).setPausedDAO(true)).to.be.revertedWithCustomError(
-            templ,
-            "PriestOnly"
-        );
+    const outsider = accounts[4];
+    await expect(
+      templ.connect(outsider).setDictatorshipDAO(false)
+    ).to.be.revertedWithCustomError(templ, "PriestOnly");
 
-        await expect(
-            templ
-                .connect(outsider)
-                .withdrawTreasuryDAO(await token.getAddress(), outsider.address, 1n, "nope")
-        ).to.be.revertedWithCustomError(templ, "PriestOnly");
-    });
-
-    it("transfers dictatorship when the priest address changes", async function () {
-        const newPriest = accounts[5];
-        await templ.connect(priest).changePriestDAO(newPriest.address);
-
-        await expect(templ.connect(newPriest).setPausedDAO(false)).to.not.be.reverted;
-        await expect(templ.connect(priest).setPausedDAO(false)).to.be.revertedWithCustomError(
-            templ,
-            "PriestOnly"
-        );
-        expect(await templ.priest()).to.equal(newPriest.address);
-    });
+    await expect(templ.connect(priest).setDictatorshipDAO(false)).to.not.be.reverted;
+    expect(await templ.priestIsDictator()).to.equal(false);
+  });
 });

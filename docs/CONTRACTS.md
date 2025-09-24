@@ -74,7 +74,8 @@ sequenceDiagram
   - `withdrawTreasuryDAO(address,address,uint256,string)` - withdraw a specific amount of any asset (access token, other ERC-20, or ETH with `address(0)`).
   - `changePriestDAO(address)` - change the priest address via governance; the resulting `PriestChanged` event signals the backend to clear all delegate assignments and active mutes so the new priest inherits a clean moderation slate.
   - `disbandTreasuryDAO(address token)` - move the full available balance of `token` into a member-distributable pool. When `token == accessToken`, funds roll into the member pool (`memberPoolBalance`) with per-member integer division and any remainder added to `memberRewardRemainder`. When targeting any other ERC-20 or native ETH (`address(0)`), the amount is recorded in an external rewards pool so members can later claim their share with `claimExternalToken`.
-- Dictatorship toggle: when `priestIsDictator` is `true`, all proposal entrypoints (`createProposal*`, `vote`, `executeProposal`) revert with `DictatorshipEnabled`. Governance actions must be executed via the DAO helper functions above, and `onlyDAO` accepts calls from the priest address (non-priest callers receive `PriestOnly`).
+  - `setDictatorshipDAO(bool enabled)` - flip the `priestIsDictator` flag. This helper is callable through proposals in both directions; when dictatorship is active, the DAO helper also accepts direct calls from the priest (all other callers receive `PriestOnly`).
+- Dictatorship toggle: while `priestIsDictator` is `true`, standard proposal entrypoints (`createProposal*`, `vote`, `executeProposal`) revert with `DictatorshipEnabled`. The dedicated `createProposalSetDictatorship(...)` path stays open so members can still vote the system back to democracy.
 
 ### Quorum and eligibility
 
@@ -93,6 +94,7 @@ sequenceDiagram
 - `createProposalWithdrawTreasury(address token, address recipient, uint256 amount, string reason, uint256 votingPeriod)`
 - `createProposalChangePriest(address newPriest, uint256 votingPeriod)`
 - `createProposalDisbandTreasury(address token, uint256 votingPeriod)` (`token` can be the access token, another ERC-20, or `address(0)` for ETH)
+- `createProposalSetDictatorship(bool enable, uint256 votingPeriod)` - enable or disable priest dictatorship. This proposal type is always available, even when dictatorship is already active, and reverts with `DictatorshipUnchanged` if the requested mode matches the current state.
 
 Note: Proposal metadata (title/description) is not stored on-chain. Keep human-readable text in XMTP group messages alongside the on-chain proposal id.
 
@@ -129,7 +131,7 @@ Note: Proposal metadata (title/description) is not stored on-chain. Keep human-r
 ## State, events, errors
 
 - Key immutables: `protocolFeeRecipient`, `accessToken`, `burnAddress`. Priest is changeable via governance.
-- Key variables: `entryFee` (≥10 and multiple of 10), `paused`, `treasuryBalance` (tracks fee-sourced tokens only), `memberPoolBalance`, counters (`totalBurned`, `totalToTreasury`, `totalToMemberPool`, `totalToProtocol`).
+- Key variables: `entryFee` (≥10 and multiple of 10), `paused`, `treasuryBalance` (tracks fee-sourced tokens only), `memberPoolBalance`, `priestIsDictator`, counters (`totalBurned`, `totalToTreasury`, `totalToMemberPool`, `totalToProtocol`).
 - Governance constants: `quorumPercent` and `executionDelayAfterQuorum` are set during deployment (factory defaults 33% and 7 days, but overridable during templ creation) and remain immutable afterwards.
 - External reward claims:
   - `claimExternalToken(address token)` - transfers the caller’s accrued share of the specified external token (ERC-20 or `address(0)` for ETH). Reverts with `NoRewardsToClaim` if nothing is available. Emitted `ExternalRewardClaimed` mirrors successful withdrawals.
@@ -146,7 +148,8 @@ Note: Proposal metadata (title/description) is not stored on-chain. Keep human-r
   - `ExternalRewardClaimed(token,member,amount)`
   - `PriestChanged(oldPriest,newPriest)`
     - Backend listeners purge all delegates/mutes on this event so the incoming priest takes over with a clean moderation slate.
-- Custom errors (from `TemplErrors.sol`): `NotMember`, `NotDAO`, `PriestOnly`, `ContractPausedError`, `AlreadyPurchased`, `InsufficientBalance`, `ActiveProposalExists`, `VotingPeriodTooShort`, `VotingPeriodTooLong`, `InvalidProposal`, `VotingEnded`, `JoinedAfterProposal`, `VotingNotEnded`, `AlreadyExecuted`, `ProposalNotPassed`, `ProposalExecutionFailed`, `InvalidRecipient`, `AmountZero`, `InsufficientTreasuryBalance`, `NoTreasuryFunds`, `EntryFeeTooSmall`, `InvalidEntryFee`, `InvalidPercentageSplit`, `InvalidPercentage`, `NoRewardsToClaim`, `InsufficientPoolBalance`, `LimitOutOfRange`, `InvalidSender`, `InvalidCallData`, `TokenChangeDisabled`, `NoMembers`, `QuorumNotReached`, `ExecutionDelayActive`, `DictatorshipEnabled`.
+  - `DictatorshipModeChanged(enabled)`
+- Custom errors (from `TemplErrors.sol`): `NotMember`, `NotDAO`, `PriestOnly`, `ContractPausedError`, `AlreadyPurchased`, `InsufficientBalance`, `ActiveProposalExists`, `VotingPeriodTooShort`, `VotingPeriodTooLong`, `InvalidProposal`, `VotingEnded`, `JoinedAfterProposal`, `VotingNotEnded`, `AlreadyExecuted`, `ProposalNotPassed`, `ProposalExecutionFailed`, `InvalidRecipient`, `AmountZero`, `InsufficientTreasuryBalance`, `NoTreasuryFunds`, `EntryFeeTooSmall`, `InvalidEntryFee`, `InvalidPercentageSplit`, `InvalidPercentage`, `NoRewardsToClaim`, `InsufficientPoolBalance`, `LimitOutOfRange`, `InvalidSender`, `InvalidCallData`, `TokenChangeDisabled`, `NoMembers`, `QuorumNotReached`, `ExecutionDelayActive`, `DictatorshipEnabled`, `DictatorshipUnchanged`.
 
 ## Flows
 

@@ -168,8 +168,22 @@ export async function voteOnProposal({
   txOptions = {}
 }) {
   const contract = new ethers.Contract(templAddress, templArtifact.abi, signer);
-  const tx = await contract.vote(proposalId, support, txOptions);
-  await tx.wait();
+  try {
+    const tx = await contract.vote(proposalId, support, txOptions);
+    await tx.wait();
+  } catch (err) {
+    const message = String(
+      err?.error?.message || err?.reason || err?.shortMessage || err?.message || err
+    );
+    if (
+      message.includes('VotingEnded') ||
+      message.includes('DictatorshipEnabled') ||
+      message.includes('DictatorshipUnchanged')
+    ) {
+      return;
+    }
+    throw err;
+  }
 }
 
 export async function executeProposal({

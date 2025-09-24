@@ -71,7 +71,7 @@ Members propose and vote on treasury moves or config changes directly inside the
 
 ### Priest Dictatorship (optional)
 
-Factories can deploy templs in a **Priest Dictatorship**. When `priestIsDictator` is set to `true` (use `PRIEST_IS_DICTATOR=1` with `scripts/deploy.js` or include the flag in `TemplFactory.CreateConfig`), proposal tooling is disabled and the priest executes governance actions instantly. Treasury withdrawals, pauses, fee splits, and priest rotations become single calls gated to the priest—no quorum and no execution delay. The default remains full DAO governance; enable dictatorship explicitly when a community wants rapid, priest-driven control.
+Factories can deploy templs in a **Priest Dictatorship**. When `priestIsDictator` is set to `true` (use `PRIEST_IS_DICTATOR=1` with `scripts/deploy.js` or include the flag in `TemplFactory.CreateConfig`), proposal tooling is disabled and the priest executes governance actions instantly. Treasury withdrawals, pauses, fee splits, and priest rotations become single calls gated to the priest—no quorum and no execution delay. The default remains full DAO governance, and members can always vote on the dedicated `setDictatorship` proposal type to switch between dictatorship and democracy whenever the community wants a different governance mode.
 
 ## What You Get
 

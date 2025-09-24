@@ -42,6 +42,16 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
 
     await templ.daoChangePriest(recipient.address);
     expect(await templ.priest()).to.equal(recipient.address);
+
+    expect(await templ.priestIsDictator()).to.equal(false);
+    await templ.daoSetDictatorship(true);
+    expect(await templ.priestIsDictator()).to.equal(true);
+    await templ.daoSetDictatorship(false);
+    expect(await templ.priestIsDictator()).to.equal(false);
+    await expect(templ.daoSetDictatorship(false)).to.be.revertedWithCustomError(
+      templ,
+      "DictatorshipUnchanged"
+    );
   });
 
   it("covers update + pause + disband wrappers via self-call", async function () {
