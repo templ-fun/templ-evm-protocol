@@ -81,7 +81,7 @@ Commonly used accounts (private keys are from Hardhat defaults—never use them 
    - Entry fee / fee split / limits: pick values that satisfy on-chain validations (entry fee ≥ 10 wei and divisible by 10, fee split sums to 100).
    - Telegram chat id: optional numeric id; omit it if you don’t want Telegram alerts yet.
 3. Submit—the frontend deploys the contract via the factory and immediately calls the backend `/templs` endpoint to persist the registry entry.
-4. After success you land on `/templs/:address` where the overview reflects the registered priest and chat id.
+4. After success you land on `/templs/:address` where the overview reflects the registered priest, home link, and chat id. If you left the chat id blank, the confirmation card shows a one-time `templ <bindingCode>` snippet—post it in your Telegram group after inviting `@templfunbot` to finish the binding.
 
 ## 6) Join and verify membership
 

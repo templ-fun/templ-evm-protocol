@@ -143,7 +143,7 @@ Proposals emit `ProposalCreated(id, proposer, endTime, title, description)` and 
   - `AccessPurchased(purchaser,totalAmount,burnedAmount,treasuryAmount,memberPoolAmount,protocolAmount,timestamp,blockNumber,purchaseId)`
   - `MemberPoolClaimed(member,amount,timestamp)`
   - `MaxMembersUpdated(maxMembers)`
-  - `ProposalCreated(proposalId,proposer,endTime)`
+  - `ProposalCreated(proposalId,proposer,endTime,title,description)`
   - `VoteCast(proposalId,voter,support,timestamp)`
   - `ProposalExecuted(proposalId,success,returnData)`
   - `TreasuryAction(proposalId,token,recipient,amount,description)`
@@ -152,11 +152,10 @@ Proposals emit `ProposalCreated(id, proposer, endTime, title, description)` and 
   - `TreasuryDisbanded(proposalId,token,amount,perMember,remainder)`
   - `ExternalRewardClaimed(token,member,amount)`
   - `PriestChanged(oldPriest,newPriest)`
-    - Backend listeners persist the new priest and broadcast a Telegram alert so members know who currently controls templ operations.
   - `DictatorshipModeChanged(enabled)`
-- Custom errors (from `TemplErrors.sol`): `NotMember`, `NotDAO`, `PriestOnly`, `ContractPausedError`, `AlreadyPurchased`, `InsufficientBalance`, `ActiveProposalExists`, `VotingPeriodTooShort`, `VotingPeriodTooLong`, `InvalidProposal`, `VotingEnded`, `JoinedAfterProposal`, `VotingNotEnded`, `AlreadyExecuted`, `ProposalNotPassed`, `ProposalExecutionFailed`, `InvalidRecipient`, `AmountZero`, `InsufficientTreasuryBalance`, `NoTreasuryFunds`, `EntryFeeTooSmall`, `InvalidEntryFee`, `InvalidPercentageSplit`, `InvalidPercentage`, `NoRewardsToClaim`, `InsufficientPoolBalance`, `LimitOutOfRange`, `InvalidSender`, `InvalidCallData`, `TokenChangeDisabled`, `NoMembers`, `QuorumNotReached`, `ExecutionDelayActive`, `DictatorshipEnabled`, `DictatorshipUnchanged`.
-  - `DictatorshipModeChanged(enabled)`
-- Custom errors (from `TemplErrors.sol`): `NotMember`, `NotDAO`, `PriestOnly`, `ContractPausedError`, `AlreadyPurchased`, `InsufficientBalance`, `ActiveProposalExists`, `VotingPeriodTooShort`, `VotingPeriodTooLong`, `InvalidProposal`, `VotingEnded`, `JoinedAfterProposal`, `VotingNotEnded`, `AlreadyExecuted`, `ProposalNotPassed`, `ProposalExecutionFailed`, `InvalidRecipient`, `AmountZero`, `InsufficientTreasuryBalance`, `NoTreasuryFunds`, `EntryFeeTooSmall`, `InvalidEntryFee`, `InvalidPercentageSplit`, `InvalidPercentage`, `NoRewardsToClaim`, `InsufficientPoolBalance`, `MemberLimitTooLow`, `LimitOutOfRange`, `InvalidSender`, `InvalidCallData`, `TokenChangeDisabled`, `NoMembers`, `QuorumNotReached`, `ExecutionDelayActive`, `DictatorshipEnabled`, `DictatorshipUnchanged`.
+  - `TemplHomeLinkUpdated(previousLink,newLink)`
+    - Backend listeners persist the new link and broadcast a Telegram alert so members always see the canonical home.
+- Custom errors (from `TemplErrors.sol`): `NotMember`, `NotDAO`, `PriestOnly`, `ContractPausedError`, `AlreadyPurchased`, `InsufficientBalance`, `ActiveProposalExists`, `VotingPeriodTooShort`, `VotingPeriodTooLong`, `InvalidProposal`, `VotingEnded`, `JoinedAfterProposal`, `VotingNotEnded`, `AlreadyExecuted`, `ProposalNotPassed`, `ProposalExecutionFailed`, `InvalidRecipient`, `AmountZero`, `InsufficientTreasuryBalance`, `NoTreasuryFunds`, `EntryFeeTooSmall`, `InvalidEntryFee`, `InvalidPercentageSplit`, `NoRewardsToClaim`, `InsufficientPoolBalance`, `MemberLimitTooLow`, `LimitOutOfRange`, `InvalidSender`, `InvalidCallData`, `TokenChangeDisabled`, `NoMembers`, `QuorumNotReached`, `ExecutionDelayActive`, `InvalidPercentage`, `DictatorshipEnabled`, `DictatorshipUnchanged`.
 
 ## Flows
 
