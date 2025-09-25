@@ -155,7 +155,7 @@ Proposals emit `ProposalCreated(id, proposer, endTime, title, description)` and 
   - `DictatorshipModeChanged(enabled)`
   - `TemplHomeLinkUpdated(previousLink,newLink)`
     - Backend listeners persist the new link and broadcast a Telegram alert so members always see the canonical home.
-- Custom errors (from `TemplErrors.sol`): `NotMember`, `NotDAO`, `PriestOnly`, `ContractPausedError`, `AlreadyPurchased`, `InsufficientBalance`, `ActiveProposalExists`, `VotingPeriodTooShort`, `VotingPeriodTooLong`, `InvalidProposal`, `VotingEnded`, `JoinedAfterProposal`, `VotingNotEnded`, `AlreadyExecuted`, `ProposalNotPassed`, `ProposalExecutionFailed`, `InvalidRecipient`, `AmountZero`, `InsufficientTreasuryBalance`, `NoTreasuryFunds`, `EntryFeeTooSmall`, `InvalidEntryFee`, `InvalidPercentageSplit`, `NoRewardsToClaim`, `InsufficientPoolBalance`, `MemberLimitTooLow`, `LimitOutOfRange`, `InvalidSender`, `InvalidCallData`, `TokenChangeDisabled`, `NoMembers`, `QuorumNotReached`, `ExecutionDelayActive`, `InvalidPercentage`, `DictatorshipEnabled`, `DictatorshipUnchanged`.
+- Custom errors live in `contracts/TemplErrors.sol`; reference that file for the authoritative list when wiring revert expectations.
 
 ## Flows
 
