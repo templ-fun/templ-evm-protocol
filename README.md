@@ -9,7 +9,7 @@ Templ turns any ERC-20 into a gated club with on-chain economics. Holders deploy
 
 - **Contracts** – Solidity 0.8.x templates (see `contracts/`) mint templ instances that collect entry fees, burn supply, accumulate treasury funds, and expose governance primitives. Each templ stores an on-chain "home link" so frontends, bots, and docs can reference the canonical landing page for the community.
 - **Backend API + Telegram bot** – Node 22/Express server performs signature verification, tracks registered templs, confirms membership, and streams contract events to a Telegram group via a bot token.
-- **Frontend control center** – Vite + React single-page app for deploying templs, joining with proof-of-purchase, raising proposals (with on-chain title/description), and casting votes. Flows are split into dedicated routes:
+- **Frontend control center** – Vite + React single-page app for deploying templs, joining with proof-of-purchase, raising proposals (with on-chain title/description), and casting votes. The landing page pulls templ deployments directly from the configured factory (and merges Telegram metadata from the backend) so every community is one click away. Flows are split into dedicated routes:
 - `/templs/create` – deploy + register and optionally bind a Telegram chat id.
 - `/templs/join` – purchase access, then verify membership via the backend.
 - `/templs/:address` – overview, quick links, and routing to proposal tools.
@@ -62,6 +62,7 @@ The backend stores templ registrations in SQLite (`groups`, `signatures`). Teleg
 | `VITE_BACKEND_URL` | API base URL; defaults to `http://localhost:3001`. |
 | `VITE_BACKEND_SERVER_ID` | Must equal the backend’s `BACKEND_SERVER_ID` so signatures align. |
 | `VITE_TEMPL_FACTORY_*` | Optional overrides for the default factory address (`address`), protocol recipient (`protocolRecipient`), and protocol percent (`protocolPercent`). |
+| `VITE_RPC_URL` | Optional read-only RPC endpoint used to list templs from the factory on the landing page (falls back to the connected wallet provider). |
 
 The frontend connects to the user’s browser wallet (MetaMask or any `window.ethereum` provider) and reuses Hardhat accounts during local development.
 

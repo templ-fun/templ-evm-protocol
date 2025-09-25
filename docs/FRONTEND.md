@@ -4,7 +4,7 @@ The frontend is a Vite + React app served from `frontend/`. It provides clear ro
 
 | Route | Purpose |
 | --- | --- |
-| `/` | Dashboard, wallet connection, recently registered templs. |
+| `/` | Dashboard, wallet connection, and a templ directory sourced from the configured factory (enriched with backend Telegram metadata). |
 | `/templs/create` | Deploy a templ contract and register it with the backend (optional Telegram chat id). |
 | `/templs/join` | Purchase access and request backend verification. |
 | `/templs/:address` | Overview page with priest info, Telegram chat id, and quick actions. |
@@ -34,6 +34,7 @@ By default the SPA expects the backend at `http://localhost:3001`. Override with
 | `VITE_TEMPL_FACTORY_ADDRESS` | Optional override for the templ factory used during deploy. | unset |
 | `VITE_TEMPL_FACTORY_PROTOCOL_RECIPIENT` | Optional override for the protocol fee recipient shown in the UI. | unset |
 | `VITE_TEMPL_FACTORY_PROTOCOL_PERCENT` | Optional override for the protocol fee percent shown in the UI. | unset |
+| `VITE_RPC_URL` | Optional read provider used to enumerate templs on the landing page (falls back to the active wallet provider). | unset |
 | `VITE_E2E_DEBUG` | Enables additional UI affordances when set to `1` (used by Playwright). | `0` |
 
 ### Wallet connection

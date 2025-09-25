@@ -19,4 +19,4 @@ All routes read/write through the same DAO helpers so in-memory caches and the d
 
 ## Frontend
 
-The SPA stores minimal data in `localStorage` (e.g., recent status messages) and relies on backend APIs for state. Wallet connections and provider instances come from the injected `window.ethereum` context.
+The SPA relies on factory reads (via ethers.js) and backend APIs for state. `localStorage` usage is limited to E2E/testing helpers that remember recently deployed templ addresses; production flows do not persist app data locally. Wallet connections and provider instances come from the injected `window.ethereum` context (or the optional `VITE_RPC_URL`).
