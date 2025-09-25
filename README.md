@@ -19,7 +19,7 @@ sequenceDiagram
     F->>C: Factory + templ transactions
     C-->>F: Contract address / receipts
     F->>B: Signed POST /templs or /join payloads
-    B->>C: Verify priest + hasAccess checks
+    B->>C: Read priest() / hasAccess()
     C-->>B: On-chain state + events
     B->>T: HTML alerts (joins, proposals, votes)
     T-->>M: Telegram notifications with deep links
