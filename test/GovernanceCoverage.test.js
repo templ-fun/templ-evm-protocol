@@ -130,6 +130,31 @@ describe("Governance coverage gaps", function () {
     expect(await templ.paused()).to.equal(false);
   });
 
+  it("allows governance to update the templ home link", async function () {
+    const initialLink = "https://start.templ";
+    const updatedLink = "https://new.templ";
+    const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE, homeLink: initialLink });
+    const [, , memberA, memberB] = accounts;
+
+    await mintToUsers(token, [memberA, memberB], ENTRY_FEE * 4n);
+    await purchaseAccess(templ, token, [memberA, memberB]);
+
+    expect(await templ.templHomeLink()).to.equal(initialLink);
+
+    await templ
+      .connect(memberA)
+      .createProposalSetHomeLink(updatedLink, VOTING_PERIOD, "Update home", "Set new home link");
+    const proposalId = (await templ.proposalCount()) - 1n;
+
+    await templ.connect(memberB).vote(proposalId, true);
+    const delay = Number(await templ.executionDelayAfterQuorum());
+    await ethers.provider.send("evm_increaseTime", [delay + 1]);
+    await ethers.provider.send("evm_mine", []);
+
+    await templ.executeProposal(proposalId);
+    expect(await templ.templHomeLink()).to.equal(updatedLink);
+  });
+
   it("clears active proposals once earlier windows expire", async function () {
     const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE });
     const [, , member] = accounts;

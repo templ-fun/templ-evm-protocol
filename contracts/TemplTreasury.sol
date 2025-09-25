@@ -19,7 +19,8 @@ abstract contract TemplTreasury is TemplMembership {
         uint256 _quorumPercent,
         uint256 _executionDelay,
         address _burnAddress,
-        bool _priestIsDictator
+        bool _priestIsDictator,
+        string memory _homeLink
     ) TemplMembership(
         _protocolFeeRecipient,
         _accessToken,
@@ -30,7 +31,8 @@ abstract contract TemplTreasury is TemplMembership {
         _quorumPercent,
         _executionDelay,
         _burnAddress,
-        _priestIsDictator
+        _priestIsDictator,
+        _homeLink
     ) {}
 
     function withdrawTreasuryDAO(
@@ -73,6 +75,10 @@ abstract contract TemplTreasury is TemplMembership {
         _updateDictatorship(enabled);
     }
 
+    function setTemplHomeLinkDAO(string calldata newLink) external onlyDAO {
+        _setTemplHomeLink(newLink);
+    }
+
     function _withdrawTreasury(
         address token,
         address recipient,
@@ -111,7 +117,7 @@ abstract contract TemplTreasury is TemplMembership {
         emit TreasuryAction(proposalId, token, recipient, amount, reason);
     }
 
-    /// @dev Backend listeners consume PriestChanged to clear delegate/mute state for the new priest.
+    /// @dev Backend listeners consume PriestChanged to persist the new priest and notify off-chain services.
     function _changePriest(address newPriest) internal {
         if (newPriest == address(0)) revert TemplErrors.InvalidRecipient();
         address old = priest;

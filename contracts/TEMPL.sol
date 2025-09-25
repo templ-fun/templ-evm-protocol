@@ -18,7 +18,8 @@ contract TEMPL is TemplGovernance {
         uint256 _executionDelay,
         address _burnAddress,
         bool _priestIsDictator,
-        uint256 _maxMembers
+        uint256 _maxMembers,
+        string memory _homeLink
     ) TemplGovernance(
         _protocolFeeRecipient,
         _token,
@@ -29,7 +30,8 @@ contract TEMPL is TemplGovernance {
         _quorumPercent,
         _executionDelay,
         _burnAddress,
-        _priestIsDictator
+        _priestIsDictator,
+        _homeLink
     ) {
         if (_priest == address(0)) revert TemplErrors.InvalidRecipient();
         if (_entryFee == 0) {

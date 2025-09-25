@@ -8,6 +8,9 @@ describe("Priest dictatorship governance toggle", function () {
   const TOKEN_SUPPLY = ethers.parseUnits("10000", 18);
   const VOTING_PERIOD = 7 * 24 * 60 * 60;
   const EXECUTION_DELAY = 7 * 24 * 60 * 60;
+  const TITLE_ENABLE = "Enable dictatorship";
+  const TITLE_DISABLE = "Disable dictatorship";
+  const DESC_DICTATORSHIP = "Toggle priest dictatorship mode";
 
   let templ;
   let token;
@@ -34,7 +37,7 @@ describe("Priest dictatorship governance toggle", function () {
 
     const txEnable = await templ
       .connect(member)
-      .createProposalSetDictatorship(true, VOTING_PERIOD);
+      .createProposalSetDictatorship(true, VOTING_PERIOD, TITLE_ENABLE, DESC_DICTATORSHIP);
     await txEnable.wait();
 
     await advanceBeyondExecutionDelay();
@@ -53,16 +56,20 @@ describe("Priest dictatorship governance toggle", function () {
     expect(await templ.priestIsDictator()).to.equal(true);
 
     await expect(
-      templ.connect(member).createProposalSetDictatorship(true, VOTING_PERIOD)
+      templ
+        .connect(member)
+        .createProposalSetDictatorship(true, VOTING_PERIOD, TITLE_ENABLE, DESC_DICTATORSHIP)
     ).to.be.revertedWithCustomError(templ, "DictatorshipUnchanged");
 
     await expect(
-      templ.connect(member).createProposalSetPaused(true, VOTING_PERIOD)
+      templ
+        .connect(member)
+        .createProposalSetPaused(true, VOTING_PERIOD, "Pause templ", "Attempt to pause while dictator")
     ).to.be.revertedWithCustomError(templ, "DictatorshipEnabled");
 
     const txDisable = await templ
       .connect(member)
-      .createProposalSetDictatorship(false, VOTING_PERIOD);
+      .createProposalSetDictatorship(false, VOTING_PERIOD, TITLE_DISABLE, DESC_DICTATORSHIP);
     await txDisable.wait();
 
     // ensure voting still works while dictatorship is active for the toggle proposal
@@ -85,7 +92,9 @@ describe("Priest dictatorship governance toggle", function () {
   });
 
   it("restricts priest-only DAO calls when dictatorship is active", async function () {
-    await templ.connect(member).createProposalSetDictatorship(true, VOTING_PERIOD);
+    await templ
+      .connect(member)
+      .createProposalSetDictatorship(true, VOTING_PERIOD, TITLE_ENABLE, DESC_DICTATORSHIP);
     await advanceBeyondExecutionDelay();
     await templ.executeProposal(0);
 

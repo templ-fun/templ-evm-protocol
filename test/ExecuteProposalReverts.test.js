@@ -29,7 +29,7 @@ describe("executeProposal reverts", function () {
     await expect(
       templ
         .connect(owner)
-        .createProposalUpdateConfig(5, 0, 0, 0, false, 7 * 24 * 60 * 60)
+        .createProposalUpdateConfig(5, 0, 0, 0, false, 7 * 24 * 60 * 60, 'Invalid fee', 'Test metadata')
     ).to.be.revertedWithCustomError(templ, "EntryFeeTooSmall");
   });
 
@@ -40,7 +40,7 @@ describe("executeProposal reverts", function () {
 
     await templ
       .connect(member1)
-      .createProposalSetPaused(false, 7 * 24 * 60 * 60);
+      .createProposalSetPaused(false, 7 * 24 * 60 * 60, 'Keep running', 'Ensure quorum required');
 
     await expect(templ.executeProposal(0))
       .to.be.revertedWithCustomError(templ, "QuorumNotReached");
@@ -72,7 +72,7 @@ describe("executeProposal reverts", function () {
 
     await harness
       .connect(member1)
-      .createProposalSetPaused(true, 7 * 24 * 60 * 60);
+      .createProposalSetPaused(true, 7 * 24 * 60 * 60, 'Pause harness', 'Testing invalid call data');
     await harness.setUndefinedAction(0);
 
     const delay = Number(await harness.executionDelayAfterQuorum());

@@ -1,216 +1,91 @@
-import { ethers } from 'ethers';
-import { generateInboxId, getInboxIdForIdentifier } from '@xmtp/node-sdk';
-import { syncXMTP } from '../../../shared/xmtp.js';
-import {
-  resolveXmtpEnv,
-  shouldSkipNetworkResolution,
-  shouldUseEphemeralCreator,
-  shouldUpdateMetadata,
-  shouldVerifyContracts
-} from '../xmtp/options.js';
-import {
-  ensureContractDeployed,
-  ensurePriestMatchesOnChain
-} from './contractValidation.js';
+import { randomBytes } from 'crypto';
+import { ensureContractDeployed, ensurePriestMatchesOnChain } from './contractValidation.js';
 
-function normaliseInboxId(id) {
-  return String(id || '').replace(/^0x/i, '');
+function templError(message, statusCode) {
+  return Object.assign(new Error(message), { statusCode });
 }
 
-async function resolvePriestInboxId({ priestIdentifier, xmtp, logger }) {
-  const inboxIds = [];
-  if (xmtp?.inboxId) {
-    inboxIds.push(xmtp.inboxId);
-  }
-
-  const skipNetwork = shouldSkipNetworkResolution();
-  const envOpt = resolveXmtpEnv();
-  let priestInboxAdded = false;
-  if (!skipNetwork) {
-    try {
-      const resolved = await getInboxIdForIdentifier(priestIdentifier, envOpt);
-      if (resolved) {
-        inboxIds.push(resolved);
-        priestInboxAdded = true;
-      }
-    } catch (err) {
-      logger?.warn?.({ err: String(err?.message || err) }, 'Priest inbox resolution failed');
-    }
-  }
-
-  if (!priestInboxAdded) {
-    try {
-      const deterministic = generateInboxId(priestIdentifier);
-      if (!inboxIds.some((id) => normaliseInboxId(id) === normaliseInboxId(deterministic))) {
-        inboxIds.push(deterministic);
-      }
-    } catch (err) {
-      logger?.warn?.({ err: String(err?.message || err) }, 'Deterministic inbox generation failed');
-    }
-  }
-  return inboxIds;
+function shouldVerifyContracts() {
+  return process.env.REQUIRE_CONTRACT_VERIFY === '1' || process.env.NODE_ENV === 'production';
 }
 
-async function createGroup({ contractAddress, inboxIds, xmtp, logger, useEphemeral, disableWait, createXmtpWithRotation }) {
-  if (!inboxIds.length) {
-    throw new Error('No inboxIds available for group creation');
+function normaliseAddress(value, field) {
+  if (!value || typeof value !== 'string') {
+    throw templError(`Missing ${field}`, 400);
   }
-  if (!useEphemeral) {
-    if (typeof xmtp?.conversations?.newGroup !== 'function') {
-      throw new Error('XMTP client does not support newGroup(inboxIds)');
-    }
-    if (disableWait) {
-      const timeoutMs = 3000;
-      const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('newGroup timed out')), timeoutMs));
-      return Promise.race([xmtp.conversations.newGroup(inboxIds), timeout]);
-    }
-    return xmtp.conversations.newGroup(inboxIds);
+  const normalised = value.toLowerCase();
+  if (!normalised.startsWith('0x') || normalised.length !== 42) {
+    throw templError(`Invalid ${field}`, 400);
   }
-
-  const ephWallet = ethers.Wallet.createRandom();
-  const ephClient = await createXmtpWithRotation(ephWallet);
-  try {
-    if (typeof ephClient?.conversations?.newGroup !== 'function') {
-      throw new Error('XMTP client does not support newGroup(inboxIds)');
-    }
-    const group = await ephClient.conversations.newGroup(inboxIds);
-    if (shouldUpdateMetadata()) {
-      try { await group.updateName?.(`Templ ${contractAddress}`); } catch {/* ignore */}
-      try { await group.updateDescription?.('Private TEMPL group'); } catch {/* ignore */}
-    }
-    try {
-      await syncXMTP(xmtp);
-      const hydrated = await xmtp.conversations?.getConversationById?.(group.id);
-      if (hydrated) {
-        return hydrated;
-      }
-    } catch {/* ignore */}
-    return group;
-  } finally {
-    try {
-      const maybeClose = /** @type {any} */ (ephClient)?.close;
-      if (typeof maybeClose === 'function') {
-        await maybeClose.call(ephClient);
-      }
-    } catch (err) {
-      logger?.warn?.({ err: String(err?.message || err) }, 'Failed to close ephemeral XMTP client');
-    }
-  }
+  return normalised;
 }
 
-async function findGroupByDiff({ xmtp, beforeIds, contractAddress, logger }) {
-  try {
-    const afterList = (await xmtp.conversations.list?.()) ?? [];
-    const afterIds = afterList.map((c) => c.id);
-    const diffIds = afterIds.filter((id) => !beforeIds.includes(id));
-    const diffCandidates = afterList.filter((c) => diffIds.includes(c.id));
-    const expectedName = `Templ ${contractAddress}`;
-    let candidate = diffCandidates.find((c) => c.name === expectedName);
-    if (candidate) return candidate;
-    candidate = afterList.find((c) => c.name === expectedName);
-    return candidate || null;
-  } catch (err) {
-    logger?.warn?.({ err: String(err?.message || err) }, 'Conversation diff scan failed');
-    return null;
-  }
-}
-
-async function warmGroup(group, contractAddress, logger) {
-  try {
-    if (typeof group?.send === 'function') {
-      await group.send(JSON.stringify({ type: 'templ-created', contract: contractAddress }));
-    }
-  } catch (err) {
-    logger?.warn?.({ err: String(err?.message || err) }, 'Unable to send templ-created message');
-  }
-}
-
-async function finaliseRegistration({ contractAddress, priestAddress, group, groups, persist, watchContract }) {
-  const record = {
-    group,
-    groupId: group?.id,
-    priest: priestAddress.toLowerCase(),
-    memberSet: new Set()
-  };
-  const key = contractAddress.toLowerCase();
-  groups.set(key, record);
-  persist(key, record);
-  if (typeof watchContract === 'function') {
-    watchContract(contractAddress, record);
-  }
-  return record;
-}
-
-function successResponse(group) {
-  return { groupId: group.id };
+function normaliseChatId(value) {
+  if (value === null || value === undefined) return null;
+  const trimmed = String(value).trim();
+  return trimmed.length ? trimmed : null;
 }
 
 export async function registerTempl(body, context) {
   const { contractAddress, priestAddress } = body;
-  const { xmtp, provider, logger, groups, persist, watchContract, createXmtpWithRotation: createXmtp } = context;
+  const { provider, logger, templs, persist, saveBinding, removeBinding, watchContract } = context;
 
-  logger?.info?.({ contract: contractAddress, priest: priestAddress }, 'Received templ registration request');
+  const contract = normaliseAddress(contractAddress, 'contractAddress');
+  const priest = normaliseAddress(priestAddress, 'priestAddress');
+  const telegramChatId = normaliseChatId(body.telegramChatId ?? body.groupId ?? body.chatId);
+  const requestedHomeLink = typeof body.templHomeLink === 'string'
+    ? body.templHomeLink
+    : (typeof body.homeLink === 'string' ? body.homeLink : '');
+
+  logger?.info?.({ contract, priest, telegramChatId }, 'Register templ request received');
 
   if (shouldVerifyContracts()) {
-    await ensureContractDeployed({ provider, contractAddress, chainId: Number(body?.chainId) });
-    await ensurePriestMatchesOnChain({ provider, contractAddress, priestAddress });
+    await ensureContractDeployed({ provider, contractAddress: contract, chainId: Number(body?.chainId) });
+    await ensurePriestMatchesOnChain({ provider, contractAddress: contract, priestAddress: priest });
   }
 
-  let beforeIds = [];
-  try {
-    await syncXMTP(xmtp);
-    const beforeList = (await xmtp.conversations?.list?.()) ?? [];
-    beforeIds = beforeList.map((c) => c.id);
-  } catch (err) {
-    logger?.warn?.({ err: String(err?.message || err) }, 'Initial XMTP sync failed');
+  const existing = templs.get(contract) || {
+    telegramChatId: null,
+    priest,
+    proposalsMeta: new Map(),
+    lastDigestAt: Date.now(),
+    templHomeLink: '',
+    bindingCode: null
+  };
+  if (!existing.proposalsMeta) existing.proposalsMeta = new Map();
+  if (typeof existing.lastDigestAt !== 'number') existing.lastDigestAt = Date.now();
+  existing.priest = priest;
+  existing.telegramChatId = telegramChatId ?? existing.telegramChatId ?? null;
+  existing.contractAddress = contract;
+  if (requestedHomeLink && requestedHomeLink !== existing.templHomeLink) {
+    existing.templHomeLink = requestedHomeLink;
   }
 
-  const priestIdentifier = { identifier: priestAddress.toLowerCase(), identifierKind: 0 };
-  const inboxIds = await resolvePriestInboxId({ priestIdentifier, xmtp, logger });
-  const disableWait = shouldSkipNetworkResolution();
-  const useEphemeral = !disableWait && shouldUseEphemeralCreator();
-
-  let group;
-  try {
-    group = await createGroup({
-      contractAddress,
-      inboxIds,
-      xmtp,
-      logger,
-      useEphemeral,
-      disableWait,
-      createXmtpWithRotation: createXmtp
-    });
-  } catch (err) {
-    const msg = String(err?.message || '');
-    logger?.warn?.({ err: msg }, 'Group creation initial attempt failed; attempting recovery');
-    try { await syncXMTP(xmtp); } catch {/* ignore */}
-    group = await findGroupByDiff({ xmtp, beforeIds, contractAddress, logger });
-    if (!group) {
-      throw err;
+  let bindingCode = existing.bindingCode || null;
+  if (!existing.telegramChatId) {
+    if (!bindingCode) {
+      bindingCode = randomBytes(16).toString('hex');
     }
+    existing.bindingCode = bindingCode;
+    saveBinding?.(contract, bindingCode);
+  } else {
+    existing.bindingCode = null;
+    removeBinding?.(contract);
   }
 
-  await warmGroup(group, contractAddress, logger);
-
-  logger?.info?.({
-    contract: contractAddress.toLowerCase(),
-    groupId: group.id,
-    groupName: group.name
-  }, 'Group created successfully');
-
-  try {
-    await syncXMTP(xmtp);
-  } catch (err) {
-    if (!String(err?.message || '').includes('succeeded')) {
-      logger?.warn?.({ err: String(err?.message || err) }, 'XMTP sync after templ creation failed');
-    } else {
-      logger?.info?.({ message: err.message }, 'XMTP sync message after creation - ignoring');
-    }
+  templs.set(contract, existing);
+  persist(contract, existing);
+  if (typeof watchContract === 'function') {
+    watchContract(contract, existing);
   }
 
-  await finaliseRegistration({ contractAddress, priestAddress, group, groups, persist, watchContract });
-  logger?.info?.({ contract: contractAddress.toLowerCase(), groupId: group.id }, 'Templ registered');
-
-  return successResponse(group);
+  return {
+    templ: {
+      contract,
+      priest,
+      telegramChatId: existing.telegramChatId,
+      templHomeLink: existing.templHomeLink || ''
+    },
+    bindingCode
+  };
 }

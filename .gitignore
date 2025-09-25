@@ -37,9 +37,6 @@ deployments/
 # State files
 .monitor-state.json
 
-# XMTP test databases
-xmtp-*.db3*
-
 # Test outputs
 test-results/
 frontend/test-results/
@@ -47,3 +44,6 @@ backend/e2e-groups.db*
 coverage/
 frontend/coverage/
 backend/coverage/
+frontend/.vitest-cache/
+frontend/pw-dist/
+frontend/pw-results/

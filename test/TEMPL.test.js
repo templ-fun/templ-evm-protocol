@@ -51,7 +51,8 @@ describe("TEMPL Contract with DAO Governance", function () {
                     7 * 24 * 60 * 60,
                     "0x000000000000000000000000000000000000dEaD",
                     false,
-                    0
+                    0,
+                    ""
                 )
             ).to.be.revertedWithCustomError(TEMPL, "InvalidEntryFee");
         });
@@ -72,7 +73,8 @@ describe("TEMPL Contract with DAO Governance", function () {
                     7 * 24 * 60 * 60,
                     "0x000000000000000000000000000000000000dEaD",
                     false,
-                    0
+                    0,
+                    ""
                 )
             ).to.be.revertedWithCustomError(TEMPL, "InvalidRecipient");
         });
@@ -93,7 +95,8 @@ describe("TEMPL Contract with DAO Governance", function () {
                     7 * 24 * 60 * 60,
                     "0x000000000000000000000000000000000000dEaD",
                     false,
-                    0
+                    0,
+                    ""
                 )
             ).to.be.revertedWithCustomError(TEMPL, "InvalidRecipient");
         });
@@ -113,7 +116,8 @@ describe("TEMPL Contract with DAO Governance", function () {
                 0,
                 ethers.ZeroAddress,
                 false,
-                0
+                0,
+                ""
             );
             await templZero.waitForDeployment();
 
@@ -138,7 +142,8 @@ describe("TEMPL Contract with DAO Governance", function () {
                     7 * 24 * 60 * 60,
                     "0x000000000000000000000000000000000000dEaD",
                     false,
-                    0
+                    0,
+                    ""
                 )
             ).to.be.revertedWithCustomError(TEMPL, "InvalidPercentage");
         });
@@ -159,7 +164,8 @@ describe("TEMPL Contract with DAO Governance", function () {
                     7 * 24 * 60 * 60,
                     "0x000000000000000000000000000000000000dEaD",
                     false,
-                    0
+                    0,
+                    ""
                 )
             ).to.be.revertedWithCustomError(TEMPL, "InvalidPercentageSplit");
         });
@@ -180,7 +186,8 @@ describe("TEMPL Contract with DAO Governance", function () {
                     7 * 24 * 60 * 60,
                     "0x000000000000000000000000000000000000dEaD",
                     false,
-                    0
+                    0,
+                    ""
                 )
             ).to.be.revertedWithCustomError(TEMPL, "InvalidRecipient");
         });
@@ -201,7 +208,8 @@ describe("TEMPL Contract with DAO Governance", function () {
                     7 * 24 * 60 * 60,
                     "0x000000000000000000000000000000000000dEaD",
                     false,
-                    0
+                    0,
+                    ""
                 )
             ).to.be.revertedWithCustomError(TEMPL, "AmountZero");
         });
@@ -317,7 +325,8 @@ describe("TEMPL Contract with DAO Governance", function () {
         it("Should default to standard voting period when none provided", async function () {
             await templ.connect(user1).createProposalSetPaused(
                 false,
-                0
+                0,
+                    ""
             );
             const proposal = await templ.proposals(0);
             const defaultPeriod = await templ.DEFAULT_VOTING_PERIOD();
@@ -959,7 +968,8 @@ describe("TEMPL Contract with DAO Governance", function () {
                 7 * 24 * 60 * 60,
                 "0x000000000000000000000000000000000000dEaD",
                 false,
-                0
+                0,
+                ""
             ]);
 
             await token.connect(user1).approve(await minTempl.getAddress(), 10);
@@ -984,7 +994,8 @@ describe("TEMPL Contract with DAO Governance", function () {
                 7 * 24 * 60 * 60,
                 "0x000000000000000000000000000000000000dEaD",
                 false,
-                0
+                0,
+                    ""
             )).to.be.revertedWithCustomError(factory, "EntryFeeTooSmall");
         });
 

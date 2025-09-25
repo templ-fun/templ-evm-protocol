@@ -5,9 +5,8 @@ import { logger } from '../logger.js';
 import { joinTempl } from '../services/joinTempl.js';
 import { extractTypedRequestParams } from './typed.js';
 
-export default function joinRouter({ xmtp, groups, hasPurchased, lastJoin, database, provider, ensureGroup }) {
+export default function joinRouter({ hasPurchased, templs, database }) {
   const router = express.Router();
-  // (no DISABLE_WAIT flags here; production-safe logic below)
 
   router.post(
     '/join',
@@ -24,13 +23,8 @@ export default function joinRouter({ xmtp, groups, hasPurchased, lastJoin, datab
       try {
         const result = await joinTempl(req.body, {
           hasPurchased,
-          groups,
+          templs,
           logger,
-          lastJoin,
-          database,
-          provider,
-          xmtp,
-          ensureGroup,
         });
         res.json(result);
       } catch (err) {

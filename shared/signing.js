@@ -37,38 +37,6 @@ const ACTION_CONFIG = {
       contract: contractAddress,
       server
     })
-  },
-  delegateMute: {
-    primaryType: 'DelegateMute',
-    types: {
-      DelegateMute: [
-        ...BASE_FIELDS.slice(0, 3),
-        { name: 'delegate', type: 'address' },
-        ...BASE_FIELDS.slice(3)
-      ]
-    },
-    buildMessage: ({ contractAddress, delegateAddress, server }) => ({
-      action: 'delegateMute',
-      contract: contractAddress,
-      delegate: delegateAddress,
-      server
-    })
-  },
-  mute: {
-    primaryType: 'Mute',
-    types: {
-      Mute: [
-        ...BASE_FIELDS.slice(0, 3),
-        { name: 'target', type: 'address' },
-        ...BASE_FIELDS.slice(3)
-      ]
-    },
-    buildMessage: ({ contractAddress, targetAddress, server }) => ({
-      action: 'mute',
-      contract: contractAddress,
-      target: targetAddress,
-      server
-    })
   }
 };
 
@@ -126,28 +94,4 @@ export function buildJoinTypedData(options) {
   return buildTemplTypedData('join', { ...options, contractAddress });
 }
 
-/**
- * Build EIP-712 typed data for delegate-mute action.
- */
-export function buildDelegateTypedData(options) {
-  const { contractAddress, delegateAddress } = options;
-  return buildTemplTypedData('delegateMute', { ...options, contractAddress, delegateAddress });
-}
-
-/**
- * Build EIP-712 typed data for mute action.
- */
-export function buildMuteTypedData(options) {
-  const { contractAddress, targetAddress } = options;
-  return buildTemplTypedData('mute', { ...options, contractAddress, targetAddress });
-}
-
 export { buildTemplTypedData };
-
-// String builders retained for compatibility; default flows use typed data.
-export function buildDelegateMessage(contract, delegate) {
-  return `delegate:${contract.toLowerCase()}:${delegate.toLowerCase()}`;
-}
-export function buildMuteMessage(contract, target) {
-  return `mute:${contract.toLowerCase()}:${target.toLowerCase()}`;
-}
