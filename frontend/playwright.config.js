@@ -67,7 +67,6 @@ export default defineConfig({
         BACKEND_SERVER_ID: 'templ-dev',
         DB_PATH: 'e2e-groups.db',
         CLEAR_DB: '1',
-        ENABLE_DEBUG_ENDPOINTS: '1',
         LOG_LEVEL: 'info',
         NODE_ENV: 'test',
         BACKEND_USE_MEMORY_DB: '1',
