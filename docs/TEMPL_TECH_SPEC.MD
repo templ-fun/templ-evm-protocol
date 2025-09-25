@@ -1,8 +1,8 @@
-# Templ Technical Spec (Telegram Pivot)
+# Templ Technical Spec
 
-Use this spec to connect the canonical architecture after the Telegram pivot. Templ keeps the original on-chain design—paid memberships, enforced fee splits, governance modules—but replaces all XMTP chat integrations with Telegram notifications.
+Use this spec to connect the canonical architecture: paid memberships, enforced fee splits, governance modules, and Telegram notifications that mirror on-chain activity.
 
-## 1. Contracts (unchanged)
+## 1. Contracts
 
 - `TemplFactory` deploys templ instances with configurable fee splits and protocol tithes.
 - `TEMPL` instances manage:
@@ -62,5 +62,3 @@ MetaMask/`window.ethereum` supplies the signer. All backend calls attach typed s
 - Richer Telegram formatting (buttons, proposal summaries) once long-lived bot tokens are configured.
 - Optional webhook that mirrors events to other tooling (Discord, Matrix).
 - Automated pruning / archiving of templ entries when factories upgrade.
-
-The XMTP stack is officially retired; any remaining references in the codebase should be treated as legacy and removed over time.

@@ -14,7 +14,7 @@ Use this doc to navigate the Vite + React app in `frontend/` and understand the 
 
 After deploying, the UI surfaces a one-time Telegram binding code. Invite `@templfunbot` to your group and post `templ <bindingCode>` so the backend can link the templ to that chat automatically.
 
-The app no longer embeds chat. Any out-of-band coordination happens inside Telegram where the backend broadcasts templ events.
+The app focuses on templ lifecycle flows while Telegram handles coordination through backend-triggered notifications.
 
 ## Local development
 
@@ -56,7 +56,7 @@ The app uses `ethers.BrowserProvider` and the injected `window.ethereum`. Connec
 
 ### Governance tools
 
-The new proposal form collects a title and description (persisted on-chain) and offers a curated set of actions:
+The proposal form collects a title and description (persisted on-chain) and offers a curated set of actions:
 
 - Pause / unpause templ
 - Change priest

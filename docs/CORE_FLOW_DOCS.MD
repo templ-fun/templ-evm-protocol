@@ -1,6 +1,6 @@
 # Core Flow Diagrams (Telegram Edition)
 
-Use this reference to see how the contracts, backend API, frontend, and Telegram notifier interact after the XMTP removal. Every section pairs a flowchart with a sequence diagram so you can choose the view that fits your debugging or onboarding moment.
+Use this reference to see how the contracts, backend API, frontend, and Telegram notifier interact today. Every section pairs a flowchart with a sequence diagram so you can choose the view that fits your debugging or onboarding moment.
 
 ## Actors
 
@@ -88,7 +88,7 @@ Messages use `APP_BASE_URL` to build URLs such as `/templs/<address>` or `/templ
 
 ## 4. Moderation (future-ready)
 
-Legacy delegate/mute APIs were removed during the Telegram pivot. The contracts still expose the underlying actions, so new integrations (e.g., Discord bridges) can reintroduce them later if needed.
+Delegate/mute APIs live on-chain for future moderation integrations (e.g., Discord bridges) even though the current product surface does not expose them directly.
 
 ## 5. Proposal creation
 

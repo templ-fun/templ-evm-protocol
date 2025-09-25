@@ -100,7 +100,7 @@ All create functions now require `string title, string description` parameters s
 - `createProposalDisbandTreasury(address token, uint256 votingPeriod, string title, string description)` (`token` can be the access token, another ERC-20, or `address(0)` for ETH)
 - `createProposalSetDictatorship(bool enable, uint256 votingPeriod, string title, string description)` - enable or disable priest dictatorship. This proposal type is always available, even when dictatorship is already active, and reverts with `DictatorshipUnchanged` if the requested mode matches the current state.
 
-Proposals emit `ProposalCreated(id, proposer, endTime, title, description)` and the metadata is returned from `getProposal`. Frontends/bots no longer depend on XMTP messages to read display text.
+Proposals emit `ProposalCreated(id, proposer, endTime, title, description)` and the metadata is returned from `getProposal`, giving frontends and bots direct access to display text.
 
 ### Security notes
 

@@ -15,8 +15,6 @@ Use this doc to understand the JavaScript helpers under `shared/` that both the 
 - Exposes environment helpers used across packages: `isTemplDebugEnabled`, `isTemplE2EDebug`, `isTemplTestEnv`, `readTemplEnv`.
 - Ensures the backend, frontend, and tests agree on how debug flags behave.
 
-The XMTP polling helpers were removed during the Telegram pivot.
-
 ## Testing
 
 `shared/signing.test.js` validates typed-data outputs. The backend test command (`npm --prefix backend test`) imports it automatically so regressions fail CI.

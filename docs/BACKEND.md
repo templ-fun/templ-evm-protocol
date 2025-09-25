@@ -7,7 +7,7 @@ Use this doc to configure and operate the Node 22 / Express backend that handles
 * confirms membership by asking the contract’s `hasAccess` function (no local member lists are stored), and
 * streams contract events into Telegram groups when configured.
 
-The service no longer depends on XMTP. All messaging happens through Telegram bots.
+All messaging happens through Telegram bots.
 
 ## Installation
 

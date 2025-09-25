@@ -22,7 +22,7 @@ function extractTemplAddress(receipt, factoryInterface) {
   return null;
 }
 
-test.describe('Telegram pivot basic flows', () => {
+test.describe('Telegram basic flows', () => {
   test('register templ, verify membership, and navigate SPA routes', async ({ page, provider, wallets }) => {
     const protocolRecipient = await wallets.priest.getAddress();
     const deployer = await provider.getSigner(2);
