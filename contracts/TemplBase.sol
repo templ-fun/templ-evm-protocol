@@ -6,6 +6,8 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {TemplErrors} from "./TemplErrors.sol";
 
+/// @title Base templ storage and shared helpers
+/// @notice Hosts shared state, events, and internal helpers used by membership, treasury, and governance modules.
 abstract contract TemplBase is ReentrancyGuard {
     using SafeERC20 for IERC20;
     using TemplErrors for *;
@@ -198,11 +200,13 @@ abstract contract TemplBase is ReentrancyGuard {
     mapping(address => mapping(address => uint256)) internal memberExternalRewardSnapshots;
     mapping(address => mapping(address => uint256)) internal memberExternalClaims;
 
+    /// @dev Restricts a function so only wallets that successfully purchased access may call it.
     modifier onlyMember() {
         if (!members[msg.sender].purchased) revert TemplErrors.NotMember();
         _;
     }
 
+    /// @dev Permits calls from the contract (governance) or the priest when dictatorship mode is enabled.
     modifier onlyDAO() {
         if (priestIsDictator) {
             if (msg.sender != address(this) && msg.sender != priest) revert TemplErrors.PriestOnly();
@@ -212,11 +216,13 @@ abstract contract TemplBase is ReentrancyGuard {
         _;
     }
 
+    /// @dev Blocks direct calls from the contract to avoid double-entry during purchase flows.
     modifier notSelf() {
         if (msg.sender == address(this)) revert TemplErrors.InvalidSender();
         _;
     }
 
+    /// @dev Ensures joins and other gated actions only execute when the templ is unpaused.
     modifier whenNotPaused() {
         if (paused) revert TemplErrors.ContractPausedError();
         _;
@@ -224,6 +230,18 @@ abstract contract TemplBase is ReentrancyGuard {
 
     event DictatorshipModeChanged(bool enabled);
 
+    /// @notice Sets immutable configuration and initial governance parameters shared across modules.
+    /// @param _protocolFeeRecipient Address receiving the protocol share of entry fees.
+    /// @param _accessToken ERC-20 token that gates membership.
+    /// @param _burnPercent Initial percent burned from every entry fee.
+    /// @param _treasuryPercent Initial percent routed to the treasury.
+    /// @param _memberPoolPercent Initial percent shared with existing members.
+    /// @param _protocolPercent Protocol fee percent baked into every templ deployment.
+    /// @param _quorumPercent Percent of members required to reach quorum (defaults when zero).
+    /// @param _executionDelay Seconds to wait after quorum before execution (defaults when zero).
+    /// @param _burnAddress Address receiving burn allocations (fallbacks to the dead address).
+    /// @param _priestIsDictator Whether the templ starts in dictatorship mode.
+    /// @param _homeLink Canonical templ home link emitted on initialization.
     constructor(
         address _protocolFeeRecipient,
         address _accessToken,
@@ -261,6 +279,7 @@ abstract contract TemplBase is ReentrancyGuard {
         }
     }
 
+    /// @dev Updates the split between burn, treasury, and member pool slices.
     function _setPercentSplit(
         uint256 _burnPercent,
         uint256 _treasuryPercent,
@@ -272,6 +291,7 @@ abstract contract TemplBase is ReentrancyGuard {
         memberPoolPercent = _memberPoolPercent;
     }
 
+    /// @dev Validates that the provided split plus the protocol fee equals 100%.
     function _validatePercentSplit(
         uint256 _burnPercent,
         uint256 _treasuryPercent,
@@ -283,12 +303,14 @@ abstract contract TemplBase is ReentrancyGuard {
         }
     }
 
+    /// @dev Toggles dictatorship governance mode, emitting an event when the state changes.
     function _updateDictatorship(bool _enabled) internal {
         if (priestIsDictator == _enabled) revert TemplErrors.DictatorshipUnchanged();
         priestIsDictator = _enabled;
         emit DictatorshipModeChanged(_enabled);
     }
 
+    /// @dev Sets or clears the membership cap and auto-pauses if the new cap is already met.
     function _setMaxMembers(uint256 newMaxMembers) internal {
         uint256 currentMembers = memberList.length;
         if (newMaxMembers > 0 && newMaxMembers < currentMembers) {
@@ -299,6 +321,7 @@ abstract contract TemplBase is ReentrancyGuard {
         _autoPauseIfLimitReached();
     }
 
+    /// @dev Writes a new templ home link and emits an event when it changes.
     function _setTemplHomeLink(string memory newLink) internal {
         if (keccak256(bytes(templHomeLink)) == keccak256(bytes(newLink))) {
             return;
@@ -308,6 +331,7 @@ abstract contract TemplBase is ReentrancyGuard {
         emit TemplHomeLinkUpdated(previous, newLink);
     }
 
+    /// @dev Pauses the templ when a membership cap is set and already reached.
     function _autoPauseIfLimitReached() internal {
         uint256 limit = MAX_MEMBERS;
         if (limit > 0 && memberList.length >= limit && !paused) {

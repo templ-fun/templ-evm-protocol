@@ -6,9 +6,12 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {TemplMembership} from "./TemplMembership.sol";
 import {TemplErrors} from "./TemplErrors.sol";
 
+/// @title templ treasury module
+/// @notice Adds treasury controls, fee configuration, and external reward management.
 abstract contract TemplTreasury is TemplMembership {
     using SafeERC20 for IERC20;
 
+    /// @notice Pass-through constructor wiring the treasury layer into the membership module.
     constructor(
         address _protocolFeeRecipient,
         address _accessToken,
@@ -35,6 +38,11 @@ abstract contract TemplTreasury is TemplMembership {
         _homeLink
     ) {}
 
+    /// @notice Governance action that transfers available treasury or external funds to a recipient.
+    /// @param token Token to withdraw (`address(0)` for ETH, access token, or arbitrary ERC-20).
+    /// @param recipient Destination wallet for the withdrawal.
+    /// @param amount Amount to transfer.
+    /// @param reason Human-readable justification emitted for off-chain consumers.
     function withdrawTreasuryDAO(
         address token,
         address recipient,
@@ -44,6 +52,7 @@ abstract contract TemplTreasury is TemplMembership {
         _withdrawTreasury(token, recipient, amount, reason, 0);
     }
 
+    /// @notice Governance action that updates the entry fee and/or fee split configuration.
     function updateConfigDAO(
         address _token,
         uint256 _entryFee,
@@ -55,30 +64,37 @@ abstract contract TemplTreasury is TemplMembership {
         _updateConfig(_token, _entryFee, _updateFeeSplit, _burnPercent, _treasuryPercent, _memberPoolPercent);
     }
 
+    /// @notice Governance action that toggles the paused state.
     function setPausedDAO(bool _paused) external onlyDAO {
         _setPaused(_paused);
     }
 
+    /// @notice Governance action that adjusts the membership cap.
     function setMaxMembersDAO(uint256 _maxMembers) external onlyDAO {
         _setMaxMembers(_maxMembers);
     }
 
+    /// @notice Governance action that moves treasury balances into the member or external reward pools.
     function disbandTreasuryDAO(address token) external onlyDAO {
         _disbandTreasury(token, 0);
     }
 
+    /// @notice Governance action that appoints a new priest.
     function changePriestDAO(address newPriest) external onlyDAO {
         _changePriest(newPriest);
     }
 
+    /// @notice Governance action that enables or disables dictatorship mode.
     function setDictatorshipDAO(bool enabled) external onlyDAO {
         _updateDictatorship(enabled);
     }
 
+    /// @notice Governance action that updates the templ home link shared across surfaces.
     function setTemplHomeLinkDAO(string calldata newLink) external onlyDAO {
         _setTemplHomeLink(newLink);
     }
 
+    /// @dev Internal helper that executes a treasury withdrawal and emits the corresponding event.
     function _withdrawTreasury(
         address token,
         address recipient,
@@ -126,6 +142,7 @@ abstract contract TemplTreasury is TemplMembership {
         emit PriestChanged(old, newPriest);
     }
 
+    /// @dev Applies updates to the entry fee and fee split configuration.
     function _updateConfig(
         address _token,
         uint256 _entryFee,
@@ -146,6 +163,7 @@ abstract contract TemplTreasury is TemplMembership {
         emit ConfigUpdated(accessToken, entryFee, burnPercent, treasuryPercent, memberPoolPercent, protocolPercent);
     }
 
+    /// @dev Sets the paused flag, clearing membership limits if necessary when resuming.
     function _setPaused(bool _paused) internal {
         if (!_paused && MAX_MEMBERS > 0 && memberList.length >= MAX_MEMBERS) {
             MAX_MEMBERS = 0;
@@ -155,6 +173,7 @@ abstract contract TemplTreasury is TemplMembership {
         emit ContractPaused(_paused);
     }
 
+    /// @dev Routes treasury balances into member or external pools so members can claim them evenly.
     function _disbandTreasury(address token, uint256 proposalId) internal {
         uint256 n = memberList.length;
         if (n == 0) revert TemplErrors.NoMembers();
@@ -208,6 +227,7 @@ abstract contract TemplTreasury is TemplMembership {
         emit TreasuryDisbanded(proposalId, token, amount, perMember, remainder);
     }
 
+    /// @dev Registers a token so external rewards can be enumerated by frontends.
     function _registerExternalToken(address token) internal {
         ExternalRewardState storage rewards = externalRewards[token];
         if (!rewards.exists) {

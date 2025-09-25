@@ -4,7 +4,10 @@ pragma solidity ^0.8.23;
 import {TemplTreasury} from "./TemplTreasury.sol";
 import {TemplErrors} from "./TemplErrors.sol";
 
+/// @title templ governance module
+/// @notice Adds proposal creation, voting, and execution flows on top of treasury + membership logic.
 abstract contract TemplGovernance is TemplTreasury {
+    /// @notice Pass-through constructor hooking the governance layer into the treasury module.
     constructor(
         address _protocolFeeRecipient,
         address _accessToken,
@@ -31,6 +34,12 @@ abstract contract TemplGovernance is TemplTreasury {
         _homeLink
     ) {}
 
+    /// @notice Opens a proposal to pause or unpause the templ.
+    /// @param _paused Desired paused state.
+    /// @param _votingPeriod Optional custom voting duration (seconds).
+    /// @param _title On-chain title for the proposal.
+    /// @param _description On-chain description for the proposal.
+    /// @return Proposal id for tracking and voting.
     function createProposalSetPaused(
         bool _paused,
         uint256 _votingPeriod,
@@ -44,6 +53,15 @@ abstract contract TemplGovernance is TemplTreasury {
         return id;
     }
 
+    /// @notice Opens a proposal to update entry fee and/or fee split configuration.
+    /// @param _newEntryFee Optional new entry fee (0 to keep current).
+    /// @param _newBurnPercent New burn percent when `_updateFeeSplit` is true.
+    /// @param _newTreasuryPercent New treasury percent when `_updateFeeSplit` is true.
+    /// @param _newMemberPoolPercent New member pool percent when `_updateFeeSplit` is true.
+    /// @param _updateFeeSplit Whether to apply the new split values.
+    /// @param _votingPeriod Optional custom voting duration (seconds).
+    /// @param _title On-chain title for the proposal.
+    /// @param _description On-chain description for the proposal.
     function createProposalUpdateConfig(
         uint256 _newEntryFee,
         uint256 _newBurnPercent,
@@ -72,6 +90,11 @@ abstract contract TemplGovernance is TemplTreasury {
         return id;
     }
 
+    /// @notice Opens a proposal to change the membership cap.
+    /// @param _newMaxMembers New membership limit (0 to remove the cap).
+    /// @param _votingPeriod Optional custom voting duration (seconds).
+    /// @param _title On-chain title for the proposal.
+    /// @param _description On-chain description for the proposal.
     function createProposalSetMaxMembers(
         uint256 _newMaxMembers,
         uint256 _votingPeriod,
@@ -88,6 +111,11 @@ abstract contract TemplGovernance is TemplTreasury {
         return id;
     }
 
+    /// @notice Opens a proposal to update the templ home link surfaced off-chain.
+    /// @param _newLink New canonical link for the templ.
+    /// @param _votingPeriod Optional custom voting duration (seconds).
+    /// @param _title On-chain title for the proposal.
+    /// @param _description On-chain description for the proposal.
     function createProposalSetHomeLink(
         string calldata _newLink,
         uint256 _votingPeriod,
@@ -101,6 +129,14 @@ abstract contract TemplGovernance is TemplTreasury {
         return id;
     }
 
+    /// @notice Opens a proposal to withdraw treasury or external funds to a recipient.
+    /// @param _token Token to withdraw (`address(0)` for ETH).
+    /// @param _recipient Destination wallet for the funds.
+    /// @param _amount Amount to withdraw.
+    /// @param _reason Free-form text explaining the withdrawal.
+    /// @param _votingPeriod Optional custom voting duration (seconds).
+    /// @param _title On-chain title for the proposal.
+    /// @param _description On-chain description for the proposal.
     function createProposalWithdrawTreasury(
         address _token,
         address _recipient,
@@ -120,6 +156,11 @@ abstract contract TemplGovernance is TemplTreasury {
         return id;
     }
 
+    /// @notice Opens a proposal to disband treasury holdings into member or external reward pools.
+    /// @param _token Token whose treasury allocation should be disbanded.
+    /// @param _votingPeriod Optional custom voting duration (seconds).
+    /// @param _title On-chain title for the proposal.
+    /// @param _description On-chain description for the proposal.
     function createProposalDisbandTreasury(
         address _token,
         uint256 _votingPeriod,
@@ -136,6 +177,11 @@ abstract contract TemplGovernance is TemplTreasury {
         return id;
     }
 
+    /// @notice Opens a proposal to appoint a new priest.
+    /// @param _newPriest Address proposed as the new priest.
+    /// @param _votingPeriod Optional custom voting duration (seconds).
+    /// @param _title On-chain title for the proposal.
+    /// @param _description On-chain description for the proposal.
     function createProposalChangePriest(
         address _newPriest,
         uint256 _votingPeriod,
@@ -150,6 +196,11 @@ abstract contract TemplGovernance is TemplTreasury {
         return id;
     }
 
+    /// @notice Opens a proposal to enable or disable dictatorship mode.
+    /// @param _enable Target dictatorship state.
+    /// @param _votingPeriod Optional custom voting duration (seconds).
+    /// @param _title On-chain title for the proposal.
+    /// @param _description On-chain description for the proposal.
     function createProposalSetDictatorship(
         bool _enable,
         uint256 _votingPeriod,
@@ -163,6 +214,9 @@ abstract contract TemplGovernance is TemplTreasury {
         return id;
     }
 
+    /// @notice Casts or updates a vote on a proposal.
+    /// @param _proposalId Proposal id to vote on.
+    /// @param _support True for YES, false for NO.
     function vote(uint256 _proposalId, bool _support) external onlyMember {
         if (_proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
         Proposal storage proposal = proposals[_proposalId];
@@ -222,6 +276,8 @@ abstract contract TemplGovernance is TemplTreasury {
         emit VoteCast(_proposalId, msg.sender, _support, block.timestamp);
     }
 
+    /// @notice Executes a passed proposal after quorum (or voting) requirements are satisfied.
+    /// @param _proposalId Proposal id to execute.
     function executeProposal(uint256 _proposalId) external nonReentrant {
         if (_proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
         Proposal storage proposal = proposals[_proposalId];
@@ -282,6 +338,16 @@ abstract contract TemplGovernance is TemplTreasury {
         emit ProposalExecuted(_proposalId, true, hex"");
     }
 
+    /// @notice Returns core metadata for a proposal including vote totals and status.
+    /// @param _proposalId Proposal id to inspect.
+    /// @return proposer Address that created the proposal.
+    /// @return yesVotes Number of YES votes.
+    /// @return noVotes Number of NO votes.
+    /// @return endTime Timestamp when voting/execution window closes.
+    /// @return executed Whether the proposal has been executed.
+    /// @return passed Whether the proposal can be executed based on vote outcomes.
+    /// @return title On-chain title string.
+    /// @return description On-chain description string.
     function getProposal(uint256 _proposalId) external view returns (
         address proposer,
         uint256 yesVotes,
@@ -315,6 +381,14 @@ abstract contract TemplGovernance is TemplTreasury {
         );
     }
 
+    /// @notice Returns quorum-related snapshot data for a proposal.
+    /// @param _proposalId Proposal id to inspect.
+    /// @return eligibleVotersPreQuorum Members eligible before quorum was reached.
+    /// @return eligibleVotersPostQuorum Members eligible after quorum was reached.
+    /// @return preQuorumSnapshotBlock Block recorded when the proposal opened.
+    /// @return quorumSnapshotBlock Block recorded when quorum was reached (if any).
+    /// @return createdAt Timestamp when the proposal was created.
+    /// @return quorumReachedAt Timestamp when quorum was reached (0 when never reached).
     function getProposalSnapshots(
         uint256 _proposalId
     )
@@ -341,6 +415,11 @@ abstract contract TemplGovernance is TemplTreasury {
         );
     }
 
+    /// @notice Returns whether a voter participated in a proposal and their recorded choice.
+    /// @param _proposalId Proposal id to inspect.
+    /// @param _voter Wallet to query.
+    /// @return voted True if the voter has cast a ballot.
+    /// @return support Recorded support value (false when `voted` is false).
     function hasVoted(
         uint256 _proposalId,
         address _voter
@@ -351,6 +430,7 @@ abstract contract TemplGovernance is TemplTreasury {
         return (proposal.hasVoted[_voter], proposal.voteChoice[_voter]);
     }
 
+    /// @notice Lists proposal ids that are still within their active voting/execution window.
     function getActiveProposals() external view returns (uint256[] memory) {
         uint256 pc = proposalCount;
         uint256 currentTime = block.timestamp;
@@ -373,6 +453,11 @@ abstract contract TemplGovernance is TemplTreasury {
         return activeIds;
     }
 
+    /// @notice Returns active proposal ids using offset + limit pagination.
+    /// @param offset Starting index within the proposal array.
+    /// @param limit Maximum number of active proposals to return (capped at 100).
+    /// @return proposalIds Active proposal ids discovered in the window.
+    /// @return hasMore True when additional active proposals exist beyond the window.
     function getActiveProposalsPaginated(
         uint256 offset,
         uint256 limit
@@ -414,6 +499,7 @@ abstract contract TemplGovernance is TemplTreasury {
         return (proposalIds, hasMore);
     }
 
+    /// @dev Creates the base proposal structure, including quorum pre-checks and proposer tracking.
     function _createBaseProposal(
         uint256 _votingPeriod,
         string memory _title,
@@ -464,6 +550,7 @@ abstract contract TemplGovernance is TemplTreasury {
         emit ProposalCreated(proposalId, msg.sender, proposal.endTime, _title, _description);
     }
 
+    /// @dev Checks whether a member joined after a particular snapshot point, invalidating their vote.
     function _joinedAfterSnapshot(
         Member storage memberInfo,
         uint256 snapshotBlock,
@@ -481,6 +568,7 @@ abstract contract TemplGovernance is TemplTreasury {
         return false;
     }
 
+    /// @dev Helper that determines if a proposal is still active based on time and execution status.
     function _isActiveProposal(Proposal storage proposal, uint256 currentTime) internal view returns (bool) {
         return currentTime < proposal.endTime && !proposal.executed;
     }

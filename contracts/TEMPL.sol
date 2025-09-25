@@ -4,7 +4,24 @@ pragma solidity ^0.8.23;
 import {TemplGovernance} from "./TemplGovernance.sol";
 import {TemplErrors} from "./TemplErrors.sol";
 
+/// @title templ.fun core templ implementation
+/// @notice Wires governance, treasury, and membership modules for a single templ instance.
 contract TEMPL is TemplGovernance {
+    /// @notice Initializes a new templ with the provided configuration and priest.
+    /// @param _priest Wallet that oversees configuration changes until governance replaces it.
+    /// @param _protocolFeeRecipient Address that receives the protocol share of every entry fee.
+    /// @param _token ERC-20 token used as the access currency for the templ.
+    /// @param _entryFee Amount of `_token` required to join the templ.
+    /// @param _burnPercent Percent of each entry fee that is burned.
+    /// @param _treasuryPercent Percent of each entry fee routed to the templ treasury.
+    /// @param _memberPoolPercent Percent of each entry fee streamed to existing members.
+    /// @param _protocolPercent Percent of each entry fee forwarded to the protocol.
+    /// @param _quorumPercent Percent of members that must vote YES to satisfy quorum.
+    /// @param _executionDelay Seconds to wait after quorum before executing a proposal.
+    /// @param _burnAddress Address that receives the burn allocation (defaults to the dead address).
+    /// @param _priestIsDictator Whether the templ starts in priest-only governance mode.
+    /// @param _maxMembers Optional membership cap (0 keeps membership uncapped).
+    /// @param _homeLink Canonical URL for the templ surfaced in frontends and notifications.
     constructor(
         address _priest,
         address _protocolFeeRecipient,
@@ -48,5 +65,6 @@ contract TEMPL is TemplGovernance {
         }
     }
 
+    /// @notice Accepts ETH so proposals can later disburse it as external rewards.
     receive() external payable {}
 }

@@ -6,9 +6,12 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {TemplBase} from "./TemplBase.sol";
 import {TemplErrors} from "./TemplErrors.sol";
 
+/// @title templ membership module
+/// @notice Handles joins, reward accounting, and member-facing views.
 abstract contract TemplMembership is TemplBase {
     using SafeERC20 for IERC20;
 
+    /// @notice Forwards configuration to the base contract; concrete deployments call this through inheritance.
     constructor(
         address _protocolFeeRecipient,
         address _accessToken,
@@ -37,6 +40,7 @@ abstract contract TemplMembership is TemplBase {
         )
     {}
 
+    /// @notice Purchase templ membership using the configured access token.
     function purchaseAccess() external whenNotPaused notSelf nonReentrant {
         Member storage m = members[msg.sender];
         if (m.purchased) revert TemplErrors.AlreadyPurchased();
@@ -100,6 +104,8 @@ abstract contract TemplMembership is TemplBase {
         _autoPauseIfLimitReached();
     }
 
+    /// @notice Returns the member pool allocation pending for a given wallet.
+    /// @param member Wallet to inspect.
     function getClaimablePoolAmount(address member) public view returns (uint256) {
         if (!members[member].purchased) {
             return 0;
@@ -110,10 +116,16 @@ abstract contract TemplMembership is TemplBase {
         return accrued > snapshot ? accrued - snapshot : 0;
     }
 
+    /// @notice Lists ERC-20 (or ETH) reward tokens with active external pools.
     function getExternalRewardTokens() external view returns (address[] memory) {
         return externalRewardTokens;
     }
 
+    /// @notice Returns the global accounting for an external reward token.
+    /// @param token ERC-20 token address or address(0) for ETH.
+    /// @return poolBalance Amount reserved for members but not yet claimed.
+    /// @return cumulativeRewards Cumulative reward per member used for snapshots.
+    /// @return remainder Remainder carried forward for the next distribution.
     function getExternalRewardState(address token) external view returns (
         uint256 poolBalance,
         uint256 cumulativeRewards,
@@ -123,6 +135,9 @@ abstract contract TemplMembership is TemplBase {
         return (rewards.poolBalance, rewards.cumulativeRewards, rewards.rewardRemainder);
     }
 
+    /// @notice Computes how much of an external reward token a member can claim.
+    /// @param member Wallet to inspect.
+    /// @param token ERC-20 token address or address(0) for ETH.
     function getClaimableExternalToken(address member, address token) public view returns (uint256) {
         if (!members[member].purchased) {
             return 0;
@@ -144,6 +159,7 @@ abstract contract TemplMembership is TemplBase {
         return accrued > snapshot ? accrued - snapshot : 0;
     }
 
+    /// @notice Claims the caller's accrued share of the member pool.
     function claimMemberPool() external onlyMember nonReentrant {
         uint256 claimable = getClaimablePoolAmount(msg.sender);
         if (claimable == 0) revert TemplErrors.NoRewardsToClaim();
@@ -159,6 +175,8 @@ abstract contract TemplMembership is TemplBase {
         emit MemberPoolClaimed(msg.sender, claimable, block.timestamp);
     }
 
+    /// @notice Claims the caller's accrued share of an external reward token or ETH.
+    /// @param token ERC-20 token address or address(0) for ETH.
     function claimExternalToken(address token) external onlyMember nonReentrant {
         if (token == accessToken) revert TemplErrors.InvalidCallData();
         ExternalRewardState storage rewards = externalRewards[token];
@@ -184,10 +202,16 @@ abstract contract TemplMembership is TemplBase {
         emit ExternalRewardClaimed(token, msg.sender, claimable);
     }
 
+    /// @notice Reports whether a wallet currently counts as a member.
     function hasAccess(address user) external view returns (bool) {
         return members[user].purchased;
     }
 
+    /// @notice Returns metadata about when a wallet purchased access.
+    /// @param user Wallet to inspect.
+    /// @return purchased True if the wallet has joined.
+    /// @return timestamp Block timestamp when the join completed.
+    /// @return blockNum Block number when the join completed.
     function getPurchaseDetails(address user) external view returns (
         bool purchased,
         uint256 timestamp,
@@ -197,6 +221,7 @@ abstract contract TemplMembership is TemplBase {
         return (m.purchased, m.timestamp, m.block);
     }
 
+    /// @notice Exposes treasury balances, member pool totals, and protocol receipts.
     function getTreasuryInfo() external view returns (
         uint256 treasury,
         uint256 memberPool,
@@ -217,6 +242,7 @@ abstract contract TemplMembership is TemplBase {
         );
     }
 
+    /// @notice Returns high level configuration and aggregate balances for the templ.
     function getConfig() external view returns (
         address token,
         uint256 fee,
@@ -245,10 +271,12 @@ abstract contract TemplMembership is TemplBase {
         );
     }
 
+    /// @notice Returns the number of active members.
     function getMemberCount() external view returns (uint256) {
         return memberList.length;
     }
 
+    /// @notice Exposes a voter's current vote weight (1 per active member).
     function getVoteWeight(address voter) external view returns (uint256) {
         if (!members[voter].purchased) {
             return 0;
@@ -256,6 +284,7 @@ abstract contract TemplMembership is TemplBase {
         return 1;
     }
 
+    /// @dev Persists a new external reward checkpoint so future joins can baseline correctly.
     function _recordExternalCheckpoint(ExternalRewardState storage rewards) internal {
         RewardCheckpoint memory checkpoint = RewardCheckpoint({
             blockNumber: uint64(block.number),
@@ -276,6 +305,7 @@ abstract contract TemplMembership is TemplBase {
         }
     }
 
+    /// @dev Determines the cumulative rewards baseline for a member given join-time snapshots.
     function _externalBaselineForMember(
         ExternalRewardState storage rewards,
         Member storage memberInfo

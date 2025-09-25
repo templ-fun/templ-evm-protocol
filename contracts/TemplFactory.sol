@@ -4,6 +4,8 @@ pragma solidity ^0.8.23;
 import {TEMPL} from "./TEMPL.sol";
 import {TemplErrors} from "./TemplErrors.sol";
 
+/// @title Factory for deploying templ instances
+/// @notice Deploys templ contracts with shared protocol configuration and optional custom splits.
 contract TemplFactory {
     uint256 internal constant TOTAL_PERCENT = 100;
     uint256 internal constant DEFAULT_BURN_PERCENT = 30;
@@ -49,6 +51,9 @@ contract TemplFactory {
         string homeLink
     );
 
+    /// @notice Initializes factory-wide protocol recipient and fee percent.
+    /// @param _protocolFeeRecipient Address receiving the protocol share for every templ deployed.
+    /// @param _protocolPercent Fee percent reserved for the protocol across all templs.
     constructor(address _protocolFeeRecipient, uint256 _protocolPercent) {
         if (_protocolFeeRecipient == address(0)) revert TemplErrors.InvalidRecipient();
         if (_protocolPercent > TOTAL_PERCENT) revert TemplErrors.InvalidPercentageSplit();
@@ -56,6 +61,10 @@ contract TemplFactory {
         protocolPercent = _protocolPercent;
     }
 
+    /// @notice Deploys a templ using default fee splits and quorum settings.
+    /// @param _token ERC-20 access token for the templ.
+    /// @param _entryFee Entry fee denominated in `_token`.
+    /// @return templAddress Address of the deployed templ.
     function createTempl(address _token, uint256 _entryFee) external returns (address templAddress) {
         CreateConfig memory cfg = CreateConfig({
             priest: msg.sender,
@@ -74,6 +83,9 @@ contract TemplFactory {
         return _deploy(cfg);
     }
 
+    /// @notice Deploys a templ using a custom configuration struct.
+    /// @param config Struct containing fee splits, governance settings, and defaults.
+    /// @return templAddress Address of the deployed templ.
     function createTemplWithConfig(CreateConfig calldata config) external returns (address templAddress) {
         CreateConfig memory cfg = config;
         if (cfg.priest == address(0)) {
@@ -91,6 +103,9 @@ contract TemplFactory {
         return _deploy(cfg);
     }
 
+    /// @dev Deploys the templ after sanitizing the provided configuration.
+    /// @param cfg Struct containing the templ deployment parameters.
+    /// @return templAddress Address of the deployed templ.
     function _deploy(CreateConfig memory cfg) internal returns (address templAddress) {
         if (cfg.token == address(0)) revert TemplErrors.InvalidRecipient();
         if (cfg.entryFee < 10) revert TemplErrors.EntryFeeTooSmall();
@@ -136,7 +151,11 @@ contract TemplFactory {
         );
     }
 
-    function _resolvePercent(int256 rawPercent, uint256 defaultPercent) internal pure returns (uint256) {
+    /// @dev Resolves a potentially sentinel-encoded percent to its final value.
+    /// @param rawPercent Raw percent supplied by callers (-1 requests the default value).
+    /// @param defaultPercent Default percent used when `rawPercent` is the sentinel.
+    /// @return resolvedPercent Final percent applied to the deployment.
+    function _resolvePercent(int256 rawPercent, uint256 defaultPercent) internal pure returns (uint256 resolvedPercent) {
         if (rawPercent == USE_DEFAULT_PERCENT) {
             return defaultPercent;
         }
@@ -144,6 +163,7 @@ contract TemplFactory {
         return uint256(rawPercent);
     }
 
+    /// @dev Ensures burn, treasury, member pool, and protocol slices sum to 100%.
     function _validatePercentSplit(
         uint256 _burnPercent,
         uint256 _treasuryPercent,
