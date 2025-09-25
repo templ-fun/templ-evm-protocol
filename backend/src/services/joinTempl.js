@@ -53,11 +53,6 @@ export async function joinTempl(body, context) {
     throw templError('Membership not found', 403);
   }
 
-  try {
-    if (!record.memberSet) record.memberSet = new Set();
-    record.memberSet.add(member);
-  } catch {/* ignore */}
-
   logger?.info?.({ contract, member }, 'Member verified for templ');
 
   return {

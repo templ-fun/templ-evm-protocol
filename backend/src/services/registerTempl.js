@@ -47,7 +47,6 @@ export async function registerTempl(body, context) {
   const existing = templs.get(contract) || {
     telegramChatId: null,
     priest,
-    memberSet: new Set(),
     proposalsMeta: new Map(),
     lastDigestAt: Date.now(),
     templHomeLink: '',

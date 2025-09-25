@@ -469,7 +469,6 @@ async function restoreGroupsFromPersistence({ database, templs, watchContract, l
       const record = {
         telegramChatId: row?.groupId || null,
         priest: row?.priest ? String(row.priest).toLowerCase() : null,
-        memberSet: new Set(),
         proposalsMeta: new Map(),
         lastDigestAt: Date.now(),
         contractAddress: key,
@@ -490,7 +489,6 @@ async function restoreGroupsFromPersistence({ database, templs, watchContract, l
           templs.set(key, {
             telegramChatId: null,
             priest: null,
-            memberSet: new Set(),
             proposalsMeta: new Map(),
             lastDigestAt: Date.now(),
             contractAddress: key,
