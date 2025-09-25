@@ -21,7 +21,6 @@
     "test:e2e:record": "playwright test"
   },
   "dependencies": {
-    "@xmtp/browser-sdk": "^4.1.0",
     "ethers": "^6.15.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
@@ -30,7 +29,6 @@
     "typescript": "^5.5.4",
     "@eslint/js": "^9.33.0",
     "@playwright/test": "^1.44.0",
-    "@xmtp/node-sdk": "^4.1.0",
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",
     "@vitejs/plugin-react": "^5.0.0",

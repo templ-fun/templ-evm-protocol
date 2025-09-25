@@ -1,285 +1,181 @@
 // @ts-check
 import { BACKEND_URL } from '../config.js';
 import { buildCreateTypedData } from '../../../shared/signing.js';
-import { waitForConversation } from '../../../shared/xmtp.js';
-import { addToTestRegistry, dlog, isDebugEnabled } from './utils.js';
+import { addToTestRegistry, dlog } from './utils.js';
 import { postJson } from './http.js';
 
-/**
- * Deploy a new TEMPL contract and register a group with the backend.
- * @param {import('../flows.types').DeployRequest} params
- * @returns {Promise<import('../flows.types').DeployResponse>}
- */
-export async function deployTempl({
+function toBigInt(value, label) {
+  try {
+    return BigInt(value);
+  } catch {
+    throw new Error(`Invalid ${label}`);
+  }
+}
+
+function validateSplit({ burnPercent, treasuryPercent, memberPoolPercent, protocolPercent }) {
+  const burn = Number(burnPercent ?? 30);
+  const treasury = Number(treasuryPercent ?? 30);
+  const member = Number(memberPoolPercent ?? 30);
+  const protocol = Number(protocolPercent ?? 10);
+  const total = burn + treasury + member + protocol;
+  if (total !== 100) {
+    throw new Error(`Fee split must equal 100 (received ${total})`);
+  }
+  return { burn, treasury, member, protocol };
+}
+
+async function deployContract({
   ethers,
-  xmtp,
   signer,
   walletAddress,
+  factoryAddress,
+  factoryArtifact,
+  templArtifact,
   tokenAddress,
   entryFee,
   burnPercent,
   treasuryPercent,
   memberPoolPercent,
-  quorumPercent,
-  executionDelaySeconds,
-  burnAddress,
-  priestIsDictator,
-  factoryAddress,
-  factoryArtifact,
-  templArtifact,
+  protocolPercent,
   maxMembers = 0,
-  backendUrl = BACKEND_URL,
+  priestIsDictator = false,
   txOptions = {}
 }) {
-  if (!ethers || !signer || !walletAddress || !tokenAddress || !templArtifact) {
-    throw new Error('Missing required deployTempl parameters');
+  if (!ethers || !signer || !walletAddress) {
+    throw new Error('deployTempl requires connected wallet');
   }
-  if (!factoryAddress || !factoryArtifact) {
+  if (!factoryAddress || !factoryArtifact?.abi) {
     throw new Error('TemplFactory configuration missing');
   }
+  if (!templArtifact?.abi) {
+    throw new Error('Templ artifact missing');
+  }
+  const { burn, treasury, member } = validateSplit({ burnPercent, treasuryPercent, memberPoolPercent, protocolPercent });
+  const normalizedEntryFee = toBigInt(entryFee ?? 0, 'entry fee');
+  const normalizedMaxMembers = toBigInt(maxMembers ?? 0, 'max members');
   const factory = new ethers.Contract(factoryAddress, factoryArtifact.abi, signer);
-  let protocolFeeRecipient;
-  let protocolPercentRaw;
-  try {
-    [protocolFeeRecipient, protocolPercentRaw] = await Promise.all([
-      factory.protocolFeeRecipient(),
-      factory.protocolPercent?.() ?? factory.protocolBP()
-    ]);
-  } catch (err) {
-    throw new Error(err?.message || 'Unable to read factory configuration');
-  }
-  if (!protocolFeeRecipient || protocolFeeRecipient === ethers.ZeroAddress) {
-    throw new Error('Factory protocol fee recipient not configured');
-  }
-  const burn = BigInt(burnPercent ?? 30);
-  const treasury = BigInt(treasuryPercent ?? 30);
-  const member = BigInt(memberPoolPercent ?? 30);
-  const protocol = BigInt(protocolPercentRaw ?? 0n);
-  const totalSplit = burn + treasury + member + protocol;
-  if (totalSplit !== 100n) {
-    throw new Error(`Fee split must equal 100, received ${totalSplit}`);
-  }
-  let normalizedEntryFee;
-  try {
-    normalizedEntryFee = BigInt(entryFee);
-  } catch {
-    throw new Error('Invalid entry fee');
-  }
-  let normalizedMaxMembers = 0n;
-  try {
-    normalizedMaxMembers = maxMembers !== undefined && maxMembers !== null ? BigInt(maxMembers) : 0n;
-  } catch {
-    throw new Error('Invalid max members');
-  }
-  if (normalizedMaxMembers < 0n) {
-    throw new Error('Max members must be non-negative');
-  }
-  const normalizedToken = String(tokenAddress);
   const config = {
     priest: walletAddress,
-    token: normalizedToken,
+    token: tokenAddress,
     entryFee: normalizedEntryFee,
-    burnPercent: Number(burn),
-    treasuryPercent: Number(treasury),
-    memberPoolPercent: Number(member),
-    burnAddress: burnAddress && ethers.isAddress?.(burnAddress)
-      ? burnAddress
-      : (ethers.ZeroAddress ?? '0x0000000000000000000000000000000000000000'),
+    burnPercent: burn,
+    treasuryPercent: treasury,
+    memberPoolPercent: member,
+    burnAddress: ethers.ZeroAddress ?? '0x0000000000000000000000000000000000000000',
     priestIsDictator: priestIsDictator === true,
     maxMembers: normalizedMaxMembers
   };
-  if (quorumPercent !== undefined && quorumPercent !== null) {
-    config.quorumPercent = Number(quorumPercent);
-  }
-  if (executionDelaySeconds !== undefined && executionDelaySeconds !== null) {
-    config.executionDelaySeconds = Number(executionDelaySeconds);
-  }
 
-  const zeroAddress = ethers.ZeroAddress ?? '0x0000000000000000000000000000000000000000';
-  const defaultsRequested =
-    Number(burn) === 30 &&
-    Number(treasury) === 30 &&
-    Number(member) === 30 &&
-    config.priest === walletAddress &&
-    config.burnAddress === zeroAddress &&
-    config.quorumPercent === undefined &&
-    config.executionDelaySeconds === undefined &&
-    config.priestIsDictator === false &&
-    normalizedMaxMembers === 0n;
-
-  let contractAddress;
-  if (defaultsRequested) {
-    contractAddress = await factory.createTempl.staticCall(normalizedToken, normalizedEntryFee);
-    const tx = await factory.createTempl(normalizedToken, normalizedEntryFee, txOptions);
-    await tx.wait();
-  } else {
-    const templAddress = await factory.createTemplWithConfig.staticCall(config);
-    const tx = await factory.createTemplWithConfig(config, txOptions);
-    await tx.wait();
-    contractAddress = templAddress;
-  }
-  // Record immediately for tests to discover, even before backend registration
-  addToTestRegistry(contractAddress);
-  const network = await signer.provider?.getNetwork?.();
-  const chainId = Number(network?.chainId || 1337);
-  const createTyped = buildCreateTypedData({ chainId, contractAddress: contractAddress.toLowerCase() });
-  const signature = await signer.signTypedData(createTyped.domain, createTyped.types, createTyped.message);
-
-  // Get the priest's inbox ID from XMTP client if available
-  const priestInboxId = xmtp?.inboxId;
-  if (!priestInboxId) {
-    dlog('XMTP not ready at deploy; backend will resolve inboxId from network');
-  }
-
-  try { console.log('[deployTempl] calling /templs'); } catch {}
-  const registerPayload = {
-    contractAddress,
-    priestAddress: walletAddress,
-    signature,
-    chainId,
-    nonce: createTyped.message.nonce,
-    issuedAt: createTyped.message.issuedAt,
-    expiry: createTyped.message.expiry
-  };
-  dlog('deployTempl: sending register payload', registerPayload);
-  const res = await postJson(`${backendUrl}/templs`, registerPayload);
-  dlog('deployTempl: /templs status', res.status);
-  try { console.log('[deployTempl] /templs status', res.status); } catch {}
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(
-      `Templ registration failed: ${res.status} ${res.statusText} ${body}`.trim()
-    );
-  }
-  const data = await res.json();
-  dlog('deployTempl: /templs response', data);
-  if (!data || typeof data.groupId !== 'string' || data.groupId.length === 0) {
-    throw new Error('Invalid /templs response: missing groupId');
-  }
-  if (isDebugEnabled()) {
-    try {
-      const templsDebug = await fetch(`${backendUrl}/templs?include=groupId`).then((r) => r.json());
-      dlog('deployTempl: templs listing after registration', templsDebug);
-    } catch (err) {
-      dlog('deployTempl: templs listing fetch failed', err?.message || err);
-    }
-  }
-  if (isDebugEnabled()) {
-    try {
-      const debugGroup = await fetch(`${backendUrl}/debug/group?contractAddress=${contractAddress}&refresh=1`).then((r) => r.json());
-      dlog('deployTempl: debug group snapshot', debugGroup);
-    } catch (err) {
-      dlog('deployTempl: debug group fetch failed', err?.message || err);
-    }
-  }
-  const groupId = String(data.groupId);
-  // In e2e fast mode, return immediately; conversation discovery can happen later
-  try {
-    // @ts-ignore - vite injects env on import.meta
-    if (import.meta?.env?.VITE_E2E_DEBUG === '1') {
-      return { contractAddress, group: null, groupId };
-    }
-  } catch {}
-
-  // If XMTP isn’t ready yet on the client, skip fetching the group for now.
-  if (!xmtp) {
-    return { contractAddress, group: null, groupId };
-  }
-
-  dlog('Syncing conversations to find group', groupId);
-  const isFast = (() => { try { return import.meta?.env?.VITE_E2E_DEBUG === '1'; } catch { return false; } })();
-  // Be more generous in e2e to reduce flakiness on prod XMTP
-  const group = await waitForConversation({ xmtp, groupId, retries: isFast ? 12 : 6, delayMs: isFast ? 500 : 1000 });
-  if (!group) {
-    const resolveConversation = async () => {
-      const fallback = await waitForConversation({ xmtp, groupId, retries: isFast ? 60 : 120, delayMs: isFast ? 500 : 1000 });
-      if (!fallback) return null;
-      return fallback;
-    };
-    const lazyGroup = {
-      id: groupId,
-      async send(content) {
-        const resolved = await resolveConversation();
-        if (!resolved?.send) {
-          throw new Error('Group not yet available to send messages');
-        }
-        lazyGroup.send = resolved.send.bind(resolved);
-        if (typeof resolved.sync === 'function') {
-          lazyGroup.sync = resolved.sync.bind(resolved);
-        }
-        if (typeof resolved.updateName === 'function') {
-          lazyGroup.updateName = resolved.updateName.bind(resolved);
-        }
-        if (typeof resolved.updateDescription === 'function') {
-          lazyGroup.updateDescription = resolved.updateDescription.bind(resolved);
-        }
-        if (resolved.members !== undefined) {
-          lazyGroup.members = resolved.members;
-        }
-        return lazyGroup.send(content);
-      }
-    };
-    return { contractAddress, group: lazyGroup, groupId };
-  }
-  return { contractAddress, group, groupId };
+  const templAddress = await factory.createTemplWithConfig.staticCall(config);
+  const tx = await factory.createTemplWithConfig(config, txOptions);
+  await tx.wait();
+  dlog('deployContract: templ deployed', templAddress);
+  addToTestRegistry?.(templAddress);
+  return templAddress;
 }
 
-export async function registerTemplBackend({ ethers, signer, walletAddress, templAddress, backendUrl = BACKEND_URL }) {
+export async function registerTemplBackend({
+  signer,
+  walletAddress,
+  templAddress,
+  backendUrl = BACKEND_URL,
+  telegramChatId
+}) {
+  if (!templAddress) {
+    throw new Error('registerTemplBackend requires templAddress');
+  }
   let priest = walletAddress;
-  if (!priest) {
-    try { priest = await signer.getAddress(); } catch { priest = undefined; }
+  if (!priest && signer?.getAddress) {
+    priest = await signer.getAddress();
   }
   if (!priest) {
     throw new Error('registerTemplBackend requires priest wallet address');
   }
-  const normalizedPriest = (() => {
-    try { return ethers.getAddress(priest); }
-    catch { return String(priest); }
-  })();
-  const network = await signer.provider?.getNetwork?.();
-  const chainId = Number(network?.chainId || 1337);
-  const createTyped = buildCreateTypedData({ chainId, contractAddress: templAddress.toLowerCase() });
-  const signature = await signer.signTypedData(createTyped.domain, createTyped.types, createTyped.message);
+  const chain = await signer.provider?.getNetwork?.();
+  const chainId = Number(chain?.chainId || 1337);
+  const typed = buildCreateTypedData({ chainId, contractAddress: templAddress.toLowerCase() });
+  const signature = await signer.signTypedData(typed.domain, typed.types, typed.message);
   const payload = {
     contractAddress: templAddress,
-    priestAddress: normalizedPriest,
+    priestAddress: priest,
     signature,
     chainId,
-    nonce: createTyped.message.nonce,
-    issuedAt: createTyped.message.issuedAt,
-    expiry: createTyped.message.expiry
+    nonce: typed.message.nonce,
+    issuedAt: typed.message.issuedAt,
+    expiry: typed.message.expiry,
+    telegramChatId: telegramChatId || undefined
   };
-  dlog('registerTemplBackend: payload', payload);
-  const res = await fetch(`${backendUrl}/templs`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
-  dlog('registerTemplBackend: status', res.status);
+  const res = await postJson(`${backendUrl}/templs`, payload);
   if (res.status === 409) {
-    dlog('registerTemplBackend: signature already used, retrying');
-    const nextTyped = buildCreateTypedData({ chainId, contractAddress: templAddress.toLowerCase(), nonce: Date.now() });
-    const nextSig = await signer.signTypedData(nextTyped.domain, nextTyped.types, nextTyped.message);
+    const retryTyped = buildCreateTypedData({ chainId, contractAddress: templAddress.toLowerCase(), nonce: Date.now() });
+    const retrySig = await signer.signTypedData(retryTyped.domain, retryTyped.types, retryTyped.message);
     const retryPayload = {
       contractAddress: templAddress,
-      priestAddress: normalizedPriest,
-      signature: nextSig,
+      priestAddress: priest,
+      signature: retrySig,
       chainId,
-      nonce: nextTyped.message.nonce,
-      issuedAt: nextTyped.message.issuedAt,
-      expiry: nextTyped.message.expiry
+      nonce: retryTyped.message.nonce,
+      issuedAt: retryTyped.message.issuedAt,
+      expiry: retryTyped.message.expiry,
+      telegramChatId: telegramChatId || undefined
     };
-    const retry = await postJson(`${backendUrl}/templs`, retryPayload);
-    dlog('registerTemplBackend: retry status', retry.status);
-    if (!retry.ok && retry.status !== 409) {
-      const body = await retry.text().catch(() => '');
-      throw new Error(`Templ re-registration failed: ${retry.status} ${retry.statusText} ${body}`.trim());
+    const retryRes = await postJson(`${backendUrl}/templs`, retryPayload);
+    if (!retryRes.ok) {
+      throw new Error(`Templ registration failed: ${retryRes.status} ${retryRes.statusText}`);
     }
-    return retry.ok;
+    return true;
   }
-  if (!res.ok && res.status !== 409) {
+  if (!res.ok) {
     const body = await res.text().catch(() => '');
     throw new Error(`Templ registration failed: ${res.status} ${res.statusText} ${body}`.trim());
   }
-  return res.ok;
+  return true;
+}
+
+export async function deployTempl({
+  ethers,
+  signer,
+  walletAddress,
+  factoryAddress,
+  factoryArtifact,
+  templArtifact,
+  tokenAddress,
+  entryFee,
+  burnPercent,
+  treasuryPercent,
+  memberPoolPercent,
+  protocolPercent,
+  maxMembers,
+  priestIsDictator,
+  backendUrl = BACKEND_URL,
+  telegramChatId,
+  txOptions = {}
+}) {
+  const templAddress = await deployContract({
+    ethers,
+    signer,
+    walletAddress,
+    factoryAddress,
+    factoryArtifact,
+    templArtifact,
+    tokenAddress,
+    entryFee,
+    burnPercent,
+    treasuryPercent,
+    memberPoolPercent,
+    protocolPercent,
+    maxMembers,
+    priestIsDictator,
+    txOptions
+  });
+
+  await registerTemplBackend({
+    signer,
+    walletAddress,
+    templAddress,
+    backendUrl,
+    telegramChatId
+  });
+
+  return { templAddress };
 }

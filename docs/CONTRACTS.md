@@ -72,7 +72,7 @@ sequenceDiagram
   - `setPausedDAO(bool)` - pause/unpause membership purchasing.
   - `updateConfigDAO(address,uint256,bool,uint256,uint256,uint256)` - update the entry fee (must remain >0 and multiple of 10) and, when `_updateFeeSplit` is true, adjust the burn/treasury/member percentages. The protocol split comes from the factory and cannot be changed. Token changes are disabled (`_token` must be `address(0)` or the current token), else `TokenChangeDisabled`.
   - `withdrawTreasuryDAO(address,address,uint256,string)` - withdraw a specific amount of any asset (access token, other ERC-20, or ETH with `address(0)`).
-  - `changePriestDAO(address)` - change the priest address via governance; the resulting `PriestChanged` event signals the backend to clear all delegate assignments and active mutes so the new priest inherits a clean moderation slate.
+  - `changePriestDAO(address)` - change the priest address via governance; backends persist the new priest and announce it via Telegram notifications.
   - `disbandTreasuryDAO(address token)` - move the full available balance of `token` into a member-distributable pool. When `token == accessToken`, funds roll into the member pool (`memberPoolBalance`) with per-member integer division and any remainder added to `memberRewardRemainder`. When targeting any other ERC-20 or native ETH (`address(0)`), the amount is recorded in an external rewards pool so members can later claim their share with `claimExternalToken`.
   - `setMaxMembersDAO(uint256 limit)` - set the membership cap. `0` keeps access unlimited; any positive limit pauses new joins once the count is reached. Reverts with `MemberLimitTooLow` when the requested limit is below the current member count. If the cap is hit, `purchaseAccess` auto-pauses the contract; raising or clearing the cap lets newcomers in, and unpausing without raising the limit resets it to unlimited.
   - `setDictatorshipDAO(bool enabled)` - flip the `priestIsDictator` flag. This helper is callable through proposals in both directions; when dictatorship is active, the DAO helper also accepts direct calls from the priest (all other callers receive `PriestOnly`).
@@ -90,15 +90,17 @@ sequenceDiagram
 
 ### Proposal types (create functions)
 
-- `createProposalSetPaused(bool paused, uint256 votingPeriod)`
-- `createProposalUpdateConfig(uint256 newEntryFee, uint256 newBurnPercent, uint256 newTreasuryPercent, uint256 newMemberPoolPercent, bool updateFeeSplit, uint256 votingPeriod)` - set `updateFeeSplit = true` to apply the provided percentages; when false, the existing burn/treasury/member splits remain unchanged and only the fee (or paused state) is updated.
-- `createProposalSetMaxMembers(uint256 newLimit, uint256 votingPeriod)` - set the member cap (use `0` to remove the limit). Reverts immediately with `MemberLimitTooLow` if the proposal attempts to lower the cap beneath the current membership count.
-- `createProposalWithdrawTreasury(address token, address recipient, uint256 amount, string reason, uint256 votingPeriod)`
-- `createProposalChangePriest(address newPriest, uint256 votingPeriod)`
-- `createProposalDisbandTreasury(address token, uint256 votingPeriod)` (`token` can be the access token, another ERC-20, or `address(0)` for ETH)
-- `createProposalSetDictatorship(bool enable, uint256 votingPeriod)` - enable or disable priest dictatorship. This proposal type is always available, even when dictatorship is already active, and reverts with `DictatorshipUnchanged` if the requested mode matches the current state.
+All create functions now require `string title, string description` parameters so that proposal metadata lives on-chain alongside the action parameters:
 
-Note: Proposal metadata (title/description) is not stored on-chain. Keep human-readable text in XMTP group messages alongside the on-chain proposal id.
+- `createProposalSetPaused(bool paused, uint256 votingPeriod, string title, string description)`
+- `createProposalUpdateConfig(uint256 newEntryFee, uint256 newBurnPercent, uint256 newTreasuryPercent, uint256 newMemberPoolPercent, bool updateFeeSplit, uint256 votingPeriod, string title, string description)` - set `updateFeeSplit = true` to apply the provided percentages; when false, the existing burn/treasury/member splits remain unchanged and only the fee (or paused state) is updated.
+- `createProposalSetMaxMembers(uint256 newLimit, uint256 votingPeriod, string title, string description)` - set the member cap (use `0` to remove the limit). Reverts immediately with `MemberLimitTooLow` if the proposal attempts to lower the cap beneath the current membership count.
+- `createProposalWithdrawTreasury(address token, address recipient, uint256 amount, string reason, uint256 votingPeriod, string title, string description)`
+- `createProposalChangePriest(address newPriest, uint256 votingPeriod, string title, string description)`
+- `createProposalDisbandTreasury(address token, uint256 votingPeriod, string title, string description)` (`token` can be the access token, another ERC-20, or `address(0)` for ETH)
+- `createProposalSetDictatorship(bool enable, uint256 votingPeriod, string title, string description)` - enable or disable priest dictatorship. This proposal type is always available, even when dictatorship is already active, and reverts with `DictatorshipUnchanged` if the requested mode matches the current state.
+
+Proposals emit `ProposalCreated(id, proposer, endTime, title, description)` and the metadata is returned from `getProposal`. Frontends/bots no longer depend on XMTP messages to read display text.
 
 ### Security notes
 
@@ -115,7 +117,7 @@ Note: Proposal metadata (title/description) is not stored on-chain. Keep human-r
 - `claimMemberPool()` - withdraw accrued rewards; emits `MemberPoolClaimed`.
 - `getActiveProposals()` - returns IDs of active proposals (uses the same active predicate as pagination so the two endpoints stay consistent in fast-changing blocks).
 - `getActiveProposalsPaginated(uint256 offset, uint256 limit)` - returns `(ids, hasMore)`; `limit` in [1,100], else `LimitOutOfRange`. Results reuse the `getActiveProposals()` filter and only signal `hasMore` when the page filled.
-- `getProposal(uint256 id)` - returns `(proposer, yesVotes, noVotes, endTime, executed, passed)` with `passed` computed according to quorum/delay rules.
+- `getProposal(uint256 id)` - returns `(proposer, yesVotes, noVotes, endTime, executed, passed, title, description)` with `passed` computed according to quorum/delay rules.
 - `getProposalSnapshots(uint256 id)` - returns `(eligibleVotersPreQuorum, eligibleVotersPostQuorum, preQuorumSnapshotBlock, quorumSnapshotBlock, createdAt, quorumReachedAt)` so clients can reason about eligibility windows.
 - `hasVoted(uint256 id, address voter)` - returns `(voted, support)`.
 - `hasAccess(address user)` - returns membership status.
@@ -150,7 +152,7 @@ Note: Proposal metadata (title/description) is not stored on-chain. Keep human-r
   - `TreasuryDisbanded(proposalId,token,amount,perMember,remainder)`
   - `ExternalRewardClaimed(token,member,amount)`
   - `PriestChanged(oldPriest,newPriest)`
-    - Backend listeners purge all delegates/mutes on this event so the incoming priest takes over with a clean moderation slate.
+    - Backend listeners persist the new priest and broadcast a Telegram alert so members know who currently controls templ operations.
   - `DictatorshipModeChanged(enabled)`
 - Custom errors (from `TemplErrors.sol`): `NotMember`, `NotDAO`, `PriestOnly`, `ContractPausedError`, `AlreadyPurchased`, `InsufficientBalance`, `ActiveProposalExists`, `VotingPeriodTooShort`, `VotingPeriodTooLong`, `InvalidProposal`, `VotingEnded`, `JoinedAfterProposal`, `VotingNotEnded`, `AlreadyExecuted`, `ProposalNotPassed`, `ProposalExecutionFailed`, `InvalidRecipient`, `AmountZero`, `InsufficientTreasuryBalance`, `NoTreasuryFunds`, `EntryFeeTooSmall`, `InvalidEntryFee`, `InvalidPercentageSplit`, `InvalidPercentage`, `NoRewardsToClaim`, `InsufficientPoolBalance`, `LimitOutOfRange`, `InvalidSender`, `InvalidCallData`, `TokenChangeDisabled`, `NoMembers`, `QuorumNotReached`, `ExecutionDelayActive`, `DictatorshipEnabled`, `DictatorshipUnchanged`.
   - `DictatorshipModeChanged(enabled)`

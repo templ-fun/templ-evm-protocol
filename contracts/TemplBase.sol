@@ -60,6 +60,8 @@ abstract contract TemplBase is ReentrancyGuard {
         address token;
         address recipient;
         uint256 amount;
+        string title;
+        string description;
         string reason;
         bool paused;
         uint256 newEntryFee;
@@ -130,7 +132,9 @@ abstract contract TemplBase is ReentrancyGuard {
     event ProposalCreated(
         uint256 indexed proposalId,
         address indexed proposer,
-        uint256 endTime
+        uint256 endTime,
+        string title,
+        string description
     );
 
     event VoteCast(

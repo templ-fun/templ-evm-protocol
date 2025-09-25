@@ -31,10 +31,12 @@ abstract contract TemplGovernance is TemplTreasury {
 
     function createProposalSetPaused(
         bool _paused,
-        uint256 _votingPeriod
+        uint256 _votingPeriod,
+        string calldata _title,
+        string calldata _description
     ) external returns (uint256) {
         if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
-        (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod);
+        (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
         p.action = Action.SetPaused;
         p.paused = _paused;
         return id;
@@ -46,7 +48,9 @@ abstract contract TemplGovernance is TemplTreasury {
         uint256 _newTreasuryPercent,
         uint256 _newMemberPoolPercent,
         bool _updateFeeSplit,
-        uint256 _votingPeriod
+        uint256 _votingPeriod,
+        string calldata _title,
+        string calldata _description
     ) external returns (uint256) {
         if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         if (_newEntryFee > 0) {
@@ -56,7 +60,7 @@ abstract contract TemplGovernance is TemplTreasury {
         if (_updateFeeSplit) {
             _validatePercentSplit(_newBurnPercent, _newTreasuryPercent, _newMemberPoolPercent, protocolPercent);
         }
-        (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod);
+        (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
         p.action = Action.UpdateConfig;
         p.newEntryFee = _newEntryFee;
         p.newBurnPercent = _newBurnPercent;
@@ -68,13 +72,15 @@ abstract contract TemplGovernance is TemplTreasury {
 
     function createProposalSetMaxMembers(
         uint256 _newMaxMembers,
-        uint256 _votingPeriod
+        uint256 _votingPeriod,
+        string calldata _title,
+        string calldata _description
     ) external returns (uint256) {
         if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         if (_newMaxMembers > 0 && _newMaxMembers < memberList.length) {
             revert TemplErrors.MemberLimitTooLow();
         }
-        (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod);
+        (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
         p.action = Action.SetMaxMembers;
         p.newMaxMembers = _newMaxMembers;
         return id;
@@ -85,10 +91,12 @@ abstract contract TemplGovernance is TemplTreasury {
         address _recipient,
         uint256 _amount,
         string memory _reason,
-        uint256 _votingPeriod
+        uint256 _votingPeriod,
+        string calldata _title,
+        string calldata _description
     ) external returns (uint256) {
         if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
-        (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod);
+        (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
         p.action = Action.WithdrawTreasury;
         p.token = _token;
         p.recipient = _recipient;
@@ -99,10 +107,12 @@ abstract contract TemplGovernance is TemplTreasury {
 
     function createProposalDisbandTreasury(
         address _token,
-        uint256 _votingPeriod
+        uint256 _votingPeriod,
+        string calldata _title,
+        string calldata _description
     ) external returns (uint256) {
         if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
-        (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod);
+        (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
         p.action = Action.DisbandTreasury;
         p.token = _token;
         if (msg.sender == priest) {
@@ -113,11 +123,13 @@ abstract contract TemplGovernance is TemplTreasury {
 
     function createProposalChangePriest(
         address _newPriest,
-        uint256 _votingPeriod
+        uint256 _votingPeriod,
+        string calldata _title,
+        string calldata _description
     ) external returns (uint256) {
         if (_newPriest == address(0)) revert TemplErrors.InvalidRecipient();
         if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
-        (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod);
+        (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
         p.action = Action.ChangePriest;
         p.recipient = _newPriest;
         return id;
@@ -125,10 +137,12 @@ abstract contract TemplGovernance is TemplTreasury {
 
     function createProposalSetDictatorship(
         bool _enable,
-        uint256 _votingPeriod
+        uint256 _votingPeriod,
+        string calldata _title,
+        string calldata _description
     ) external returns (uint256) {
         if (priestIsDictator == _enable) revert TemplErrors.DictatorshipUnchanged();
-        (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod);
+        (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
         p.action = Action.SetDictatorship;
         p.setDictatorship = _enable;
         return id;
@@ -257,7 +271,9 @@ abstract contract TemplGovernance is TemplTreasury {
         uint256 noVotes,
         uint256 endTime,
         bool executed,
-        bool passed
+        bool passed,
+        string memory title,
+        string memory description
     ) {
         if (_proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
         Proposal storage proposal = proposals[_proposalId];
@@ -276,7 +292,9 @@ abstract contract TemplGovernance is TemplTreasury {
             proposal.noVotes,
             proposal.endTime,
             proposal.executed,
-            passed
+            passed,
+            proposal.title,
+            proposal.description
         );
     }
 
@@ -380,7 +398,9 @@ abstract contract TemplGovernance is TemplTreasury {
     }
 
     function _createBaseProposal(
-        uint256 _votingPeriod
+        uint256 _votingPeriod,
+        string memory _title,
+        string memory _description
     ) internal returns (uint256 proposalId, Proposal storage proposal) {
         if (!members[msg.sender].purchased) revert TemplErrors.NotMember();
         if (hasActiveProposal[msg.sender]) {
@@ -402,6 +422,8 @@ abstract contract TemplGovernance is TemplTreasury {
         proposal.proposer = msg.sender;
         proposal.endTime = block.timestamp + period;
         proposal.createdAt = block.timestamp;
+        proposal.title = _title;
+        proposal.description = _description;
         proposal.preQuorumSnapshotBlock = block.number;
         proposal.executed = false;
         proposal.hasVoted[msg.sender] = true;
@@ -422,7 +444,7 @@ abstract contract TemplGovernance is TemplTreasury {
         }
         hasActiveProposal[msg.sender] = true;
         activeProposalId[msg.sender] = proposalId;
-        emit ProposalCreated(proposalId, msg.sender, proposal.endTime);
+        emit ProposalCreated(proposalId, msg.sender, proposal.endTime, _title, _description);
     }
 
     function _joinedAfterSnapshot(

@@ -26,9 +26,6 @@ function extractProposalIdFromReceipt(receipt, ethersLib, templArtifact, templAd
   return null;
 }
 
-/**
- * @param {import('../flows.types').ProposeVoteArgs} options
- */
 export async function proposeVote({
   ethers,
   signer,
@@ -38,10 +35,17 @@ export async function proposeVote({
   params = {},
   callData,
   votingPeriod = 0,
+  title,
+  description,
   txOptions = {}
 }) {
   const contract = new ethers.Contract(templAddress, templArtifact.abi, signer);
   const lowerAddress = String(templAddress || '').toLowerCase();
+  const proposalTitle = String(title || '').trim();
+  const proposalDescription = String(description || '').trim();
+  if (!proposalTitle) {
+    throw new Error('Proposal title is required');
+  }
   const waitForProposal = async (tx) => {
     const receipt = await tx.wait();
     const proposalId = extractProposalIdFromReceipt(receipt, ethers, templArtifact, lowerAddress);
@@ -53,11 +57,11 @@ export async function proposeVote({
     let tx;
     switch (action) {
       case 'setPaused':
-        tx = await contract.createProposalSetPaused(!!p.paused, votingPeriod, txOptions); break;
+        tx = await contract.createProposalSetPaused(!!p.paused, votingPeriod, proposalTitle, proposalDescription, txOptions); break;
       case 'withdrawTreasury':
-        tx = await contract.createProposalWithdrawTreasury(p.token, p.recipient, p.amount, p.reason || '', votingPeriod, txOptions); break;
+        tx = await contract.createProposalWithdrawTreasury(p.token, p.recipient, p.amount, p.reason || '', votingPeriod, proposalTitle, proposalDescription, txOptions); break;
       case 'changePriest':
-        tx = await contract.createProposalChangePriest(p.newPriest, votingPeriod, txOptions); break;
+        tx = await contract.createProposalChangePriest(p.newPriest, votingPeriod, proposalTitle, proposalDescription, txOptions); break;
       case 'updateConfig': {
         const rawFee = p.newEntryFee ?? 0;
         let feeBigInt = 0n;
@@ -75,6 +79,8 @@ export async function proposeVote({
           newMember,
           updateSplit,
           votingPeriod,
+          proposalTitle,
+          proposalDescription,
           txOptions
         );
         break;
@@ -84,7 +90,7 @@ export async function proposeVote({
         let limitBigInt = 0n;
         try { limitBigInt = BigInt(rawLimit); } catch { throw new Error('Invalid max member limit'); }
         if (limitBigInt < 0n) throw new Error('Max member limit must be non-negative');
-        tx = await contract.createProposalSetMaxMembers(limitBigInt, votingPeriod, txOptions);
+        tx = await contract.createProposalSetMaxMembers(limitBigInt, votingPeriod, proposalTitle, proposalDescription, txOptions);
         break;
       }
       case 'disbandTreasury': {
@@ -100,11 +106,11 @@ export async function proposeVote({
           }
           tokenAddr = provided;
         }
-        tx = await contract.createProposalDisbandTreasury(tokenAddr, votingPeriod, txOptions);
+        tx = await contract.createProposalDisbandTreasury(tokenAddr, votingPeriod, proposalTitle, proposalDescription, txOptions);
         break;
       }
       case 'setDictatorship':
-        tx = await contract.createProposalSetDictatorship(!!p.enable, votingPeriod, txOptions);
+        tx = await contract.createProposalSetDictatorship(!!p.enable, votingPeriod, proposalTitle, proposalDescription, txOptions);
         break;
       default:
         throw new Error('Unknown action: ' + action);
@@ -123,17 +129,17 @@ export async function proposeVote({
       const fn = full.getFunction(sig);
       if (fn?.name === 'setPausedDAO') {
         const [paused] = full.decodeFunctionData(fn, callData);
-        const tx = await contract.createProposalSetPaused(paused, votingPeriod, txOptions);
+        const tx = await contract.createProposalSetPaused(paused, votingPeriod, proposalTitle, proposalDescription, txOptions);
         return await waitForProposal(tx);
       }
       if (fn?.name === 'withdrawTreasuryDAO' && fn.inputs.length === 4) {
         const [token, recipient, amount, reason] = full.decodeFunctionData(fn, callData);
-        const tx = await contract.createProposalWithdrawTreasury(token, recipient, amount, reason, votingPeriod, txOptions);
+        const tx = await contract.createProposalWithdrawTreasury(token, recipient, amount, reason, votingPeriod, proposalTitle, proposalDescription, txOptions);
         return await waitForProposal(tx);
       }
       if (fn?.name === 'changePriestDAO' && fn.inputs.length === 1) {
         const [newPriest] = full.decodeFunctionData(fn, callData);
-        const tx = await contract.createProposalChangePriest(newPriest, votingPeriod, txOptions);
+        const tx = await contract.createProposalChangePriest(newPriest, votingPeriod, proposalTitle, proposalDescription, txOptions);
         return await waitForProposal(tx);
       }
       if (fn?.name === 'updateConfigDAO' && fn.inputs.length === 6) {
@@ -145,29 +151,31 @@ export async function proposeVote({
           memberPoolPercentValue,
           updateSplit,
           votingPeriod,
+          proposalTitle,
+          proposalDescription,
           txOptions
         );
         return await waitForProposal(tx);
       }
       if (fn?.name === 'setMaxMembersDAO' && fn.inputs.length === 1) {
         const [limit] = full.decodeFunctionData(fn, callData);
-        const tx = await contract.createProposalSetMaxMembers(limit, votingPeriod, txOptions);
+        const tx = await contract.createProposalSetMaxMembers(limit, votingPeriod, proposalTitle, proposalDescription, txOptions);
         return await waitForProposal(tx);
       }
       if (fn?.name === 'setDictatorshipDAO' && fn.inputs.length === 1) {
         const [enable] = full.decodeFunctionData(fn, callData);
-        const tx = await contract.createProposalSetDictatorship(enable, votingPeriod, txOptions);
+        const tx = await contract.createProposalSetDictatorship(enable, votingPeriod, proposalTitle, proposalDescription, txOptions);
         return await waitForProposal(tx);
       }
       if (fn?.name === 'disbandTreasuryDAO') {
         if (fn.inputs.length === 1) {
           const [token] = full.decodeFunctionData(fn, callData);
-          const tx = await contract.createProposalDisbandTreasury(token, votingPeriod, txOptions);
+          const tx = await contract.createProposalDisbandTreasury(token, votingPeriod, proposalTitle, proposalDescription, txOptions);
           return await waitForProposal(tx);
         }
         if (fn.inputs.length === 0) {
           const token = await contract.accessToken();
-          const tx = await contract.createProposalDisbandTreasury(token, votingPeriod, txOptions);
+          const tx = await contract.createProposalDisbandTreasury(token, votingPeriod, proposalTitle, proposalDescription, txOptions);
           return await waitForProposal(tx);
         }
       }
@@ -229,11 +237,16 @@ export async function executeProposal({
 
 export function watchProposals({ ethers, provider, templAddress, templArtifact, onProposal, onVote }) {
   const contract = new ethers.Contract(templAddress, templArtifact.abi, provider);
-  const proposalHandler = (id, proposer, endTime) => {
-    onProposal({ id: Number(id), proposer, endTime: Number(endTime) });
+  const proposalHandler = (id, proposer, endTime, title, description) => {
+    onProposal({ id: Number(id), proposer, endTime: Number(endTime), title: title || '', description: description || '' });
   };
-  const voteHandler = (id, voter, support, timestamp) => {
-    onVote({ id: Number(id), voter, support: Boolean(support), timestamp: Number(timestamp) });
+  const voteHandler = async (id, voter, support, timestamp) => {
+    let title = '';
+    try {
+      const meta = await contract.getProposal(id);
+      title = meta?.title || '';
+    } catch {/* ignore */}
+    onVote({ id: Number(id), voter, support: Boolean(support), timestamp: Number(timestamp), title });
   };
   contract.on('ProposalCreated', proposalHandler);
   contract.on('VoteCast', voteHandler);

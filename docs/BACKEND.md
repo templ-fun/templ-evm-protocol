@@ -1,237 +1,142 @@
-# Templ Backend
+# Backend Service
 
-Reference manual for the Express service that mirrors on-chain state into XMTP invites. Read this after the contract deep dive so every signature and endpoint has context.
+The backend is a Node 22 / Express server that acts as the “web2” side of templ:
 
-## Why this document matters
+* verifies EIP-712 signatures for templ creation and membership checks,
+* persists templ metadata (contract address, priest address, optional Telegram chat id),
+* confirms membership by asking the contract’s `hasAccess` function, and
+* streams contract events into Telegram groups when configured.
 
-- Configure the service for local development, staging, and production with the right environment flags.
-- Understand the endpoints that the frontend and scripts call (`/templs`, `/join`, moderation routes, debug helpers`).
-- Learn how the backend protects itself (EIP-712 signatures, replay protection, XMTP identity rotation) and how to respond when XMTP misbehaves.
+The service no longer depends on XMTP. All messaging happens through Telegram bots.
 
-For a system refresher, revisit [README.md#architecture](../README.md#architecture) and the diagrams in [CORE_FLOW_DOCS.MD](./CORE_FLOW_DOCS.MD).
-
-## Setup
-
-Install dependencies:
+## Installation
 
 ```bash
 npm --prefix backend ci
-```
-
-## Environment variables
-
-These flags tune how the invite-bot behaves across dev, staging, and production:
-
-| Variable | Purpose | Default |
-| --- | --- | --- |
-| `RPC_URL` | RPC endpoint for on-chain reads and writes | - |
-| `PORT` | HTTP port for the API service | `3001` |
-| `BOT_PRIVATE_KEY` | Private key for the XMTP invite-bot wallet | auto-generated (persisted) |
-| `ALLOWED_ORIGINS` | Comma-separated CORS origins | `http://localhost:5173` |
-| `ENABLE_DEBUG_ENDPOINTS` | Expose debug endpoints when set to `1` | `0` |
-| `XMTP_ENV` | XMTP network (`dev`, `production`, `local`) | `dev` |
-| `REQUIRE_CONTRACT_VERIFY` | When `1`, `/templs` verifies target is a deployed contract | `0` |
-| `BACKEND_DB_ENC_KEY` | 32-byte hex string to encrypt the XMTP Node DB; if omitted, a key is derived from the bot private key and env | - |
-| `XMTP_BOOT_MAX_TRIES` | Max boot retries for XMTP client initialization | `30` |
-| `XMTP_METADATA_UPDATES` | Set to `0` to skip name/description updates on groups | `1` |
-| `BACKEND_SERVER_ID` | String identifier included in EIP-712 messages; must match frontend `VITE_BACKEND_SERVER_ID` | - |
-
-### Optional variables
-
-Optional switches:
-
-| Variable | Purpose | Default |
-| --- | --- | --- |
-| `LOG_LEVEL` | Pino log level (`info`, `debug`, etc.) | `info` |
-| `RATE_LIMIT_STORE` | Rate limit store (`memory` or `redis`) | auto (uses `redis` when `REDIS_URL` is set; else `memory`) |
-| `REDIS_URL` | Redis URL for distributed rate limiting (requires installing `redis` + `rate-limit-redis`; optional, not bundled) | - |
-| `DISABLE_XMTP_WAIT` | Skip XMTP readiness checks in tests (keep `0` in prod) | `0` |
-| `XMTP_MAX_ATTEMPTS` | Limit XMTP client rotation attempts | `20` (set to override) |
-| `DB_PATH` | Custom SQLite path for group metadata | `backend/groups.db` |
-| `EPHEMERAL_CREATOR` | When `1` (default and recommended), create groups with a fresh, throwaway key | `1` |
-| `CLEAR_DB` | Wipe database on startup (dev-only; leave `0` in prod) | `0` |
-
-The backend centralises these toggles in `backend/src/xmtp/options.js`, keeping invite, join, and debug flows in sync.
-
-See [README.md#environment-variables](../README.md#environment-variables) for minimal setup variables and [PERSISTENCE.md](./PERSISTENCE.md) for database details.
-Startup fails without `RPC_URL`. If `BOT_PRIVATE_KEY` is not provided, the server generates one on first boot and persists it in SQLite (table `kv`, key `bot_private_key`) so the invite-bot identity stays stable across restarts.
-`XMTP_ENV` selects the network (`dev`, `production`, `local`).
-`ALLOWED_ORIGINS` configures CORS (default `http://localhost:5173`).
-`LOG_LEVEL` controls Pino verbosity (default `info`).
-`XMTP_MAX_ATTEMPTS` defaults to `20`, matching the retry budget passed to `createXmtpWithRotation`; raise or lower it when you need to rotate through more installation slots.
-When `REQUIRE_CONTRACT_VERIFY=1` (or `NODE_ENV=production`), the server requires a provider and will:
-
-- Verify contract code is deployed at `contractAddress`.
-- Ensure the typed `chainId` matches the provider’s `chainId`.
-- Check that `priestAddress` equals `await contract.priest()` on-chain when creating groups.
-
-### Rate limiting
-
-The API rate-limits requests.
-
-- In development and tests, it uses the in-memory store.
-- In production, when `REDIS_URL` is set, it automatically uses Redis (install the `redis` and `rate-limit-redis` packages first; this integration is provided for compatibility but not used by default).
-- To force Redis explicitly, set `RATE_LIMIT_STORE=redis` and provide `REDIS_URL`.
-- If Redis is unavailable or misconfigured, it safely falls back to memory and logs a warning. Avoid memory in production as it is not resilient or horizontally scalable.
-
-## Development
-
-Start the server:
-
-```bash
 npm --prefix backend start
 ```
 
-### Logging
+Running the server requires a JSON-RPC endpoint and aligned frontend/server IDs.
 
-Logging uses [Pino](https://github.com/pinojs/pino) (JSON to `stdout`; `LOG_LEVEL` controls verbosity and defaults to `info`). Pipe through `pino-pretty` in dev or redirect to a file in production.
+## Environment variables
 
-## Tests and lint
+| Variable | Description | Default |
+| --- | --- | --- |
+| `RPC_URL` | **Required.** JSON-RPC endpoint used for contract reads, membership checks, and event subscriptions. | – |
+| `PORT` | Port for the Express app. | `3001` |
+| `ALLOWED_ORIGINS` | Comma-separated CORS origins. | `http://localhost:5173` |
+| `BACKEND_SERVER_ID` | Identifier embedded in EIP-712 typed data. Must match the frontend’s `VITE_BACKEND_SERVER_ID`. | – |
+| `APP_BASE_URL` | Base URL used when generating links inside Telegram messages. | unset |
+| `TELEGRAM_BOT_TOKEN` | Bot token used to post templ updates. Leave unset to disable Telegram delivery. | unset |
+| `REQUIRE_CONTRACT_VERIFY` | When `1` (or `NODE_ENV=production`), enforce contract deployment + priest matching before accepting `/templs` requests. | `0` |
+| `LOG_LEVEL` | Pino log level. | `info` |
+| `RATE_LIMIT_STORE` | `memory` or `redis`; automatically switches to Redis when `REDIS_URL` is provided. | auto |
+| `REDIS_URL` | Redis endpoint used for rate limiting when `RATE_LIMIT_STORE=redis`. | unset |
+| `DB_PATH` | SQLite path for persisted templ records. | `backend/groups.db` |
+| `CLEAR_DB` | When `1`, delete the SQLite database on boot (useful for tests). | `0` |
 
-```bash
-npm --prefix backend test
-npm --prefix backend run lint
+### Data model
+
+The backend stores templ metadata and replay protection state inside SQLite:
+
+- `groups(contract TEXT PRIMARY KEY, groupId TEXT, priest TEXT)` – `groupId` now stores the Telegram chat id.
+- `signatures` – tracks used EIP-712 signatures for replay protection.
+
+The in-memory cache mirrors SQLite entries and powers fast lookups during join flows and contract event handlers.
+
+## Routes
+
+### `GET /templs`
+
+Returns the list of registered templs. Append `?include=chatId` (or `?include=groupId`) to surface the stored Telegram chat id.
+
+```json
+{
+  "templs": [
+    {
+      "contract": "0xabc…",
+      "priest": "0xdef…",
+      "telegramChatId": "-100123456"
+    }
+  ]
+}
 ```
 
-## Architecture
+### `POST /templs`
 
-The backend enforces who gains access to chat:
+Registers a templ. Requires an EIP-712 typed signature from the priest (`buildCreateTypedData`). Optional `telegramChatId` binds the backend to a Telegram group for notifications.
 
-- **Ownership** - Groups are created by an ephemeral wallet (fresh key per group) and then managed by a single persistent invite-bot identity. The ephemeral creator key is not persisted ("burned") after creation. The invite-bot is only used to invite members; it is not intended to hold admin powers like banning.
-- **Endpoints**
-  - `POST /templs` - create a group for a deployed contract; if a `connectContract` factory is supplied the backend also watches governance events.
-  - `POST /join` - verify `hasAccess` on-chain and invite the wallet.
-  - `POST /delegateMute` - priest assigns mute rights to a member.
-  - `DELETE /delegateMute` - revoke a delegate's mute rights.
-  - `POST /mute` - priest or delegate records an escalating mute for a member.
-  - `GET /mutes` - list active mutes for a contract so the frontend can hide messages.
-- **Dependencies** - XMTP JS SDK and an on-chain provider; event watching requires a `connectContract` factory.
-- **Persistence** - group metadata persists to a SQLite database at `backend/groups.db` (or a custom path via `createApp({ dbPath })` in tests). The database is read on startup and updated when groups change; back it up to avoid losing state.
-- **On-chain surface** - proposal allowlist and events are defined in the contracts. See [CONTRACTS.md](./CONTRACTS.md#governance) for allowed actions and events mirrored into chat.
-
-### Code layout
-
-- Request handlers stay thin; `/templs` delegates to `src/services/registerTempl.js`, which encapsulates XMTP inbox resolution, ephemeral creator rotation, and persistence updates before wiring contract listeners.
-- `/join` uses `src/services/joinTempl.js` for membership checks, inbox readiness waits, and invite retries so tests and other callers can reuse the exact production logic.
-
-When watching governance events, the backend relays:
-
-- `ProposalCreated(id, proposer, endTime)` → sends `{ type: 'proposal', id, proposer, endTime }` to the group. Human-readable metadata (title/description) is not on-chain and should be sent by clients as a regular XMTP message alongside the id.
-- `VoteCast(id, voter, support, timestamp)` → sends `{ type: 'vote', id, voter, support, timestamp }`.
-- `PriestChanged(oldPriest, newPriest)` → updates the stored priest, deletes all delegate rows, clears the mute table for that contract, and announces `{ type: 'priest-changed', ... }` in chat so a new priest always starts from a clean moderation slate.
-
-### Endpoint flows
-
-#### Group creation (`/templs`)
-
-```mermaid
-sequenceDiagram
-    participant C as Client
-    participant B as Backend
-    participant CHAIN as Blockchain
-    participant X as XMTP
-
-    C->>B: POST /templs
-    B->>CHAIN: verify contract
-    B->>CHAIN: verify priest/address/chain (prod)
-    B->>X: create group
-    X-->>B: groupId
-    B-->>C: groupId
+```json
+{
+  "contractAddress": "0xabc…",
+  "priestAddress": "0xdef…",
+  "telegramChatId": "-100123456",
+  "chainId": 8453,
+  "signature": "0x…",
+  "nonce": 1700000000000,
+  "issuedAt": 1700000000000,
+  "expiry": 1700000030000
+}
 ```
 
-#### Member join (`/join`)
+When `REQUIRE_CONTRACT_VERIFY=1`, the server confirms that the address hosts bytecode and that `priest()` matches the signed address before persisting anything.
 
-```mermaid
-sequenceDiagram
-    participant C as Client
-    participant B as Backend
-    participant CHAIN as Blockchain
-    participant X as XMTP
+### `POST /join`
 
-    C->>B: POST /join
-    B->>CHAIN: hasAccess?
-    CHAIN-->>B: true
-    alt production/strict mode
-      B->>CHAIN: verify chainId matches provider
-      B->>CHAIN: verify code deployed at contractAddress
-    end
-    B->>X: invite member
-    B-->>C: 200 OK
+Verifies a member has purchased access and returns templ metadata plus convenience links.
+
+Request body mirrors the frontend’s join payload (`buildJoinTypedData`). The backend calls `hasAccess(member)` on the contract. On success the response includes the templ data (including the Telegram chat id) and computed URLs:
+
+```json
+{
+  "member": { "address": "0x123…", "hasAccess": true },
+  "templ": { "contract": "0xabc…", "telegramChatId": "-100123456", "priest": "0xdef…" },
+  "links": {
+    "templ": "https://app.templ.fun/templs/0xabc…",
+    "join": "https://app.templ.fun/templs/join?address=0xabc…",
+    "proposals": "https://app.templ.fun/templs/0xabc…/proposals"
+  }
+}
 ```
 
-### XMTP client details
+## Telegram notifications
 
-- Client uses `appVersion` for diagnostics.
-- Invitations require real inboxIds; the server resolves them and waits for visibility before inviting.
-- After creation or join it syncs and records XMTP stats.
-- The XMTP Node DB uses SQLCipher with a 32-byte key. Provide `BACKEND_DB_ENC_KEY` or a key is derived from the bot private key and environment; avoid zero-keys in production.
-- When `EPHEMERAL_CREATOR` is enabled (default), `/templs` uses a fresh XMTP identity to create the group and set metadata. The server’s invite-bot identity is included as a member at creation time and used only for invitations thereafter.
-- Contract and priest verification live in `backend/src/services/contractValidation.js`; join and registration reuse the same helpers so production checks stay consistent.
+When `TELEGRAM_BOT_TOKEN` is provided, the backend creates a notifier that emits HTML-formatted messages for key lifecycle moments:
 
-### Debug endpoints
+- `AccessPurchased` – announces new members, surfaces the current treasury + unclaimed member pool balances, links to `/templs/join`, and deep-links to `/templs/:address/claim` so members can immediately harvest rewards.
+- `ProposalCreated` – highlights new proposals with their on-chain title/description and links directly to the vote page.
+- `VoteCast` – records individual votes (YES/NO) while keeping the proposal link handy.
+- `ProposalQuorumReached` – fires once quorum is first satisfied so members who have not voted yet can still participate.
+- `ProposalVotingClosed` – triggered after the post-quorum window elapses, stating whether the proposal can be executed and linking to the execution screen.
+- `PriestChanged` – announces leadership changes and links to the templ overview.
+- Daily digest – once every 24 hours each templ receives a "gm" message summarising treasury + unclaimed member pool totals with a call-to-action to claim.
 
-When `ENABLE_DEBUG_ENDPOINTS=1`, these endpoints assist tests and local debugging:
+Messages are posted with `parse_mode=HTML` and include contract/member addresses in `<code>` blocks to aid scanning. If no bot token or chat id exists, the backend skips delivery gracefully.
 
-- `GET /debug/group?contractAddress=<addr>&refresh=1` - returns server inboxId, stored/resolved groupId, and (when available) members.
-- `GET /debug/conversations` - returns a count and the first few conversation ids seen by the server.
-- `GET /debug/membership?contractAddress=<addr>&inboxId=<id>` - whether server group view contains `inboxId`.
-- `GET /debug/last-join` - last join metadata (consumed by e2e diagnostics; the frontend may re-register via `/templs` and retry `/join` automatically when this endpoint shows a missing contract).
-- `GET /debug/inbox-state?inboxId=<id>&env=<local|dev|production>` - raw XMTP inbox state.
-- `POST /debug/send` - send a free-form message to a group's conversation (for discovery warmup and diagnostics).
+## Contract watchers
 
-#### Running against a local XMTP node
+The server uses `ethers.Contract` to subscribe to templ events. Watchers are registered when a templ is stored or restored from SQLite.
 
-See the [E2E Environments](../README.md#e2e-environments) section of the README for full setup details. In short, setting `E2E_XMTP_LOCAL=1` starts `xmtp-local-node` and sets `XMTP_ENV=local`; otherwise Playwright runs against XMTP production with a random `BOT_PRIVATE_KEY`.
+- Listener errors are caught and logged (but do not crash the process).
+- Proposal metadata is cached in-memory when events fire so follow-up notifications can include the title even if the on-chain read fails.
+- Quorum checks run after every vote (and on startup) to emit a one-time "quorum reached" message.
+- Background jobs monitor proposal deadlines and fire daily treasury/member-pool digests for every templ with a Telegram chat id.
+- Priest changes update both the in-memory store and SQLite row so new priests see fresh state.
 
-## Security considerations
+## Testing
 
-- All state-changing endpoints require EIP-712 typed signatures (with `chainId`, `nonce`, `issuedAt`, `expiry`). The backend verifies signatures and enforces replay protection by recording used signatures in SQLite.
-- The service resolves XMTP inboxIds server-side; client-provided inboxIds are ignored in normal environments. In local/test fallback modes (e.g., E2E), if network resolution is unavailable the server may deterministically accept a provided inboxId or generate one to keep tests moving.
-- The bot key must be stored securely; compromise allows muting or invitation of arbitrary members.
-- Governance events are forwarded to the group chat; untrusted RPC data could mislead voters.
-- RPC responses are assumed honest; use a trusted provider.
+`npm --prefix backend test` runs Node’s built-in test runner:
 
-### Production checklist
+- Shared `shared/signing.test.js` covers typed-data builders.
+- `backend/test/app.test.js` spins up the app with an in-memory DB, stubs a Telegram notifier, and checks templ registration + membership flows.
 
-- `NODE_ENV=production` and `REQUIRE_CONTRACT_VERIFY=1` (enforce chainId/code/priest checks).
-- `BACKEND_DB_ENC_KEY` must be set (32-byte hex) to encrypt the XMTP Node DB. The server refuses to boot without it in production.
-- Set and align `BACKEND_SERVER_ID` with `VITE_BACKEND_SERVER_ID` so signatures are bound to this server.
-- Leave all test-only toggles (`DISABLE_XMTP_WAIT`, debug endpoints) disabled in production.
+Coverage uses `c8`; run `npm --prefix backend run coverage` for LCOV reports.
 
-### Additional endpoints
+## Deployment checklist
 
-- `GET /templs` - list known templs from persistence. Returns `{ templs: [{ contract, priest } ...] }` by default; add `?include=groupId` to include `groupId` in each record.
-
-## Runbooks
-
-### Regenerate the invite-bot key
-
-1. **Announce downtime** - group invites will pause while the bot identity rotates.
-2. **Stop the backend** service.
-3. **Back up `backend/groups.db`**: `cp backend/groups.db backend/groups.db.bak.$(date +%s)`.
-4. **Choose the key source**:
-   - Supply a freshly generated key by exporting `BOT_PRIVATE_KEY` (e.g., `export BOT_PRIVATE_KEY=$(node -e "const { ethers } = require('ethers'); console.log(ethers.Wallet.createRandom().privateKey);")`).
-   - Or update the persisted value directly: `sqlite3 backend/groups.db "DELETE FROM kv WHERE key='bot_private_key';"` (the backend will auto-generate and store a new key at boot when the entry is absent).
-5. **Restart the backend**. On boot it logs the invite-bot address; confirm that the address matches expectations and that `/templs` returns existing groups.
-6. **Verify invites** by running a join test wallet through `POST /join`. If the old identity should no longer be trusted, purge any cached XMTP credentials for it.
-
-### Seed or rotate `BACKEND_DB_ENC_KEY`
-
-1. **Generate a 32-byte hex key**: `export BACKEND_DB_ENC_KEY=$(openssl rand -hex 32)`.
-2. **Stop the backend** service.
-3. **If this is the first key**: set the variable in your process manager (systemd, PM2, etc.) and restart the service. The SQLite/XMTP database will be encrypted with that key moving forward.
-4. **If rotating an existing key**: the existing database must be re-encrypted. Back up `backend/groups.db`, then wipe it (`rm backend/groups.db*`) so the backend recreates it with the new key. After boot, re-register templs with `/templs` so state is repopulated.
-5. **Restart the backend** and confirm the server logs “Using provided BACKEND_DB_ENC_KEY”.
-
-### XMTP outage response
-
-1. **Detect symptoms** - watch application logs for repeated `XMTP boot not ready`, `Member identity not registered`, or add-member failures.
-2. **Check XMTP status** - use `npx @xmtp/probe status --env ${XMTP_ENV:-dev}` (or your internal monitoring) to confirm the network issue.
-3. **Drain join traffic** - surface maintenance mode (HTTP 503) by temporarily setting `REQUIRE_CONTRACT_VERIFY=1` and `DISABLE_XMTP_WAIT=0` while returning a custom message from your load balancer, or shut down `/join` at the edge.
-4. **Stabilize the bot** - restart the backend once to clear any stalled rotations. Watch for `XMTP boot not ready` log repetition; if it persists, increase `XMTP_BOOT_MAX_TRIES` and ensure the bot wallet still has an available installation slot.
-5. **Recover conversations** - after XMTP resolves the incident, run `curl -s http://localhost:3001/templs?include=groupId` to verify groups are synced, then trigger a manual `POST /join` with a test wallet to confirm invites succeed.
-6. **Post-incident** - re-enable regular traffic, rotate logs, and capture metrics (duration, impacted wallets) for follow-up.
-
-## Next
-
-Head to [FRONTEND.md](./FRONTEND.md) to see how the browser app integrates with these endpoints and how to exercise them locally.
+1. Provide a reliable RPC URL and set `REQUIRE_CONTRACT_VERIFY=1` + `NODE_ENV=production`.
+2. Set `BACKEND_SERVER_ID` and ensure the frontend uses the same value.
+3. Configure `APP_BASE_URL` so Telegram links point to your deployed frontend.
+4. Provide `TELEGRAM_BOT_TOKEN` and confirm the bot is present in each group you care about. (Leaving it unset disables notifications.)
+5. Keep `ENABLE_DEBUG_ENDPOINTS` off in production; expose them only in controlled environments.
+6. Consider supplying `REDIS_URL` if you run multiple backend replicas and need distributed rate limiting.

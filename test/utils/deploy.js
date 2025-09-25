@@ -43,8 +43,9 @@ async function deployTempl({
     );
     await templ.waitForDeployment();
     try {
-      const { attachCreateProposalCompat } = require("./proposal");
+      const { attachCreateProposalCompat, attachProposalMetadataShim } = require("./proposal");
       attachCreateProposalCompat(templ);
+      attachProposalMetadataShim(templ);
     } catch {}
 
     return {

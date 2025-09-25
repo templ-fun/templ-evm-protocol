@@ -1,21 +1,14 @@
 # Test Locally (Fast Path)
 
-Bring the entire stack up on your machine so you can deploy a templ, join as members, and exercise governance without touching production services.
-
-## Why this guide matters
-
-- Spin up Hardhat, the backend bot, and the frontend with minimal setup.
-- Preload MetaMask with deterministic wallets so you can test priest/member roles quickly.
-- Optionally run against a local XMTP node when you need hermetic e2e tests.
-
-This guide uses Hardhat’s default accounts; never reuse these keys on real networks. XMTP dev is the default target, but you can switch to a local node when needed.
+Spin up the full templ stack—Hardhat chain, Express backend, and React frontend—so you can deploy a templ, verify membership, and run proposals without relying on external services.
 
 ## Prerequisites
 
-- Node >= 22.18.0
-- One terminal per service (or use tmux)
+- Node.js ≥ 22.18.0
+- `npm ci` already executed at the repo root
+- One terminal per process (or a multiplexer such as tmux)
 
-## 1) Start a local chain
+## 1) Start a local Hardhat chain
 
 Terminal A:
 
@@ -23,17 +16,19 @@ Terminal A:
 npm run node
 ```
 
-This boots Hardhat at `http://127.0.0.1:8545` with 20 funded test accounts.
+Hardhat exposes JSON-RPC on `http://127.0.0.1:8545` and pre-funds 20 deterministic accounts.
 
-## 2) Start the backend (local XMTP + Hardhat)
+## 2) Configure & start the backend
 
-Create `backend/.env` with the local RPC and a bot key (Hardhat account #0):
+Create `backend/.env`:
 
-```bash
+```env
 RPC_URL=http://127.0.0.1:8545
-BOT_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 ALLOWED_ORIGINS=http://localhost:5173
-ENABLE_DEBUG_ENDPOINTS=1
+BACKEND_SERVER_ID=templ-dev
+APP_BASE_URL=http://localhost:5173
+# Optional: wire up Telegram notifications by providing a bot token.
+# TELEGRAM_BOT_TOKEN=123456:bot-token-from-botfather
 ```
 
 Terminal B:
@@ -42,11 +37,9 @@ Terminal B:
 npm --prefix backend start
 ```
 
-The backend listens on `http://localhost:3001`.
+The server listens on `http://localhost:3001`, verifies signatures, persists templ registrations in SQLite, and—if a `TELEGRAM_BOT_TOKEN` is supplied—posts contract events to chat ids registered for each templ.
 
-Tip: to target a local XMTP node instead of dev, set `XMTP_ENV=local` in `backend/.env` and follow the official XMTP instructions at <https://github.com/xmtp/xmtp-local-node> (included here as a git submodule). If you did not clone with `--recurse-submodules`, run `git submodule update --init xmtp-local-node` first. Run `./up` from that repo to start the Dockerized node and keep the process alive in another terminal.
-
-## 3) Start the frontend (Vite dev)
+## 3) Start the frontend
 
 Terminal C:
 
@@ -54,115 +47,66 @@ Terminal C:
 npm --prefix frontend run dev
 ```
 
-Open `http://localhost:5173` in your browser.
+Open `http://localhost:5173`. The SPA provides dedicated routes for every core flow:
 
-Tip: the app defaults to XMTP dev when running on `localhost`.
-To target a local XMTP node instead, set `VITE_XMTP_ENV=local` in `frontend/.env`.
+- `/templs/create` – deploy + register a templ (optionally include a Telegram chat id).
+- `/templs/join` – purchase access and verify membership with the backend.
+- `/templs/:address` – overview page with quick navigation to proposals.
+- `/templs/:address/proposals/new` – create governance actions.
+- `/templs/:address/proposals/:id/vote` – cast a YES/NO vote.
 
-## 4) Generate fresh wallets (avoid XMTP install caps)
+## 4) Load Hardhat wallets in your browser
 
-By default, Hardhat’s first 20 accounts are static. XMTP imposes per-address installation limits over time. For clean local tests, generate fresh wallets and fund them from Hardhat #0:
+Add the Hardhat network in MetaMask (or another injected wallet):
 
-```bash
-npm run gen:wallets
-```
-
-This writes `wallets.local.json` and prints private keys for import. You can also mint TestToken to them in one go if you already deployed the token:
-
-```bash
-npm run gen:wallets -- --token <TestTokenAddress>
-```
-
-## 5) Import wallets into MetaMask
-
-Add the Hardhat network in MetaMask:
-
-- Network name: Hardhat
 - RPC URL: `http://127.0.0.1:8545`
 - Chain ID: `1337`
-- Currency: ETH
+- Currency: ETH (test)
 
-Import these private keys (addresses are shown for convenience):
+Commonly used accounts (private keys are from Hardhat defaults—never use them on mainnet):
 
-- Backend bot (do not use in UI):
-  - `0xac0974…ff80` → `0xf39f…2266`
-- Priest (use this first in the UI):
-  - `0x7c8521…07a6` → `0x90F7…b906`
-- Member (use after deploying):
-  - `0x47e179…926a` → `0x15d3…6A65`
-- Optional delegate:
-  - `0x8b3a35…ffba` → `0x9965…A4dc`
+| Role | Address | Private key |
+| --- | --- | --- |
+| Priest candidate | `0x90F79bf6EB2c4f870365E785982E1f101E93b906` | `0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6` |
+| Member | `0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65` | `0x47e179ec197488593b187f80a00eb0da91f1b9f6191b7644aab4f9f0d0c5d938` |
 
-These are Hardhat defaults, funded automatically.
+(Refer to `hardhat.config.cjs` for the full list if you need additional wallets.)
 
-## 6) Deploy a test ERC-20 token locally
+## 5) Deploy and register a templ
 
-Use Hardhat console (Terminal A or a new one):
+1. Connect the priest wallet in the UI and navigate to `/templs/create`.
+2. Fill in the form:
+   - Factory address: the `TemplFactory` you deployed or the value from `VITE_TEMPL_FACTORY_ADDRESS`.
+   - Access token address: any ERC-20 you control on the local chain (deploy `TestToken` via `npx hardhat console` if needed).
+   - Entry fee / fee split / limits: pick values that satisfy on-chain validations (entry fee ≥ 10 wei and divisible by 10, fee split sums to 100).
+   - Telegram chat id: optional numeric id; omit it if you don’t want Telegram alerts yet.
+3. Submit—the frontend deploys the contract via the factory and immediately calls the backend `/templs` endpoint to persist the registry entry.
+4. After success you land on `/templs/:address` where the overview reflects the registered priest and chat id.
 
-```bash
-npx hardhat console --network localhost
-```
+## 6) Join and verify membership
 
-In the console:
+1. Switch to the member wallet and open `/templs/join?address=<templAddress>`.
+2. Use “Purchase Access” to approve + call `purchaseAccess` if you haven’t joined before.
+3. Click “Verify Membership” to sign the EIP-712 payload and call the backend `/join` endpoint.
+4. The response includes the templ metadata plus deep links (join, overview, proposals) derived from `APP_BASE_URL`.
 
-```bash
-const [deployer] = await ethers.getSigners();
-const Token = await ethers.getContractFactory("TestToken");
-const token = await Token.deploy("Test", "TEST", 18);
-await token.waitForDeployment();
-token.target
+## 7) Create proposals and vote
 
-// Fund priest and member with TEST tokens
-await token.mint("0x90F79bf6EB2c4f870365E785982E1f101E93b906", ethers.parseEther("1000000"));
-await token.mint("0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65", ethers.parseEther("1000000"));
-```
-
-Copy the printed `token.target` address.
-
-## 7) Create a Templ (priest)
-
-In the frontend (with the Priest wallet selected):
-
-1. Click `Connect Wallet`.
-2. Go to `Create`.
-3. Fill:
-   - Token address: paste the `token.target` from step 5
-   - Protocol fee recipient: `0x70997970C51812dc3A010C7d01b50e0d17dc79C8` (Hardhat #1)
-   - Entry fee: `100` (must be ≥10 and divisible by 10)
-  - Note: governance rules:
-    - One member = one vote; proposer auto-YES; votes are changeable until eligibility closes.
-    - Before quorum, only members captured in the proposal's creation snapshot may vote—`_joinedAfterSnapshot` in `TemplGovernance.sol` blocks anyone who joined later. Those later joiners must wait until quorum is reached to gain voting rights, and even then only accounts that joined on or before `quorumReachedAt` remain eligible.
-    - Execution requires a simple majority. For most proposals, execution is allowed only after quorum is reached and the post-quorum delay elapses; priest-proposed disband is quorum-exempt and respects only its end time.
-4. Click `Deploy`.
-
-You’ll land in `Chat` with the group created. The header shows the contract short address.
-
-## 8) Join as a member
-
-Switch MetaMask to the Member wallet (`0x15d3…6A65`). In the app:
-
-1. Click `Connect Wallet`.
-2. Go to `Join`.
-3. Paste the Templ contract address you just deployed.
-4. Click `Purchase & Join` (the UI approves tokens and purchases access, then connects to chat).
-
-   The join flow now always posts to `/join`; the UI only falls back to any locally cached templ addresses when `TEMPL_ENABLE_LOCAL_FALLBACK=1` (used in automated tests). Leave that flag unset during manual runs so you verify the backend invite path end-to-end.
-
-The chat auto-loads the last 100 messages and any past proposals. Use “Load previous” to page older history.
-
-## 9) Try governance in chat
-
-- Click `Propose vote` (priest or any member): optionally set a title (shared via XMTP only) and use the “Pause DAO” quick action (encodes `setPausedDAO(true)`). Submit and sign the tx.
-- A poll bubble appears in chat.
-- Vote via `Vote Yes/No`; each voter signs their tx.
-- If you’re the priest, an `Execute` button is always visible; the contract enforces eligibility (quorum, delay, quorum-exempt priest disband timing) and reverts when the proposal cannot yet be executed.
+- `/templs/:address/proposals/new` lets any member raise actions such as pausing, changing the priest, updating fees, etc. Titles and descriptions are now stored on-chain and emitted in `ProposalCreated` events.
+- `/templs/:address/proposals/:id/vote` submits `vote(proposalId, support)` transactions.
+- If the templ was registered with a Telegram chat id, the backend will post:
+  - Member joins (`AccessPurchased`)
+  - Proposal creations (including title/description)
+  - Votes (enriched with cached proposal titles)
+  - Priest changes
+  Each message links back to the relevant frontend route so members can take action quickly.
+- `/templs/:address/claim` lets connected wallets see the raw member pool balance and call `claimMemberPool()`.
 
 ## Troubleshooting
 
-- Backend CORS: update `ALLOWED_ORIGINS` in `backend/.env` if your frontend origin differs.
-- Ports in use: stop stray `:8545`, `:3001`, or `:5173` processes before restarting.
-- XMTP boot time: the first run may take ~20-60s while the SDK initializes identity and device sync. Subsequent runs are faster.
+- **CORS / origin errors** – ensure `ALLOWED_ORIGINS` in `backend/.env` matches the frontend origin.
+- **Telegram messages not appearing** – confirm the bot is added to the group, the chat id is correct, and the backend logs show `notify*` calls. Missing `APP_BASE_URL` will omit deep links but shouldn’t block delivery.
+- **Signature rejected** – delete `backend/groups.db` (or set `CLEAR_DB=1`) to clear old signatures if you changed `BACKEND_SERVER_ID` or reran the flow with stale payloads.
+- **Contract reverts** – hardhat console logs will show revert reasons. Common issues are fee splits not summing to 100 or attempting to vote after the deadline.
 
-## Next
-
-Check [../scripts/README.md](../scripts/README.md) for deployment, wallet, and CI scripts that build on this setup.
+You now have a full local environment for iterating on templ governance and Telegram notifications.

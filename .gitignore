@@ -37,9 +37,6 @@ deployments/
 # State files
 .monitor-state.json
 
-# XMTP test databases
-xmtp-*.db3*
-
 # Test outputs
 test-results/
 frontend/test-results/
