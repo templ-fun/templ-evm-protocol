@@ -9,7 +9,8 @@ import { NewProposalPage } from './pages/NewProposalPage.jsx';
 import { VoteProposalPage } from './pages/VoteProposalPage.jsx';
 import { TemplOverviewPage } from './pages/TemplOverviewPage.jsx';
 import { ClaimRewardsPage } from './pages/ClaimRewardsPage.jsx';
-import { BACKEND_URL } from './config.js';
+import { BACKEND_URL, FACTORY_CONFIG, RPC_URL } from './config.js';
+import { loadFactoryTempls } from './services/templs.js';
 
 export default function App() {
   const { path, query, navigate } = useAppLocation();
@@ -19,6 +20,7 @@ export default function App() {
   const [statusMessages, setStatusMessages] = useState([]);
   const [templs, setTempls] = useState([]);
   const [loadingTempls, setLoadingTempls] = useState(false);
+  const [readProvider, setReadProvider] = useState(null);
 
   const pushMessage = useCallback((message) => {
     const text = String(message);
@@ -79,19 +81,88 @@ export default function App() {
     }
   };
 
+  useEffect(() => {
+    if (RPC_URL) {
+      try {
+        setReadProvider(new ethers.JsonRpcProvider(RPC_URL));
+        return;
+      } catch (err) {
+        console.warn('[templ] Failed to create RPC provider', err);
+      }
+    }
+    if (provider) {
+      setReadProvider(provider);
+    } else if (typeof window !== 'undefined' && window.ethereum) {
+      try {
+        const browserProvider = new ethers.BrowserProvider(window.ethereum);
+        setReadProvider(browserProvider);
+      } catch (err) {
+        console.warn('[templ] Failed to create browser provider', err);
+      }
+    }
+  }, [provider]);
+
   const refreshTempls = useCallback(async () => {
     setLoadingTempls(true);
     try {
-      const res = await fetch(`${BACKEND_URL}/templs?include=chatId`);
-      if (!res.ok) throw new Error(res.statusText);
-      const data = await res.json();
-      setTempls(Array.isArray(data.templs) ? data.templs : []);
+      const factoryAddress = FACTORY_CONFIG.address;
+      let factoryTempls = [];
+      if (factoryAddress && readProvider) {
+        factoryTempls = await loadFactoryTempls({ ethers, provider: readProvider, factoryAddress });
+      }
+
+      let backendTempls = [];
+      try {
+        const res = await fetch(`${BACKEND_URL}/templs?include=chatId`);
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.templs)) {
+            backendTempls = data.templs.map((row) => ({
+              contract: String(row.contract || '').toLowerCase(),
+              telegramChatId: row.telegramChatId || row.groupId || '',
+              templHomeLink: row.templHomeLink || '',
+              priest: row.priest || ''
+            }));
+          }
+        }
+      } catch {
+        /* ignore backend errors; on-chain data is primary */
+      }
+
+      if (factoryTempls.length === 0 && backendTempls.length === 0) {
+        setTempls([]);
+        return;
+      }
+
+      const backendMap = new Map(backendTempls.map((item) => [item.contract, item]));
+      const merged = factoryTempls.length ? factoryTempls.map((templ) => {
+        const backendInfo = backendMap.get(templ.contract);
+        return {
+          ...templ,
+          telegramChatId: backendInfo?.telegramChatId || '',
+          templHomeLink: templ.templHomeLink || backendInfo?.templHomeLink || '',
+          priest: templ.priest || backendInfo?.priest || '',
+        };
+      }) : backendTempls.map((templ) => ({
+        contract: templ.contract,
+        priest: templ.priest,
+        tokenSymbol: '–',
+        tokenAddress: '',
+        tokenDecimals: 18,
+        burnedRaw: 0n,
+        burnedFormatted: '0',
+        templHomeLink: templ.templHomeLink,
+        telegramChatId: templ.telegramChatId || '',
+        links: { overview: `/templs/${templ.contract}`, homeLink: templ.templHomeLink || undefined },
+      }));
+
+      setTempls(merged);
     } catch (err) {
       pushMessage(`Failed to load templs: ${err?.message || err}`);
     } finally {
       setLoadingTempls(false);
     }
-  }, [pushMessage]);
+  }, [pushMessage, readProvider]);
 
   useEffect(() => {
     refreshTempls();

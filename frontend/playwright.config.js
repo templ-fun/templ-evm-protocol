@@ -81,7 +81,8 @@ export default defineConfig({
         VITE_E2E_DEBUG: '1',
         VITE_BACKEND_SERVER_ID: 'templ-dev',
         VITE_ENABLE_BACKEND_FALLBACK: '0',
-        VITE_BACKEND_URL: 'http://localhost:3001'
+        VITE_BACKEND_URL: 'http://localhost:3001',
+        VITE_RPC_URL: 'http://127.0.0.1:8545'
       },
       reuseExistingServer: false,
       timeout: 180 * 1000,

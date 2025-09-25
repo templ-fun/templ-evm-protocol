@@ -32,6 +32,7 @@ test.describe('Telegram pivot basic flows', () => {
     const factoryFactory = new ethers.ContractFactory(TemplFactory.abi, TemplFactory.bytecode, deployer);
     const templFactory = await factoryFactory.deploy(protocolRecipient, 10, { nonce: deployerNonce++ });
     await templFactory.waitForDeployment();
+    const templFactoryAddress = await templFactory.getAddress();
     await mine();
 
     const tokenDeployer = await provider.getSigner(3);
@@ -119,13 +120,19 @@ test.describe('Telegram pivot basic flows', () => {
     expect(joinJson.templ.telegramChatId).toBe(TELEGRAM_CHAT_ID);
     expect(joinJson.templ.templHomeLink).toBe(templConfig.homeLink);
 
+    await page.addInitScript((factoryAddr) => {
+      window.TEMPL_FACTORY_ADDRESS = factoryAddr;
+    }, templFactoryAddress);
+
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'TEMPL Control Center' })).toBeVisible();
     const row = page.locator('table.templs-table tbody tr').filter({ hasText: templAddress.slice(0, 8) });
     await expect(row).toBeVisible();
     const priestSnippet = protocolRecipient.slice(2, 10);
     await expect(row).toContainText(new RegExp(priestSnippet, 'i'));
-    await expect(row).toContainText(TELEGRAM_CHAT_ID);
+    await expect(row).toContainText('TEST');
+    await expect(row).toContainText('30');
+    await expect(row.getByRole('link', { name: 'Open Home' })).toHaveAttribute('href', templConfig.homeLink);
 
     await row.getByRole('button', { name: 'View' }).click();
     await expect(page).toHaveURL(new RegExp(`/templs/${templAddress}`));

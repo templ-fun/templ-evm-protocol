@@ -159,6 +159,39 @@ button:disabled {
   font-size: 14px;
 }
 
+.mono {
+  font-family: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  word-break: break-all;
+}
+
+.subtle {
+  color: rgba(20, 33, 61, 0.6);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.table-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.link-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(20, 33, 61, 0.2);
+  text-decoration: none;
+  color: #14213d;
+  font-size: 14px;
+}
+
+.link-button:hover {
+  background: rgba(20, 33, 61, 0.05);
+}
+
 .empty {
   margin: 0;
   color: rgba(20, 33, 61, 0.6);

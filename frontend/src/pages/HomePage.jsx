@@ -31,25 +31,38 @@ export function HomePage({ walletAddress, onConnectWallet, onNavigate, templs, l
           </div>
         </div>
         {templs.length === 0 ? (
-          <p className="empty">No templs registered yet.</p>
+          <p className="empty">No templs discovered for this factory yet.</p>
         ) : (
           <table className="templs-table">
             <thead>
               <tr>
-                <th>Contract</th>
-                <th>Priest</th>
-                <th>Telegram Chat</th>
-                <th></th>
+                <th>Templ</th>
+                <th>Token</th>
+                <th>Burned</th>
+                <th>Links</th>
               </tr>
             </thead>
             <tbody>
               {templs.map((templ) => (
                 <tr key={templ.contract}>
-                  <td>{templ.contract}</td>
-                  <td>{templ.priest || '—'}</td>
-                  <td>{templ.telegramChatId || '—'}</td>
                   <td>
-                    <button type="button" onClick={() => onNavigate(`/templs/${templ.contract}`)}>View</button>
+                    <div className="mono">{templ.contract}</div>
+                    {templ.priest ? <div className="subtle">Priest: {templ.priest}</div> : null}
+                    {templ.telegramChatId ? <div className="subtle">Telegram: {templ.telegramChatId}</div> : null}
+                  </td>
+                  <td>
+                    <div>{templ.tokenSymbol}</div>
+                    {templ.tokenAddress ? <div className="subtle mono">{templ.tokenAddress}</div> : null}
+                  </td>
+                  <td>
+                    <div>{templ.burnedFormatted}</div>
+                    <div className="subtle">raw: {templ.burnedRaw?.toString?.() ?? String(templ.burnedRaw || 0)}</div>
+                  </td>
+                  <td className="table-actions">
+                    <button type="button" onClick={() => onNavigate(templ.links?.overview || `/templs/${templ.contract}`)}>View</button>
+                    {templ.links?.homeLink ? (
+                      <a href={templ.links.homeLink} target="_blank" rel="noreferrer" className="link-button">Open Home</a>
+                    ) : null}
                   </td>
                 </tr>
               ))}
