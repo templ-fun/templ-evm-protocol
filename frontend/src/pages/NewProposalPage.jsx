@@ -8,7 +8,8 @@ const ACTIONS = [
   { value: 'changePriest', label: 'Change priest' },
   { value: 'setMaxMembers', label: 'Set max members' },
   { value: 'enableDictatorship', label: 'Enable dictatorship' },
-  { value: 'disableDictatorship', label: 'Disable dictatorship' }
+  { value: 'disableDictatorship', label: 'Disable dictatorship' },
+  { value: 'updateHomeLink', label: 'Update templ home link' }
 ];
 
 function buildActionConfig(kind, params) {
@@ -27,6 +28,9 @@ function buildActionConfig(kind, params) {
       return { action: 'setDictatorship', params: { enable: true } };
     case 'disableDictatorship':
       return { action: 'setDictatorship', params: { enable: false } };
+    case 'updateHomeLink':
+      if (!params.homeLink) throw new Error('Home link is required');
+      return { action: 'setHomeLink', params: { newHomeLink: params.homeLink } };
     default:
       throw new Error('Unsupported proposal type');
   }
@@ -46,10 +50,12 @@ export function NewProposalPage({
   const [votingPeriod, setVotingPeriod] = useState('0');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [homeLink, setHomeLink] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const requiresPriest = useMemo(() => proposalType === 'changePriest', [proposalType]);
   const requiresMaxMembers = useMemo(() => proposalType === 'setMaxMembers', [proposalType]);
+  const requiresHomeLink = useMemo(() => proposalType === 'updateHomeLink', [proposalType]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -68,7 +74,8 @@ export function NewProposalPage({
     try {
       const { action, params } = buildActionConfig(proposalType, {
         newPriest,
-        maxMembers
+        maxMembers,
+        homeLink
       });
       const votingPeriodValue = Number(votingPeriod || '0');
       const result = await proposeVote({
@@ -125,6 +132,12 @@ export function NewProposalPage({
           <label>
             Max members
             <input type="text" value={maxMembers} onChange={(e) => setMaxMembers(e.target.value.trim())} placeholder="0 for unlimited" />
+          </label>
+        )}
+        {requiresHomeLink && (
+          <label>
+            New home link
+            <input type="text" value={homeLink} onChange={(e) => setHomeLink(e.target.value.trim())} placeholder="https://t.me/..." />
           </label>
         )}
         <label>

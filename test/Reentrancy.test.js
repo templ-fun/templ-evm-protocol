@@ -34,7 +34,8 @@ describe("Reentrancy protection", function () {
         7 * 24 * 60 * 60,
         "0x000000000000000000000000000000000000dEaD",
         false,
-        0
+        0,
+        ""
       );
       await templ.waitForDeployment();
 
@@ -96,7 +97,8 @@ describe("Reentrancy protection", function () {
         7 * 24 * 60 * 60,
         "0x000000000000000000000000000000000000dEaD",
         false,
-        0
+        0,
+        ""
       );
       await templ.waitForDeployment();
 

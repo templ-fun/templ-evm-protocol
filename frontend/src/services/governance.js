@@ -112,6 +112,9 @@ export async function proposeVote({
       case 'setDictatorship':
         tx = await contract.createProposalSetDictatorship(!!p.enable, votingPeriod, proposalTitle, proposalDescription, txOptions);
         break;
+      case 'setHomeLink':
+        tx = await contract.createProposalSetHomeLink(String(p.newHomeLink || ''), votingPeriod, proposalTitle, proposalDescription, txOptions);
+        break;
       default:
         throw new Error('Unknown action: ' + action);
     }
@@ -165,6 +168,11 @@ export async function proposeVote({
       if (fn?.name === 'setDictatorshipDAO' && fn.inputs.length === 1) {
         const [enable] = full.decodeFunctionData(fn, callData);
         const tx = await contract.createProposalSetDictatorship(enable, votingPeriod, proposalTitle, proposalDescription, txOptions);
+        return await waitForProposal(tx);
+      }
+      if (fn?.name === 'setTemplHomeLinkDAO' && fn.inputs.length === 1) {
+        const [link] = full.decodeFunctionData(fn, callData);
+        const tx = await contract.createProposalSetHomeLink(link, votingPeriod, proposalTitle, proposalDescription, txOptions);
         return await waitForProposal(tx);
       }
       if (fn?.name === 'disbandTreasuryDAO') {

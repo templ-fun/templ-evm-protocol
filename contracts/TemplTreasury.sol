@@ -19,7 +19,8 @@ abstract contract TemplTreasury is TemplMembership {
         uint256 _quorumPercent,
         uint256 _executionDelay,
         address _burnAddress,
-        bool _priestIsDictator
+        bool _priestIsDictator,
+        string memory _homeLink
     ) TemplMembership(
         _protocolFeeRecipient,
         _accessToken,
@@ -30,7 +31,8 @@ abstract contract TemplTreasury is TemplMembership {
         _quorumPercent,
         _executionDelay,
         _burnAddress,
-        _priestIsDictator
+        _priestIsDictator,
+        _homeLink
     ) {}
 
     function withdrawTreasuryDAO(
@@ -71,6 +73,10 @@ abstract contract TemplTreasury is TemplMembership {
 
     function setDictatorshipDAO(bool enabled) external onlyDAO {
         _updateDictatorship(enabled);
+    }
+
+    function setTemplHomeLinkDAO(string calldata newLink) external onlyDAO {
+        _setTemplHomeLink(newLink);
     }
 
     function _withdrawTreasury(

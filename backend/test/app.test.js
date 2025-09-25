@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import Database from 'better-sqlite3';
 import request from 'supertest';
 import { Wallet } from 'ethers';
+
+import { createMemoryDatabase } from '../src/memoryDb.js';
 
 import { createApp } from '../src/server.js';
 import { buildCreateTypedData, buildJoinTypedData } from '../../shared/signing.js';
@@ -11,8 +12,9 @@ process.env.NODE_ENV = 'test';
 process.env.BACKEND_SERVER_ID = 'test-server';
 process.env.APP_BASE_URL = 'http://localhost:5173';
 
+
 function makeApp({ hasPurchased = async () => true } = {}) {
-  const db = new Database(':memory:');
+  const db = createMemoryDatabase();
   const notifications = [];
   const handlerRegistry = new Map();
   const notifier = {
@@ -22,7 +24,10 @@ function makeApp({ hasPurchased = async () => true } = {}) {
     notifyPriestChanged: async (payload) => notifications.push({ type: 'priest', payload }),
     notifyProposalQuorumReached: async (payload) => notifications.push({ type: 'quorum', payload }),
     notifyProposalVotingClosed: async (payload) => notifications.push({ type: 'votingClosed', payload }),
-    notifyDailyDigest: async (payload) => notifications.push({ type: 'digest', payload })
+    notifyDailyDigest: async (payload) => notifications.push({ type: 'digest', payload }),
+    notifyTemplHomeLinkUpdated: async (payload) => notifications.push({ type: 'homeLink', payload }),
+    notifyBindingComplete: async (payload) => notifications.push({ type: 'binding', payload }),
+    fetchUpdates: async () => ({ updates: [], nextOffset: 0 })
   };
   const connectContract = (address) => {
     const key = String(address).toLowerCase();
@@ -69,7 +74,7 @@ function makeApp({ hasPurchased = async () => true } = {}) {
   return { app, db, notifications, handlerRegistry };
 }
 
-async function registerTempl(app, wallet, telegramChatId = '12345') {
+async function registerTempl(app, wallet, { telegramChatId = '12345', templHomeLink } = {}) {
   const contractAddress = wallet.address;
   const typed = buildCreateTypedData({ chainId: 1337, contractAddress: contractAddress.toLowerCase() });
   const signature = await wallet.signTypedData(typed.domain, typed.types, typed.message);
@@ -81,6 +86,7 @@ async function registerTempl(app, wallet, telegramChatId = '12345') {
       signature,
       chainId: 1337,
       telegramChatId,
+      templHomeLink,
       nonce: typed.message.nonce,
       issuedAt: typed.message.issuedAt,
       expiry: typed.message.expiry
@@ -113,12 +119,14 @@ test('register templ persists record and wires contract listeners', async (t) =>
   });
 
   const wallet = Wallet.createRandom();
-  const { contractAddress, response } = await registerTempl(app, wallet, 'telegram-chat-1');
+  const { contractAddress, response } = await registerTempl(app, wallet, { telegramChatId: 'telegram-chat-1' });
 
   assert.equal(response.contract, contractAddress);
   assert.equal(response.priest, wallet.address.toLowerCase());
   assert.equal(response.telegramChatId, 'telegram-chat-1');
   assert.equal(response.groupId, 'telegram-chat-1');
+  assert.equal(response.templHomeLink, '');
+  assert.equal(response.bindingCode, null);
 
   const entry = handlerRegistry.get(contractAddress);
   assert.ok(entry, 'contract handlers registered');
@@ -163,6 +171,7 @@ test('join endpoint validates membership', async (t) => {
   assert.equal(res.body.member.address, memberWallet.address.toLowerCase());
   assert.equal(res.body.member.hasAccess, true);
   assert.equal(res.body.templ.contract, contractAddress);
+  assert.equal(res.body.templ.templHomeLink, '');
 });
 
 test('join endpoint rejects non-members', async (t) => {
@@ -189,7 +198,7 @@ test('list templs includes registered entries', async (t) => {
   });
 
   const templWallet = Wallet.createRandom();
-  const { contractAddress } = await registerTempl(app, templWallet, 'chat-42');
+  const { contractAddress } = await registerTempl(app, templWallet, { telegramChatId: 'chat-42' });
 
   const res = await request(app).get('/templs?include=chatId');
   assert.equal(res.status, 200);
@@ -198,4 +207,25 @@ test('list templs includes registered entries', async (t) => {
   assert.ok(match, 'templ present in listing');
   assert.equal(match.telegramChatId, 'chat-42');
   assert.equal(match.groupId, 'chat-42');
+  assert.equal(match.templHomeLink, '');
+});
+
+test('register templ without chat id issues binding code', async (t) => {
+  const { app, db } = makeApp();
+  t.after(async () => {
+    await app.close?.();
+    db.close();
+  });
+
+  const wallet = Wallet.createRandom();
+  const { contractAddress, response } = await registerTempl(app, wallet, { telegramChatId: null, templHomeLink: 'https://initial.link' });
+
+  assert.equal(response.contract, contractAddress);
+  assert.equal(response.telegramChatId, null);
+  assert.equal(response.templHomeLink, 'https://initial.link');
+  assert.ok(response.bindingCode);
+
+  const record = app.locals.templs.get(contractAddress);
+  assert.equal(record.bindingCode, response.bindingCode);
+  assert.equal(record.templHomeLink, 'https://initial.link');
 });

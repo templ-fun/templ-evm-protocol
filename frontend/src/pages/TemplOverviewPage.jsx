@@ -20,6 +20,16 @@ export function TemplOverviewPage({ templAddress, templRecord, onNavigate }) {
             <dt>Telegram chat id</dt>
             <dd>{templRecord?.telegramChatId || '—'}</dd>
           </div>
+          <div>
+            <dt>Home link</dt>
+            <dd>
+              {templRecord?.templHomeLink ? (
+                <a href={templRecord.templHomeLink} target="_blank" rel="noreferrer">{templRecord.templHomeLink}</a>
+              ) : (
+                '—'
+              )}
+            </dd>
+          </div>
         </dl>
         <div className="card-actions">
           <button type="button" onClick={() => onNavigate('/templs/join?address=' + templAddress)}>Join</button>

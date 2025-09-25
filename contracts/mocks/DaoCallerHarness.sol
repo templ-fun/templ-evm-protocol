@@ -25,7 +25,8 @@ contract DaoCallerHarness is TEMPL {
             7 days,
             0x000000000000000000000000000000000000dEaD,
             false,
-            0
+            0,
+            ""
         )
     {}
     /// @notice Wrapper to call withdrawTreasuryDAO via contract self-call

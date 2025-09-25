@@ -17,12 +17,12 @@ Solidity 0.8.23. Core contract lives in `contracts/TEMPL.sol` with shared errors
 
 Each module handles a focused responsibility:
 
-- `TemplBase`: shared storage layout, immutables, counters, events, and modifiers (including the `priestIsDictator` flag that toggles priest-only governance). All other modules inherit it, so audits can focus on a single storage contract.
+- `TemplBase`: shared storage layout, immutables, counters, events, and modifiers (including the `priestIsDictator` flag that toggles priest-only governance). It now also stores the templ's canonical home link (`templHomeLink`) and emits `TemplHomeLinkUpdated` whenever governance changes it. All other modules inherit it, so audits can focus on a single storage contract.
 - `TemplMembership`: membership lifecycle (`purchaseAccess`, claims, view helpers) and accounting for the member pool.
 - `TemplTreasury`: governance-callable treasury/config/priest handlers and their internal helpers, including member limit management via `setMaxMembersDAO`.
 - `TemplGovernance`: proposal creation, voting/quorum logic, execution router, and governance view helpers.
 - `TEMPL`: thin concrete contract wiring the constructor requirements (`priest`, `protocolFeeRecipient`, `token`, `entryFee`, fee splits) and exposing the payable `receive` hook.
-- `TemplFactory`: immutable protocol recipient/percentage plus helpers that deploy templ instances with per-templ burn/treasury/member splits.
+- `TemplFactory`: immutable protocol recipient/percentage plus helpers that deploy templ instances with per-templ burn/treasury/member splits. Deployment structs now include an initial `homeLink` string propagated into each `TEMPL` at construction.
 
 ## Entry-fee economics
 

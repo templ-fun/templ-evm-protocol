@@ -53,7 +53,8 @@ test.describe('Telegram pivot basic flows', () => {
       executionDelaySeconds: 7 * 24 * 60 * 60,
       burnAddress: '0x000000000000000000000000000000000000dEaD',
       priestIsDictator: false,
-      maxMembers: 0
+      maxMembers: 0,
+      homeLink: 'https://t.me/templfunbot'
     };
 
     let priestNonce = await wallets.priest.getNonce();
@@ -75,7 +76,8 @@ test.describe('Telegram pivot basic flows', () => {
       nonce: createTyped.message.nonce,
       issuedAt: createTyped.message.issuedAt,
       expiry: createTyped.message.expiry,
-      telegramChatId: TELEGRAM_CHAT_ID
+      telegramChatId: TELEGRAM_CHAT_ID,
+      templHomeLink: templConfig.homeLink
     };
     const registerRes = await fetch('http://localhost:3001/templs', {
       method: 'POST',
@@ -115,6 +117,7 @@ test.describe('Telegram pivot basic flows', () => {
     expect(joinRes.status).toBe(200);
     const joinJson = await joinRes.json();
     expect(joinJson.templ.telegramChatId).toBe(TELEGRAM_CHAT_ID);
+    expect(joinJson.templ.templHomeLink).toBe(templConfig.homeLink);
 
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'TEMPL Control Center' })).toBeVisible();

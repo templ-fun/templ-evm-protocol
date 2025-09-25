@@ -15,7 +15,8 @@ abstract contract TemplGovernance is TemplTreasury {
         uint256 _quorumPercent,
         uint256 _executionDelay,
         address _burnAddress,
-        bool _priestIsDictator
+        bool _priestIsDictator,
+        string memory _homeLink
     ) TemplTreasury(
         _protocolFeeRecipient,
         _accessToken,
@@ -26,7 +27,8 @@ abstract contract TemplGovernance is TemplTreasury {
         _quorumPercent,
         _executionDelay,
         _burnAddress,
-        _priestIsDictator
+        _priestIsDictator,
+        _homeLink
     ) {}
 
     function createProposalSetPaused(
@@ -83,6 +85,19 @@ abstract contract TemplGovernance is TemplTreasury {
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
         p.action = Action.SetMaxMembers;
         p.newMaxMembers = _newMaxMembers;
+        return id;
+    }
+
+    function createProposalSetHomeLink(
+        string calldata _newLink,
+        uint256 _votingPeriod,
+        string calldata _title,
+        string calldata _description
+    ) external returns (uint256) {
+        if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
+        (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
+        p.action = Action.SetHomeLink;
+        p.newHomeLink = _newLink;
         return id;
     }
 
@@ -258,6 +273,8 @@ abstract contract TemplGovernance is TemplTreasury {
             _updateDictatorship(proposal.setDictatorship);
         } else if (proposal.action == Action.SetMaxMembers) {
             _setMaxMembers(proposal.newMaxMembers);
+        } else if (proposal.action == Action.SetHomeLink) {
+            _setTemplHomeLink(proposal.newHomeLink);
         } else {
             revert TemplErrors.InvalidCallData();
         }

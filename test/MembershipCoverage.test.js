@@ -7,6 +7,64 @@ const ENTRY_FEE = ethers.parseUnits("100", 18);
 const DAY = 24 * 60 * 60;
 const VOTING_PERIOD = 7 * DAY;
 
+async function findMemberPoolSlot(templ, contractAddress, maxSlots = 200) {
+  const expected = await templ.memberPoolBalance();
+  if (expected === 0n) {
+    throw new Error("memberPoolBalance is zero; cannot locate slot");
+  }
+  const target = ethers.zeroPadValue(ethers.toBeHex(expected), 32);
+  for (let slotIndex = 0; slotIndex < maxSlots; slotIndex += 1) {
+    const slot = ethers.toBeHex(slotIndex, 32);
+    const current = await ethers.provider.send("eth_getStorageAt", [contractAddress, slot, "latest"]);
+    if (current !== target) continue;
+
+    await ethers.provider.send("hardhat_setStorageAt", [contractAddress, slot, ethers.ZeroHash]);
+    const updated = await templ.memberPoolBalance();
+    await ethers.provider.send("hardhat_setStorageAt", [contractAddress, slot, current]);
+
+    if (updated === 0n) {
+      return slot;
+    }
+  }
+  throw new Error("Unable to locate memberPoolBalance storage slot");
+}
+
+async function findExternalRewardPoolSlot(templ, contractAddress, tokenAddress, maxSlots = 200) {
+  const rewardState = await templ.getExternalRewardState(tokenAddress);
+  const poolBalance = rewardState[0];
+  if (poolBalance === 0n) {
+    throw new Error("external reward pool balance is zero; cannot locate slot");
+  }
+  const encodedKey = ethers.zeroPadValue(tokenAddress, 32);
+  const targetValue = ethers.zeroPadValue(ethers.toBeHex(poolBalance), 32);
+  for (let slotIndex = 0; slotIndex < maxSlots; slotIndex += 1) {
+    const slot = ethers.toBeHex(slotIndex, 32);
+    const storageSlot = ethers.keccak256(ethers.concat([encodedKey, slot]));
+    const stored = await ethers.provider.send("eth_getStorageAt", [
+      contractAddress,
+      ethers.toBeHex(BigInt(storageSlot), 32),
+      "latest"
+    ]);
+    if (stored !== targetValue) continue;
+
+    await ethers.provider.send("hardhat_setStorageAt", [
+      contractAddress,
+      ethers.toBeHex(BigInt(storageSlot), 32),
+      ethers.ZeroHash
+    ]);
+    const updatedState = await templ.getExternalRewardState(tokenAddress);
+    await ethers.provider.send("hardhat_setStorageAt", [
+      contractAddress,
+      ethers.toBeHex(BigInt(storageSlot), 32),
+      targetValue
+    ]);
+    if (updatedState[0] === 0n) {
+      return storageSlot;
+    }
+  }
+  throw new Error("Unable to locate external reward pool storage slot");
+}
+
 describe("Membership coverage extras", function () {
   it("handles external reward lookups across all branches", async function () {
     const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE });
@@ -212,7 +270,8 @@ describe("Membership coverage extras", function () {
     expect(claimable).to.be.gt(0n);
 
     const templAddr = await templ.getAddress();
-    const poolSlot = ethers.toBeHex(7, 32);
+    expect(await templ.memberPoolBalance()).to.be.gt(0n);
+    const poolSlot = await findMemberPoolSlot(templ, templAddr);
 
     // Zero out member pool balance before claiming to trigger the guard
     await ethers.provider.send("hardhat_setStorageAt", [
@@ -238,14 +297,11 @@ describe("Membership coverage extras", function () {
     await templ.executeProposal(1);
 
     // Corrupt external reward pool to trigger InsufficientPoolBalance during claim
-    const mappingSlot = ethers.toBeHex(26, 32);
-    const baseKey = ethers.keccak256(
-      ethers.concat([ethers.zeroPadValue(otherToken.target, 32), mappingSlot])
-    );
+    const rewardSlot = await findExternalRewardPoolSlot(templ, templAddr, otherToken.target);
 
     await ethers.provider.send("hardhat_setStorageAt", [
       templAddr,
-      ethers.toBeHex(BigInt(baseKey), 32),
+      rewardSlot,
       ethers.ZeroHash
     ]);
     await ethers.provider.send("evm_mine", []);

@@ -101,6 +101,16 @@ export function JoinTemplPage({
               <dt>Telegram chat id</dt>
               <dd>{verification.templ?.telegramChatId || '—'}</dd>
             </div>
+            <div>
+              <dt>Home link</dt>
+              <dd>
+                {verification.templ?.templHomeLink ? (
+                  <a href={verification.templ.templHomeLink} target="_blank" rel="noreferrer">{verification.templ.templHomeLink}</a>
+                ) : (
+                  '—'
+                )}
+              </dd>
+            </div>
           </dl>
           {verification.links && (
             <ul className="link-list">

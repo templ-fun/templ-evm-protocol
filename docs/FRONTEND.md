@@ -12,6 +12,8 @@ The frontend is a Vite + React app served from `frontend/`. It provides clear ro
 | `/templs/:address/proposals/:id/vote` | YES/NO voting form. |
 | `/templs/:address/claim` | Claim member pool rewards and inspect raw balances. |
 
+After deploying, the UI surfaces a one-time Telegram binding code. Invite `@templfunbot` to your group and post `templ <bindingCode>` so the backend can link the templ to that chat automatically.
+
 The app no longer embeds chat. Any out-of-band coordination happens inside Telegram where the backend broadcasts templ events.
 
 ## Local development
@@ -59,6 +61,7 @@ The new proposal form collects a title and description (persisted on-chain) and 
 - Change priest
 - Update max members
 - Toggle dictatorship mode
+- Update templ home link (mirrors the on-chain `templHomeLink` string used by the backend and notifications)
 
 `voteOnProposal` casts votes; `executeProposal` remains available in `services/governance.js` for scripts.
 

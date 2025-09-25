@@ -26,6 +26,7 @@ contract TemplFactory {
         address burnAddress;
         bool priestIsDictator;
         uint256 maxMembers;
+        string homeLink;
     }
 
     address public immutable protocolFeeRecipient;
@@ -44,7 +45,8 @@ contract TemplFactory {
         uint256 executionDelaySeconds,
         address burnAddress,
         bool priestIsDictator,
-        uint256 maxMembers
+        uint256 maxMembers,
+        string homeLink
     );
 
     constructor(address _protocolFeeRecipient, uint256 _protocolPercent) {
@@ -66,7 +68,8 @@ contract TemplFactory {
             executionDelaySeconds: DEFAULT_EXECUTION_DELAY,
             burnAddress: DEFAULT_BURN_ADDRESS,
             priestIsDictator: false,
-            maxMembers: 0
+            maxMembers: 0,
+            homeLink: ""
         });
         return _deploy(cfg);
     }
@@ -111,7 +114,8 @@ contract TemplFactory {
             cfg.executionDelaySeconds,
             cfg.burnAddress,
             cfg.priestIsDictator,
-            cfg.maxMembers
+            cfg.maxMembers,
+            cfg.homeLink
         );
         templAddress = address(templ);
         emit TemplCreated(
@@ -127,7 +131,8 @@ contract TemplFactory {
             cfg.executionDelaySeconds,
             cfg.burnAddress,
             cfg.priestIsDictator,
-            cfg.maxMembers
+            cfg.maxMembers,
+            cfg.homeLink
         );
     }
 

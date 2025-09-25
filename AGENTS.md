@@ -33,6 +33,6 @@
 - PRs: clear description, linked issues, test plan, screenshots for UI changes, CI green, no snapshot updates without justification.
 
 ## Security & Configuration Tips
-- Do not commit secrets. Use `.env`; production requires `BACKEND_DB_ENC_KEY`. Deploys need `RPC_URL` and `PRIVATE_KEY`.
+- Do not commit secrets. Use `.env`; production deploys require `TELEGRAM_BOT_TOKEN` (for alerts), `RPC_URL`, and `PRIVATE_KEY`.
 - Backend/Frontend must share server id: `BACKEND_SERVER_ID` = `VITE_BACKEND_SERVER_ID`.
 - Rate limiting auto-uses Redis when `REDIS_URL` is set; otherwise falls back to memory.

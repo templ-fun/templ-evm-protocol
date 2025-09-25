@@ -7,20 +7,38 @@ import helmet from 'helmet';
 import rateLimit, { MemoryStore } from 'express-rate-limit';
 import { createRateLimitStore } from './config.js';
 import cors from 'cors';
-import Database from 'better-sqlite3';
 
 import templsRouter from './routes/templs.js';
 import joinRouter from './routes/join.js';
 
 import { logger } from './logger.js';
 import { createTelegramNotifier } from './telegram.js';
+import { createMemoryDatabase } from './memoryDb.js';
+
+let BetterSqlite = null;
+try {
+  const mod = await import('better-sqlite3');
+  BetterSqlite = mod.default;
+} catch (err) {
+  if (process.env.BACKEND_USE_MEMORY_DB === '1') {
+    // Memory DB fallback enabled; ignore missing native bindings.
+  } else {
+    throw err;
+  }
+}
 
 const TEMPL_EVENT_ABI = [
   'event AccessPurchased(address indexed purchaser,uint256 totalAmount,uint256 burnedAmount,uint256 treasuryAmount,uint256 memberPoolAmount,uint256 protocolAmount,uint256 timestamp,uint256 blockNumber,uint256 purchaseId)',
   'event ProposalCreated(uint256 indexed proposalId,address indexed proposer,uint256 endTime,string title,string description)',
   'event VoteCast(uint256 indexed proposalId,address indexed voter,bool support,uint256 timestamp)',
   'event PriestChanged(address indexed oldPriest,address indexed newPriest)',
-  'event ProposalExecuted(uint256 indexed proposalId,bool success,bytes returnData)'
+  'event ProposalExecuted(uint256 indexed proposalId,bool success,bytes returnData)',
+  'event TemplHomeLinkUpdated(string previousLink,string newLink)',
+  'function treasuryBalance() view returns (uint256)',
+  'function memberPoolBalance() view returns (uint256)',
+  'function templHomeLink() view returns (string)',
+  'function getProposal(uint256 proposalId) view returns (address proposer,uint256 yesVotes,uint256 noVotes,uint256 endTime,bool executed,bool passed,string title,string description)',
+  'function getProposalSnapshots(uint256 proposalId) view returns (uint256,uint256,uint256,uint256,uint256,uint256)'
 ];
 
 const PROPOSAL_CHECK_INTERVAL_MS = 60_000;
@@ -127,21 +145,57 @@ function updateMetaFromSnapshots(meta, snapshots) {
 }
 
 function initializeDatabase({ dbPath, db }) {
-  const owned = !db;
-  const database = db ?? new Database(dbPath ?? new URL('../groups.db', import.meta.url).pathname);
-  database.exec('CREATE TABLE IF NOT EXISTS groups (contract TEXT PRIMARY KEY, groupId TEXT, priest TEXT)');
+  const useMemory = process.env.BACKEND_USE_MEMORY_DB === '1';
+  let database;
+  let owned = false;
+  if (db) {
+    database = db;
+  } else if (useMemory) {
+    database = createMemoryDatabase();
+    owned = true;
+  } else {
+    if (!BetterSqlite) {
+      throw new Error('better-sqlite3 bindings unavailable; set BACKEND_USE_MEMORY_DB=1 for an in-memory fallback');
+    }
+    database = new BetterSqlite(dbPath ?? new URL('../groups.db', import.meta.url).pathname);
+    owned = true;
+  }
+  database.exec('CREATE TABLE IF NOT EXISTS groups (contract TEXT PRIMARY KEY, groupId TEXT, priest TEXT, homeLink TEXT)');
+  try {
+    database.exec('ALTER TABLE groups ADD COLUMN homeLink TEXT');
+  } catch (err) {
+    if (!String(err?.message || err).toLowerCase().includes('duplicate column')) {
+      throw err;
+    }
+  }
   database.exec('CREATE TABLE IF NOT EXISTS signatures (sig TEXT PRIMARY KEY, usedAt INTEGER)');
   database.exec('CREATE INDEX IF NOT EXISTS idx_signatures_used_at ON signatures (usedAt)');
+  database.exec('CREATE TABLE IF NOT EXISTS pending_bindings (contract TEXT PRIMARY KEY, bindCode TEXT, createdAt INTEGER)');
+  const insertGroup = database.prepare('INSERT OR REPLACE INTO groups (contract, groupId, priest, homeLink) VALUES (?, ?, ?, ?)');
+  const insertBinding = database.prepare('INSERT OR REPLACE INTO pending_bindings (contract, bindCode, createdAt) VALUES (?, ?, ?)');
+  const deleteBinding = database.prepare('DELETE FROM pending_bindings WHERE contract = ?');
+  const selectBindings = database.prepare('SELECT contract, bindCode FROM pending_bindings');
   const persist = (contract, record) => {
-    database
-      .prepare('INSERT OR REPLACE INTO groups (contract, groupId, priest) VALUES (?, ?, ?)')
-      .run(contract, record.telegramChatId || null, record.priest);
+    insertGroup.run(contract, record.telegramChatId || null, record.priest, record.templHomeLink || null);
+  };
+  const saveBinding = (contract, code) => {
+    insertBinding.run(contract, code, Date.now());
+  };
+  const removeBinding = (contract) => {
+    deleteBinding.run(contract);
+  };
+  const loadBindings = () => {
+    try {
+      return selectBindings.all();
+    } catch {
+      return [];
+    }
   };
   const close = () => {
-    if (!owned) return;
+    if (!owned || !database?.close) return;
     try { database.close(); } catch {/* ignore close errors */}
   };
-  return { database, persist, close };
+  return { database, persist, saveBinding, removeBinding, loadBindings, close };
 }
 
 async function maybeNotifyQuorum({ record, contractAddress, proposalId, meta, notifier, logger }) {
@@ -158,7 +212,8 @@ async function maybeNotifyQuorum({ record, contractAddress, proposalId, meta, no
         proposalId: proposalId?.toString?.() ?? String(proposalId),
         title: meta.title,
         description: meta.description,
-        quorumReachedAt: meta.quorumReachedAt
+        quorumReachedAt: meta.quorumReachedAt,
+        homeLink: record.templHomeLink || ''
       });
       meta.quorumNotified = true;
     }
@@ -208,6 +263,12 @@ function createContractWatcher({ connectContract, templs, persist, notifier, log
       if (priorMeta && (!record.proposalsMeta || typeof record.proposalsMeta.set !== 'function')) {
         record.proposalsMeta = priorMeta;
       }
+      if (previousRecord && (record.templHomeLink == null || record.templHomeLink === '')) {
+        record.templHomeLink = previousRecord.templHomeLink || '';
+      }
+      if (previousRecord && record.bindingCode == null) {
+        record.bindingCode = previousRecord.bindingCode || null;
+      }
       if (previousRecord && typeof previousRecord.lastDigestAt === 'number') {
         record.lastDigestAt = previousRecord.lastDigestAt;
       } else if (typeof record.lastDigestAt !== 'number') {
@@ -230,6 +291,22 @@ function createContractWatcher({ connectContract, templs, persist, notifier, log
     record.contractAddress = key;
     if (!record.proposalsMeta || typeof record.proposalsMeta.set !== 'function') {
       record.proposalsMeta = new Map();
+    }
+    if (typeof record.templHomeLink !== 'string') {
+      record.templHomeLink = '';
+    }
+
+    if (typeof contract.templHomeLink === 'function') {
+      contract.templHomeLink().then((link) => {
+        const current = record.templHomeLink ?? '';
+        if (typeof link === 'string' && link !== current) {
+          record.templHomeLink = link;
+          templs.set(key, record);
+          persist?.(key, record);
+        }
+      }).catch((err) => {
+        logger?.debug?.({ err: String(err?.message || err), contract: key }, 'Failed to read templ home link');
+      });
     }
 
     const wrapListener = (label, fn) => (...args) => {
@@ -255,7 +332,8 @@ function createContractWatcher({ connectContract, templs, persist, notifier, log
         purchaseId: purchaseId != null ? purchaseId.toString?.() ?? String(purchaseId) : null,
         timestamp: timestamp?.toString?.() ?? timestamp,
         treasuryBalance: balances.treasuryBalance,
-        memberPoolBalance: balances.memberPoolBalance
+        memberPoolBalance: balances.memberPoolBalance,
+        homeLink: record.templHomeLink || ''
       });
     });
 
@@ -280,7 +358,8 @@ function createContractWatcher({ connectContract, templs, persist, notifier, log
         proposalId: proposalId?.toString?.() ?? String(proposalId),
         endTime: endTime?.toString?.() ?? endTime,
         title: title ?? '',
-        description: description ?? ''
+        description: description ?? '',
+        homeLink: record.templHomeLink || ''
       });
     });
 
@@ -307,7 +386,8 @@ function createContractWatcher({ connectContract, templs, persist, notifier, log
         proposalId: proposalId?.toString?.() ?? String(proposalId),
         support,
         title: proposalTitle,
-        timestamp: timestamp?.toString?.() ?? timestamp
+        timestamp: timestamp?.toString?.() ?? timestamp,
+        homeLink: record.templHomeLink || ''
       });
       if (meta) {
         await maybeNotifyQuorum({ record, contractAddress: key, proposalId, meta, notifier, logger });
@@ -327,7 +407,8 @@ function createContractWatcher({ connectContract, templs, persist, notifier, log
         chatId: record.telegramChatId,
         contractAddress: key,
         oldPriest,
-        newPriest
+        newPriest,
+        homeLink: record.templHomeLink || ''
       });
     });
 
@@ -340,11 +421,27 @@ function createContractWatcher({ connectContract, templs, persist, notifier, log
       }
     });
 
+    const handleTemplHomeLinkUpdated = wrapListener('Contract listener error', async (previousLink, newLink) => {
+      const nextLink = newLink ?? '';
+      record.templHomeLink = nextLink;
+      templs.set(key, record);
+      persist(key, record);
+      if (record.telegramChatId && notifier?.notifyTemplHomeLinkUpdated) {
+        await notifier.notifyTemplHomeLinkUpdated({
+          chatId: record.telegramChatId,
+          contractAddress: key,
+          previousLink: previousLink ?? '',
+          newLink: nextLink
+        });
+      }
+    });
+
     contract.on('AccessPurchased', handleAccessPurchased);
     contract.on('ProposalCreated', handleProposal);
     contract.on('VoteCast', handleVote);
     contract.on('PriestChanged', handlePriestChanged);
     contract.on('ProposalExecuted', handleProposalExecuted);
+    contract.on('TemplHomeLinkUpdated', handleTemplHomeLinkUpdated);
 
     listenerRegistry.set(key, {
       contract,
@@ -354,7 +451,8 @@ function createContractWatcher({ connectContract, templs, persist, notifier, log
         handleProposal,
         handleVote,
         handlePriestChanged,
-        handleProposalExecuted
+        handleProposalExecuted,
+        handleTemplHomeLinkUpdated
       }
     });
   };
@@ -362,9 +460,9 @@ function createContractWatcher({ connectContract, templs, persist, notifier, log
   return { watchContract };
 }
 
-async function restoreGroupsFromPersistence({ database, templs, watchContract, logger }) {
+async function restoreGroupsFromPersistence({ database, templs, watchContract, logger, loadBindings }) {
   try {
-    const rows = database.prepare('SELECT contract, groupId, priest FROM groups').all();
+    const rows = database.prepare('SELECT contract, groupId, priest, homeLink FROM groups').all();
     for (const row of rows) {
       const key = String(row?.contract || '').toLowerCase();
       if (!key) continue;
@@ -374,11 +472,38 @@ async function restoreGroupsFromPersistence({ database, templs, watchContract, l
         memberSet: new Set(),
         proposalsMeta: new Map(),
         lastDigestAt: Date.now(),
-        contractAddress: key
+        contractAddress: key,
+        templHomeLink: row?.homeLink || '',
+        bindingCode: null
       };
       templs.set(key, record);
       if (watchContract) {
         watchContract(row.contract || key, record);
+      }
+    }
+    if (typeof loadBindings === 'function') {
+      const pending = loadBindings() || [];
+      for (const row of pending) {
+        const key = String(row?.contract || '').toLowerCase();
+        if (!key) continue;
+        if (!templs.has(key)) {
+          templs.set(key, {
+            telegramChatId: null,
+            priest: null,
+            memberSet: new Set(),
+            proposalsMeta: new Map(),
+            lastDigestAt: Date.now(),
+            contractAddress: key,
+            templHomeLink: '',
+            bindingCode: String(row.bindCode || '') || null
+          });
+          if (watchContract) {
+            watchContract(key, templs.get(key));
+          }
+        } else {
+          const record = templs.get(key);
+          record.bindingCode = row?.bindCode || null;
+        }
       }
     }
   } catch (err) {
@@ -386,7 +511,7 @@ async function restoreGroupsFromPersistence({ database, templs, watchContract, l
   }
 }
 
-function createBackgroundTasks({ templs, notifier, logger }) {
+function createBackgroundTasks({ templs, notifier, logger, persist, removeBinding }) {
   async function checkProposals() {
     const nowSeconds = Math.floor(Date.now() / 1000);
     for (const [contractAddress, record] of templs.entries()) {
@@ -409,7 +534,8 @@ function createBackgroundTasks({ templs, notifier, logger }) {
             title: meta.title,
             description: meta.description,
             endedAt: endTime,
-            canExecute
+            canExecute,
+            homeLink: record.templHomeLink || ''
           });
           meta.votingClosedNotified = true;
         } catch (err) {
@@ -432,13 +558,72 @@ function createBackgroundTasks({ templs, notifier, logger }) {
           chatId: record.telegramChatId,
           contractAddress,
           treasuryBalance: balances.treasuryBalance,
-          memberPoolBalance: balances.memberPoolBalance
+          memberPoolBalance: balances.memberPoolBalance,
+          homeLink: record.templHomeLink || ''
         });
         record.lastDigestAt = now;
       } catch (err) {
         logger?.warn?.({ err: String(err?.message || err), contract: contractAddress }, 'Failed to send daily digest');
         record.lastDigestAt = now;
       }
+    }
+  }
+
+  let bindingOffset = 0;
+  let bindingPollInFlight = false;
+
+  async function pollBindings() {
+    if (bindingPollInFlight) return;
+    if (!notifier?.fetchUpdates) return;
+    const hasPending = (() => {
+      for (const [, record] of templs.entries()) {
+        if (record?.bindingCode) return true;
+      }
+      return false;
+    })();
+    if (!hasPending) return;
+    bindingPollInFlight = true;
+    try {
+      const { updates = [], nextOffset } = (await notifier.fetchUpdates({ offset: bindingOffset })) ?? {};
+      if (typeof nextOffset === 'number' && nextOffset > bindingOffset) {
+        bindingOffset = nextOffset;
+      }
+      for (const update of updates) {
+        const updateId = update?.update_id;
+        if (typeof updateId === 'number' && updateId + 1 > bindingOffset) {
+          bindingOffset = updateId + 1;
+        }
+        const message = update?.message || update?.channel_post;
+        if (!message) continue;
+        const fromBot = Boolean(message.from?.is_bot);
+        if (fromBot) continue;
+        const chatId = message.chat?.id;
+        if (chatId === undefined || chatId === null) continue;
+        const text = typeof message.text === 'string' ? message.text.trim() : '';
+        if (!text) continue;
+        for (const [contractAddress, record] of templs.entries()) {
+          const code = record?.bindingCode;
+          if (!code) continue;
+          if (text.includes(code)) {
+            record.telegramChatId = String(chatId);
+            record.bindingCode = null;
+            templs.set(contractAddress, record);
+            persist?.(contractAddress, record);
+            removeBinding?.(contractAddress);
+            if (notifier?.notifyBindingComplete) {
+              await notifier.notifyBindingComplete({
+                chatId: String(chatId),
+                contractAddress,
+                homeLink: record.templHomeLink || ''
+              });
+            }
+          }
+        }
+      }
+    } catch (err) {
+      logger?.warn?.({ err: String(err?.message || err) }, 'Failed polling telegram updates');
+    } finally {
+      bindingPollInFlight = false;
     }
   }
 
@@ -450,10 +635,17 @@ function createBackgroundTasks({ templs, notifier, logger }) {
     void sendDailyDigests();
   }, DAILY_DIGEST_CHECK_INTERVAL_MS);
 
+  const bindingInterval = setInterval(() => {
+    void pollBindings();
+  }, 5_000);
+
+  void pollBindings();
+
   return {
     stop() {
       clearInterval(proposalInterval);
       clearInterval(digestInterval);
+      clearInterval(bindingInterval);
     }
   };
 }
@@ -487,15 +679,15 @@ export function createApp(opts) {
 
   const templs = new Map();
   app.locals.templs = templs;
-  const { database, persist, close: closeDatabase } = initializeDatabase({ dbPath, db });
+  const { database, persist, saveBinding, removeBinding, loadBindings, close: closeDatabase } = initializeDatabase({ dbPath, db });
 
   const { watchContract } = createContractWatcher({ connectContract, templs, persist, notifier, logger });
 
-  void restoreGroupsFromPersistence({ database, templs, watchContract, logger });
+  void restoreGroupsFromPersistence({ database, templs, watchContract, logger, loadBindings });
 
   let backgroundTasks = null;
   if (enableBackgroundTasks) {
-    backgroundTasks = createBackgroundTasks({ templs, notifier, logger });
+    backgroundTasks = createBackgroundTasks({ templs, notifier, logger, persist, removeBinding });
   }
 
   const context = {
@@ -503,6 +695,8 @@ export function createApp(opts) {
     database,
     templs,
     persist,
+    saveBinding,
+    removeBinding,
     provider,
     watchContract,
     notifier

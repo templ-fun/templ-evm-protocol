@@ -33,6 +33,7 @@ abstract contract TemplBase is ReentrancyGuard {
     uint256 public quorumPercent;
     uint256 public executionDelayAfterQuorum;
     address public immutable burnAddress;
+    string public templHomeLink;
 
     struct Member {
         bool purchased;
@@ -68,6 +69,7 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 newBurnPercent;
         uint256 newTreasuryPercent;
         uint256 newMemberPoolPercent;
+        string newHomeLink;
         uint256 newMaxMembers;
         uint256 yesVotes;
         uint256 noVotes;
@@ -102,6 +104,7 @@ abstract contract TemplBase is ReentrancyGuard {
         ChangePriest,
         SetDictatorship,
         SetMaxMembers,
+        SetHomeLink,
         Undefined
     }
 
@@ -180,6 +183,8 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 amount
     );
 
+    event TemplHomeLinkUpdated(string previousLink, string newLink);
+
     struct ExternalRewardState {
         uint256 poolBalance;
         uint256 cumulativeRewards;
@@ -229,7 +234,8 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 _quorumPercent,
         uint256 _executionDelay,
         address _burnAddress,
-        bool _priestIsDictator
+        bool _priestIsDictator,
+        string memory _homeLink
     ) {
         if (_protocolFeeRecipient == address(0) || _accessToken == address(0)) {
             revert TemplErrors.InvalidRecipient();
@@ -249,6 +255,10 @@ abstract contract TemplBase is ReentrancyGuard {
 
         executionDelayAfterQuorum = _executionDelay == 0 ? DEFAULT_EXECUTION_DELAY : _executionDelay;
         burnAddress = _burnAddress == address(0) ? DEFAULT_BURN_ADDRESS : _burnAddress;
+        templHomeLink = _homeLink;
+        if (bytes(_homeLink).length != 0) {
+            emit TemplHomeLinkUpdated("", _homeLink);
+        }
     }
 
     function _setPercentSplit(
@@ -287,6 +297,15 @@ abstract contract TemplBase is ReentrancyGuard {
         MAX_MEMBERS = newMaxMembers;
         emit MaxMembersUpdated(newMaxMembers);
         _autoPauseIfLimitReached();
+    }
+
+    function _setTemplHomeLink(string memory newLink) internal {
+        if (keccak256(bytes(templHomeLink)) == keccak256(bytes(newLink))) {
+            return;
+        }
+        string memory previous = templHomeLink;
+        templHomeLink = newLink;
+        emit TemplHomeLinkUpdated(previous, newLink);
     }
 
     function _autoPauseIfLimitReached() internal {

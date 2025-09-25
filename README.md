@@ -7,7 +7,7 @@ Templ turns any ERC-20 into a gated club with on-chain economics. Holders deploy
 
 ## What ships today
 
-- **Contracts** – Solidity 0.8.x templates (see `contracts/`) mint templ instances that collect entry fees, burn supply, accumulate treasury funds, and expose governance primitives.
+- **Contracts** – Solidity 0.8.x templates (see `contracts/`) mint templ instances that collect entry fees, burn supply, accumulate treasury funds, and expose governance primitives. Each templ stores an on-chain "home link" so frontends, bots, and docs can reference the canonical landing page for the community.
 - **Backend API + Telegram bot** – Node 22/Express server performs signature verification, tracks registered templs, confirms membership, and streams contract events to a Telegram group via a bot token.
 - **Frontend control center** – Vite + React single-page app for deploying templs, joining with proof-of-purchase, raising proposals (with on-chain title/description), and casting votes. Flows are split into dedicated routes:
 - `/templs/create` – deploy + register and optionally bind a Telegram chat id.
@@ -17,7 +17,7 @@ Templ turns any ERC-20 into a gated club with on-chain economics. Holders deploy
 - `/templs/:address/proposals/:id/vote` – cast a YES/NO vote.
 - `/templs/:address/claim` – view the member pool balance and claim rewards.
 
-Telegram notifications are optional but encouraged. When a templ is registered with a `telegramChatId`, the backend listens for contract events and posts HTML-formatted messages that link back to the relevant frontend route (join screen, proposal details, claim page, etc.). The bot announces new members with live treasury/member-pool totals, highlights proposal creation, flags quorum, pings when voting windows close, and drops a daily "gm" digest so members remember to claim rewards. No Telegram secrets are stored in contracts; everything happens through bot token + chat id wiring in the backend.
+Telegram notifications are optional but encouraged. When a templ is registered, the backend issues a one-time binding code. Invite `@templfunbot` to your group and post the code (e.g. `templ abcd1234`)—the bot confirms the chat and begins posting HTML-formatted messages with deep links back to the frontend (join screen, proposal details, claim page, etc.). Alerts cover new members (with live treasury/member-pool totals), proposal creation, quorum, voting closure, priest changes, and a daily "gm" digest. No Telegram secrets are stored on-chain; linking happens entirely through the bot token and binding handshake.
 
 ## Quick start
 
@@ -27,6 +27,8 @@ npm run compile                # compile contracts
 npm --prefix backend test      # backend tests (includes shared signing tests)
 npm --prefix frontend run dev  # run the SPA against your local backend
 ```
+
+Detailed deployment steps (contracts, backend, frontend, and Telegram binding) live in [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md).
 
 In separate terminals you’ll typically run:
 
@@ -49,6 +51,7 @@ In separate terminals you’ll typically run:
 | `REQUIRE_CONTRACT_VERIFY` | Set to `1` in production to enforce on-chain contract + priest validation. |
 | `CLEAR_DB` | When `1`, deletes the SQLite DB before boot (handy for tests). |
 | `DB_PATH` | Override file path for the groups SQLite DB (`backend/groups.db` by default). |
+| `BACKEND_USE_MEMORY_DB` | Set to `1` to run against the in-memory DB (no native bindings required). |
 
 The backend stores templ registrations in SQLite (`groups`, `signatures`). Telegram chat ids reuse the old `groupId` column for persistence to avoid extra migrations.
 
@@ -65,11 +68,15 @@ The frontend connects to the user’s browser wallet (MetaMask or any `window.et
 ### Telegram wiring
 
 1. Create a bot with [@BotFather](https://t.me/botfather) and grab the token.
-2. Add the bot to your Telegram group and promote it if the group requires admin privileges to post.
-3. Capture the numeric chat id (BotFather’s `/mybots` panel or use a helper bot like [@getidsbot](https://t.me/getidsbot)).
-4. When registering a templ, pass that chat id as `telegramChatId`. The backend will include it in persisted state and start streaming `AccessPurchased`, `ProposalCreated`, `VoteCast`, and `PriestChanged` events into the group with deep links back to the frontend.
+2. Invite <a href="https://t.me/templfunbot" target="_blank" rel="noreferrer">@templfunbot</a> to your Telegram group and allow it to post.
+3. Register or deploy your templ from the UI (or API). If you already know the numeric chat id (e.g. by using [@getidsbot](https://t.me/getidsbot)) you can provide it in the form — the backend links the templ immediately.
+4. Otherwise, copy the one-time binding snippet shown after registration and post it into the Telegram group, for example:
+   ```
+   templ ca83cfbc0f47a9d1
+   ```
+   The backend polls the bot API, detects the code, and acknowledges the binding in the same chat. Once confirmed, all templ events (joins, proposals, quorum, vote closure, priest changes, daily digests, home-link updates) stream into the channel with deep links back to the frontend.
 
-If you leave the chat id empty the templ still works—no Telegram messages are sent.
+Leaving the chat id empty is perfectly fine — the templ remains usable, and you can complete the binding at any time by inviting the bot and re-posting the snippet from `/templs/create` or the templ overview page.
 
 ## Repository layout
 

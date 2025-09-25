@@ -13,6 +13,7 @@ async function deployTempl({
   protocolFeeRecipient,
   priestIsDictator = false,
   maxMembers = 0,
+  homeLink = "",
 } = {}) {
   async function fixture() {
     const accounts = await ethers.getSigners();
@@ -39,7 +40,8 @@ async function deployTempl({
       executionDelay,
       burnAddress,
       priestIsDictator,
-      maxMembers
+      maxMembers,
+      homeLink
     );
     await templ.waitForDeployment();
     try {

@@ -39,6 +39,7 @@ async function deployContract({
   protocolPercent,
   maxMembers = 0,
   priestIsDictator = false,
+  templHomeLink = '',
   txOptions = {}
 }) {
   if (!ethers || !signer || !walletAddress) {
@@ -63,7 +64,8 @@ async function deployContract({
     memberPoolPercent: member,
     burnAddress: ethers.ZeroAddress ?? '0x0000000000000000000000000000000000000000',
     priestIsDictator: priestIsDictator === true,
-    maxMembers: normalizedMaxMembers
+    maxMembers: normalizedMaxMembers,
+    homeLink: templHomeLink || ''
   };
 
   const templAddress = await factory.createTemplWithConfig.staticCall(config);
@@ -79,7 +81,8 @@ export async function registerTemplBackend({
   walletAddress,
   templAddress,
   backendUrl = BACKEND_URL,
-  telegramChatId
+  telegramChatId,
+  templHomeLink
 }) {
   if (!templAddress) {
     throw new Error('registerTemplBackend requires templAddress');
@@ -103,7 +106,8 @@ export async function registerTemplBackend({
     nonce: typed.message.nonce,
     issuedAt: typed.message.issuedAt,
     expiry: typed.message.expiry,
-    telegramChatId: telegramChatId || undefined
+    telegramChatId: telegramChatId || undefined,
+    templHomeLink: templHomeLink || undefined
   };
   const res = await postJson(`${backendUrl}/templs`, payload);
   if (res.status === 409) {
@@ -117,19 +121,20 @@ export async function registerTemplBackend({
       nonce: retryTyped.message.nonce,
       issuedAt: retryTyped.message.issuedAt,
       expiry: retryTyped.message.expiry,
-      telegramChatId: telegramChatId || undefined
+      telegramChatId: telegramChatId || undefined,
+      templHomeLink: templHomeLink || undefined
     };
     const retryRes = await postJson(`${backendUrl}/templs`, retryPayload);
     if (!retryRes.ok) {
       throw new Error(`Templ registration failed: ${retryRes.status} ${retryRes.statusText}`);
     }
-    return true;
+    return retryRes.json();
   }
   if (!res.ok) {
     const body = await res.text().catch(() => '');
     throw new Error(`Templ registration failed: ${res.status} ${res.statusText} ${body}`.trim());
   }
-  return true;
+  return res.json();
 }
 
 export async function deployTempl({
@@ -149,6 +154,7 @@ export async function deployTempl({
   priestIsDictator,
   backendUrl = BACKEND_URL,
   telegramChatId,
+  templHomeLink,
   txOptions = {}
 }) {
   const templAddress = await deployContract({
@@ -166,16 +172,18 @@ export async function deployTempl({
     protocolPercent,
     maxMembers,
     priestIsDictator,
+    templHomeLink,
     txOptions
   });
 
-  await registerTemplBackend({
+  const registration = await registerTemplBackend({
     signer,
     walletAddress,
     templAddress,
     backendUrl,
-    telegramChatId
+    telegramChatId,
+    templHomeLink
   });
 
-  return { templAddress };
+  return { templAddress, registration };
 }

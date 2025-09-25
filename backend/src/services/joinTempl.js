@@ -68,7 +68,8 @@ export async function joinTempl(body, context) {
     templ: {
       contract,
       telegramChatId: record.telegramChatId ?? null,
-      priest: record.priest ?? null
+      priest: record.priest ?? null,
+      templHomeLink: record.templHomeLink ?? ''
     },
     links: buildLinks(contract)
   };
