@@ -1,100 +1,93 @@
-# Templ Frontend
+# Frontend SPA
 
-Documentation for the Vite + React app that deploys templs, handles purchases, and mirrors governance. Pair it with the backend manual so you know which endpoints power each flow.
+The frontend is a Vite + React app served from `frontend/`. It provides clear routes for templ lifecycle management:
 
-## Why this document matters
+| Route | Purpose |
+| --- | --- |
+| `/` | Dashboard, wallet connection, and a templ directory sourced from the configured factory (enriched with backend Telegram metadata). |
+| `/templs/create` | Deploy a templ contract and register it with the backend (optional Telegram chat id). |
+| `/templs/join` | Purchase access and request backend verification. |
+| `/templs/:address` | Overview page with priest info, Telegram chat id, and quick actions. |
+| `/templs/:address/proposals/new` | Guided form to create proposals (collects on-chain title + description). |
+| `/templs/:address/proposals/:id/vote` | YES/NO voting form. |
+| `/templs/:address/claim` | Claim member pool rewards and inspect raw balances. |
 
-- Set up environment variables for local dev, staging, and production builds.
-- Understand developer workflows: hot reload, unit tests, Playwright e2e, and XMTP local mode.
-- Learn which flows the UI implements (deploy, join, chat, moderate) and how it uses shared helpers.
+After deploying, the UI surfaces a one-time Telegram binding code. Invite `@templfunbot` to your group and post `templ <bindingCode>` so the backend can link the templ to that chat automatically.
 
-## Prerequisites
+The app no longer embeds chat. Any out-of-band coordination happens inside Telegram where the backend broadcasts templ events.
 
-- Node.js `22.18.0` and the repo-wide setup steps from the [root README](../README.md#developer-quickstart).
-- Environment variables like `VITE_XMTP_ENV`, `VITE_E2E_DEBUG`, and `E2E_XMTP_LOCAL` configure the frontend. See [Environment variables](#environment-variables) for details.
-
-## Setup
-
-Summon dependencies:
+## Local development
 
 ```bash
 npm --prefix frontend ci
-```
-
-## Environment variables
-
-These variables configure the browser build. Remember: in Vite builds only `VITE_*` variables reach the client. For backend/tests, see the [README's environment variables](../README.md#environment-variables).
-
-| Name | Description | Default |
-| --- | --- | --- |
-| `VITE_XMTP_ENV` | XMTP environment for the Browser SDK (`local`, `dev`, `production`). Defaults to `dev` on `localhost`/`127.0.0.1` and `production` elsewhere. | `dev` (localhost) / `production` |
-| `VITE_E2E_DEBUG` | Enables debug helpers (`window.__XMTP`, etc.) during E2E runs. | `0` |
-| `E2E_XMTP_LOCAL` | When `1`, Playwright E2E tests connect to a local XMTP node instead of production. | `0` |
-| `VITE_BACKEND_SERVER_ID` | String identifier that must match the backend `BACKEND_SERVER_ID` to bind EIP-712 signatures to your deployment. | - |
-| `VITE_TEMPL_FACTORY_ADDRESS` | Optional: preloads the factory address so the creation form is read-only. Leave blank to supply it interactively. | - |
-| `VITE_TEMPL_FACTORY_PROTOCOL_RECIPIENT` | Optional: expected factory protocol recipient (display-only). Useful for demos/tests. | - |
-| `VITE_TEMPL_FACTORY_PROTOCOL_PERCENT` | Optional: expected factory protocol percentage (display-only). | - |
-| `VITE_E2E_NO_PURCHASE` | Skip the on-chain purchase step during E2E/dev runs when access is pre-seeded. | `0` |
-| `VITE_ENABLE_BACKEND_FALLBACK` | When `1`, enables debug fallbacks that query backend `/debug` endpoints for membership snapshots. | `0` |
-| `TEMPL_ENABLE_LOCAL_FALLBACK` | Node-unit toggle that lets tests merge localStorage templ registries with the backend list; keep `0` in production so the UI always reflects real `/templs` data. | `0` |
-
-## Development
-
-Start a hot-reloading dev server:
-
-```bash
 npm --prefix frontend run dev
 ```
 
-## Tests and lint
+By default the SPA expects the backend at `http://localhost:3001`. Override with `VITE_BACKEND_URL` when necessary.
 
-Key commands:
+### Environment variables
 
-```bash
-npm --prefix frontend test
-npm --prefix frontend run lint
-npm --prefix frontend run build
-npm --prefix frontend run test:e2e                          # end-to-end (Playwright)
+| Variable | Description | Default |
+| --- | --- | --- |
+| `VITE_BACKEND_URL` | Base URL for API requests. | `http://localhost:3001` |
+| `VITE_BACKEND_SERVER_ID` | Must match the backend’s `BACKEND_SERVER_ID` so EIP-712 signatures verify. | unset |
+| `VITE_TEMPL_FACTORY_ADDRESS` | Optional override for the templ factory used during deploy. | unset |
+| `VITE_TEMPL_FACTORY_PROTOCOL_RECIPIENT` | Optional override for the protocol fee recipient shown in the UI. | unset |
+| `VITE_TEMPL_FACTORY_PROTOCOL_PERCENT` | Optional override for the protocol fee percent shown in the UI. | unset |
+| `VITE_RPC_URL` | Optional read provider used to enumerate templs on the landing page (falls back to the active wallet provider). | unset |
+| `VITE_E2E_DEBUG` | Enables additional UI affordances when set to `1` (used by Playwright). | `0` |
+
+### Wallet connection
+
+The app uses `ethers.BrowserProvider` and the injected `window.ethereum`. Connecting in development automatically picks up Hardhat accounts when you run `npx hardhat node`.
+
+### Deployment flow
+
+1. User connects a wallet and navigates to `/templs/create`.
+2. The UI validates fee splits and calls `factory.createTemplWithConfig`.
+3. After the transaction confirms, the app signs the EIP-712 registration payload and POSTs it to the backend (including an optional Telegram chat id).
+
+### Join flow
+
+1. User enters a templ address on `/templs/join`.
+2. If necessary, `purchaseAccess` approves + calls `purchaseAccess()` on the contract.
+3. The app signs a `join` typed message and asks the backend to verify membership.
+4. The UI surfaces templ metadata, including Telegram chat id and quick links.
+
+### Governance tools
+
+The new proposal form collects a title and description (persisted on-chain) and offers a curated set of actions:
+
+- Pause / unpause templ
+- Change priest
+- Update max members
+- Toggle dictatorship mode
+- Update templ home link (mirrors the on-chain `templHomeLink` string used by the backend and notifications)
+
+`voteOnProposal` casts votes; `executeProposal` remains available in `services/governance.js` for scripts.
+
+The rewards page (`/templs/:address/claim`) lets connected members see the current member pool balance and trigger `claimMemberPool()` directly.
+
+## Testing
+
+- `npm --prefix frontend run test` – vitest + jsdom. Use `frontend/vitest.setup.js` to tweak global behavior.
+- `npm --prefix frontend run coverage` – coverage for React components and services.
+- `npm --prefix frontend run test:e2e` – Playwright smoke tests. The harness now boots Hardhat, the backend, and a preview build. Telegram delivery is effectively disabled because the env omits `TELEGRAM_BOT_TOKEN`; you can point to a real bot by populating the env in `playwright.config.js`.
+
+## Structure overview
+
+```
+frontend/
+├── src/
+│   ├── App.jsx            # entry point, mini router
+│   ├── config.js          # VITE_* constants
+│   ├── hooks/
+│   ├── pages/             # route-level components
+│   ├── services/          # deployment, membership, governance helpers
+│   └── assets/, main.jsx, styles, etc.
+├── e2e/                   # Playwright specs
+├── vite.config.js
+└── package.json
 ```
 
-To run e2e against a local XMTP node: clone `xmtp-local-node`, run `npm run xmtp:local:up`, execute tests with `E2E_XMTP_LOCAL=1`, then `npm run xmtp:local:down`.
-
-E2E artifacts (videos, traces, screenshots) are saved under `frontend/test-results/`.
-
-## Architecture
-
-Frontend responsibilities:
-
-- **Wallet connection** via `ethers` and `window.ethereum`.
-- **Default configuration** - all members have one vote.
-- **Governance** - members create proposals and vote from the chat; `watchProposals` updates the UI when events fire. The backend mirrors on-chain events into the group as JSON so clients see real-time updates. The quick-action UI encodes the allowlisted DAO calls: pause/unpause, withdraw the entire available treasury balance of a chosen asset to the connected wallet (demo helper), disband the full available balance of any token (entry-fee token, donated ERC-20, or native ETH) into member rewards, and reprice the entry fee or adjust the non-protocol fee splits. Proposal titles/descriptions are not stored on-chain; they are shared only in XMTP messages next to the on-chain proposal id.
-
-See backend endpoints in [BACKEND.md](./BACKEND.md#architecture) for `POST /templs`, `POST /join`, `POST/DELETE /delegateMute`, `POST /mute`, and `GET /mutes`.
-
-### User flows
-
-```mermaid
-flowchart LR
-    A[Deploy\ndeployTempl] --> B[Join\npurchaseAndJoin]
-    B --> C[Chat\ngroup.send]
-    C --> D[Moderate\ndelegateMute/muteMember]
-```
-
-## Notes and tips
-
-- `VITE_XMTP_ENV` defaults to `dev` on localhost and `production` elsewhere; override for `local` nodes.
-- `VITE_E2E_DEBUG=1` exposes `window.__XMTP` helpers for diagnostics.
-- When debug helpers are enabled, the join flow automatically re-registers the contract with `/templs` if a 404 is encountered and retries the join; production runs continue to rely solely on the primary invite path.
-- The Browser SDK sets `appVersion` for diagnostics and the core flows now live under `src/services/` with `src/flows.js` exporting a backwards-compatible facade.
-- The chat exposes a single `Claim` button that sweeps both member-pool rewards and any external token pools using `claimExternalToken`; external balances remain visible for transparency.
-
-## Security considerations
-
-- Membership verification happens on-chain; bypassing the backend would require membership proof.
-- The app relies on the backend service for invitations; if the service is down no new members can join.
-- Users must share the contract address and group ID manually; there is no routing.
-- Proposal and vote transactions are signed by the connected wallet; proposal actions are restricted to an allowlist (pause/unpause, config, treasury transfers), but users should still review the action and parameters before approving.
-
-## Next
-
-Review the shared helpers in [SHARED.md](./SHARED.md) to see the utilities both frontend and backend import.
+Component styling is intentionally minimal (see `App.css`) to keep focus on flows until a refreshed design lands.

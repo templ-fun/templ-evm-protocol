@@ -26,7 +26,8 @@ describe("TemplHarness coverage helpers", function () {
       7 * 24 * 60 * 60,
       ethers.ZeroAddress,
       false,
-      0
+      0,
+      ""
     );
   });
 

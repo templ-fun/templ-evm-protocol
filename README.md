@@ -3,214 +3,102 @@
 [![CircleCI](https://dl.circleci.com/status-badge/img/gh/MarcoWorms/templ/tree/main.svg?style=svg&circle-token=CCIPRJ_MhZ5NbNKhpfEAwFSEGDkUH_61036d1e9e936102be414dfd8d86a9318181746a)](https://dl.circleci.com/status-badge/redirect/gh/MarcoWorms/templ/tree/main)
 [![coverage](https://codecov.io/github/MarcoWorms/templ/graph/badge.svg?token=M8SPKQX6UD)](https://codecov.io/github/MarcoWorms/templ)
 
-**Turning coins into cults**
+Templ turns any ERC-20 into a gated club with on-chain economics. Holders deploy their own templ, charge newcomers an entry fee, run proposals, and split every tribute between burn, treasury, member rewards, and protocol upkeep. The latest pivot retires XMTP group chat entirely and replaces it with crisp, deterministic Telegram alerts sourced from on-chain events.
 
-> Templ.fun is the sacred ground where coin holders rally, reward each other, and set their token on a deflationary march upward. We converge the energy of everyone already invested in a token so the price goes up together.
+## What ships today
 
-- Smart contracts on Base gate membership, manage treasuries, and enforce typed governance with ERC-20 entry fees.
-- An Express backend runs the XMTP invite-bot, mirroring governance events and policing access with EIP-712 signatures.
-- A Vite + React client deploys templs, guides purchases, embeds chat, and streams proposal state in real time.
-- Shared utilities keep signing, XMTP polling, and test helpers consistent across packages.
+- **Contracts** – Solidity 0.8.x templates (see `contracts/`) mint templ instances that collect entry fees, burn supply, accumulate treasury funds, and expose governance primitives. Each templ stores an on-chain "home link" so frontends, bots, and docs can reference the canonical landing page for the community.
+- **Backend API + Telegram bot** – Node 22/Express server performs signature verification, tracks registered templs, confirms membership, and streams contract events to a Telegram group via a bot token.
+- **Frontend control center** – Vite + React single-page app for deploying templs, joining with proof-of-purchase, raising proposals (with on-chain title/description), and casting votes. The landing page pulls templ deployments directly from the configured factory (and merges Telegram metadata from the backend) so every community is one click away. Flows are split into dedicated routes:
+- `/templs/create` – deploy + register and optionally bind a Telegram chat id.
+- `/templs/join` – purchase access, then verify membership via the backend.
+- `/templs/:address` – overview, quick links, and routing to proposal tools.
+- `/templs/:address/proposals/new` – create governance actions.
+- `/templs/:address/proposals/:id/vote` – cast a YES/NO vote.
+- `/templs/:address/claim` – view the member pool balance and claim rewards.
 
-## Why Now
+Telegram notifications are optional but encouraged. When a templ is registered, the backend issues a one-time binding code. Invite `@templfunbot` to your group and post the code (e.g. `templ abcd1234`)—the bot confirms the chat and begins posting HTML-formatted messages with deep links back to the frontend (join screen, proposal details, claim page, etc.). Alerts cover new members (with live treasury/member-pool totals), proposal creation, quorum, voting closure, priest changes, and a daily "gm" digest. No Telegram secrets are stored on-chain; linking happens entirely through the bot token and binding handshake.
 
-Every day more than 100,000 tokens roar into existence. Memecoins already command a $100B+ market and the broader crypto supply floats above $4T. People crave a way to turn passive holding into an active, aligned movement. Templ delivers the rails that upgrade memecoins from jokes into thriving cults with real cash flow.
-
-## How Templ Works
-
-Templ lets anyone launch a pay-to-access chapel (a “Templ”) around any token. Admission requires a one-time tribute in the cult’s chosen token. That flow simultaneously:
-
-- **Increases demand** by recruiting new members who must buy the token to join.
-- **Removes supply** by burning a slice of every tribute.
-
-We build the sacred gathering grounds for these cults: on-chain membership, protocol-enforced splits, treasury controls, and XMTP-powered chat.
-
-### The Templ Flywheel
-
-By default each tribute is split the moment a new believer walks through the gates:
-
-| Slice | Percent | What it signals |
-| --- | --- | --- |
-| Burn | 30% | Permanent sacrifice to make the token scarcer. |
-| Treasury | 30% | Adds to the cult’s war chest - governed on-chain by members. |
-| Member rewards | 30% | Redistributed to existing members so they evangelize the Templ. |
-| Protocol tithe | 10% | Routes to the templ.fun protocol treasury to power future upgrades. |
-
-### Example: PEPE Palace
-
-Spin up a “PEPE Palace” with a 1,000,000 PEPE entry fee (~$10). When a new initiate pays the tribute:
-
-- 300,000 PEPE is sent to the burn address.
-- 300,000 PEPE fills the PEPE Palace treasury, ready for member proposals.
-- 300,000 PEPE is split across existing members - each recruit enriches the faithful.
-- 100,000 PEPE flows to the protocol tithe that keeps templ.fun running and funds future upgrades.
-
-Templs feel like DAOs born *after* a token is liquid. People co-own a narrative, harvest upside, and coordinate spend from day one.
-
-### Why a Fee Gate Instead of Token Gating?
-
-Fees keep bots at bay, demand proof-of-faith (skin in the game), and continuously refill the community treasury. They also let us route the economics to people who are already aligned, instead of letting lurkers loiter behind a token-balance gate.
-
-### Configurable Splits
-
-The founding Priest can choose any split at deploy time – 30/30/30 is just our default scaffolding. The protocol tithe comes from the factory configuration: whatever percentage and recipient the factory was deployed with is appended to the priest-selected splits so the totals sum to 100. Any burn/treasury/member slice may be explicitly set to `0%`, and when calling `createTemplWithConfig` (or piping values through `scripts/deploy.js`) you can pass `-1` for a slice to reuse the factory default while tweaking the others. Teams can stand up alternate factories with different protocol percentages, but every templ created through the same factory shares the immutable protocol fee recipient and rate.
-
-### Member Limits
-
-Templs can optionally cap the active congregation. Deployments (and later governance votes) may set `maxMembers` to a non-zero value to define the ceiling; the default of `0` keeps membership unlimited. Once the cap is reached, the contract automatically pauses new purchases so the community can ratify the next step. Raising the limit (or setting it back to `0`) lets membership continue, and unpausing without increasing the cap intentionally clears it so stagnated templs can reopen without juggling numbers.
-
-### Protocol Tithe (factory-defined)
-
-Every tribute also powers the protocol. The templ factory forwards its configured protocol-share of every entry fee to the templ.fun protocol treasury, funding keeper costs, future rewards programs, and long-term upgrades. The repo’s tooling and examples default to 10%, but the factory owner can pick any percentage when the factory is deployed.
-
-## Infinite Templs
-
-One token can host an entire pantheon of Templs. Maybe PEPE splits into low-cost public plazas and ultra-elite sanctums. Maybe a creator coin spins up VIP circles for superfans. Templ works for memecoins, utility tokens, streamer coins, content coins, card coins, RWAs, xStocks - any community that wants to go from passive bag holding to active coordination.
-
-## Priests, Governance, and Rewards
-
-Whoever launches a Templ becomes its Priest. Priests set the initial economics, steward the vibe, and, like any member, collect rewards when new initiates arrive. Example: if it costs 200,000 tokens to enter and you’re the Priest, the second believer nets you 60,000 tokens, the third sends you 30,000, and so on.
-
-Members propose and vote on treasury moves or config changes directly inside the gathering grounds. Governance is on-chain, proposal actions are typed, and the treasury can only move on sanctioned paths. Tribute remainders accrue and keep rewarding the faithful even as distribution sizes shrink.
-
-### Priest Dictatorship (optional)
-
-Factories can deploy templs in a **Priest Dictatorship**. When `priestIsDictator` is set to `true` (use `PRIEST_IS_DICTATOR=1` with `scripts/deploy.js` or include the flag in `TemplFactory.CreateConfig`), proposal tooling is disabled and the priest executes governance actions instantly. Treasury withdrawals, pauses, fee splits, and priest rotations become single calls gated to the priest—no quorum and no execution delay. The default remains full DAO governance, and members can always vote on the dedicated `setDictatorship` proposal type to switch between dictatorship and democracy whenever the community wants a different governance mode.
-
-## What You Get
-
-- Memecoins upgraded from 1.0 speculation to 2.0 cult coordination with deflationary tokenomics.
-- Social clubs that mint revenue, reputation, and rewards - no new token required.
-- Templs as schelling points: multiple tiers per token, tailored fees, and unique missions for every faction.
-- Shared infrastructure that routes value back to the originating token instead of diluting it with clones.
-- A path to turn any tokenized thing into a cashflowing, evangelizing tribe.
-
-## Architecture
-
-Templ is a three-headed beast that keeps the ritual tight:
-
-- **Smart contracts** on Base enforce membership, tribute splits, governance, and treasury safety.
-- **Backend bot** (Node 22/Express) watches the chain, owns the XMTP group, and only invites wallets that paid to enter.
-- **Frontend** (Vite + React) deploys Templs, guides purchases, mirrors governance, and embeds the chat.
-- **Shared utilities** keep signatures, XMTP handling, and tests aligned across packages.
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant Frontend
-    participant Contracts
-    participant Backend
-    participant XMTP
-    User->>Frontend: Connect wallet & choose a Templ
-    Frontend->>Contracts: deployTempl() / purchaseAccess()
-    Contracts-->>Backend: AccessPurchased / Proposal events
-    Frontend->>Backend: POST /templs & /join
-    Backend->>XMTP: newGroup / addMembers
-    XMTP-->>Frontend: invite delivered, chat unlocked
-```
-
-## Developer Quickstart
-
-### Prerequisites
-
-- Node.js `22.18.0`
-- Install dependencies once with `npm ci` at the repo root.
-- Run `npm run prepare` to install Husky hooks.
-
-### Install Everything
+## Quick start
 
 ```bash
-npm ci
-npm --prefix backend ci
-npm --prefix frontend ci
+npm ci                         # install root + subpackage deps
+npm run compile                # compile contracts
+npm --prefix backend test      # backend tests (includes shared signing tests)
+npm --prefix frontend run dev  # run the SPA against your local backend
 ```
 
-### Test the Stack
+Detailed deployment steps (contracts, backend, frontend, and Telegram binding) live in [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md).
 
-```bash
-npm run test:all
-```
+In separate terminals you’ll typically run:
 
-This includes Hardhat unit tests, Slither, backend `node --test`, Vitest, and Playwright e2e. Drill into each package for focused iteration when needed.
+1. `npx hardhat node` – local chain with default accounts.
+2. `npm --prefix backend start` – Express API and Telegram notifier (expects `RPC_URL`).
+3. `npm --prefix frontend run dev` – Vite dev server on http://localhost:5173.
 
-### Run Locally
+## Environment & configuration
 
-```bash
-npm --prefix backend start
-npm --prefix frontend run dev
-```
+### Backend (`backend/.env`)
 
-The backend expects `backend/.env` with `RPC_URL`, `BOT_PRIVATE_KEY`, `ALLOWED_ORIGINS`, and `BACKEND_SERVER_ID`. The frontend reads matching `VITE_*` variables; see the deep dives below for full matrices.
-
-## Environment Variables
-
-Templ spans contracts, an Express backend, and a React frontend, so most workflows hinge on a shared set of environment flags. The tables in [docs/BACKEND.md](./docs/BACKEND.md#environment-variables) and [docs/FRONTEND.md](./docs/FRONTEND.md#environment-variables) dive into every option; the crib notes below cover the minimum you need to boot each surface and how defaults behave across environments.
-
-### Local defaults
-
-- **Backend** – provide an `RPC_URL` for on-chain reads, a `BOT_PRIVATE_KEY` (or let the server mint and persist one automatically), `ALLOWED_ORIGINS`, and a `BACKEND_SERVER_ID` that matches the frontend. Optional toggles like `ENABLE_DEBUG_ENDPOINTS`, `CLEAR_DB`, and `XMTP_ENV` stay development-friendly by default. Encryption falls back to a derived key unless you supply `BACKEND_DB_ENC_KEY` yourself. 【F:docs/BACKEND.md†L23-L63】【F:docs/SHARED.md†L21-L28】
-- **Frontend** – Vite only exposes `VITE_*` variables to the browser. The app auto-selects `VITE_XMTP_ENV=dev` on localhost and `production` elsewhere; you only need to set `VITE_BACKEND_SERVER_ID` (matching the backend) and any optional factory overrides when locking down deployments. 【F:docs/FRONTEND.md†L23-L56】
-
-### E2E harness defaults
-
-`npm --prefix frontend run test:e2e` spins up a Hardhat chain, the backend, and a built frontend preview. The Playwright config injects every required variable so you can run the suite with zero manual `.env` files: it generates a fresh `BOT_PRIVATE_KEY`, reuses `BACKEND_SERVER_ID=templ-dev` on both sides, pins `RPC_URL`/`ALLOWED_ORIGINS`, enables debug helpers, and selects the XMTP target automatically (`dev` by default or `local` when `E2E_XMTP_LOCAL=1`). It also keeps `VITE_E2E_DEBUG=1` so Playwright can poke debug affordances while it drives the UI. 【F:frontend/playwright.config.js†L55-L121】
-
-Layer on the following flags to steer the harness at different XMTP networks:
-
-- **Hosted XMTP (default)** – run `npm --prefix frontend run test:e2e` as-is to target the dev network with ephemeral bot keys.
-- **Local XMTP node** – clone [`xmtp-local-node`](https://github.com/xmtp/xmtp-local-node) into `xmtp-local-node/` and execute `E2E_XMTP_LOCAL=1 npm --prefix frontend run test:e2e` to boot the local docker-compose stack before tests.
-- **Alternate XMTP targets** – provide `E2E_XMTP_ENV=<env>` (e.g., `production`) to override the default network while keeping the rest of the wiring intact.
-
-Check `frontend/playwright.config.js` for the full matrix of defaults before extending or debugging E2E runs. 【F:frontend/playwright.config.js†L1-L121】
-
-### Production deployment checklist
-
-Lock production down by providing explicit secrets and disabling all debug fallbacks:
-
-- Set `NODE_ENV=production`, `REQUIRE_CONTRACT_VERIFY=1`, and a trusted `RPC_URL` so the backend enforces chainId/code/priest checks against a real provider. 【F:docs/BACKEND.md†L64-L115】
-- Supply hardened credentials: a persisted `BOT_PRIVATE_KEY`, `BACKEND_DB_ENC_KEY` (32-byte hex), `BACKEND_SERVER_ID`, and matching `VITE_BACKEND_SERVER_ID`. Leave `ENABLE_DEBUG_ENDPOINTS`, `CLEAR_DB`, and other test toggles at `0`. 【F:docs/BACKEND.md†L34-L82】【F:docs/BACKEND.md†L152-L162】
-- Configure the frontend build with the production XMTP environment, backend identifiers, and any factory metadata you want surfaced (`VITE_XMTP_ENV=production`, `VITE_TEMPL_FACTORY_*`). 【F:docs/FRONTEND.md†L32-L56】
-
-## Repository Layout
-
-- `contracts/` - Solidity 0.8.23 contracts, Hardhat config, and tests under `test/`.
-- `backend/` - Express service (`src/` + `test/` + `coverage/`) that operates the XMTP cult bot.
-- `frontend/` - Vite + React client with `src/`, Vitest specs, and Playwright `e2e/` runs.
-- `shared/` - Utilities shared across packages (signing, XMTP helpers, tests).
-- `scripts/` - Deployment helpers, wallet generators, CI orchestration.
-- `deployments/` - Network artifacts emitted by deployment scripts.
-
-## Everyday Commands
-
-| Domain | Rituals |
+| Variable | Purpose |
 | --- | --- |
-| Contracts | `npm run compile`, `npm test`, `npm run node`, `npm run deploy:local`, `npm run coverage`, `npm run slither` |
-| Backend | `npm --prefix backend start`, `npm --prefix backend test`, `npm --prefix backend run lint`, `npm --prefix backend run coverage` |
-| Frontend | `npm --prefix frontend run dev`, `npm --prefix frontend run build`, `npm --prefix frontend run test`, `npm --prefix frontend run coverage`, `npm --prefix frontend run test:e2e` |
-| Full stack | `npm run test:all`, `npm run deploy:local`, `npm run coverage:all` |
+| `RPC_URL` | **Required.** JSON-RPC endpoint used to read chain state and watch events. |
+| `PORT` | Port for the HTTP server (defaults to `3001`). |
+| `ALLOWED_ORIGINS` | Comma-separated origins for CORS (defaults to `http://localhost:5173`). |
+| `BACKEND_SERVER_ID` | String embedded in EIP-712 messages; must match the frontend. |
+| `TELEGRAM_BOT_TOKEN` | Optional bot token. If set, governance events post to Telegram chats registered per templ. |
+| `APP_BASE_URL` | Optional base URL used when building deep links in Telegram messages. |
+| `REQUIRE_CONTRACT_VERIFY` | Set to `1` in production to enforce on-chain contract + priest validation. |
+| `CLEAR_DB` | When `1`, deletes the SQLite DB before boot (handy for tests). |
+| `DB_PATH` | Override file path for the groups SQLite DB (`backend/groups.db` by default). |
+| `BACKEND_USE_MEMORY_DB` | Set to `1` to run against the in-memory DB (no native bindings required). |
 
-## Deep Dives & Docs
+The backend stores templ registrations in SQLite (`groups`, `signatures`). Telegram chat ids reuse the old `groupId` column for persistence to avoid extra migrations.
 
-Read these in order to understand every layer of the cult machinery:
+### Frontend (`frontend/.env`)
 
-1. **[docs/TEMPL_TECH_SPEC.MD](./docs/TEMPL_TECH_SPEC.MD)** - protocol lore, economic guarantees, and governance rules.
-2. **[docs/CORE_FLOW_DOCS.MD](./docs/CORE_FLOW_DOCS.MD)** - diagrams for deploy, join, moderation, voting, and treasury moves.
-3. Implementation handbooks:
-   - [docs/CONTRACTS.md](./docs/CONTRACTS.md)
-   - [docs/BACKEND.md](./docs/BACKEND.md)
-   - [docs/FRONTEND.md](./docs/FRONTEND.md)
-   - [docs/SHARED.md](./docs/SHARED.md)
-4. Operations
-   - [docs/PERSISTENCE.md](./docs/PERSISTENCE.md) - storage maps (SQLite, XMTP DBs).
-   - [docs/TEST_LOCALLY.md](./docs/TEST_LOCALLY.md) - your field guide for spinning up the full stack.
+| Variable | Purpose |
+| --- | --- |
+| `VITE_BACKEND_URL` | API base URL; defaults to `http://localhost:3001`. |
+| `VITE_BACKEND_SERVER_ID` | Must equal the backend’s `BACKEND_SERVER_ID` so signatures align. |
+| `VITE_TEMPL_FACTORY_*` | Optional overrides for the default factory address (`address`), protocol recipient (`protocolRecipient`), and protocol percent (`protocolPercent`). |
+| `VITE_RPC_URL` | Optional read-only RPC endpoint used to list templs from the factory on the landing page (falls back to the connected wallet provider). |
 
-## Production Launch Notes
+The frontend connects to the user’s browser wallet (MetaMask or any `window.ethereum` provider) and reuses Hardhat accounts during local development.
 
-- Keep `BACKEND_SERVER_ID` ≙ `VITE_BACKEND_SERVER_ID` and provide `BACKEND_DB_ENC_KEY`; the backend refuses to boot in production without it.
-- Deploy with trusted RPC endpoints; invite enforcement assumes honest answers.
-- XMTP dev inboxes cap at ~10 installs and ~256 actions - rotate wallets or reuse DBs to stay within limits.
-- Leave test toggles (`DISABLE_XMTP_WAIT`, `VITE_ENABLE_BACKEND_FALLBACK`, etc.) off in production so ritual order stays strict.
+### Telegram wiring
 
-## Next Steps
+1. Create a bot with [@BotFather](https://t.me/botfather) and grab the token.
+2. Invite <a href="https://t.me/templfunbot" target="_blank" rel="noreferrer">@templfunbot</a> to your Telegram group and allow it to post.
+3. Register or deploy your templ from the UI (or API). If you already know the numeric chat id (e.g. by using [@getidsbot](https://t.me/getidsbot)) you can provide it in the form — the backend links the templ immediately.
+4. Otherwise, copy the one-time binding snippet shown after registration and post it into the Telegram group, for example:
+   ```
+   templ ca83cfbc0f47a9d1
+   ```
+   The backend polls the bot API, detects the code, and acknowledges the binding in the same chat. Once confirmed, all templ events (joins, proposals, quorum, vote closure, priest changes, daily digests, home-link updates) stream into the channel with deep links back to the frontend.
 
-Start with [docs/TEMPL_TECH_SPEC.MD](./docs/TEMPL_TECH_SPEC.MD) and walk the docs end-to-end. By the time you return, you’ll know how to launch cults, protect their treasuries, and make templ.fun the schelling point for every token tribe.
+Leaving the chat id empty is perfectly fine — the templ remains usable, and you can complete the binding at any time by inviting the bot and re-posting the snippet from `/templs/create` or the templ overview page.
+
+## Repository layout
+
+- `contracts/` – Solidity sources (`TEMPL.sol`, `TemplFactory.sol`) plus Hardhat tests in `test/`.
+- `backend/` – Express API, Telegram notifier (`src/`), and Node tests in `test/`.
+- `frontend/` – Vite + React app, Vitest setup, and Playwright specs in `e2e/`.
+- `shared/` – Common JS helpers (EIP-712 signing, debug utilities).
+- `scripts/` – Deployment/test scripts, wallet generators, CI hooks.
+- `deployments/` – Network artifacts emitted by Hardhat deployments.
+
+## Testing
+
+- `npm test` (root) – Hardhat contract tests.
+- `npm --prefix backend test` – backend + shared unit tests.
+- `npm --prefix frontend run test` – Vitest suite for the SPA.
+- `npm --prefix frontend run test:e2e` – Playwright smoke tests (starts Hardhat, backend, and a preview build). The harness now focuses on deployment/join/vote flows; Telegram messaging is stubbed by leaving `TELEGRAM_BOT_TOKEN` unset.
+
+Code coverage targets remain enforced by Codecov for contracts and JS packages. Run `npm run coverage:all` before shipping large changes.
+
+## Status & roadmap
+
+Templ’s contract layer is stable. The new web2 stack focuses purely on templ lifecycle and governance, with async coordination happening in Telegram instead of XMTP groups. Remaining work includes polishing the SPA UX, enriching proposal previews, and extending the Telegram notifier with richer summaries (images, custom buttons) once long-lived bot tokens are provisioned.
+
+Pull requests should follow Conventional Commit messages and include updated tests where practical.

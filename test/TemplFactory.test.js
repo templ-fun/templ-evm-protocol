@@ -28,6 +28,7 @@ describe("TemplFactory", function () {
         const executionDelaySeconds = 5 * 24 * 60 * 60;
         const customBurnAddress = "0x00000000000000000000000000000000000000AA";
 
+        const homeLink = "https://templ.fun/example";
         const config = {
             priest: priest.address,
             token: await token.getAddress(),
@@ -39,7 +40,8 @@ describe("TemplFactory", function () {
             executionDelaySeconds,
             burnAddress: customBurnAddress,
             priestIsDictator: false,
-            maxMembers: 0
+            maxMembers: 0,
+            homeLink
         };
 
         const templAddress = await factory.createTemplWithConfig.staticCall(config);
@@ -58,6 +60,7 @@ describe("TemplFactory", function () {
         expect(await templ.executionDelayAfterQuorum()).to.equal(executionDelaySeconds);
         expect(await templ.burnAddress()).to.equal(customBurnAddress);
         expect(await templ.MAX_MEMBERS()).to.equal(0n);
+        expect(await templ.templHomeLink()).to.equal(homeLink);
 
         await mintToUsers(token, [member], ENTRY_FEE * 10n);
         await purchaseAccess(templ, token, [member]);
@@ -93,6 +96,7 @@ describe("TemplFactory", function () {
             burnAddress: ethers.ZeroAddress,
             priestIsDictator: true,
             maxMembers: 0,
+            homeLink: "",
         };
 
         const templAddress = await factory.createTemplWithConfig.staticCall(config);
@@ -115,6 +119,7 @@ describe("TemplFactory", function () {
         expect(templCreated).to.not.equal(undefined);
         expect(templCreated.args.priestIsDictator).to.equal(true);
         expect(templCreated.args.maxMembers).to.equal(0n);
+        expect(templCreated.args.homeLink).to.equal("");
     });
 
     it("sets and emits the member limit when provided", async function () {
@@ -137,6 +142,7 @@ describe("TemplFactory", function () {
             burnAddress: ethers.ZeroAddress,
             priestIsDictator: false,
             maxMembers: 5,
+            homeLink: "",
         };
 
         const templAddress = await factory.createTemplWithConfig.staticCall(config);
@@ -157,6 +163,7 @@ describe("TemplFactory", function () {
 
         expect(templCreated).to.not.equal(undefined);
         expect(templCreated.args.maxMembers).to.equal(5n);
+        expect(templCreated.args.homeLink).to.equal("");
     });
 
     it("reverts when fee split does not sum to 100", async function () {
@@ -176,10 +183,11 @@ describe("TemplFactory", function () {
                 memberPoolPercent: 10,
                 quorumPercent: 33,
                 executionDelaySeconds: 7 * 24 * 60 * 60,
-                burnAddress: ethers.ZeroAddress,
-                priestIsDictator: false,
-                maxMembers: 0
-            })
+            burnAddress: ethers.ZeroAddress,
+            priestIsDictator: false,
+            maxMembers: 0,
+            homeLink: ""
+        })
         ).to.be.revertedWithCustomError(factory, "InvalidPercentageSplit");
     });
 
@@ -203,6 +211,7 @@ describe("TemplFactory", function () {
             burnAddress: ethers.ZeroAddress,
             priestIsDictator: false,
             maxMembers: 0,
+            homeLink: "",
         };
 
         const templAddress = await factory.createTemplWithConfig.staticCall(config);
@@ -236,6 +245,7 @@ describe("TemplFactory", function () {
                 burnAddress: ethers.ZeroAddress,
                 priestIsDictator: false,
                 maxMembers: 0,
+                homeLink: "",
             })
         ).to.be.revertedWithCustomError(factory, "InvalidPercentage");
     });
@@ -336,7 +346,8 @@ describe("TemplFactory", function () {
                 executionDelaySeconds: 7 * 24 * 60 * 60,
                 burnAddress: ethers.ZeroAddress,
                 priestIsDictator: false,
-                maxMembers: 0
+                maxMembers: 0,
+                homeLink: ""
             })
         ).to.be.revertedWithCustomError(factory, "InvalidPercentage");
     });
@@ -359,7 +370,8 @@ describe("TemplFactory", function () {
             executionDelaySeconds: 0,
             burnAddress: ethers.ZeroAddress,
             priestIsDictator: false,
-            maxMembers: 0
+            maxMembers: 0,
+            homeLink: ""
         };
 
         const templAddress = await factory.createTemplWithConfig.staticCall(config);

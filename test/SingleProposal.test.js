@@ -11,6 +11,7 @@ describe("Single Active Proposal Restriction", function () {
     let accounts;
     const ENTRY_FEE = ethers.parseUnits("100", 18);
     const TOKEN_SUPPLY = ethers.parseUnits("10000", 18);
+    const META = ["Test proposal", "Ensures single active proposal restrictions"];
 
     beforeEach(async function () {
         ({ templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE }));
@@ -35,7 +36,8 @@ describe("Single Active Proposal Restriction", function () {
                 member1.address,
                 ethers.parseUnits("10", 18),
                 "Test withdrawal",
-                7 * 24 * 60 * 60
+                7 * 24 * 60 * 60,
+                ...META
             )).to.emit(templ, "ProposalCreated");
 
             expect(await templ.hasActiveProposal(member1.address)).to.be.true;
@@ -56,7 +58,8 @@ describe("Single Active Proposal Restriction", function () {
                 member1.address,
                 ethers.parseUnits("10", 18),
                 "Test",
-                7 * 24 * 60 * 60
+                7 * 24 * 60 * 60,
+                ...META
             );
 
             // Try to create second proposal - should fail
@@ -65,7 +68,8 @@ describe("Single Active Proposal Restriction", function () {
                 member1.address,
                 ethers.parseUnits("10", 18),
                 "Test",
-                7 * 24 * 60 * 60
+                7 * 24 * 60 * 60,
+                ...META
             )).to.be.revertedWithCustomError(templ, "ActiveProposalExists");
         });
 
