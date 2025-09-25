@@ -1,6 +1,6 @@
 # Frontend SPA
 
-The frontend is a Vite + React app served from `frontend/`. It provides clear routes for templ lifecycle management:
+Use this doc to navigate the Vite + React app in `frontend/` and understand the routes that power templ lifecycle management:
 
 | Route | Purpose |
 | --- | --- |

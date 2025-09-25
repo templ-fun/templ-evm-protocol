@@ -1,6 +1,6 @@
 # Backend Service
 
-The backend is a Node 22 / Express server that acts as the “web2” side of templ:
+Use this doc to configure and operate the Node 22 / Express backend that handles the “web2” side of templ:
 
 * verifies EIP-712 signatures for templ creation and membership checks,
 * persists templ metadata needed for Telegram delivery (contract address, priest address, optional Telegram chat id, latest home link),

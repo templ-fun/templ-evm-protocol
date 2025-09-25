@@ -1,6 +1,6 @@
 # Core Flow Diagrams (Telegram Edition)
 
-These diagrams show how the contracts, backend API, frontend, and Telegram notifier interact after the XMTP removal. Use them to understand each major user journey.
+Use this reference to see how the contracts, backend API, frontend, and Telegram notifier interact after the XMTP removal. Every section pairs a flowchart with a sequence diagram so you can choose the view that fits your debugging or onboarding moment.
 
 ## Actors
 

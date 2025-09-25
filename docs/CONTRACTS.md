@@ -1,6 +1,6 @@
 # Templ Contracts
 
-This document details the on-chain modules that handle membership, fee splits, and governance. Pair it with the flow diagrams to connect function names with runtime behavior.
+Use this guide to understand the on-chain modules that handle membership, fee splits, and governance. Pair it with the flow diagrams to connect function names with runtime behavior.
 
 ## What this document covers
 

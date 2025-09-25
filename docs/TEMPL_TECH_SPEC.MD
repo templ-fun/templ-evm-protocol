@@ -1,6 +1,6 @@
 # Templ Technical Spec (Telegram Pivot)
 
-Templ keeps the original on-chain design—paid memberships, enforced fee splits, governance modules—but replaces all XMTP chat integrations with Telegram notifications. This document captures the canonical architecture.
+Use this spec to connect the canonical architecture after the Telegram pivot. Templ keeps the original on-chain design—paid memberships, enforced fee splits, governance modules—but replaces all XMTP chat integrations with Telegram notifications.
 
 ## 1. Contracts (unchanged)
 

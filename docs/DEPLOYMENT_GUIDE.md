@@ -1,6 +1,6 @@
 # Deployment Guide
 
-This walkthrough covers the first end-to-end deployment of the templ stack: smart contracts, backend, frontend, and the Telegram bot binding required for notifications.
+Use this guide for the first end-to-end deployment of the templ stack: smart contracts, backend, frontend, and the Telegram bot binding required for notifications.
 
 ## 1. Prerequisites
 

@@ -1,6 +1,6 @@
 # Test Locally (Fast Path)
 
-Spin up the full templ stack—Hardhat chain, Express backend, and React frontend—so you can deploy a templ, verify membership, and run proposals without relying on external services.
+Use this doc to spin up the full templ stack—Hardhat chain, Express backend, and React frontend—so you can deploy a templ, verify membership, and run proposals without relying on external services.
 
 ## Prerequisites
 

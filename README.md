@@ -5,7 +5,29 @@
 
 Templ turns any ERC-20 into a gated club with on-chain economics. Holders deploy their own templ, charge newcomers an entry fee, run proposals, and split every tribute between burn, treasury, member rewards, and protocol upkeep. The latest pivot retires XMTP group chat entirely and replaces it with crisp, deterministic Telegram alerts sourced from on-chain events.
 
-## What ships today
+## Architecture
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant M as Member
+    participant F as Frontend (React)
+    participant C as TEMPL Contract
+    participant B as Backend (Express)
+    participant T as Telegram Bot
+    M->>F: Deploy templ / initiate join flow
+    F->>C: Factory + templ transactions
+    C-->>F: Contract address / receipts
+    F->>B: Signed POST /templs or /join payloads
+    B->>C: Verify priest + hasAccess checks
+    C-->>B: On-chain state + events
+    B->>T: HTML alerts (joins, proposals, votes)
+    T-->>M: Telegram notifications with deep links
+```
+
+Reference diagrams live in [`docs/CORE_FLOW_DOCS.MD`](docs/CORE_FLOW_DOCS.MD).
+
+## Current Stack
 
 - **Contracts** – Solidity 0.8.x templates (see `contracts/`) mint templ instances that collect entry fees, burn supply, accumulate treasury funds, and expose governance primitives. Each templ stores an on-chain "home link" so frontends, bots, and docs can reference the canonical landing page for the community.
 - **Backend API + Telegram bot** – Node 22/Express server performs signature verification, tracks registered templs, confirms membership, and streams contract events to a Telegram group via a bot token.
@@ -35,6 +57,18 @@ In separate terminals you’ll typically run:
 1. `npx hardhat node` – local chain with default accounts.
 2. `npm --prefix backend start` – Express API and Telegram notifier (expects `RPC_URL`).
 3. `npm --prefix frontend run dev` – Vite dev server on http://localhost:5173.
+
+## Documentation
+
+- [`docs/TEMPL_TECH_SPEC.MD`](docs/TEMPL_TECH_SPEC.MD) – canonical architecture and how the Telegram pivot reshapes each layer.
+- [`docs/CORE_FLOW_DOCS.MD`](docs/CORE_FLOW_DOCS.MD) – detailed sequence + flow charts for creation, join, governance, and notifications.
+- [`docs/CONTRACTS.md`](docs/CONTRACTS.md) – smart contract modules, fee mechanics, and governance APIs.
+- [`docs/BACKEND.md`](docs/BACKEND.md) – Express service responsibilities, environment, and notifier behavior.
+- [`docs/FRONTEND.md`](docs/FRONTEND.md) – SPA routes, env vars, and lifecycle walkthroughs.
+- [`docs/SHARED.md`](docs/SHARED.md) – cross-package utilities for signatures and environment helpers.
+- [`docs/PERSISTENCE.md`](docs/PERSISTENCE.md) – storage story across contracts, backend, and frontend caches.
+- [`docs/DEPLOYMENT_GUIDE.md`](docs/DEPLOYMENT_GUIDE.md) – end-to-end deployment steps including Telegram binding.
+- [`docs/TEST_LOCALLY.md`](docs/TEST_LOCALLY.md) – local development recipe for the full stack.
 
 ## Environment & configuration
 
@@ -96,9 +130,3 @@ Leaving the chat id empty is perfectly fine — the templ remains usable, and yo
 - `npm --prefix frontend run test:e2e` – Playwright smoke tests (starts Hardhat, backend, and a preview build). The harness now focuses on deployment/join/vote flows; Telegram messaging is stubbed by leaving `TELEGRAM_BOT_TOKEN` unset.
 
 Code coverage targets remain enforced by Codecov for contracts and JS packages. Run `npm run coverage:all` before shipping large changes.
-
-## Status & roadmap
-
-Templ’s contract layer is stable. The new web2 stack focuses purely on templ lifecycle and governance, with async coordination happening in Telegram instead of XMTP groups. Remaining work includes polishing the SPA UX, enriching proposal previews, and extending the Telegram notifier with richer summaries (images, custom buttons) once long-lived bot tokens are provisioned.
-
-Pull requests should follow Conventional Commit messages and include updated tests where practical.

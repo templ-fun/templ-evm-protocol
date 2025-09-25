@@ -1,5 +1,7 @@
 # Persistence
 
+Use this doc to see where templ persists data: what lives on-chain, what the backend stores in SQLite, and what the frontend keeps ephemeral.
+
 ## Contracts
 
 On-chain storage lives inside each templ and the factory. See `contracts/` for specifics.

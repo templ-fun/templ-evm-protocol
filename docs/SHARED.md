@@ -1,6 +1,6 @@
 # Shared Utilities
 
-`shared/` contains JavaScript helpers that both the backend and frontend rely on. Everything is published as ESM-friendly plain JS so Node, Vite, and tests can import the same implementation.
+Use this doc to understand the JavaScript helpers under `shared/` that both the backend and frontend rely on. Everything is published as ESM-friendly plain JS so Node, Vite, and tests can import the same implementation.
 
 ## Modules
 
