@@ -21,7 +21,7 @@ sequenceDiagram
     F->>B: Signed POST /templs or /join payloads
     B->>C: Read priest() / hasAccess()
     C-->>B: On-chain state + events
-    B->>T: HTML alerts (joins, proposals, votes)
+    B->>T: HTML alerts (joins, proposals, quorum, votes, digests)
     T-->>M: Telegram notifications with deep links
 ```
 
@@ -39,7 +39,7 @@ Reference diagrams live in [`docs/CORE_FLOW_DOCS.MD`](docs/CORE_FLOW_DOCS.MD).
 - `/templs/:address/proposals/:id/vote` – cast a YES/NO vote.
 - `/templs/:address/claim` – view the member pool balance and claim rewards.
 
-Telegram notifications are optional but encouraged. When a templ is registered, the backend issues a one-time binding code. Invite `@templfunbot` to your group and post the code (e.g. `templ abcd1234`)—the bot confirms the chat and begins posting HTML-formatted messages with deep links back to the frontend (join screen, proposal details, claim page, etc.). Priests can later rotate the chat from the templ overview: request a replacement code, sign the EIP-712 proof, and share the snippet in the new group. Alerts cover new members (with live treasury/member-pool totals), proposal creation, quorum, voting closure, priest changes, and a daily "gm" digest. No Telegram secrets are stored on-chain; linking happens entirely through the bot token, binding handshake, and signed priest rebind requests.
+Telegram notifications are optional but encouraged. When a templ is registered, the backend issues a one-time binding code. Invite `@templfunbot` to your group and post the code (e.g. `templ abcd1234`)—the bot confirms the chat and begins posting HTML-formatted messages with deep links back to the frontend (join screen, proposal details, claim page, etc.). Priests can later rotate the chat from the templ overview: request a replacement code, sign the EIP-712 proof, and share the snippet in the new group. Alerts cover new members (with live treasury/member-pool totals), proposal creation, quorum, voting closure, priest changes, templ home-link updates, daily "gm" digests, and a binding acknowledgement when a chat connects. No Telegram secrets are stored on-chain; linking happens entirely through the bot token, binding handshake, and signed priest rebind requests.
 
 ## Quick start
 
@@ -76,12 +76,15 @@ In separate terminals you’ll typically run:
 
 | Variable | Purpose |
 | --- | --- |
-| `RPC_URL` | **Required.** JSON-RPC endpoint used to read chain state and watch events. |
+| `RPC_URL` | **Required.** JSON-RPC endpoint used to read chain state, verify contracts, and watch events. |
 | `PORT` | Port for the HTTP server (defaults to `3001`). |
 | `ALLOWED_ORIGINS` | Comma-separated origins for CORS (defaults to `http://localhost:5173`). |
 | `BACKEND_SERVER_ID` | String embedded in EIP-712 messages; must match the frontend. |
 | `TELEGRAM_BOT_TOKEN` | Optional bot token. If set, governance events post to Telegram chats registered per templ. |
 | `APP_BASE_URL` | Optional base URL used when building deep links in Telegram messages. |
+| `LOG_LEVEL` | Pino log level (`info` by default). |
+| `RATE_LIMIT_STORE` | `memory` or `redis`; auto-selects Redis when `REDIS_URL` is set. |
+| `REDIS_URL` | Redis endpoint used for distributed rate limiting (required when `RATE_LIMIT_STORE=redis`). |
 | `REQUIRE_CONTRACT_VERIFY` | Set to `1` in production to enforce on-chain contract + priest validation. |
 | `CLEAR_DB` | When `1`, deletes the SQLite DB before boot (handy for tests). |
 | `DB_PATH` | Override file path for the SQLite DB that stores Telegram bindings (`backend/groups.db` by default). |

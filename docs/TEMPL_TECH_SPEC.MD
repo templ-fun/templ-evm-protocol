@@ -6,10 +6,10 @@ Use this spec to connect the canonical architecture: paid memberships, enforced 
 
 - `TemplFactory` deploys templ instances with configurable fee splits and protocol tithes.
 - `TEMPL` instances manage:
-  - entry fee (`purchaseAccess`),
-  - configurable burn/treasury/member/protocol percentages,
-  - optional member caps (`MAX_MEMBERS`),
-  - one member = one vote proposals (each member wallet counts once) covering pause/unpause, priest changes, treasury moves, dictatorship toggles.
+  - entry fees (`purchaseAccess`) with fixed protocol tithe and configurable burn/treasury/member slices,
+  - optional member caps (`MAX_MEMBERS`) that auto-pause joins when the cap is reached,
+  - an on-chain `templHomeLink` string surfaced across UI, backend, and Telegram,
+  - one member = one vote proposals covering pause/unpause, priest changes, fee config updates, treasury withdrawals/disbands, membership caps, dictatorship toggles, and home-link changes.
 
 See inline NatSpec comments and Hardhat tests for state transitions.
 
@@ -21,12 +21,13 @@ See inline NatSpec comments and Hardhat tests for state transitions.
 - Store templ ↔ Telegram chat bindings in SQLite so notifications survive restarts; priest/home-link data is refreshed from chain when watchers attach.
 - Subscribe to templ events via `ethers.Contract` and forward them to Telegram:
   - `AccessPurchased` → “New member” message with join + claim links and live treasury/member-pool totals.
-- `ProposalCreated` → “Proposal created” with link to `/proposals/:id/vote`, including the on-chain title & description supplied at creation time.
+  - `ProposalCreated` → “Proposal created” with link to `/proposals/:id/vote`, including the on-chain title & description supplied at creation time.
   - `VoteCast` → “Vote recorded” summary, echoing the proposal title when available.
   - `ProposalQuorumReached` (derived from snapshots) → one-off “Quorum reached” nudge so undecided members can still participate.
   - `ProposalVotingClosed` (time-based) → post-quorum notification explaining whether the proposal is executable.
   - `PriestChanged` → “Priest updated” alert.
-  - Daily digest → recurring "gm" with treasury + unclaimed member pool balances and a CTA to claim.
+  - `TemplHomeLinkUpdated` → broadcasts the new canonical URL so members share the latest link.
+- Background tasks send a daily digest (“gm templ crew!”) with treasury/member-pool totals, poll Telegram for binding codes, and acknowledge successful bindings with a “Telegram bridge active” message.
 - Log all failures but keep the HTTP surface responsive.
 
 The notifier posts HTML (Telegram `parse_mode=HTML`). Links are constructed from `APP_BASE_URL` plus appropriate routes.

@@ -6,7 +6,7 @@ Use this doc to understand the JavaScript helpers under `shared/` that both the 
 
 ### signing.js
 
-- Builds EIP-712 payloads (`buildCreateTypedData`, `buildJoinTypedData`).
+- Builds EIP-712 payloads (`buildCreateTypedData`, `buildJoinTypedData`, `buildRebindTypedData`) plus the lower-level `buildTemplTypedData` helper shared across actions.
 - Normalises the `server` field via `readTemplEnv` so signatures bind to the configured `BACKEND_SERVER_ID`/`VITE_BACKEND_SERVER_ID`.
 - Covered by `shared/signing.test.js` (runs under Node’s test runner and through the backend test suite).
 

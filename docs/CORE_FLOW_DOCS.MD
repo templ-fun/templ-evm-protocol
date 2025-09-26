@@ -33,10 +33,11 @@ sequenceDiagram
     F->>C: createTemplWithConfig(...)
     C-->>F: templAddress
     F->>B: POST /templs {contract, priest, telegramChatId?, signature}
-    B->>C: has priest changed? (optional verify)
+    B->>C: ensureContractDeployed (prod / REQUIRE_CONTRACT_VERIFY)
+    B->>C: ensurePriestMatchesOnChain (prod / REQUIRE_CONTRACT_VERIFY)
     B->>D: upsert templ binding
     B->>C: start listening for events
-    B-->>F: 200 { contract, priest, telegramChatId }
+    B-->>F: 200 { templ:{...}, bindingCode? }
 ```
 
 ## 2. Pay-to-join + verification
@@ -91,8 +92,8 @@ Messages use `APP_BASE_URL` to build URLs such as `/templs/<address>` or `/templ
 ```mermaid
 flowchart LR
     M -->|createProposalX| C
-    C -->|emit ProposalCreated(title, description)| B
-    B -->|notify Telegram| T
+    C -->|emit ProposalCreated(id, proposer, endTime, title, description)| B
+    B -->|notifyProposalCreated| T[Telegram]
 ```
 
 Sequence:
@@ -105,6 +106,7 @@ sequenceDiagram
     participant T as Telegram
     M->>C: createProposalSetPaused(...)
     C-->>B: ProposalCreated(id, proposer, endTime, title, description)
+    B->>B: cache metadata (ensureProposalMeta)
     B->>T: message with id/proposer/endTime/link
 ```
 
@@ -113,8 +115,28 @@ sequenceDiagram
 ```mermaid
 flowchart LR
     M -->|vote(id, support)| C
-    C -->|VoteCast| B
-    B -->|notify| T
+    C -->|emit VoteCast(id, voter, support, timestamp)| B
+    B -->|notifyVoteCast (+ quorum checks)| T[Telegram]
+```
+
+Sequence:
+
+```mermaid
+sequenceDiagram
+    participant M as Member
+    participant C as Contract
+    participant B as Backend
+    participant T as Telegram
+    M->>C: vote(proposalId, support)
+    C-->>B: VoteCast(proposalId, voter, support, timestamp)
+    B->>C: getProposal(proposalId) (best effort)
+    C-->>B: Proposal details (optional)
+    B->>T: notifyVoteCast(...)
+    alt quorum just reached
+        B->>C: getProposalSnapshots(proposalId)
+        C-->>B: Snapshot data (optional)
+        B->>T: notifyProposalQuorumReached(...)
+    end
 ```
 
 ## 6. Execution

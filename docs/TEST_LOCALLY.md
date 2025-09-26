@@ -95,11 +95,13 @@ Commonly used accounts (private keys are from Hardhat defaults—never use them 
 - `/templs/:address/proposals/new` lets any member raise actions such as pausing, changing the priest, updating fees, etc. Titles and descriptions are now stored on-chain and emitted in `ProposalCreated` events.
 - `/templs/:address/proposals/:id/vote` submits `vote(proposalId, support)` transactions.
 - If the templ was registered with a Telegram chat id, the backend will post:
-  - Member joins (`AccessPurchased`)
-  - Proposal creations (including title/description)
-  - Votes (enriched with cached proposal titles)
-  - Priest changes
-  Each message links back to the relevant frontend route so members can take action quickly.
+  - Member joins (`AccessPurchased`) with live treasury/member-pool balances.
+  - Proposal creations (including on-chain title/description).
+  - Votes (enriched with cached proposal titles) and quorum milestones.
+  - Voting window closures with an execute/not-executable summary.
+  - Priest changes and templ home-link updates.
+  - Daily treasury/member-pool digests (every 24h) when the server remains online.
+  Each message links back to the relevant frontend route so members can take action quickly. Posting the one-time binding code also yields an immediate “Telegram bridge active” acknowledgement.
 - `/templs/:address/claim` lets connected wallets see the raw member pool balance and call `claimMemberPool()`.
 
 ## Troubleshooting
