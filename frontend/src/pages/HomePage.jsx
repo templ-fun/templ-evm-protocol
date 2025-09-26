@@ -1,6 +1,15 @@
 import { BACKEND_URL } from '../config.js';
 import { sanitizeLink } from '../../../shared/linkSanitizer.js';
 import { button, layout, surface, table, text } from '../ui/theme.js';
+import { formatTokenDisplay } from '../ui/format.js';
+import { ethers } from 'ethers';
+
+function splitDisplay(display) {
+  if (!display) return ['0', ''];
+  const parts = display.split(' ');
+  if (parts.length <= 1) return [display, ''];
+  return [parts[0], parts.slice(1).join(' ')];
+}
 
 export function HomePage({ walletAddress, onConnectWallet, onNavigate, templs, loadingTempls, refreshTempls }) {
   return (
@@ -59,46 +68,39 @@ export function HomePage({ walletAddress, onConnectWallet, onNavigate, templs, l
               <tbody className="divide-y divide-slate-200">
                 {templs.map((templ) => {
                   const sanitizedHomeLink = sanitizeLink(templ.links?.homeLink);
+                  const [treasuryValue, treasuryUnit] = splitDisplay(formatTokenDisplay(ethers.formatUnits, templ.treasuryBalanceRaw, templ.tokenDecimals));
+                  const [poolValue, poolUnit] = splitDisplay(formatTokenDisplay(ethers.formatUnits, templ.memberPoolBalanceRaw, templ.tokenDecimals));
+                  const [burnedValue, burnedUnit] = splitDisplay(formatTokenDisplay(ethers.formatUnits, templ.burnedRaw, templ.tokenDecimals));
                   return (
                     <tr key={templ.contract} className="bg-white">
                       <td className={table.cell}>
                         <div className={`${text.mono} text-xs`}>{templ.contract}</div>
-                        {templ.priest ? <div className={`${text.subtle} mt-1`}>Priest: {templ.priest}</div> : null}
-                        {templ.telegramChatId ? (
-                          <div className={`${text.subtle} mt-1`}>Telegram: {templ.telegramChatId}</div>
-                        ) : templ.telegramChatIdHidden ? (
-                          <div className={`${text.subtle} mt-1`}>Telegram chat ID stored server-side</div>
-                        ) : null}
                       </td>
                       <td className={table.cell}>
                         <div className="text-sm font-medium text-slate-900">{templ.tokenSymbol}</div>
-                        {/* {templ.tokenAddress ? <div className={`${text.mono} mt-1`}>{templ.tokenAddress}</div> : null} */}
                       </td>
                       <td className={table.cell}>
                         <div className="text-sm font-medium text-slate-900">{Number.isFinite(templ.memberCount) ? templ.memberCount : '—'}</div>
-                        <div className={`${text.subtle} mt-1`}>
-                          Purchases: {templ.totalPurchases ? templ.totalPurchases : '0'}
+                      </td>
+                      <td className={table.cell}>
+                        <div className="flex w-24 flex-col text-sm text-slate-800 leading-tight">
+                          <span>{treasuryValue}</span>
+                          {treasuryUnit ? <span className="text-xs text-slate-500">{treasuryUnit}</span> : null}
                         </div>
                       </td>
                       <td className={table.cell}>
-                        <div className="text-sm font-medium text-slate-900">{templ.treasuryBalanceFormatted ?? '0'}</div>
-                        <div className={`${text.subtle} mt-1`}>
-                          raw: {templ.treasuryBalanceRaw ?? '0'}
+                        <div className="flex w-24 flex-col text-sm text-slate-800 leading-tight">
+                          <span>{poolValue}</span>
+                          {poolUnit ? <span className="text-xs text-slate-500">{poolUnit}</span> : null}
                         </div>
                       </td>
                       <td className={table.cell}>
-                        <div className="text-sm font-medium text-slate-900">{templ.memberPoolBalanceFormatted ?? '0'}</div>
-                        <div className={`${text.subtle} mt-1`}>
-                          raw: {templ.memberPoolBalanceRaw ?? '0'}
+                        <div className="flex w-24 flex-col text-sm text-slate-800 leading-tight">
+                          <span>{burnedValue}</span>
+                          {burnedUnit ? <span className="text-xs text-slate-500">{burnedUnit}</span> : null}
                         </div>
                       </td>
-                      <td className={table.cell}>
-                        <div className="text-sm font-medium text-slate-900">{templ.burnedFormatted}</div>
-                        <div className={`${text.subtle} mt-1`}>
-                          raw: {templ.burnedRaw ?? '0'}
-                        </div>
-                      </td>
-                      <td className={table.cell}>
+                      <td className={`${table.cell} whitespace-nowrap`}> 
                         <div className="flex flex-col gap-2 text-sm">
                           <button
                             type="button"

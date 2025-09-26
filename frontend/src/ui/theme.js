@@ -7,7 +7,7 @@ export const layout = {
   card: 'rounded-2xl bg-white p-6 shadow-xl shadow-slate-900/10 ring-1 ring-slate-200/60',
   cardActions: 'flex flex-wrap items-center gap-3',
   grid: 'grid gap-4 sm:grid-cols-2',
-  tableWrapper: 'overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm',
+  tableWrapper: 'overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm',
   statusBar: 'flex flex-wrap items-center gap-4 bg-slate-900 px-6 py-3 text-xs text-white/80'
 };
 

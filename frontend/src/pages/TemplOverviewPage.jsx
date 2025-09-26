@@ -2,6 +2,15 @@ import { useEffect, useState } from 'react';
 import { sanitizeLink } from '../../../shared/linkSanitizer.js';
 import { requestTemplRebindBackend } from '../services/deployment.js';
 import { button, form, layout, surface, text } from '../ui/theme.js';
+import { formatTokenDisplay } from '../ui/format.js';
+import { ethers } from 'ethers';
+
+function splitDisplay(display) {
+  if (!display) return ['0', ''];
+  const parts = display.split(' ');
+  if (parts.length <= 1) return [display, ''];
+  return [parts[0], parts.slice(1).join(' ')];
+}
 
 export function TemplOverviewPage({
   templAddress,
@@ -93,30 +102,42 @@ export function TemplOverviewPage({
               ) : null}
             </dd>
           </div>
-          <div className="space-y-1">
-            <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Treasury balance</dt>
-            <dd className={`${text.mono} text-sm`}>
-              {templRecord?.treasuryBalanceFormatted
-                ? `${templRecord.treasuryBalanceFormatted}${templRecord.tokenSymbol ? ` ${templRecord.tokenSymbol}` : ''}`
-                : templRecord?.treasuryBalanceRaw || '0'}
-            </dd>
-          </div>
-          <div className="space-y-1">
-            <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Member pool</dt>
-            <dd className={`${text.mono} text-sm`}>
-              {templRecord?.memberPoolBalanceFormatted
-                ? `${templRecord.memberPoolBalanceFormatted}${templRecord.tokenSymbol ? ` ${templRecord.tokenSymbol}` : ''}`
-                : templRecord?.memberPoolBalanceRaw || '0'}
-            </dd>
-          </div>
-          <div className="space-y-1">
-            <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total burned</dt>
-            <dd className={`${text.mono} text-sm`}>
-              {templRecord?.burnedFormatted
-                ? `${templRecord.burnedFormatted}${templRecord.tokenSymbol ? ` ${templRecord.tokenSymbol}` : ''}`
-                : templRecord?.burnedRaw || '0'}
-            </dd>
-          </div>
+          {(() => {
+            const [treasuryValue, treasuryUnit] = splitDisplay(formatTokenDisplay(ethers.formatUnits, templRecord?.treasuryBalanceRaw || '0', templRecord?.tokenDecimals ?? 18));
+            const [poolValue, poolUnit] = splitDisplay(formatTokenDisplay(ethers.formatUnits, templRecord?.memberPoolBalanceRaw || '0', templRecord?.tokenDecimals ?? 18));
+            const [burnedValue, burnedUnit] = splitDisplay(formatTokenDisplay(ethers.formatUnits, templRecord?.burnedRaw || '0', templRecord?.tokenDecimals ?? 18));
+            return (
+              <>
+                <div className="space-y-1">
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Treasury balance</dt>
+                  <dd className={`${text.mono} text-sm`}>
+                    <div className="flex w-32 flex-col leading-tight">
+                      <span>{treasuryValue}</span>
+                      {treasuryUnit ? <span className="text-xs text-slate-500">{treasuryUnit}</span> : null}
+                    </div>
+                  </dd>
+                </div>
+                <div className="space-y-1">
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Member pool</dt>
+                  <dd className={`${text.mono} text-sm`}>
+                    <div className="flex w-32 flex-col leading-tight">
+                      <span>{poolValue}</span>
+                      {poolUnit ? <span className="text-xs text-slate-500">{poolUnit}</span> : null}
+                    </div>
+                  </dd>
+                </div>
+                <div className="space-y-1">
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total burned</dt>
+                  <dd className={`${text.mono} text-sm`}>
+                    <div className="flex w-32 flex-col leading-tight">
+                      <span>{burnedValue}</span>
+                      {burnedUnit ? <span className="text-xs text-slate-500">{burnedUnit}</span> : null}
+                    </div>
+                  </dd>
+                </div>
+              </>
+            );
+          })()}
           <div className="space-y-1">
             <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Priest</dt>
             <dd className={`${text.mono} text-sm`}>{currentPriest || 'Unknown'}</dd>
