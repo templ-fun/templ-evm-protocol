@@ -135,4 +135,37 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
       templ.daoWithdraw(ethers.ZeroAddress, owner.address, ethers.parseUnits("1", 18), "reserved-eth")
     ).to.be.revertedWithCustomError(templ, "InsufficientTreasuryBalance");
   });
+
+  it("covers membership cap wrappers and home link updates", async function () {
+    const { accounts, token, templ } = await deployHarness();
+    const [, , memberA, memberB] = accounts;
+
+    await token.mint(memberA.address, ENTRY_FEE);
+    await token.connect(memberA).approve(templ.target, ENTRY_FEE);
+    await templ.connect(memberA).purchaseAccess();
+    await token.mint(memberB.address, ENTRY_FEE);
+    await token.connect(memberB).approve(templ.target, ENTRY_FEE);
+    await templ.connect(memberB).purchaseAccess();
+
+    await expect(templ.daoSetMaxMembers(1)).to.be.revertedWithCustomError(
+      templ,
+      "MemberLimitTooLow"
+    );
+
+    await templ.daoSetMaxMembers(2);
+    expect(await templ.MAX_MEMBERS()).to.equal(2n);
+    expect(await templ.paused()).to.equal(true);
+
+    await templ.daoPause(false);
+    expect(await templ.paused()).to.equal(false);
+    expect(await templ.MAX_MEMBERS()).to.equal(0n);
+
+    const link = "https://example.templ";
+    await templ.daoSetHomeLink(link);
+    expect(await templ.templHomeLink()).to.equal(link);
+
+    // Same link should short-circuit without emitting events but still succeed
+    await templ.daoSetHomeLink(link);
+    expect(await templ.templHomeLink()).to.equal(link);
+  });
 });

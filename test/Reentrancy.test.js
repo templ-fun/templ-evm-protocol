@@ -1,5 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { deployTempl } = require("./utils/deploy");
 const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
 
 describe("Reentrancy protection", function () {
@@ -117,6 +118,53 @@ describe("Reentrancy protection", function () {
 
       await expect(
         templ.connect(member1).claimMemberPool()
+      ).to.be.revertedWithCustomError(templ, "ReentrancyGuardReentrantCall");
+    });
+  });
+
+  describe("claimExternalToken", function () {
+    const VOTING_PERIOD = 7 * 24 * 60 * 60;
+
+    it("reverts when claimExternalToken is reentered", async function () {
+      const { templ, token, accounts, priest } = await deployTempl({ entryFee: ENTRY_FEE });
+      const [, , member, donor] = accounts;
+
+      const ReentrantToken = await ethers.getContractFactory(
+        "contracts/mocks/ReentrantToken.sol:ReentrantToken"
+      );
+      const rewardToken = await ReentrantToken.deploy("Reentrant Reward", "RRW");
+      await rewardToken.waitForDeployment();
+      await rewardToken.setTempl(await templ.getAddress());
+
+      await mintToUsers(token, [priest, member], ENTRY_FEE * 4n);
+      await purchaseAccess(templ, token, [priest, member]);
+
+      await token.mint(await rewardToken.getAddress(), ENTRY_FEE);
+      await rewardToken.joinTemplWithAccessToken(await token.getAddress(), ENTRY_FEE);
+
+      expect(await templ.hasAccess(priest.address)).to.equal(true);
+      expect(await templ.hasAccess(member.address)).to.equal(true);
+      expect(await templ.hasAccess(await rewardToken.getAddress())).to.equal(true);
+
+      const donation = ethers.parseUnits("30", 18);
+      await rewardToken.mint(donor.address, donation);
+      await rewardToken.connect(donor).transfer(await templ.getAddress(), donation);
+
+      await templ
+        .connect(priest)
+        .createProposalDisbandTreasury(rewardToken.target, VOTING_PERIOD, "Disband", "Handle rewards");
+
+      await ethers.provider.send("evm_increaseTime", [VOTING_PERIOD + 1]);
+      await ethers.provider.send("evm_mine", []);
+      await templ.executeProposal(0);
+
+      expect(await templ.hasAccess(member.address)).to.equal(true);
+
+      await rewardToken.setCallback(3);
+      await rewardToken.setCallbackToken(await rewardToken.getAddress());
+
+      await expect(
+        templ.connect(member).claimExternalToken(rewardToken.target)
       ).to.be.revertedWithCustomError(templ, "ReentrancyGuardReentrantCall");
     });
   });

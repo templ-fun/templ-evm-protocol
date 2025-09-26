@@ -286,6 +286,9 @@ abstract contract TemplGovernance is TemplTreasury {
             revert TemplErrors.DictatorshipEnabled();
         }
 
+        if (proposal.quorumExempt && block.timestamp < proposal.endTime) {
+            revert TemplErrors.VotingNotEnded();
+        }
         if (!proposal.quorumExempt) {
             if (proposal.quorumReachedAt == 0) {
                 revert TemplErrors.QuorumNotReached();
@@ -293,8 +296,6 @@ abstract contract TemplGovernance is TemplTreasury {
             if (block.timestamp < proposal.quorumReachedAt + executionDelayAfterQuorum) {
                 revert TemplErrors.ExecutionDelayActive();
             }
-        } else {
-            if (block.timestamp < proposal.endTime) revert TemplErrors.VotingNotEnded();
         }
         if (proposal.executed) revert TemplErrors.AlreadyExecuted();
 

@@ -1,6 +1,6 @@
 // @ts-check
 import { BACKEND_URL } from '../config.js';
-import { buildCreateTypedData } from '../../../shared/signing.js';
+import { buildCreateTypedData, buildRebindTypedData } from '../../../shared/signing.js';
 import { addToTestRegistry, dlog } from './utils.js';
 import { postJson } from './http.js';
 
@@ -186,4 +186,58 @@ export async function deployTempl({
   });
 
   return { templAddress, registration };
+}
+
+export async function requestTemplRebindBackend({
+  signer,
+  walletAddress,
+  templAddress,
+  backendUrl = BACKEND_URL
+}) {
+  if (!templAddress) {
+    throw new Error('requestTemplRebindBackend requires templAddress');
+  }
+  if (!signer) {
+    throw new Error('requestTemplRebindBackend requires connected wallet');
+  }
+  let priest = walletAddress;
+  if (!priest && signer?.getAddress) {
+    priest = await signer.getAddress();
+  }
+  if (!priest) {
+    throw new Error('Missing priest address');
+  }
+  const chain = await signer.provider?.getNetwork?.();
+  const chainId = Number(chain?.chainId || 1337);
+  const typed = buildRebindTypedData({ chainId, contractAddress: templAddress.toLowerCase() });
+  const signature = await signer.signTypedData(typed.domain, typed.types, typed.message);
+  const payload = {
+    contractAddress: templAddress,
+    priestAddress: priest,
+    signature,
+    chainId,
+    nonce: typed.message.nonce,
+    issuedAt: typed.message.issuedAt,
+    expiry: typed.message.expiry
+  };
+  let res = await postJson(`${backendUrl}/templs/rebind`, payload);
+  if (res.status === 409) {
+    const retryTyped = buildRebindTypedData({ chainId, contractAddress: templAddress.toLowerCase(), nonce: Date.now() });
+    const retrySignature = await signer.signTypedData(retryTyped.domain, retryTyped.types, retryTyped.message);
+    const retryPayload = {
+      contractAddress: templAddress,
+      priestAddress: priest,
+      signature: retrySignature,
+      chainId,
+      nonce: retryTyped.message.nonce,
+      issuedAt: retryTyped.message.issuedAt,
+      expiry: retryTyped.message.expiry
+    };
+    res = await postJson(`${backendUrl}/templs/rebind`, retryPayload);
+  }
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Rebind failed: ${res.status} ${res.statusText} ${body}`.trim());
+  }
+  return res.json();
 }

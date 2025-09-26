@@ -16,6 +16,7 @@ See inline NatSpec comments and Hardhat tests for state transitions.
 ## 2. Backend responsibilities
 
 - Validate templ registrations (`POST /templs`) with EIP-712 signatures and optional Telegram chat ids.
+- Issue new Telegram binding codes (`POST /templs/rebind`) after verifying the signed priest still owns the contract.
 - Confirm membership via `hasAccess` (`POST /join`).
 - Persist templ metadata in SQLite for fast lookups and restarts.
 - Subscribe to templ events via `ethers.Contract` and forward them to Telegram:
@@ -42,6 +43,7 @@ MetaMask/`window.ethereum` supplies the signer. All backend calls attach typed s
 
 - Bot token lives in `TELEGRAM_BOT_TOKEN` (backend env). Without it, the notifier short-circuits and no messages are sent.
 - Chat ids are plain strings stored in SQLite (`groups.groupId`). Use negative ids for supergroups.
+- Rebinding requires the current priest wallet to sign the `rebind` typed data; once the new code is observed in Telegram the backend clears the previous binding and stores the replacement chat id.
 - Messages include contract/member addresses in `<code>` blocks, the proposal title/description when present, and navigation links built from `APP_BASE_URL`.
 - Failures are logged at `warn` level; the backend never throws based on Telegram API errors.
 

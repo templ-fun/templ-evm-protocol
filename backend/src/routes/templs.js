@@ -1,8 +1,9 @@
 import express from 'express';
 import { requireAddresses, verifyTypedSignature } from '../middleware/validate.js';
-import { buildCreateTypedData } from '../../../shared/signing.js';
+import { buildCreateTypedData, buildRebindTypedData } from '../../../shared/signing.js';
 import { logger } from '../logger.js';
 import { registerTempl } from '../services/registerTempl.js';
+import { requestTemplRebind } from '../services/requestTemplRebind.js';
 import { extractTypedRequestParams } from './typed.js';
 
 export default function templsRouter({ templs, persist, database, provider, watchContract, saveBinding, removeBinding }) {
@@ -104,6 +105,41 @@ export default function templsRouter({ templs, persist, database, provider, watc
         const status = err?.statusCode && Number.isInteger(err.statusCode) ? err.statusCode : 500;
         logger.error({ err, body: req.body }, 'Failed to register templ');
         res.status(status).json({ error: err?.message || 'Failed to register templ' });
+      }
+    }
+  );
+
+  router.post(
+    '/templs/rebind',
+    requireAddresses(['contractAddress', 'priestAddress']),
+    verifyTypedSignature({
+      database,
+      addressField: 'priestAddress',
+      buildTyped: (req) => {
+        const { chainId, nonce, issuedAt, expiry } = extractTypedRequestParams(req.body);
+        return buildRebindTypedData({ chainId, contractAddress: req.body.contractAddress.toLowerCase(), nonce, issuedAt, expiry });
+      }
+    }),
+    async (req, res) => {
+      try {
+        const result = await requestTemplRebind(req.body, {
+          templs,
+          persist,
+          saveBinding,
+          provider,
+          logger,
+          database
+        });
+        res.json({
+          contract: result.contract,
+          bindingCode: result.bindingCode,
+          telegramChatId: result.telegramChatId,
+          priest: result.priest
+        });
+      } catch (err) {
+        const status = err?.statusCode && Number.isInteger(err.statusCode) ? err.statusCode : 500;
+        logger.error({ err, body: req.body }, 'Failed to request templ rebind');
+        res.status(status).json({ error: err?.message || 'Failed to request templ rebind' });
       }
     }
   );

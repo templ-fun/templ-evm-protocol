@@ -2,11 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import { Wallet } from 'ethers';
-
-import { createMemoryDatabase } from '../src/memoryDb.js';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import os from 'node:os';
+import Database from 'better-sqlite3';
 
 import { createApp } from '../src/server.js';
-import { buildCreateTypedData, buildJoinTypedData } from '../../shared/signing.js';
+import { buildCreateTypedData, buildJoinTypedData, buildRebindTypedData } from '../../shared/signing.js';
 
 process.env.NODE_ENV = 'test';
 process.env.BACKEND_SERVER_ID = 'test-server';
@@ -14,7 +16,9 @@ process.env.APP_BASE_URL = 'http://localhost:5173';
 
 
 function makeApp({ hasPurchased = async () => true } = {}) {
-  const db = createMemoryDatabase();
+  const tmpDir = mkdtempSync(join(os.tmpdir(), 'templ-backend-'));
+  const dbPath = join(tmpDir, 'groups.db');
+  const db = new Database(dbPath);
   const notifications = [];
   const handlerRegistry = new Map();
   const notifier = {
@@ -71,7 +75,7 @@ function makeApp({ hasPurchased = async () => true } = {}) {
     };
   };
   const app = createApp({ hasPurchased, db, connectContract, telegram: { notifier } });
-  return { app, db, notifications, handlerRegistry };
+  return { app, db, tmpDir, notifications, handlerRegistry };
 }
 
 async function registerTempl(app, wallet, { telegramChatId = '12345', templHomeLink } = {}) {
@@ -112,10 +116,11 @@ async function joinTempl(app, contractAddress, wallet) {
 }
 
 test('register templ persists record and wires contract listeners', async (t) => {
-  const { app, db, notifications, handlerRegistry } = makeApp();
+  const { app, db, tmpDir, notifications, handlerRegistry } = makeApp();
   t.after(async () => {
     await app.close?.();
     db.close();
+    rmSync(tmpDir, { recursive: true, force: true });
   });
 
   const wallet = Wallet.createRandom();
@@ -156,10 +161,11 @@ test('register templ persists record and wires contract listeners', async (t) =>
 });
 
 test('join endpoint validates membership', async (t) => {
-  const { app, db } = makeApp({ hasPurchased: async () => true });
+  const { app, db, tmpDir } = makeApp({ hasPurchased: async () => true });
   t.after(async () => {
     await app.close?.();
     db.close();
+    rmSync(tmpDir, { recursive: true, force: true });
   });
 
   const templWallet = Wallet.createRandom();
@@ -175,10 +181,11 @@ test('join endpoint validates membership', async (t) => {
 });
 
 test('join endpoint rejects non-members', async (t) => {
-  const { app, db } = makeApp({ hasPurchased: async () => false });
+  const { app, db, tmpDir } = makeApp({ hasPurchased: async () => false });
   t.after(async () => {
     await app.close?.();
     db.close();
+    rmSync(tmpDir, { recursive: true, force: true });
   });
 
   const templWallet = Wallet.createRandom();
@@ -191,10 +198,11 @@ test('join endpoint rejects non-members', async (t) => {
 });
 
 test('list templs includes registered entries', async (t) => {
-  const { app, db } = makeApp({ hasPurchased: async () => true });
+  const { app, db, tmpDir } = makeApp({ hasPurchased: async () => true });
   t.after(async () => {
     await app.close?.();
     db.close();
+    rmSync(tmpDir, { recursive: true, force: true });
   });
 
   const templWallet = Wallet.createRandom();
@@ -211,10 +219,11 @@ test('list templs includes registered entries', async (t) => {
 });
 
 test('register templ without chat id issues binding code', async (t) => {
-  const { app, db } = makeApp();
+  const { app, db, tmpDir } = makeApp();
   t.after(async () => {
     await app.close?.();
     db.close();
+    rmSync(tmpDir, { recursive: true, force: true });
   });
 
   const wallet = Wallet.createRandom();
@@ -228,4 +237,77 @@ test('register templ without chat id issues binding code', async (t) => {
   const record = app.locals.templs.get(contractAddress);
   assert.equal(record.bindingCode, response.bindingCode);
   assert.equal(record.templHomeLink, 'https://initial.link');
+});
+
+test('priest can request telegram rebind with signature', async (t) => {
+  const { app, db, tmpDir } = makeApp();
+  t.after(async () => {
+    await app.close?.();
+    db.close();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  const wallet = Wallet.createRandom();
+  const { contractAddress } = await registerTempl(app, wallet, { telegramChatId: 'chat-old' });
+
+  const typed = buildRebindTypedData({ chainId: 1337, contractAddress });
+  const signature = await wallet.signTypedData(typed.domain, typed.types, typed.message);
+
+  const res = await request(app)
+    .post('/templs/rebind')
+    .send({
+      contractAddress,
+      priestAddress: wallet.address,
+      signature,
+      chainId: 1337,
+      nonce: typed.message.nonce,
+      issuedAt: typed.message.issuedAt,
+      expiry: typed.message.expiry
+    });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.contract, contractAddress);
+  assert.equal(res.body.telegramChatId, null);
+  assert.ok(res.body.bindingCode);
+
+  const record = app.locals.templs.get(contractAddress);
+  assert.equal(record?.bindingCode, res.body.bindingCode);
+  assert.equal(record?.telegramChatId, null);
+
+  const bindingRow = db.prepare('SELECT bindCode FROM pending_bindings WHERE contract = ?').get(contractAddress);
+  assert.equal(bindingRow?.bindCode, res.body.bindingCode);
+
+  const groupRow = db.prepare('SELECT groupId FROM groups WHERE contract = ?').get(contractAddress);
+  assert.equal(groupRow?.groupId, null);
+});
+
+test('rebind rejects signatures from non-priest wallet', async (t) => {
+  const { app, db, tmpDir } = makeApp();
+  t.after(async () => {
+    await app.close?.();
+    db.close();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  const priestWallet = Wallet.createRandom();
+  const { contractAddress } = await registerTempl(app, priestWallet, { telegramChatId: 'chat-old' });
+  const intruder = Wallet.createRandom();
+
+  const typed = buildRebindTypedData({ chainId: 1337, contractAddress });
+  const signature = await intruder.signTypedData(typed.domain, typed.types, typed.message);
+
+  const res = await request(app)
+    .post('/templs/rebind')
+    .send({
+      contractAddress,
+      priestAddress: priestWallet.address,
+      signature,
+      chainId: 1337,
+      nonce: typed.message.nonce,
+      issuedAt: typed.message.issuedAt,
+      expiry: typed.message.expiry
+    });
+
+  assert.equal(res.status, 403);
+  assert.match(res.body.error, /signature/i);
 });

@@ -37,6 +37,15 @@ const ACTION_CONFIG = {
       contract: contractAddress,
       server
     })
+  },
+  rebind: {
+    primaryType: 'Rebind',
+    types: { Rebind: BASE_FIELDS },
+    buildMessage: ({ contractAddress, server }) => ({
+      action: 'rebind',
+      contract: contractAddress,
+      server
+    })
   }
 };
 
@@ -92,6 +101,14 @@ export function buildCreateTypedData(options) {
 export function buildJoinTypedData(options) {
   const { contractAddress } = options;
   return buildTemplTypedData('join', { ...options, contractAddress });
+}
+
+/**
+ * Build EIP-712 typed data for requesting a Telegram rebind.
+ */
+export function buildRebindTypedData(options) {
+  const { contractAddress } = options;
+  return buildTemplTypedData('rebind', { ...options, contractAddress });
 }
 
 export { buildTemplTypedData };

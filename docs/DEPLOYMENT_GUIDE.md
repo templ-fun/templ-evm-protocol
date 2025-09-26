@@ -93,6 +93,8 @@ Every templ can expose notifications in a Telegram group. When you register a te
    The backend polls the bot API, detects the binding code, and links the templ to the chat automatically.
 3. The bot replies with “Telegram bridge active” to confirm it will relay events.
 
+When governance appoints a new priest or the community moves to another Telegram group, open the templ overview, click **Request binding code**, and approve the EIP-712 signature. The backend verifies the priest wallet against the contract before issuing a fresh code so only the current priest can rebind notifications.
+
 You can still provide a numeric chat id during registration if you have one; no binding code is generated in that case.
 
 ## 4. Run the frontend

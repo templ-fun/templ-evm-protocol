@@ -106,4 +106,106 @@ describe("Priest dictatorship governance toggle", function () {
     await expect(templ.connect(priest).setDictatorshipDAO(false)).to.not.be.reverted;
     expect(await templ.priestIsDictator()).to.equal(false);
   });
+
+  it("blocks new governance proposals while dictatorship is active", async function () {
+    await templ
+      .connect(member)
+      .createProposalSetDictatorship(true, VOTING_PERIOD, TITLE_ENABLE, DESC_DICTATORSHIP);
+    await advanceBeyondExecutionDelay();
+    await templ.executeProposal(0);
+
+    const revertWithDictatorship = async (fn) => {
+      await expect(fn).to.be.revertedWithCustomError(templ, "DictatorshipEnabled");
+    };
+
+    await revertWithDictatorship(
+      templ
+        .connect(member)
+        .createProposalUpdateConfig(0, 0, 0, 0, false, VOTING_PERIOD, "cfg", "dict")
+    );
+    await revertWithDictatorship(
+      templ
+        .connect(member)
+        .createProposalSetMaxMembers(0, VOTING_PERIOD, "max", "dict")
+    );
+    await revertWithDictatorship(
+      templ
+        .connect(member)
+        .createProposalSetHomeLink('https://templ', VOTING_PERIOD, "home", "dict")
+    );
+    await revertWithDictatorship(
+      templ
+        .connect(member)
+        .createProposalWithdrawTreasury(
+          ethers.ZeroAddress,
+          member.address,
+          0,
+          "test",
+          VOTING_PERIOD,
+          "withdraw",
+          "dict"
+        )
+    );
+    await revertWithDictatorship(
+      templ
+        .connect(member)
+        .createProposalDisbandTreasury(ethers.ZeroAddress, VOTING_PERIOD, "disband", "dict")
+    );
+    await revertWithDictatorship(
+      templ
+        .connect(member)
+        .createProposalChangePriest(priest.address, VOTING_PERIOD, "priest", "dict")
+    );
+  });
+
+  it("enforces the voting window for quorum-exempt priest proposals", async function () {
+    await mintToUsers(token, [priest], TOKEN_SUPPLY);
+    await purchaseAccess(templ, token, [priest]);
+
+    await templ
+      .connect(priest)
+      .createProposalDisbandTreasury(ethers.ZeroAddress, VOTING_PERIOD, "priest disband", "dict");
+
+    await expect(templ.executeProposal(0)).to.be.revertedWithCustomError(
+      templ,
+      "VotingNotEnded"
+    );
+
+    await ethers.provider.send("evm_increaseTime", [VOTING_PERIOD + 1]);
+    await ethers.provider.send("evm_mine", []);
+
+    const donation = ethers.parseUnits("1", 18);
+    await priest.sendTransaction({ to: await templ.getAddress(), value: donation });
+
+    await expect(templ.executeProposal(0)).to.not.be.reverted;
+  });
+
+  it("blocks voting and execution of existing proposals once dictatorship begins", async function () {
+    const homeLink = "https://templ.example";
+    const secondMember = accounts[3];
+
+    await mintToUsers(token, [secondMember], TOKEN_SUPPLY);
+    await purchaseAccess(templ, token, [secondMember]);
+
+    await templ
+      .connect(member)
+      .createProposalSetHomeLink(homeLink, VOTING_PERIOD, "Set home link", "Initial link");
+
+    await templ
+      .connect(secondMember)
+      .createProposalSetDictatorship(true, VOTING_PERIOD, TITLE_ENABLE, DESC_DICTATORSHIP);
+    await advanceBeyondExecutionDelay();
+    await templ.executeProposal(1);
+    expect(await templ.priestIsDictator()).to.equal(true);
+
+    await expect(templ.connect(member).vote(0, true)).to.be.revertedWithCustomError(
+      templ,
+      "DictatorshipEnabled"
+    );
+
+    await expect(templ.executeProposal(0)).to.be.revertedWithCustomError(
+      templ,
+      "DictatorshipEnabled"
+    );
+  });
 });

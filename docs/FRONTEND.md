@@ -68,6 +68,8 @@ The proposal form collects a title and description (persisted on-chain) and offe
 
 The rewards page (`/templs/:address/claim`) lets connected members see the current member pool balance and trigger `claimMemberPool()` directly.
 
+The templ overview shows the current Telegram chat id (if any) and lets the connected priest request a signed rebind code that immediately invalidates the previous binding.
+
 ## Testing
 
 - `npm --prefix frontend run test` – vitest + jsdom. Use `frontend/vitest.setup.js` to tweak global behavior.

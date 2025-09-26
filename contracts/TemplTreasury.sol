@@ -210,7 +210,6 @@ abstract contract TemplTreasury is TemplMembership {
         if (currentBalance <= reserved) revert TemplErrors.NoTreasuryFunds();
 
         uint256 amount = currentBalance - reserved;
-        if (amount == 0) revert TemplErrors.NoTreasuryFunds();
 
         _registerExternalToken(token);
 

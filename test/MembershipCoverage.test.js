@@ -66,6 +66,39 @@ async function findExternalRewardPoolSlot(templ, contractAddress, tokenAddress, 
 }
 
 describe("Membership coverage extras", function () {
+  it("reports zero available treasury when no funds are held", async function () {
+    const { templ } = await deployTempl({ entryFee: ENTRY_FEE });
+    const treasuryInfo = await templ.getTreasuryInfo();
+    expect(treasuryInfo.treasury).to.equal(0n);
+    expect(treasuryInfo.memberPool).to.equal(0n);
+  });
+
+  it("returns purchase metadata for members and non-members", async function () {
+    const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE });
+    const [, , member, outsider] = accounts;
+
+    await mintToUsers(token, [member], ENTRY_FEE * 2n);
+    await purchaseAccess(templ, token, [member]);
+
+    const joined = await templ.getPurchaseDetails(member.address);
+    expect(joined.purchased).to.equal(true);
+
+    const neverJoined = await templ.getPurchaseDetails(outsider.address);
+    expect(neverJoined.purchased).to.equal(false);
+  });
+
+  it("rejects external reward claims using the access token", async function () {
+    const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE });
+    const [, , member] = accounts;
+
+    await mintToUsers(token, [member], ENTRY_FEE * 2n);
+    await purchaseAccess(templ, token, [member]);
+
+    await expect(
+      templ.connect(member).claimExternalToken(await token.getAddress())
+    ).to.be.revertedWithCustomError(templ, "InvalidCallData");
+  });
+
   it("handles external reward lookups across all branches", async function () {
     const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE });
     const [, , memberA, memberB, donor, newcomer] = accounts;

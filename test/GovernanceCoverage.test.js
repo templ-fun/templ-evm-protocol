@@ -299,4 +299,25 @@ describe("Governance coverage gaps", function () {
     const paged = await templ.getActiveProposalsPaginated(0, 1);
     expect(paged.hasMore).to.equal(false);
   });
+
+  it("reverts voting when the proposal id does not exist", async function () {
+    const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE });
+    const [, , member] = accounts;
+
+    await mintToUsers(token, [member], ENTRY_FEE * 2n);
+    await purchaseAccess(templ, token, [member]);
+
+    await expect(templ.connect(member).vote(5, true)).to.be.revertedWithCustomError(
+      templ,
+      "InvalidProposal"
+    );
+  });
+
+  it("reverts proposal snapshot lookups for invalid ids", async function () {
+    const { templ } = await deployTempl({ entryFee: ENTRY_FEE });
+    await expect(templ.getProposalSnapshots(1)).to.be.revertedWithCustomError(
+      templ,
+      "InvalidProposal"
+    );
+  });
 });

@@ -48,6 +48,27 @@ describe("TEMPL - Proposal Pagination", function () {
       expect(hasMore).to.be.true;
     });
 
+    it("Marks hasMore when active proposals remain beyond the requested window", async function () {
+      const calldata = encodeSetPausedDAO(false);
+      await templ.connect(priest).createProposal("Window 0", "Win 0", calldata, 7 * 24 * 60 * 60);
+      await templ.connect(user1).createProposal("Window 1", "Win 1", calldata, 7 * 24 * 60 * 60);
+      await templ.connect(user2).createProposal("Window 2", "Win 2", calldata, 7 * 24 * 60 * 60);
+
+      const [firstTwo, hasMore] = await templ.getActiveProposalsPaginated(0, 2);
+      expect(firstTwo).to.deep.equal([0n, 1n]);
+      expect(hasMore).to.equal(true);
+    });
+
+    it("copies active proposal ids when the limit exceeds the active count", async function () {
+      const calldata = encodeSetPausedDAO(false);
+      await templ.connect(priest).createProposal("Alpha", "A", calldata, 7 * 24 * 60 * 60);
+      await templ.connect(user1).createProposal("Beta", "B", calldata, 7 * 24 * 60 * 60);
+
+      const [proposalIds, hasMore] = await templ.getActiveProposalsPaginated(0, 5);
+      expect(proposalIds).to.deep.equal([0n, 1n]);
+      expect(hasMore).to.be.false;
+    });
+
     it("Should handle pagination correctly", async function () {
       // Create 7 proposals - need to handle one active proposal per user limit
       const calldata = encodeSetPausedDAO(false);

@@ -9,12 +9,20 @@ describe("TemplFactory", function () {
         const Token = await ethers.getContractFactory("contracts/mocks/TestToken.sol:TestToken");
         const token = await Token.deploy(name, symbol, 18);
         await token.waitForDeployment();
-        return token;
-    }
+    return token;
+  }
 
-    it("deploys templ contracts with fixed protocol config", async function () {
-        const [, priest, protocolRecipient, member] = await ethers.getSigners();
-        const token = await deployToken();
+  it("reverts when protocol recipient is the zero address", async function () {
+    const Factory = await ethers.getContractFactory("TemplFactory");
+    await expect(Factory.deploy(ethers.ZeroAddress, 10)).to.be.revertedWithCustomError(
+      Factory,
+      "InvalidRecipient"
+    );
+  });
+
+  it("deploys templ contracts with fixed protocol config", async function () {
+    const [, priest, protocolRecipient, member] = await ethers.getSigners();
+    const token = await deployToken();
 
         const Factory = await ethers.getContractFactory("TemplFactory");
         const protocolPercent = 12;

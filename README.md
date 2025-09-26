@@ -39,7 +39,7 @@ Reference diagrams live in [`docs/CORE_FLOW_DOCS.MD`](docs/CORE_FLOW_DOCS.MD).
 - `/templs/:address/proposals/:id/vote` – cast a YES/NO vote.
 - `/templs/:address/claim` – view the member pool balance and claim rewards.
 
-Telegram notifications are optional but encouraged. When a templ is registered, the backend issues a one-time binding code. Invite `@templfunbot` to your group and post the code (e.g. `templ abcd1234`)—the bot confirms the chat and begins posting HTML-formatted messages with deep links back to the frontend (join screen, proposal details, claim page, etc.). Alerts cover new members (with live treasury/member-pool totals), proposal creation, quorum, voting closure, priest changes, and a daily "gm" digest. No Telegram secrets are stored on-chain; linking happens entirely through the bot token and binding handshake.
+Telegram notifications are optional but encouraged. When a templ is registered, the backend issues a one-time binding code. Invite `@templfunbot` to your group and post the code (e.g. `templ abcd1234`)—the bot confirms the chat and begins posting HTML-formatted messages with deep links back to the frontend (join screen, proposal details, claim page, etc.). Priests can later rotate the chat from the templ overview: request a replacement code, sign the EIP-712 proof, and share the snippet in the new group. Alerts cover new members (with live treasury/member-pool totals), proposal creation, quorum, voting closure, priest changes, and a daily "gm" digest. No Telegram secrets are stored on-chain; linking happens entirely through the bot token, binding handshake, and signed priest rebind requests.
 
 ## Quick start
 
@@ -85,7 +85,7 @@ In separate terminals you’ll typically run:
 | `REQUIRE_CONTRACT_VERIFY` | Set to `1` in production to enforce on-chain contract + priest validation. |
 | `CLEAR_DB` | When `1`, deletes the SQLite DB before boot (handy for tests). |
 | `DB_PATH` | Override file path for the groups SQLite DB (`backend/groups.db` by default). |
-| `BACKEND_USE_MEMORY_DB` | Set to `1` to run against the in-memory DB (no native bindings required). |
+| `BACKEND_USE_MEMORY_DB` | Test-only flag. Set to `1` for quick checks; production must use the SQLite database. |
 
 The backend stores templ registrations in SQLite (`groups`, `signatures`). Telegram chat ids reuse the old `groupId` column for persistence to avoid extra migrations.
 
@@ -111,7 +111,7 @@ The frontend connects to the user’s browser wallet (MetaMask or any `window.et
    ```
    The backend polls the bot API, detects the code, and acknowledges the binding in the same chat. Once confirmed, all templ events (joins, proposals, quorum, vote closure, priest changes, daily digests, home-link updates) stream into the channel with deep links back to the frontend.
 
-Leaving the chat id empty is perfectly fine — the templ remains usable, and you can complete the binding at any time by inviting the bot and re-posting the snippet from `/templs/create` or the templ overview page.
+Leaving the chat id empty is perfectly fine — the templ remains usable, and you can complete the binding later from the templ overview page. When governance appoints a new priest or the community moves chats, request a new binding code from the overview, sign the EIP-712 rebind payload, and post the snippet in the destination group to re-link the bot.
 
 ## Repository layout
 

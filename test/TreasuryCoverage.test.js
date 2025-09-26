@@ -28,6 +28,22 @@ describe("Treasury coverage extras", function () {
     );
   });
 
+  it("restricts DAO-only treasury functions to contract calls", async function () {
+    const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE });
+    const [, , member] = accounts;
+
+    await mintToUsers(token, [member], ENTRY_FEE * 2n);
+    await purchaseAccess(templ, token, [member]);
+
+    await expect(
+      templ.connect(member).setMaxMembersDAO(10)
+    ).to.be.revertedWithCustomError(templ, "NotDAO");
+
+    await expect(
+      templ.connect(member).setTemplHomeLinkDAO("https://templ.fun/new-home")
+    ).to.be.revertedWithCustomError(templ, "NotDAO");
+  });
+
   it("rejects ETH withdrawals when the recipient reverts", async function () {
     const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE });
     const [, priest, member, voter] = accounts;

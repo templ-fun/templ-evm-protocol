@@ -67,6 +67,11 @@ contract DaoCallerHarness is TEMPL {
         this.setMaxMembersDAO(newMax);
     }
 
+    /// @notice Wrapper to call setTemplHomeLinkDAO via contract self-call
+    function daoSetHomeLink(string calldata newLink) external {
+        this.setTemplHomeLinkDAO(newLink);
+    }
+
     /// @dev Test helper to set action to an undefined value (testing only)
     function setUndefinedAction(uint256 proposalId) external {
         proposals[proposalId].action = Action.Undefined;

@@ -255,6 +255,11 @@ export default function App() {
           templAddress={address}
           templRecord={templRecord}
           onNavigate={navigate}
+          signer={signer}
+          walletAddress={walletAddress}
+          onConnectWallet={connectWallet}
+          pushMessage={pushMessage}
+          refreshTempls={refreshTempls}
         />
       );
     }

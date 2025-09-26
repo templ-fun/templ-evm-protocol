@@ -2,7 +2,7 @@
 
 Use this doc to configure and operate the Node 22 / Express backend that handles the “web2” side of templ:
 
-* verifies EIP-712 signatures for templ creation and membership checks,
+* verifies EIP-712 signatures for templ creation, rebind requests, and membership checks,
 * persists templ metadata needed for Telegram delivery (contract address, priest address, optional Telegram chat id, latest home link),
 * confirms membership by asking the contract’s `hasAccess` function (no local member lists are stored), and
 * streams contract events into Telegram groups when configured.
@@ -34,7 +34,7 @@ Running the server requires a JSON-RPC endpoint and aligned frontend/server IDs.
 | `REDIS_URL` | Redis endpoint used for rate limiting when `RATE_LIMIT_STORE=redis`. | unset |
 | `DB_PATH` | SQLite path for persisted templ records. | `backend/groups.db` |
 | `CLEAR_DB` | When `1`, delete the SQLite database on boot (useful for tests). | `0` |
-| `BACKEND_USE_MEMORY_DB` | When `1`, skip the native `better-sqlite3` binding and use an in-memory JS database (handy for tests/e2e). | `0` |
+| `BACKEND_USE_MEMORY_DB` | When `1`, skip the native `better-sqlite3` binding and use an in-memory JS database (handy for lightweight tests only). | `0` |
 
 ### Data model
 
@@ -86,6 +86,24 @@ Registers a templ. Requires an EIP-712 typed signature from the priest (`buildCr
 When `REQUIRE_CONTRACT_VERIFY=1`, the server confirms that the address hosts bytecode and that `priest()` matches the signed address before persisting anything.
 If `telegramChatId` is omitted the response also contains a `bindingCode`. Invite `@templfunbot` to your group and post `templ <bindingCode>` once—the backend polls Telegram until it observes the code and then stores the resolved chat id.
 
+### `POST /templs/rebind`
+
+Issues a fresh binding code so a templ can re-link to a new Telegram chat. Requires the current priest to sign the `buildRebindTypedData` payload; in production the backend also verifies the on-chain priest address before updating persistence.
+
+```json
+{
+  "contractAddress": "0xabc…",
+  "priestAddress": "0xdef…",
+  "chainId": 8453,
+  "signature": "0x…",
+  "nonce": 1700000001000,
+  "issuedAt": 1700000001000,
+  "expiry": 1700000031000
+}
+```
+
+The response includes the new `bindingCode`; once the bot sees that code inside a Telegram group it stores the new chat id and clears the pending binding. Existing bindings are revoked immediately so only one group is active at a time.
+
 ### `POST /join`
 
 Verifies a member has purchased access and returns templ metadata plus convenience links.
@@ -135,7 +153,7 @@ The server uses `ethers.Contract` to subscribe to templ events. Watchers are reg
 `npm --prefix backend test` runs Node’s built-in test runner:
 
 - Shared `shared/signing.test.js` covers typed-data builders.
-- `backend/test/app.test.js` spins up the app with an in-memory DB, stubs a Telegram notifier, and checks templ registration + membership flows.
+- `backend/test/app.test.js` spins up the app against a temporary SQLite database, stubs a Telegram notifier, and checks templ registration, priest rebind flows, and membership checks.
 
 Coverage uses `c8`; run `npm --prefix backend run coverage` for LCOV reports.
 

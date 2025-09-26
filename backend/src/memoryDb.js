@@ -89,6 +89,16 @@ export function createMemoryDatabase() {
         });
       }
 
+      if (sql.startsWith('SELECT bindCode FROM pending_bindings WHERE contract = ?')) {
+        return new MemoryStatement({
+          get: (contract) => {
+            const key = String(contract).toLowerCase();
+            const row = pendingBindings.get(key);
+            return row ? { bindCode: row.bindCode } : undefined;
+          }
+        });
+      }
+
       if (sql.startsWith('SELECT contract, groupId, priest, homeLink FROM groups ORDER BY contract')) {
         return new MemoryStatement({
           all: () => Array.from(groups.values())
@@ -102,6 +112,23 @@ export function createMemoryDatabase() {
         });
       }
 
+      if (sql.startsWith('SELECT contract, groupId, priest, homeLink FROM groups WHERE contract = ?')) {
+        return new MemoryStatement({
+          get: (contract) => {
+            const key = String(contract).toLowerCase();
+            const row = groups.get(key);
+            return row
+              ? {
+                  contract: row.contract,
+                  groupId: row.groupId,
+                  priest: row.priest,
+                  homeLink: row.homeLink
+                }
+              : undefined;
+          }
+        });
+      }
+
       if (sql.startsWith('SELECT contract, groupId, priest, homeLink FROM groups')) {
         return new MemoryStatement({
           all: () => Array.from(groups.values()).map((row) => ({
@@ -110,6 +137,16 @@ export function createMemoryDatabase() {
             priest: row.priest,
             homeLink: row.homeLink
           }))
+        });
+      }
+
+      if (sql.startsWith('SELECT groupId FROM groups WHERE contract = ?')) {
+        return new MemoryStatement({
+          get: (contract) => {
+            const key = String(contract).toLowerCase();
+            const row = groups.get(key);
+            return row ? { groupId: row.groupId } : undefined;
+          }
         });
       }
 
