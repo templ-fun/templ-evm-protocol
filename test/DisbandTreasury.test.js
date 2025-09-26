@@ -128,6 +128,93 @@ describe("Disband Treasury", function () {
       .to.be.revertedWithCustomError(templ, "NoTreasuryFunds");
   });
 
+  it("prevents new joins once a disband proposal reaches quorum", async function () {
+    const accessToken = await templ.accessToken();
+    const extraMember = accounts[5];
+    const lateJoiner = accounts[6];
+    const templAddress = await templ.getAddress();
+
+    await mintToUsers(token, [extraMember, lateJoiner], TOKEN_SUPPLY);
+
+    await token.connect(extraMember).approve(templAddress, ENTRY_FEE);
+    await templ.connect(extraMember).purchaseAccess();
+
+    await templ
+      .connect(m1)
+      .createProposalDisbandTreasury(accessToken, VOTING_PERIOD);
+    await templ.connect(m2).vote(0, true);
+
+    expect(await templ.activeDisbandJoinLocks()).to.equal(1n);
+
+    await token.connect(lateJoiner).approve(templAddress, ENTRY_FEE);
+    await expect(templ.connect(lateJoiner).purchaseAccess())
+      .to.be.revertedWithCustomError(templ, "DisbandLockActive");
+  });
+
+  it("reopens membership after executing a disband proposal", async function () {
+    const accessToken = await templ.accessToken();
+    const extraMember = accounts[5];
+    const lateJoiner = accounts[6];
+    const templAddress = await templ.getAddress();
+
+    await mintToUsers(token, [extraMember, lateJoiner], TOKEN_SUPPLY);
+
+    await token.connect(extraMember).approve(templAddress, ENTRY_FEE);
+    await templ.connect(extraMember).purchaseAccess();
+
+    await templ
+      .connect(m1)
+      .createProposalDisbandTreasury(accessToken, VOTING_PERIOD);
+    await templ.connect(m2).vote(0, true);
+
+    await token.connect(lateJoiner).approve(templAddress, ENTRY_FEE);
+    await expect(templ.connect(lateJoiner).purchaseAccess())
+      .to.be.revertedWithCustomError(templ, "DisbandLockActive");
+
+    await advanceTimeBeyondVoting();
+    await templ.executeProposal(0);
+
+    expect(await templ.activeDisbandJoinLocks()).to.equal(0n);
+
+    await templ.connect(lateJoiner).purchaseAccess();
+    expect(await templ.hasAccess(lateJoiner.address)).to.equal(true);
+  });
+
+  it("unlocks membership after a disband proposal fails", async function () {
+    const accessToken = await templ.accessToken();
+    const extraMember = accounts[5];
+    const lateJoiner = accounts[6];
+    const templAddress = await templ.getAddress();
+
+    await mintToUsers(token, [extraMember, lateJoiner], TOKEN_SUPPLY);
+
+    await token.connect(extraMember).approve(templAddress, ENTRY_FEE);
+    await templ.connect(extraMember).purchaseAccess();
+
+    await templ
+      .connect(m1)
+      .createProposalDisbandTreasury(accessToken, VOTING_PERIOD);
+    await templ.connect(m2).vote(0, true);
+
+    await token.connect(lateJoiner).approve(templAddress, ENTRY_FEE);
+    await expect(templ.connect(lateJoiner).purchaseAccess())
+      .to.be.revertedWithCustomError(templ, "DisbandLockActive");
+
+    await templ.connect(m3).vote(0, false);
+    await templ.connect(extraMember).vote(0, false);
+
+    await advanceTimeBeyondVoting();
+    await expect(templ.executeProposal(0))
+      .to.be.revertedWithCustomError(templ, "ProposalNotPassed");
+
+    await templ.pruneInactiveProposals(1);
+
+    expect(await templ.activeDisbandJoinLocks()).to.equal(0n);
+
+    await templ.connect(lateJoiner).purchaseAccess();
+    expect(await templ.hasAccess(lateJoiner.address)).to.equal(true);
+  });
+
   it("returns zero external rewards for non-members and unknown tokens", async function () {
     const unknownToken = accounts[6].address;
 
