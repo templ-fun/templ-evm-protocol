@@ -110,17 +110,15 @@ describe("TEMPL - Proposal Pagination", function () {
       expect(hasMoreAll).to.be.false;
       
       // Test pagination with offset
-      const [page1, hasMore1] = await templ.getActiveProposalsPaginated(5, 2);
-      expect(page1).to.have.lengthOf(2);
-      expect(page1[0]).to.equal(5);
-      expect(page1[1]).to.equal(6);
-      expect(hasMore1).to.be.false;
-      
-      // Test pagination with limit 1
-      const [firstOne, hasMoreFirst] = await templ.getActiveProposalsPaginated(5, 1);
-      expect(firstOne).to.have.lengthOf(1);
-      expect(firstOne[0]).to.equal(5);
+      const [firstPage, hasMoreFirst] = await templ.getActiveProposalsPaginated(0, 1);
+      expect(firstPage).to.have.lengthOf(1);
+      expect(firstPage[0]).to.equal(5);
       expect(hasMoreFirst).to.be.true;
+
+      const [secondPage, hasMoreSecond] = await templ.getActiveProposalsPaginated(1, 1);
+      expect(secondPage).to.have.lengthOf(1);
+      expect(secondPage[0]).to.equal(6);
+      expect(hasMoreSecond).to.be.false;
     });
 
     it("Should filter out executed proposals", async function () {

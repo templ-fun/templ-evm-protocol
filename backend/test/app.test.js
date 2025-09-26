@@ -236,13 +236,37 @@ test('list templs includes registered entries', async (t) => {
   const { contractAddress } = await registerTempl(app, templWallet, { telegramChatId: 'chat-42' }, { contractState });
 
   const res = await request(app).get('/templs?include=chatId');
+  assert.equal(res.status, 403);
+  assert.match(res.body.error, /chat id/i);
+  const safeRes = await request(app).get('/templs');
+  assert.equal(safeRes.status, 200);
+  assert.ok(Array.isArray(safeRes.body.templs));
+  const match = safeRes.body.templs.find((row) => row.contract === contractAddress);
+  assert.ok(match, 'templ present in listing');
+  assert.equal(match.telegramChatId, undefined);
+  assert.equal(match.groupId, undefined);
+  assert.equal(match.templHomeLink, undefined);
+});
+
+test('templs listing exposes home links but never chat ids', async (t) => {
+  const { app, db, tmpDir, contractState } = makeApp({ hasPurchased: async () => true });
+  t.after(async () => {
+    await app.close?.();
+    db.close();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  const templWallet = Wallet.createRandom();
+  const { contractAddress } = await registerTempl(app, templWallet, { telegramChatId: 'chat-77', templHomeLink: 'https://templ.fun/demo' }, { contractState });
+
+  const res = await request(app).get('/templs?include=homeLink');
   assert.equal(res.status, 200);
   assert.ok(Array.isArray(res.body.templs));
   const match = res.body.templs.find((row) => row.contract === contractAddress);
   assert.ok(match, 'templ present in listing');
-  assert.equal(match.telegramChatId, 'chat-42');
-  assert.equal(match.groupId, 'chat-42');
-  assert.equal(match.templHomeLink, '');
+  assert.equal(match.templHomeLink, 'https://templ.fun/demo');
+  assert.equal(match.telegramChatId, undefined);
+  assert.equal(match.groupId, undefined);
 });
 
 test('register templ without chat id issues binding code', async (t) => {
@@ -268,6 +292,66 @@ test('register templ without chat id issues binding code', async (t) => {
   const mappingRow = db.prepare('SELECT telegramChatId FROM templ_bindings WHERE contract = ?').get(contractAddress);
   assert.ok(mappingRow, 'templ persisted without chat');
   assert.equal(mappingRow.telegramChatId, null);
+});
+
+test('signature replay rejected after restart with shared store', async (t) => {
+  let { app, db, tmpDir, contractState } = makeApp();
+  let appReload = null;
+  const wallet = Wallet.createRandom();
+  const hasPurchased = async () => true;
+  t.after(async () => {
+    await app?.close?.();
+    await appReload?.close?.();
+    db?.close?.();
+    if (tmpDir) {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  const dbPath = join(tmpDir, 'groups.db');
+  const issuedAt = Date.now();
+  const chainId = 1337;
+  const typed = buildCreateTypedData({
+    chainId,
+    contractAddress: wallet.address.toLowerCase(),
+    nonce: 1n,
+    issuedAt,
+    expiry: issuedAt + 60_000
+  });
+  const signature = await wallet.signTypedData(typed.domain, typed.types, typed.message);
+
+  const registerRes = await request(app)
+    .post('/templs')
+    .send({
+      contractAddress: wallet.address,
+      priestAddress: wallet.address,
+      chainId,
+      nonce: typed.message.nonce,
+      issuedAt: typed.message.issuedAt,
+      expiry: typed.message.expiry,
+      signature
+    });
+  assert.equal(registerRes.status, 200);
+
+  await app.close?.();
+  app = null;
+  db.close();
+
+  const dbReload = new Database(dbPath);
+  appReload = createApp({ hasPurchased, db: dbReload, connectContract: createTestConnectContract(new Map(), contractState) });
+
+  const replayRes = await request(appReload)
+    .post('/templs')
+    .send({
+      contractAddress: wallet.address,
+      priestAddress: wallet.address,
+      nonce: typed.message.nonce,
+      issuedAt: typed.message.issuedAt,
+      expiry: typed.message.expiry,
+      signature
+    });
+  assert.equal(replayRes.status, 409);
+  assert.match(replayRes.body.error, /signature/i);
 });
 
 test('templ without chat binding survives restart', async (t) => {
@@ -313,11 +397,11 @@ test('templ without chat binding survives restart', async (t) => {
   assert.ok(restored, 'templ restored into memory');
   assert.equal(restored.telegramChatId, null);
 
-  const listRes = await request(appReload).get('/templs?include=chatId');
+  const listRes = await request(appReload).get('/templs');
   assert.equal(listRes.status, 200);
   const listed = listRes.body.templs.find((row) => row.contract === contractAddress);
   assert.ok(listed, 'templ listed after restart');
-  assert.equal(listed.telegramChatId, null);
+  assert.equal(listed.telegramChatId, undefined);
   assert.equal(listed.priest, wallet.address.toLowerCase());
 
   const memberWallet = Wallet.createRandom();

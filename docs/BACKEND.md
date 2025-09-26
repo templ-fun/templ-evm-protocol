@@ -49,7 +49,7 @@ Signature replay protection now lives in-memory with a 6 hour retention window; 
 
 ### `GET /templs`
 
-Returns the list of registered templs. Append `?include=chatId` (or `?include=groupId`) to surface the stored Telegram chat id.
+Returns the list of registered templs. Chat identifiers are never exposed; requests with `?include=chatId`/`groupId` now return `403` to deter scraping.
 
 ```json
 {

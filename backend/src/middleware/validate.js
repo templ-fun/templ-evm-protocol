@@ -39,18 +39,16 @@ export function createSignatureStore({ retentionMs = SIGNATURE_RETENTION_MS } = 
   };
 }
 
-const defaultSignatureStore = createSignatureStore();
-
 /**
  * Verify an EIP-712 typed signature and prevent replay using the provided signature store.
  * @param {object} opts
- * @param {ReturnType<typeof createSignatureStore>} [opts.signatureStore]
+ * @param {{ consume: (signature: string, timestamp?: number) => boolean }} [opts.signatureStore]
  * @param {string} opts.addressField
  * @param {(req: import('express').Request) => { domain:any, types:any, primaryType:string, message:any }} opts.buildTyped
  * @param {string} [opts.errorMessage]
  * @returns {import('express').RequestHandler}
  */
-export function verifyTypedSignature({ signatureStore = defaultSignatureStore, addressField, buildTyped, errorMessage = 'Bad signature' }) {
+export function verifyTypedSignature({ signatureStore = createSignatureStore(), addressField, buildTyped, errorMessage = 'Bad signature' }) {
   if (!signatureStore || typeof signatureStore.consume !== 'function') {
     throw new Error('verifyTypedSignature requires a signatureStore with a consume() method');
   }
@@ -84,6 +82,46 @@ export function verifyTypedSignature({ signatureStore = defaultSignatureStore, a
     } catch {
       return res.status(403).json({ error: errorMessage });
     }
+  };
+}
+
+/**
+ * Persist signatures in a SQLite database so processes share replay protection.
+ * @param {object} opts
+ * @param {import('better-sqlite3').Database} opts.database
+ * @param {number} [opts.retentionMs]
+ */
+export function createSqliteSignatureStore({ database, retentionMs = SIGNATURE_RETENTION_MS }) {
+  if (!database?.prepare) {
+    throw new Error('createSqliteSignatureStore requires a SQLite database');
+  }
+
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS used_signatures (
+      signature TEXT PRIMARY KEY,
+      expiresAt INTEGER NOT NULL
+    )
+  `);
+
+  const insert = database.prepare(
+    'INSERT INTO used_signatures (signature, expiresAt) VALUES (?, ?) ON CONFLICT(signature) DO NOTHING'
+  );
+  const pruneStmt = database.prepare('DELETE FROM used_signatures WHERE expiresAt <= ?');
+  function prune(now = Date.now()) {
+    pruneStmt.run(now);
+  }
+
+  return {
+    consume(signature, timestamp = Date.now()) {
+      prune(timestamp);
+      const expiry = timestamp + retentionMs;
+      const info = insert.run(signature, expiry);
+      if (info.changes === 0) {
+        return false;
+      }
+      return true;
+    },
+    prune
   };
 }
 
