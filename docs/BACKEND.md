@@ -41,6 +41,8 @@ The backend persists only the Telegram binding in SQLite:
 
 - `templ_bindings(contract TEXT PRIMARY KEY, telegramChatId TEXT UNIQUE)` – stores a durable mapping so the notifier can recover which chats belong to which templ contracts across restarts while retaining templs without Telegram bindings (rows keep `telegramChatId` as `NULL` until the binding completes).
 
+Priest addresses and templ home links are always recovered from the contract when watchers attach after boot, so the chain remains the canonical source of truth for administrative metadata.
+
 Signature replay protection now lives in-memory with a 6 hour retention window; bindings, proposal metadata, and home links are derived from on-chain reads and cached only for the lifetime of the process.
 
 ## Routes
