@@ -144,6 +144,7 @@ The server uses `ethers.Contract` to subscribe to templ events. Watchers are reg
 - Quorum checks run after every proposal creation and vote to emit a one-time "quorum reached" message once the threshold is crossed.
 - Background jobs monitor proposal deadlines, fire daily treasury/member-pool digests, and poll Telegram for binding codes until each templ is linked to a chat.
 - Priest and home-link updates are cached in memory; the contract remains the source of truth and watchers refresh them after restarts.
+- Event cursors are not persisted. On restart the backend rehydrates watcher subscriptions from the stored templ bindings, letting `ethers.Contract` pick up new on-chain events while skipping anything that fired while the server was offline.
 
 ## Testing
 
