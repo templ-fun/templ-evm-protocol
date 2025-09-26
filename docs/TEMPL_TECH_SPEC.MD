@@ -6,7 +6,8 @@ Use this spec to connect the canonical architecture: paid memberships, enforced 
 
 - `TemplFactory` deploys templ instances with configurable fee splits and protocol tithes.
 - `TEMPL` instances manage:
-  - entry fees (`purchaseAccess`) with fixed protocol tithe and configurable burn/treasury/member slices,
+- entry fees (`purchaseAccess`) with fixed protocol tithe and configurable burn/treasury/member slices,
+- auto-enrolment of the deploying priest as member zero so the first paid tribute accrues to them, plus a zero-member fallback that folds the pioneer pool slice into the treasury (letting the pioneer reclaim their fee minus burn/protocol when the second wallet joins),
   - optional member caps (`MAX_MEMBERS`) that auto-pause joins when the cap is reached,
   - an on-chain `templHomeLink` string surfaced across UI, backend, and Telegram,
   - one member = one vote proposals covering pause/unpause, priest changes, fee config updates, treasury withdrawals/disbands, membership caps, dictatorship toggles, and home-link changes.

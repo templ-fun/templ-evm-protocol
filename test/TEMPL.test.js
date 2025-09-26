@@ -246,9 +246,9 @@ describe("TEMPL Contract with DAO Governance", function () {
 
         it("Should mark user as having purchased", async function () {
             await purchaseAccess(templ, token, [user1]);
-            
+
             expect(await templ.hasAccess(user1.address)).to.be.true;
-            expect(await templ.getMemberCount()).to.equal(1);
+            expect(await templ.getMemberCount()).to.equal(2);
         });
 
         it("Should prevent double purchase", async function () {
@@ -510,6 +510,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             await templ.connect(user1).vote(0, false);
             await templ.connect(user2).vote(0, false);
             await templ.connect(user3).vote(0, true);
+            await templ.connect(priest).vote(0, true);
 
             // Fast forward
             await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
@@ -891,9 +892,10 @@ describe("TEMPL Contract with DAO Governance", function () {
             // Second member joins
             await purchaseAccess(templ, token, [user2]);
 
-            // First member should now have claimable rewards (30% of entry fee)
+            // First member should now have claimable rewards (split with the priest)
             const thirtyPercent = (ENTRY_FEE * 30n) / 100n;
-            expect(await templ.getClaimablePoolAmount(user1.address)).to.equal(thirtyPercent);
+            const secondJoinShare = thirtyPercent / 2n;
+            expect(await templ.getClaimablePoolAmount(user1.address)).to.equal(secondJoinShare);
 
             // Second member has no claimable yet
             expect(await templ.getClaimablePoolAmount(user2.address)).to.equal(0);
@@ -901,10 +903,12 @@ describe("TEMPL Contract with DAO Governance", function () {
             // Third member joins
             await purchaseAccess(templ, token, [user3]);
 
-            // Both user1 and user2 should get half of the new member's pool contribution
-            const halfShare = thirtyPercent / 2n;
-            expect(await templ.getClaimablePoolAmount(user1.address)).to.equal(thirtyPercent + halfShare);
-            expect(await templ.getClaimablePoolAmount(user2.address)).to.equal(halfShare);
+            // Priest, user1, and user2 share the contribution evenly
+            const thirdJoinShare = thirtyPercent / 3n;
+            expect(await templ.getClaimablePoolAmount(user1.address)).to.equal(
+                secondJoinShare + thirdJoinShare
+            );
+            expect(await templ.getClaimablePoolAmount(user2.address)).to.equal(thirdJoinShare);
         });
 
         it("Should allow members to claim their pool rewards", async function () {
@@ -946,8 +950,8 @@ describe("TEMPL Contract with DAO Governance", function () {
 
             // User1 should only be able to claim new rewards
             const thirtyPercent = (ENTRY_FEE * 30n) / 100n;
-            const expectedNew = thirtyPercent / 2n; // Split between 2 existing members
-            
+            const expectedNew = thirtyPercent / 3n; // Split between priest and 2 existing members
+
             expect(await templ.getClaimablePoolAmount(user1.address)).to.equal(expectedNew);
         });
     });
@@ -1068,18 +1072,20 @@ describe("TEMPL Contract with DAO Governance", function () {
 
     describe("Gas Optimization Tests", function () {
         it("Should handle large member counts efficiently", async function () {
-            // Add 10 members
-            for (let i = 0; i < 10; i++) {
-                const signer = (await ethers.getSigners())[i + 1];
-                await token.mint(signer.address, TOKEN_SUPPLY);
+            const signers = await ethers.getSigners();
+            const joiners = signers.slice(2, 12);
+
+            await mintToUsers(token, joiners, TOKEN_SUPPLY);
+
+            for (const signer of joiners) {
                 await token.connect(signer).approve(await templ.getAddress(), ENTRY_FEE);
                 await templ.connect(signer).purchaseAccess();
             }
 
-            expect(await templ.getMemberCount()).to.equal(10);
-            
-            // Check that first member can still claim efficiently
-            const claimable = await templ.getClaimablePoolAmount((await ethers.getSigners())[1].address);
+            expect(await templ.getMemberCount()).to.equal(1n + BigInt(joiners.length));
+
+            // Check that the first paying member can still claim efficiently
+            const claimable = await templ.getClaimablePoolAmount(joiners[0].address);
             expect(claimable).to.be.gt(0);
         });
     });
@@ -1088,11 +1094,11 @@ describe("TEMPL Contract with DAO Governance", function () {
         it("Should handle complete user journey", async function () {
             // User 1 joins
             await purchaseAccess(templ, token, [user1]);
-            expect(await templ.getMemberCount()).to.equal(1);
+            expect(await templ.getMemberCount()).to.equal(2);
 
             // User 2 joins
             await purchaseAccess(templ, token, [user2]);
-            expect(await templ.getMemberCount()).to.equal(2);
+            expect(await templ.getMemberCount()).to.equal(3);
 
             // User 1 claims rewards
             const claimable = await templ.getClaimablePoolAmount(user1.address);

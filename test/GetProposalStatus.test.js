@@ -11,9 +11,6 @@ describe("getProposal passed status coverage", function () {
     const { templ, token, priest } = await deployTempl({ entryFee: ENTRY_FEE });
     const accessToken = await templ.accessToken();
 
-    await mintToUsers(token, [priest], ENTRY_FEE * 2n);
-    await purchaseAccess(templ, token, [priest]);
-
     await templ
       .connect(priest)
       .createProposalDisbandTreasury(accessToken, VOTING_PERIOD);

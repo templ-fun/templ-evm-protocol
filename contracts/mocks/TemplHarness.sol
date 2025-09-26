@@ -40,6 +40,11 @@ contract TemplHarness is TEMPL {
         )
     {}
 
+    /// @dev Clears the member list for zero-member coverage scenarios.
+    function harnessClearMemberList() external {
+        delete memberList;
+    }
+
     /// @dev Sets member metadata for harness checks.
     function harnessSetMember(
         address member,
