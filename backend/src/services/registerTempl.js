@@ -44,7 +44,8 @@ export async function registerTempl(body, context) {
     await ensurePriestMatchesOnChain({ provider, contractAddress: contract, priestAddress: priest });
   }
 
-  const existing = templs.get(contract) || {
+  const existing = templs.get(contract) || null;
+  const next = existing ? { ...existing } : {
     telegramChatId: null,
     priest,
     proposalsMeta: new Map(),
@@ -52,38 +53,59 @@ export async function registerTempl(body, context) {
     templHomeLink: '',
     bindingCode: null
   };
-  if (!existing.proposalsMeta) existing.proposalsMeta = new Map();
-  if (typeof existing.lastDigestAt !== 'number') existing.lastDigestAt = Date.now();
-  existing.priest = priest;
-  existing.telegramChatId = telegramChatId ?? existing.telegramChatId ?? null;
-  existing.contractAddress = contract;
-  if (requestedHomeLink && requestedHomeLink !== existing.templHomeLink) {
-    existing.templHomeLink = requestedHomeLink;
+
+  next.proposalsMeta = existing?.proposalsMeta instanceof Map ? existing.proposalsMeta : (next.proposalsMeta || new Map());
+  next.lastDigestAt = typeof existing?.lastDigestAt === 'number' ? existing.lastDigestAt : (typeof next.lastDigestAt === 'number' ? next.lastDigestAt : Date.now());
+  next.priest = priest;
+  next.telegramChatId = telegramChatId ?? (existing?.telegramChatId ?? next.telegramChatId ?? null);
+  next.contractAddress = contract;
+  if (requestedHomeLink && requestedHomeLink !== (existing?.templHomeLink ?? next.templHomeLink ?? '')) {
+    next.templHomeLink = requestedHomeLink;
+  } else if (typeof next.templHomeLink !== 'string') {
+    next.templHomeLink = existing?.templHomeLink ?? '';
+  } else if (!next.templHomeLink) {
+    next.templHomeLink = existing?.templHomeLink ?? '';
   }
 
-  let bindingCode = existing.bindingCode || null;
-  if (!existing.telegramChatId) {
+  let bindingCode = existing?.bindingCode ?? next.bindingCode ?? null;
+  if (!next.telegramChatId) {
     if (!bindingCode) {
       bindingCode = randomBytes(16).toString('hex');
     }
-    existing.bindingCode = bindingCode;
-    // Binding codes now live purely in-memory; nothing to persist beyond the runtime map entry.
   } else {
-    existing.bindingCode = null;
+    bindingCode = null;
+  }
+  next.bindingCode = bindingCode;
+
+  if (typeof persist === 'function') {
+    try {
+      persist(contract, next);
+    } catch (err) {
+      const message = String(err?.message || '');
+      if (err?.code === 'SQLITE_CONSTRAINT' || /UNIQUE constraint failed/i.test(message)) {
+        throw templError('Telegram chat already linked', 409);
+      }
+      throw err;
+    }
   }
 
-  templs.set(contract, existing);
-  persist(contract, existing);
+  let stored = next;
+  if (existing) {
+    Object.assign(existing, next);
+    stored = existing;
+  }
+
+  templs.set(contract, stored);
   if (typeof watchContract === 'function') {
-    watchContract(contract, existing);
+    watchContract(contract, stored);
   }
 
   return {
     templ: {
       contract,
       priest,
-      telegramChatId: existing.telegramChatId,
-      templHomeLink: existing.templHomeLink || ''
+      telegramChatId: stored.telegramChatId,
+      templHomeLink: stored.templHomeLink || ''
     },
     bindingCode
   };

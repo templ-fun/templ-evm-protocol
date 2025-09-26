@@ -211,6 +211,57 @@ test('register templ persists record and wires contract listeners', async (t) =>
   assert.equal(storedRow?.telegramChatId, 'telegram-chat-1');
 });
 
+test('register templ rejects duplicate telegram chat id with 409 conflict', async (t) => {
+  const { app, db, tmpDir, handlerRegistry, contractState } = makeApp();
+  t.after(async () => {
+    await app.close?.();
+    db.close();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  const firstWallet = Wallet.createRandom();
+  const { contractAddress: firstContract } = await registerTempl(app, firstWallet, { telegramChatId: 'chat-duplicate' }, { contractState });
+
+  const secondWallet = Wallet.createRandom();
+  const typed = buildCreateTypedData({ chainId: 1337, contractAddress: secondWallet.address.toLowerCase() });
+  const signature = await secondWallet.signTypedData(typed.domain, typed.types, typed.message);
+
+  const res = await request(app)
+    .post('/templs')
+    .send({
+      contractAddress: secondWallet.address,
+      priestAddress: secondWallet.address,
+      signature,
+      chainId: 1337,
+      telegramChatId: 'chat-duplicate',
+      templHomeLink: undefined,
+      nonce: typed.message.nonce,
+      issuedAt: typed.message.issuedAt,
+      expiry: typed.message.expiry
+    });
+
+  assert.equal(res.status, 409);
+  assert.equal(res.body.error, 'Telegram chat already linked');
+
+  const storedFirst = app.locals.templs.get(firstContract);
+  assert.ok(storedFirst, 'original templ remains registered');
+  assert.equal(storedFirst.telegramChatId, 'chat-duplicate');
+  assert.equal(storedFirst.priest, firstWallet.address.toLowerCase());
+
+  const secondContract = secondWallet.address.toLowerCase();
+  assert.equal(app.locals.templs.has(secondContract), false);
+  assert.ok(handlerRegistry.has(firstContract));
+  assert.equal(handlerRegistry.has(secondContract), false);
+
+  const persistedFirst = db.prepare('SELECT telegramChatId, priest FROM templ_bindings WHERE contract = ?').get(firstContract);
+  assert.ok(persistedFirst, 'first templ remains persisted');
+  assert.equal(persistedFirst.telegramChatId, 'chat-duplicate');
+  assert.equal(persistedFirst.priest.toLowerCase(), firstWallet.address.toLowerCase());
+
+  const duplicateCount = db.prepare('SELECT COUNT(1) AS count FROM templ_bindings WHERE telegramChatId = ?').get('chat-duplicate');
+  assert.equal(duplicateCount.count, 1);
+});
+
 test('join endpoint validates membership', async (t) => {
   const { app, db, tmpDir, contractState } = makeApp({ hasPurchased: async () => true });
   t.after(async () => {
