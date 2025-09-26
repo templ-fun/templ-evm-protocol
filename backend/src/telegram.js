@@ -152,7 +152,10 @@ export function createTelegramNotifier({ botToken, linkBaseUrl, logger = default
         proposalId != null ? `<b>Proposal ID:</b> ${escapeHtml(String(proposalId))}` : '',
         endTime ? formatTimestamp(endTime) : '',
         descriptionLine,
-        templLink(`/templs/${encodeURIComponent(String(contractAddress || ''))}/proposals/${encodeURIComponent(String(proposalId || ''))}`, 'Review & vote'),
+        templLink(
+          `/templs/${encodeURIComponent(String(contractAddress || ''))}/proposals/${encodeURIComponent(String(proposalId || ''))}/vote`,
+          'Review & vote'
+        ),
         formatHomeLinkLine(homeLink)
       ]);
     },
@@ -162,7 +165,10 @@ export function createTelegramNotifier({ botToken, linkBaseUrl, logger = default
         title ? `<b>${escapeHtml(title)}</b>` : '',
         description ? escapeHtml(description) : '',
         formatTimestamp(quorumReachedAt),
-        templLink(`/templs/${encodeURIComponent(String(contractAddress || ''))}/proposals/${encodeURIComponent(String(proposalId || ''))}`, 'Cast or adjust your vote'),
+        templLink(
+          `/templs/${encodeURIComponent(String(contractAddress || ''))}/proposals/${encodeURIComponent(String(proposalId || ''))}/vote`,
+          'Cast or adjust your vote'
+        ),
         formatHomeLinkLine(homeLink)
       ]);
     },
@@ -175,7 +181,10 @@ export function createTelegramNotifier({ botToken, linkBaseUrl, logger = default
         proposalId != null ? `<b>Proposal ID:</b> ${escapeHtml(String(proposalId))}` : '',
         title ? `<b>Title:</b> ${escapeHtml(title)}` : '',
         `<b>Choice:</b> ${escapeHtml(supportLabel)}`,
-        templLink(`/templs/${encodeURIComponent(String(contractAddress || ''))}/proposals/${encodeURIComponent(String(proposalId || ''))}`, 'Review proposal'),
+        templLink(
+          `/templs/${encodeURIComponent(String(contractAddress || ''))}/proposals/${encodeURIComponent(String(proposalId || ''))}/vote`,
+          'Review proposal'
+        ),
         formatHomeLinkLine(homeLink)
       ]);
     },
@@ -187,7 +196,10 @@ export function createTelegramNotifier({ botToken, linkBaseUrl, logger = default
         description ? escapeHtml(description) : '',
         formatTimestamp(endedAt),
         statusLine,
-        templLink(`/templs/${encodeURIComponent(String(contractAddress || ''))}/proposals/${encodeURIComponent(String(proposalId || ''))}`, canExecute ? 'Execute or review results' : 'Review results'),
+        templLink(
+          `/templs/${encodeURIComponent(String(contractAddress || ''))}/proposals/${encodeURIComponent(String(proposalId || ''))}/vote`,
+          canExecute ? 'Execute or review results' : 'Review results'
+        ),
         formatHomeLinkLine(homeLink)
       ]);
     },

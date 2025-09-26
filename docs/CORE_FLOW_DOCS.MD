@@ -8,7 +8,7 @@ Use this reference to see how the contracts, backend API, frontend, and Telegram
 - **Backend (B)** – Express server handling signatures, persistence, and Telegram notifications.
 - **Contract (C)** – On-chain templ instance.
 - **Telegram (T)** – Bot-backed delivery of templ events (optional).
-- **SQLite (D)** – Backend persistence.
+- **SQLite (D)** – Backend binding store (contract ↔ Telegram chat id).
 - **Member (M)** / **Priest (P)** – Participants initiating actions.
 
 ## 1. Templ creation
@@ -18,7 +18,7 @@ flowchart LR
     F[Frontend] -->|factory.createTemplWithConfig| C[Contract]
     F -->|POST /templs| B[Backend]
     B -->|verify contract/priest (optional)| C
-    B -->|persist templ + chat id| D[(SQLite)]
+    B -->|persist templ binding| D[(SQLite)]
     B -->|register watcher| C
 ```
 
@@ -34,7 +34,7 @@ sequenceDiagram
     C-->>F: templAddress
     F->>B: POST /templs {contract, priest, telegramChatId?, signature}
     B->>C: has priest changed? (optional verify)
-    B->>D: upsert templ row
+    B->>D: upsert templ binding
     B->>C: start listening for events
     B-->>F: 200 { contract, priest, telegramChatId }
 ```
@@ -86,17 +86,12 @@ sequenceDiagram
 
 Messages use `APP_BASE_URL` to build URLs such as `/templs/<address>` or `/templs/<address>/proposals/<id>/vote`.
 
-## 4. Moderation (future-ready)
-
-Delegate/mute APIs live on-chain for future moderation integrations (e.g., Discord bridges) even though the current product surface does not expose them directly.
-
-## 5. Proposal creation
+## 4. Proposal creation
 
 ```mermaid
 flowchart LR
     M -->|createProposalX| C
     C -->|emit ProposalCreated(title, description)| B
-    B -->|store templ metadata| D
     B -->|notify Telegram| T
 ```
 
@@ -113,7 +108,7 @@ sequenceDiagram
     B->>T: message with id/proposer/endTime/link
 ```
 
-## 6. Voting
+## 5. Voting
 
 ```mermaid
 flowchart LR
@@ -122,7 +117,7 @@ flowchart LR
     B -->|notify| T
 ```
 
-## 7. Execution
+## 6. Execution
 
 Execution remains on-chain only. Telegram notifications can be extended later to reflect `ProposalExecuted` events if desired.
 
