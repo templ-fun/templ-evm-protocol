@@ -8,6 +8,11 @@ import {TemplErrors} from "./TemplErrors.sol";
 /// @notice Deploys templ contracts with shared protocol configuration and optional custom splits.
 contract TemplFactory {
     uint256 internal constant TOTAL_PERCENT = 100;
+    // NOTE: The default burn/treasury/member percentages deliberately assume a
+    // factory-level protocol share of 10%. Factories deployed with a different
+    // `protocolPercent` should either adjust these constants prior to
+    // deployment or call `createTemplWithConfig` with explicit splits so the
+    // totals continue to sum to 100.
     uint256 internal constant DEFAULT_BURN_PERCENT = 30;
     uint256 internal constant DEFAULT_TREASURY_PERCENT = 30;
     uint256 internal constant DEFAULT_MEMBER_POOL_PERCENT = 30;
