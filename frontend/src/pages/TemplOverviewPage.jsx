@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { sanitizeLink } from '../../../shared/linkSanitizer.js';
 import { requestTemplRebindBackend } from '../services/deployment.js';
+import { button, form, layout, surface, text } from '../ui/theme.js';
 
 export function TemplOverviewPage({
   templAddress,
@@ -67,28 +68,69 @@ export function TemplOverviewPage({
   const sanitizedHomeLink = sanitizeLink(templRecord?.templHomeLink);
 
   return (
-    <div className="page">
-      <header className="page-header">
-        <h1>Templ Overview</h1>
-        <span className="pill">{templAddress}</span>
+    <div className={layout.page}>
+      <header className={layout.header}>
+        <h1 className="text-3xl font-semibold tracking-tight">Templ Overview</h1>
+        <span className={surface.pill}>{templAddress}</span>
       </header>
-      <section className="card">
-        <h2>Details</h2>
-        <dl className="data-list">
-          <div>
-            <dt>Priest</dt>
-            <dd>{currentPriest || 'Unknown'}</dd>
+      <section className={layout.card}>
+        <h2 className="text-xl font-semibold text-slate-900">Details</h2>
+        <dl className="mt-4 grid gap-4">
+          <div className="space-y-1">
+            <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Entry fee</dt>
+            <dd className={`${text.mono} text-sm`}>
+              {templRecord?.entryFeeFormatted
+                ? `${templRecord.entryFeeFormatted}${templRecord.tokenSymbol ? ` ${templRecord.tokenSymbol}` : ''}`
+                : templRecord?.entryFeeRaw || 'Unknown'}
+            </dd>
           </div>
-          <div>
-            <dt>Telegram chat id</dt>
-            <dd>{chatIdHidden ? 'Stored server-side' : localChatId || '—'}</dd>
+          <div className="space-y-1">
+            <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Members</dt>
+            <dd className={`${text.mono} text-sm`}>
+              {Number.isFinite(templRecord?.memberCount) ? templRecord.memberCount : 'Unknown'}
+              {templRecord?.totalPurchases ? (
+                <span className={`ml-2 ${text.subtle}`}>({templRecord.totalPurchases} total purchases)</span>
+              ) : null}
+            </dd>
           </div>
-          <div>
-            <dt>Home link</dt>
+          <div className="space-y-1">
+            <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Treasury balance</dt>
+            <dd className={`${text.mono} text-sm`}>
+              {templRecord?.treasuryBalanceFormatted
+                ? `${templRecord.treasuryBalanceFormatted}${templRecord.tokenSymbol ? ` ${templRecord.tokenSymbol}` : ''}`
+                : templRecord?.treasuryBalanceRaw || '0'}
+            </dd>
+          </div>
+          <div className="space-y-1">
+            <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Member pool</dt>
+            <dd className={`${text.mono} text-sm`}>
+              {templRecord?.memberPoolBalanceFormatted
+                ? `${templRecord.memberPoolBalanceFormatted}${templRecord.tokenSymbol ? ` ${templRecord.tokenSymbol}` : ''}`
+                : templRecord?.memberPoolBalanceRaw || '0'}
+            </dd>
+          </div>
+          <div className="space-y-1">
+            <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total burned</dt>
+            <dd className={`${text.mono} text-sm`}>
+              {templRecord?.burnedFormatted
+                ? `${templRecord.burnedFormatted}${templRecord.tokenSymbol ? ` ${templRecord.tokenSymbol}` : ''}`
+                : templRecord?.burnedRaw || '0'}
+            </dd>
+          </div>
+          <div className="space-y-1">
+            <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Priest</dt>
+            <dd className={`${text.mono} text-sm`}>{currentPriest || 'Unknown'}</dd>
+          </div>
+          <div className="space-y-1">
+            <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Telegram chat id</dt>
+            <dd className={text.subtle}>{chatIdHidden ? 'Stored server-side' : localChatId || '—'}</dd>
+          </div>
+          <div className="space-y-1">
+            <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Home link</dt>
             <dd>
               {sanitizedHomeLink.text ? (
                 sanitizedHomeLink.href ? (
-                  <a href={sanitizedHomeLink.href} target="_blank" rel="noreferrer">{sanitizedHomeLink.text}</a>
+                  <a className="text-primary underline" href={sanitizedHomeLink.href} target="_blank" rel="noreferrer">{sanitizedHomeLink.text}</a>
                 ) : (
                   sanitizedHomeLink.text
                 )
@@ -98,50 +140,77 @@ export function TemplOverviewPage({
             </dd>
           </div>
         </dl>
-        <div className="card-actions">
-          <button type="button" onClick={() => onNavigate('/templs/join?address=' + templAddress)}>Join</button>
-          <button type="button" onClick={() => onNavigate(`/templs/${templAddress}/proposals/new`)}>Create proposal</button>
-          <button type="button" onClick={() => onNavigate(`/templs/${templAddress}/claim`)}>Claim rewards</button>
+        <div className={`${layout.cardActions} mt-6`}>
+          <button type="button" className={button.base} onClick={() => onNavigate('/templs/join?address=' + templAddress)}>
+            Join
+          </button>
+          <button type="button" className={button.base} onClick={() => onNavigate(`/templs/${templAddress}/proposals/new`)}>
+            Create proposal
+          </button>
+          <button type="button" className={button.primary} onClick={() => onNavigate(`/templs/${templAddress}/claim`)}>
+            Claim rewards
+          </button>
         </div>
       </section>
-      <section className="card">
-        <h2>Telegram binding</h2>
-        {localChatId ? (
-          <p>
-            Notifications are currently delivered to <code>{localChatId}</code>. Request a new binding code if you need to move the bot to another chat.
-          </p>
-        ) : chatIdHidden ? (
-          <p>
-            Notifications are active, but the Telegram chat ID is stored on the server. Request a new binding code if you need to rotate the chat.
-          </p>
-        ) : bindingCode ? (
-          <>
+      <section className={layout.card}>
+        <h2 className="text-xl font-semibold text-slate-900">Telegram binding</h2>
+        <div className="mt-4 space-y-4 text-sm text-slate-700">
+          {localChatId ? (
             <p>
-              Invite <a href="https://t.me/templfunbot" target="_blank" rel="noreferrer">@templfunbot</a> to your Telegram group and post this message to confirm the new chat.
+              Notifications are currently delivered to{' '}
+              <code className={`${text.mono} text-xs`}>{localChatId}</code>. Request a new binding code if you need to move the bot to another chat.
             </p>
-            <pre className="binding-code"><code>{`templ ${bindingCode}`}</code></pre>
-            <p>The bot will acknowledge the binding and resume notifications in the new chat.</p>
-          </>
-        ) : (
-          <p>This templ is not linked to a Telegram chat. Request a binding code to connect one.</p>
-        )}
-        {!isPriestWallet && (
-          <p className="subtle">Connect as the current priest to rotate the Telegram binding.</p>
-        )}
-        {rebindError && <p className="error">{rebindError}</p>}
-        <div className="card-actions">
-          <button type="button" onClick={handleRequestRebind} disabled={!isPriestWallet || rebindPending}>
+          ) : chatIdHidden ? (
+            <p>
+              Notifications are active, but the Telegram chat ID is stored on the server. Request a new binding code if you need to rotate the chat.
+            </p>
+          ) : bindingCode ? (
+            <>
+              <p>
+                Invite{' '}
+                <a className="text-primary underline" href="https://t.me/templfunbot" target="_blank" rel="noreferrer">@templfunbot</a>{' '}
+                to your Telegram group and post this message to confirm the new chat.
+              </p>
+              <pre className={surface.codeBlock}><code>{`templ ${bindingCode}`}</code></pre>
+              <p>The bot will acknowledge the binding and resume notifications in the new chat.</p>
+            </>
+          ) : (
+            <p>This templ is not linked to a Telegram chat. Request a binding code to connect one.</p>
+          )}
+          {!isPriestWallet && (
+            <p className={text.subtle}>Connect as the current priest to rotate the Telegram binding.</p>
+          )}
+          {rebindError && <p className="text-sm text-red-600">{rebindError}</p>}
+        </div>
+        <div className={`${layout.cardActions} mt-6`}>
+          <button
+            type="button"
+            className={button.primary}
+            onClick={handleRequestRebind}
+            disabled={!isPriestWallet || rebindPending}
+          >
             {rebindPending ? 'Requesting…' : 'Request binding code'}
           </button>
         </div>
       </section>
-      <section className="card form">
-        <h2>Vote on a proposal</h2>
-        <label>
+      <section className={`${layout.card} flex flex-col gap-4`}>
+        <h2 className="text-xl font-semibold text-slate-900">Vote on a proposal</h2>
+        <label className={form.label}>
           Proposal id
-          <input type="text" value={proposalId} onChange={(e) => setProposalId(e.target.value.trim())} />
+          <input
+            type="text"
+            className={form.input}
+            value={proposalId}
+            onChange={(e) => setProposalId(e.target.value.trim())}
+          />
         </label>
-        <button type="button" onClick={() => onNavigate(`/templs/${templAddress}/proposals/${proposalId || '0'}/vote`)}>Go to voting page</button>
+        <button
+          type="button"
+          className={button.base}
+          onClick={() => onNavigate(`/templs/${templAddress}/proposals/${proposalId || '0'}/vote`)}
+        >
+          Go to voting page
+        </button>
       </section>
     </div>
   );

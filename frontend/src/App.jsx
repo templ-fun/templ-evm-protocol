@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ethers } from 'ethers';
-import './App.css';
 import { useAppLocation } from './hooks/useAppLocation.js';
 import { HomePage } from './pages/HomePage.jsx';
 import { CreateTemplPage } from './pages/CreateTemplPage.jsx';
@@ -10,7 +9,8 @@ import { VoteProposalPage } from './pages/VoteProposalPage.jsx';
 import { TemplOverviewPage } from './pages/TemplOverviewPage.jsx';
 import { ClaimRewardsPage } from './pages/ClaimRewardsPage.jsx';
 import { BACKEND_URL, FACTORY_CONFIG, RPC_URL } from './config.js';
-import { loadFactoryTempls } from './services/templs.js';
+import { fetchTemplStats, loadFactoryTempls } from './services/templs.js';
+import { button, layout } from './ui/theme.js';
 
 export default function App() {
   const { path, query, navigate } = useAppLocation();
@@ -137,7 +137,7 @@ export default function App() {
       }
 
       const backendMap = new Map(backendTempls.map((item) => [item.contract, item]));
-      const merged = factoryTempls.length ? factoryTempls.map((templ) => {
+      let merged = factoryTempls.length ? factoryTempls.map((templ) => {
         const backendInfo = backendMap.get(templ.contract);
         return {
           ...templ,
@@ -152,13 +152,40 @@ export default function App() {
         tokenSymbol: '–',
         tokenAddress: '',
         tokenDecimals: 18,
-        burnedRaw: 0n,
+        burnedRaw: '0',
         burnedFormatted: '0',
+        treasuryBalanceRaw: '0',
+        treasuryBalanceFormatted: '0',
+        memberPoolBalanceRaw: '0',
+        memberPoolBalanceFormatted: '0',
+        memberCount: 0,
+        totalPurchases: '0',
+        entryFeeRaw: '0',
+        entryFeeFormatted: '0',
         templHomeLink: templ.templHomeLink,
         telegramChatId: templ.telegramChatId || '',
         telegramChatIdHidden: templ.telegramChatIdHidden || false,
         links: { overview: `/templs/${templ.contract}`, homeLink: templ.templHomeLink || undefined },
       }));
+
+      if (readProvider) {
+        merged = await Promise.all(merged.map(async (templ) => {
+          try {
+            const stats = await fetchTemplStats({ ethers, provider: readProvider, templAddress: templ.contract, meta: templ });
+            return {
+              ...templ,
+              ...stats,
+              priest: templ.priest || stats.priest,
+              templHomeLink: templ.templHomeLink || stats.templHomeLink,
+              telegramChatId: templ.telegramChatId,
+              telegramChatIdHidden: templ.telegramChatIdHidden
+            };
+          } catch (err) {
+            console.warn('[templ] Failed to refresh templ stats', templ.contract, err);
+            return templ;
+          }
+        }));
+      }
 
       setTempls(merged);
     } catch (err) {
@@ -203,6 +230,9 @@ export default function App() {
           onConnectWallet={connectWallet}
           pushMessage={pushMessage}
           query={query}
+          templs={templs}
+          readProvider={readProvider}
+          refreshTempls={refreshTempls}
         />
       );
     }
@@ -280,17 +310,23 @@ export default function App() {
   };
 
   return (
-    <div className="app">
-      <nav className="top-nav">
-        <button type="button" onClick={() => navigate('/')}>Home</button>
-        <button type="button" onClick={() => navigate('/templs/create')}>Create</button>
-        <button type="button" onClick={() => navigate('/templs/join')}>Join</button>
+    <div className={layout.appShell}>
+      <nav className="flex flex-wrap items-center gap-3 bg-slate-900 px-6 py-3">
+        <button type="button" className={button.nav} onClick={() => navigate('/')}>Home</button>
+        <button type="button" className={button.nav} onClick={() => navigate('/templs/create')}>Create</button>
+        <button type="button" className={button.nav} onClick={() => navigate('/templs/join')}>Join</button>
       </nav>
-      {renderRoute()}
-      <footer className="status-bar">
-        {statusMessages.length === 0 ? <span>Ready.</span> : statusMessages.map((msg, idx) => (
-          <span key={idx}>{msg}</span>
-        ))}
+      <main className={layout.main}>
+        {renderRoute()}
+      </main>
+      <footer className={layout.statusBar}>
+        {statusMessages.length === 0 ? (
+          <span className="truncate">Ready.</span>
+        ) : (
+          statusMessages.map((msg, idx) => (
+            <span key={idx} className="truncate whitespace-nowrap">{msg}</span>
+          ))
+        )}
       </footer>
     </div>
   );

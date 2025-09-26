@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import templArtifact from '../contracts/TEMPL.json';
 import { proposeVote } from '../services/governance.js';
+import { button, form, layout, surface } from '../ui/theme.js';
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
@@ -232,169 +233,221 @@ export function NewProposalPage({
   };
 
   return (
-    <div className="page">
-      <header className="page-header">
-        <h1>New Proposal</h1>
-        <span className="pill">Templ {templAddress}</span>
+    <div className={layout.page}>
+      <header className={layout.header}>
+        <h1 className="text-3xl font-semibold tracking-tight">New Proposal</h1>
+        <span className={surface.pill}>Templ {templAddress}</span>
       </header>
-      <form className="card form" onSubmit={handleSubmit}>
-        <label>
+      <form className={`${layout.card} flex flex-col gap-4`} onSubmit={handleSubmit}>
+        <label className={form.label}>
           Title
-          <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Short summary" />
+          <input
+            type="text"
+            className={form.input}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Short summary"
+          />
         </label>
-        <label>
+        <label className={form.label}>
           Description
-          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4} placeholder="Explain the proposal" />
+          <textarea
+            className={`${form.textarea} min-h-[120px]`}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Explain the proposal"
+          />
         </label>
-        <label>
+        <label className={form.label}>
           Proposal type
-          <select value={proposalType} onChange={(e) => setProposalType(e.target.value)}>
+          <select
+            className={`${form.input} appearance-none`}
+            value={proposalType}
+            onChange={(e) => setProposalType(e.target.value)}
+          >
             {ACTIONS.map((option) => (
               <option key={option.value} value={option.value}>{option.label}</option>
             ))}
           </select>
         </label>
         {requiresPriest && (
-          <label>
+          <label className={form.label}>
             New priest address
-            <input type="text" value={newPriest} onChange={(e) => setNewPriest(e.target.value.trim())} placeholder="0x…" />
+            <input
+              type="text"
+              className={form.input}
+              value={newPriest}
+              onChange={(e) => setNewPriest(e.target.value.trim())}
+              placeholder="0x…"
+            />
           </label>
         )}
         {requiresMaxMembers && (
-          <label>
+          <label className={form.label}>
             Max members
-            <input type="text" value={maxMembers} onChange={(e) => setMaxMembers(e.target.value.trim())} placeholder="0 for unlimited" />
+            <input
+              type="text"
+              className={form.input}
+              value={maxMembers}
+              onChange={(e) => setMaxMembers(e.target.value.trim())}
+              placeholder="0 for unlimited"
+            />
           </label>
         )}
         {requiresHomeLink && (
-          <label>
+          <label className={form.label}>
             New home link
-            <input type="text" value={homeLink} onChange={(e) => setHomeLink(e.target.value.trim())} placeholder="https://t.me/..." />
+            <input
+              type="text"
+              className={form.input}
+              value={homeLink}
+              onChange={(e) => setHomeLink(e.target.value.trim())}
+              placeholder="https://t.me/..."
+            />
           </label>
         )}
         {requiresWithdrawal && (
-          <>
-            <label>
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className={form.label}>
               Withdrawal token (address or "ETH")
               <input
                 type="text"
+                className={form.input}
                 value={withdrawToken}
                 onChange={(e) => setWithdrawToken(e.target.value.trim())}
                 placeholder="0x… or ETH"
               />
             </label>
-            <label>
+            <label className={form.label}>
               Withdrawal recipient
               <input
                 type="text"
+                className={form.input}
                 value={withdrawRecipient}
                 onChange={(e) => setWithdrawRecipient(e.target.value.trim())}
                 placeholder="0x…"
               />
             </label>
-            <label>
+            <label className={form.label}>
               Withdrawal amount (wei)
               <input
                 type="text"
+                className={form.input}
                 value={withdrawAmount}
                 onChange={(e) => setWithdrawAmount(e.target.value.trim())}
                 placeholder="1000000000000000000"
               />
             </label>
-            <label>
+            <label className={form.label}>
               Withdrawal reason
               <textarea
+                className={`${form.textarea} min-h-[80px]`}
                 value={withdrawReason}
                 onChange={(e) => setWithdrawReason(e.target.value)}
-                rows={2}
                 placeholder="Explain the withdrawal"
               />
             </label>
-          </>
+          </div>
         )}
         {requiresDisband && (
-          <>
-            <label>
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className={form.label}>
               Treasury token source
-              <select value={disbandTokenMode} onChange={(e) => setDisbandTokenMode(e.target.value)}>
+              <select
+                className={`${form.input} appearance-none`}
+                value={disbandTokenMode}
+                onChange={(e) => setDisbandTokenMode(e.target.value)}
+              >
                 <option value="accessToken">Use templ access token</option>
                 <option value="eth">Native ETH</option>
                 <option value="custom">Custom token address</option>
               </select>
             </label>
             {disbandTokenMode === 'custom' && (
-              <label>
+              <label className={form.label}>
                 Custom token address
                 <input
                   type="text"
+                  className={form.input}
                   value={disbandCustomToken}
                   onChange={(e) => setDisbandCustomToken(e.target.value.trim())}
                   placeholder="0x…"
                 />
               </label>
             )}
-          </>
+          </div>
         )}
         {requiresConfigUpdate && (
-          <>
-            <label>
+          <div className="space-y-4">
+            <label className={form.label}>
               New entry fee (wei)
               <input
                 type="text"
+                className={form.input}
                 value={updateEntryFee}
                 onChange={(e) => setUpdateEntryFee(e.target.value.trim())}
                 placeholder="Leave blank to keep current fee"
               />
             </label>
-            <label className="checkbox">
+            <label className={form.checkbox}>
               <input
                 type="checkbox"
+                className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary"
                 checked={updateFeeSplit}
                 onChange={(e) => setUpdateFeeSplit(e.target.checked)}
               />
               Update fee split
             </label>
             {updateFeeSplit && (
-              <>
-                <label>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <label className={form.label}>
                   Burn percent
                   <input
                     type="number"
                     min="0"
                     max="100"
+                    className={form.input}
                     value={updateBurnPercent}
                     onChange={(e) => setUpdateBurnPercent(e.target.value)}
                   />
                 </label>
-                <label>
+                <label className={form.label}>
                   Treasury percent
                   <input
                     type="number"
                     min="0"
                     max="100"
+                    className={form.input}
                     value={updateTreasuryPercent}
                     onChange={(e) => setUpdateTreasuryPercent(e.target.value)}
                   />
                 </label>
-                <label>
+                <label className={form.label}>
                   Member pool percent
                   <input
                     type="number"
                     min="0"
                     max="100"
+                    className={form.input}
                     value={updateMemberPercent}
                     onChange={(e) => setUpdateMemberPercent(e.target.value)}
                   />
                 </label>
-              </>
+              </div>
             )}
-          </>
+          </div>
         )}
-        <label>
+        <label className={form.label}>
           Voting period (seconds)
-          <input type="number" min="0" value={votingPeriod} onChange={(e) => setVotingPeriod(e.target.value)} />
+          <input
+            type="number"
+            min="0"
+            className={form.input}
+            value={votingPeriod}
+            onChange={(e) => setVotingPeriod(e.target.value)}
+          />
         </label>
-        <button type="submit" className="primary" disabled={submitting}>
+        <button type="submit" className={button.primary} disabled={submitting}>
           {submitting ? 'Submitting…' : 'Create proposal'}
         </button>
       </form>

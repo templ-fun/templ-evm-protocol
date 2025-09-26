@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import templArtifact from '../contracts/TEMPL.json';
 import { voteOnProposal } from '../services/governance.js';
+import { button, form, layout, surface } from '../ui/theme.js';
 
 export function VoteProposalPage({
   ethers,
@@ -39,20 +40,36 @@ export function VoteProposalPage({
   };
 
   return (
-    <div className="page">
-      <header className="page-header">
-        <h1>Vote on Proposal</h1>
-        <span className="pill">Templ {templAddress}</span>
+    <div className={layout.page}>
+      <header className={layout.header}>
+        <h1 className="text-3xl font-semibold tracking-tight">Vote on Proposal</h1>
+        <span className={surface.pill}>Templ {templAddress}</span>
       </header>
-      <form className="card form" onSubmit={handleSubmit}>
-        <p>Proposal #{proposalId}</p>
-        <label className="radio">
-          <input type="radio" name="support" value="yes" checked={support === 'yes'} onChange={(e) => setSupport(e.target.value)} /> Yes
+      <form className={`${layout.card} flex flex-col gap-4`} onSubmit={handleSubmit}>
+        <p className="text-sm text-slate-600">Proposal #{proposalId}</p>
+        <label className={form.radio}>
+          <input
+            type="radio"
+            name="support"
+            value="yes"
+            className="h-4 w-4 border-slate-300 text-primary focus:ring-primary"
+            checked={support === 'yes'}
+            onChange={(e) => setSupport(e.target.value)}
+          />
+          Yes
         </label>
-        <label className="radio">
-          <input type="radio" name="support" value="no" checked={support === 'no'} onChange={(e) => setSupport(e.target.value)} /> No
+        <label className={form.radio}>
+          <input
+            type="radio"
+            name="support"
+            value="no"
+            className="h-4 w-4 border-slate-300 text-primary focus:ring-primary"
+            checked={support === 'no'}
+            onChange={(e) => setSupport(e.target.value)}
+          />
+          No
         </label>
-        <button type="submit" className="primary" disabled={pending}>
+        <button type="submit" className={button.primary} disabled={pending}>
           {pending ? 'Submitting…' : 'Submit vote'}
         </button>
       </form>
