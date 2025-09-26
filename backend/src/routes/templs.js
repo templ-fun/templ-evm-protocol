@@ -6,7 +6,7 @@ import { registerTempl } from '../services/registerTempl.js';
 import { requestTemplRebind } from '../services/requestTemplRebind.js';
 import { extractTypedRequestParams } from './typed.js';
 
-export default function templsRouter({ templs, persist, database, provider, watchContract, signatureStore }) {
+export default function templsRouter({ templs, persist, database, provider, watchContract, signatureStore, findBinding }) {
   const router = express.Router();
 
   router.get('/templs', (req, res) => {
@@ -15,12 +15,12 @@ export default function templsRouter({ templs, persist, database, provider, watc
       try {
         if (database?.prepare) {
           rows = database
-            .prepare('SELECT telegramChatId, contract FROM templ_bindings ORDER BY contract')
+            .prepare('SELECT telegramChatId, contract, priest FROM templ_bindings ORDER BY contract')
             .all()
             .map((r) => ({
               contract: String(r.contract).toLowerCase(),
               telegramChatId: r.telegramChatId ? String(r.telegramChatId) : null,
-              priest: null,
+              priest: r.priest ? String(r.priest).toLowerCase() : null,
               templHomeLink: ''
             }));
         }
@@ -128,7 +128,8 @@ export default function templsRouter({ templs, persist, database, provider, watc
           provider,
           logger,
           database,
-          signatureStore
+          signatureStore,
+          findBinding
         });
         res.json({
           contract: result.contract,

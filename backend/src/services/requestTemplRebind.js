@@ -5,10 +5,6 @@ function templError(message, statusCode) {
   return Object.assign(new Error(message), { statusCode });
 }
 
-function shouldVerifyContracts() {
-  return process.env.REQUIRE_CONTRACT_VERIFY === '1' || process.env.NODE_ENV === 'production';
-}
-
 function normaliseAddress(value, field) {
   if (!value || typeof value !== 'string') {
     throw templError(`Missing ${field}`, 400);
@@ -30,7 +26,7 @@ function ensureRecordLoaded(contract, context) {
   }
   record = {
     telegramChatId: persisted.telegramChatId ?? null,
-    priest: null,
+    priest: persisted.priest ? String(persisted.priest).toLowerCase() : null,
     templHomeLink: '',
     proposalsMeta: new Map(),
     lastDigestAt: Date.now(),
@@ -52,16 +48,11 @@ export async function requestTemplRebind(body, context) {
   }
 
   const currentPriest = record.priest ? String(record.priest).toLowerCase() : null;
-  if (currentPriest && currentPriest !== priest) {
-    if (provider) {
-      await ensurePriestMatchesOnChain({ provider, contractAddress: contract, priestAddress: priest });
-      record.priest = priest;
-    } else if (shouldVerifyContracts()) {
+  if (!currentPriest || currentPriest !== priest) {
+    if (!provider) {
       throw templError('Unable to verify priest without provider', 500);
-    } else {
-      throw templError('Priest mismatch', 403);
     }
-  } else if (!currentPriest) {
+    await ensurePriestMatchesOnChain({ provider, contractAddress: contract, priestAddress: priest });
     record.priest = priest;
   }
 
