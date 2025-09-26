@@ -21,7 +21,7 @@ Each module handles a focused responsibility:
 - `TemplMembership`: membership lifecycle (`purchaseAccess`, claims, view helpers) and accounting for the member pool.
 - `TemplTreasury`: governance-callable treasury/config/priest handlers and their internal helpers, including member limit management via `setMaxMembersDAO`.
 - `TemplGovernance`: proposal creation, voting/quorum logic, execution router, and governance view helpers.
-- `TEMPL`: thin concrete contract wiring the constructor requirements (`priest`, `protocolFeeRecipient`, `token`, `entryFee`, fee splits) and exposing the payable `receive` hook.
+- `TEMPL`: thin concrete contract wiring the constructor requirements (`priest`, `protocolFeeRecipient`, `token`, `entryFee`, fee splits) and exposing the payable `receive` hook. The constructor auto-enrols the deploying priest as the founding member so the pioneer member-pool allocation immediately accrues to them.
 - `TemplFactory`: immutable protocol recipient/percentage plus helpers that deploy templ instances with per-templ burn/treasury/member splits. Deployment structs now include an initial `homeLink` string propagated into each `TEMPL` at construction.
 
 ## Entry-fee economics
@@ -34,6 +34,8 @@ Entry fees follow a fixed protocol share; each deployment chooses how the remain
 - **Protocol (`protocolPercent`)** - forwarded to the immutable `protocolFeeRecipient`. The percentage is chosen when the factory is deployed (10% in our sample scripts) and applies to every TEMPL created by that factory.
 
 The percentages must sum to 100. When a new member joins, existing members receive `floor(memberPoolShare / (n-1))` tokens each (where `n` is the new member count). Indivisible remainders accumulate in `memberRewardRemainder` and are rolled into the next distribution.
+
+The zero-member edge case (used only in harnessed tests) routes the would-be member-pool slice into the treasury and mirrors that reroute in `totalToTreasury`/`totalToMemberPool`. Live deployments always start with the priest counted as member zero, so the first paid join streams its pool share exclusively to the priest. If a harness clears the list and a new wallet joins before anyone else exists, that pioneer can later reclaim their entire fee minus burn/protocol as soon as another member arrives because the rerouted balance sits in the treasury waiting to be re-distributed.
 
 ### Member pool mechanics
 
@@ -112,7 +114,7 @@ Proposals emit `ProposalCreated(id, proposer, endTime, title, description)` and 
 
 ## User-facing functions and views
 
-- `purchaseAccess()` - one-time purchase; applies the templ’s configured burn/treasury/member percentages (plus the factory-defined protocol split) via `safeTransferFrom`. Requires balance ≥ entry fee and contract not paused. Fee-on-transfer/taxed tokens are unsupported because they desync treasury accounting.
+- `purchaseAccess()` - one-time purchase; applies the templ’s configured burn/treasury/member percentages (plus the factory-defined protocol split) via `safeTransferFrom`. Requires balance ≥ entry fee and contract not paused. Fee-on-transfer/taxed tokens are unsupported because they desync treasury accounting. When no members exist the would-be member-pool slice is folded into the treasury to avoid stranding funds; otherwise the current cohort (starting with the auto-enrolled priest) accrues the pioneer allocation.
 - `vote(uint256 proposalId, bool support)` - cast or change a vote until eligible; emits `VoteCast`.
 - `executeProposal(uint256 proposalId)` - performs the allowlisted action; emits `ProposalExecuted` and action-specific events.
 - `claimMemberPool()` - withdraw accrued rewards; emits `MemberPoolClaimed`.

@@ -45,7 +45,9 @@ abstract contract TemplMembership is TemplBase {
         Member storage m = members[msg.sender];
         if (m.purchased) revert TemplErrors.AlreadyPurchased();
 
-        if (memberList.length > 0) {
+        uint256 existingMembers = memberList.length;
+
+        if (existingMembers > 0) {
             _flushExternalRemainders();
         }
 
@@ -61,6 +63,11 @@ abstract contract TemplMembership is TemplBase {
             distributed += remainder;
         }
 
+        if (existingMembers == 0) {
+            treasuryAmount += memberPoolAmount;
+            memberPoolAmount = 0;
+        }
+
         uint256 toContract = treasuryAmount + memberPoolAmount;
 
         if (IERC20(accessToken).balanceOf(msg.sender) < entryFee) revert TemplErrors.InsufficientBalance();
@@ -71,10 +78,10 @@ abstract contract TemplMembership is TemplBase {
         memberList.push(msg.sender);
         totalPurchases++;
 
-        if (memberList.length > 1) {
+        if (existingMembers > 0) {
             uint256 totalRewards = memberPoolAmount + memberRewardRemainder;
-            uint256 rewardPerMember = totalRewards / (memberList.length - 1);
-            memberRewardRemainder = totalRewards % (memberList.length - 1);
+            uint256 rewardPerMember = totalRewards / existingMembers;
+            memberRewardRemainder = totalRewards % existingMembers;
             cumulativeMemberRewards += rewardPerMember;
         }
 

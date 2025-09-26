@@ -105,7 +105,10 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
       templ.daoUpdate(ethers.ZeroAddress, 15n, false, 0, 0, 0)
     ).to.be.revertedWithCustomError(templ, "InvalidEntryFee");
 
-    await expect(templ.daoDisband(token.target)).to.be.revertedWithCustomError(templ, "NoMembers");
+    await expect(templ.daoDisband(token.target)).to.be.revertedWithCustomError(
+      templ,
+      "NoTreasuryFunds"
+    );
 
     await token.mint(member.address, ENTRY_FEE);
     await token.connect(member).approve(templ.target, ENTRY_FEE);
@@ -152,8 +155,8 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
       "MemberLimitTooLow"
     );
 
-    await templ.daoSetMaxMembers(2);
-    expect(await templ.MAX_MEMBERS()).to.equal(2n);
+    await templ.daoSetMaxMembers(3);
+    expect(await templ.MAX_MEMBERS()).to.equal(3n);
     expect(await templ.paused()).to.equal(true);
 
     await templ.daoPause(false);

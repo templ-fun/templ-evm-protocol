@@ -152,7 +152,7 @@ describe("Voting Eligibility Based on Join Time", function () {
             await token.connect(member4).approve(await templ.getAddress(), ENTRY_FEE);
             await templ.connect(member4).purchaseAccess();
 
-            expect(await templ.getMemberCount()).to.equal(4);
+            expect(await templ.getMemberCount()).to.equal(5);
 
             // Wait before creating proposal
             await ethers.provider.send("evm_increaseTime", [100]);
@@ -179,8 +179,8 @@ describe("Voting Eligibility Based on Join Time", function () {
             await expect(templ.connect(lateMember).vote(0, false)).to.emit(templ, "VoteCast");
 
             const snapshots = await templ.getProposalSnapshots(0);
-            expect(snapshots.eligibleVotersPreQuorum).to.equal(4n);
-            expect(snapshots.eligibleVotersPostQuorum).to.equal(5n);
+            expect(snapshots.eligibleVotersPreQuorum).to.equal(5n);
+            expect(snapshots.eligibleVotersPostQuorum).to.equal(6n);
         });
 
         it("Should prevent gaming the system by adding members after quorum", async function () {
@@ -263,7 +263,7 @@ describe("Voting Eligibility Based on Join Time", function () {
             await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
             await ethers.provider.send("evm_mine");
 
-            // Second proposal - 3 eligible voters
+            // Second proposal - priest plus 3 existing members eligible
             await templ.connect(member2).createProposal(
                 "Proposal 2",
                 "With 3 members",
@@ -271,7 +271,11 @@ describe("Voting Eligibility Based on Join Time", function () {
                 7 * 24 * 60 * 60
             );
 
-            // Member 4 joins
+            // Reach quorum before the new member joins
+            await templ.connect(member1).vote(1, true);
+            await templ.connect(member2).vote(1, true);
+
+            // Member 4 joins after quorum has been reached
             await token.connect(member4).approve(await templ.getAddress(), ENTRY_FEE);
             await templ.connect(member4).purchaseAccess();
 
@@ -279,11 +283,8 @@ describe("Voting Eligibility Based on Join Time", function () {
             await ethers.provider.send("evm_increaseTime", [100]);
             await ethers.provider.send("evm_mine");
 
-            // For proposal 2: members 1, 2, 3 can vote, member 4 cannot
-            await templ.connect(member1).vote(1, true);
-            await templ.connect(member2).vote(1, true);
             await templ.connect(member3).vote(1, false);
-            
+
             await expect(templ.connect(member4).vote(1, true))
                 .to.be.revertedWithCustomError(templ, "JoinedAfterProposal");
 

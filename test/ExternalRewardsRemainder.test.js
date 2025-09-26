@@ -48,7 +48,8 @@ describe("External reward remainders", function () {
 
     const claimableLate = await templ.getClaimableExternalToken(lateMember.address, rewardToken.target);
 
-    const expected = sevenTokens / 4n;
+    const totalMembers = await templ.getMemberCount();
+    const expected = sevenTokens / totalMembers;
     expect(claimableLate).to.equal(expected);
   });
 });

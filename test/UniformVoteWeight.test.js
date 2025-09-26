@@ -20,13 +20,10 @@ describe("Uniform vote weight (no priest bonus)", function () {
   });
 
   it("returns 1 for members and 0 for non-members", async function () {
-    // Before joining
-    expect(await templ.getVoteWeight(priest.address)).to.equal(0);
+    // Priest is auto-enrolled at deployment
+    expect(await templ.getVoteWeight(priest.address)).to.equal(1);
     expect(await templ.getVoteWeight(member1.address)).to.equal(0);
 
-    // Join
-    await token.connect(priest).approve(await templ.getAddress(), ENTRY_FEE);
-    await templ.connect(priest).purchaseAccess();
     await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
     await templ.connect(member1).purchaseAccess();
 
@@ -36,8 +33,6 @@ describe("Uniform vote weight (no priest bonus)", function () {
   });
 
   it("counts one vote per member and ties fail", async function () {
-    await token.connect(priest).approve(await templ.getAddress(), ENTRY_FEE);
-    await templ.connect(priest).purchaseAccess();
     await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
     await templ.connect(member1).purchaseAccess();
 

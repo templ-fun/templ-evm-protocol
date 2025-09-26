@@ -38,7 +38,9 @@ describe("Fee Distribution Invariant", function () {
             expect(total).to.equal(expected);
 
             if (i === 0) {
-                expect(await templ.cumulativeMemberRewards()).to.equal(0);
+                const poolPercent = BigInt(await templ.memberPoolPercent());
+                const pioneerReward = (ENTRY_FEE * poolPercent) / 100n;
+                expect(await templ.cumulativeMemberRewards()).to.equal(pioneerReward);
             }
         }
 

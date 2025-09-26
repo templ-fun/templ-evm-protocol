@@ -28,7 +28,7 @@ describe("Disband Treasury", function () {
 
   it("allocates treasury equally to all members and empties treasury", async function () {
     const accessToken = await templ.accessToken();
-    const memberCount = 3n;
+    const memberCount = await templ.getMemberCount();
     const tBefore = await templ.treasuryBalance();
     expect(tBefore).to.be.gt(0n);
 
@@ -92,7 +92,6 @@ describe("Disband Treasury", function () {
   it("allows priest quorum-exempt disband after voting window", async function () {
     const priest = accounts[1];
     await mintToUsers(token, [priest], TOKEN_SUPPLY);
-    await purchaseAccess(templ, token, [priest]);
 
     const accessToken = await templ.accessToken();
     await templ.connect(priest).createProposalDisbandTreasury(accessToken, VOTING_PERIOD);

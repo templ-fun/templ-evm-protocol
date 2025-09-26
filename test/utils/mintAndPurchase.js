@@ -9,6 +9,9 @@ const purchaseAccess = async (templ, token, users, entryFee) => {
   const fee = entryFee !== undefined ? BigInt(entryFee) : await templ.entryFee();
   const templAddress = await templ.getAddress();
   for (const user of users) {
+    if (await templ.hasAccess(user.address)) {
+      continue;
+    }
     await token.connect(user).approve(templAddress, fee);
     await templ.connect(user).purchaseAccess();
   }

@@ -36,7 +36,9 @@ describe("ClaimMemberPool access control", function () {
     await token.connect(memberB).approve(templ.target, ENTRY_FEE);
     await templ.connect(memberB).purchaseAccess();
 
-    const expectedShare = (ENTRY_FEE * 30n) / 100n;
+    const memberPoolPercent = BigInt(await templ.memberPoolPercent());
+    const totalRewards = (ENTRY_FEE * memberPoolPercent) / 100n;
+    const expectedShare = totalRewards / 2n;
     const before = await token.balanceOf(memberA.address);
     await templ.connect(memberA).claimMemberPool();
     const after = await token.balanceOf(memberA.address);

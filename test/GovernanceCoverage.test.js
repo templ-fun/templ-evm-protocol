@@ -18,7 +18,6 @@ describe("Governance coverage gaps", function () {
       ENTRY_FEE * 4n
     );
     await purchaseAccess(templ, token, [
-      priest,
       member,
       secondMember,
       thirdMember,
@@ -127,7 +126,7 @@ describe("Governance coverage gaps", function () {
 
     await purchaseAccess(templ, token, [memberC]);
     expect(await templ.totalPurchases()).to.equal(3n);
-    expect(await templ.paused()).to.equal(false);
+    expect(await templ.paused()).to.equal(true);
   });
 
   it("allows governance to update the templ home link", async function () {
@@ -181,7 +180,7 @@ describe("Governance coverage gaps", function () {
     const [, priest, memberA, memberB, memberC, lateJoiner] = accounts;
 
     await mintToUsers(token, [priest, memberA, memberB, memberC, lateJoiner], ENTRY_FEE * 5n);
-    await purchaseAccess(templ, token, [priest, memberA, memberB, memberC]);
+    await purchaseAccess(templ, token, [memberA, memberB, memberC]);
 
     await templ.connect(memberA).createProposalSetPaused(true, VOTING_PERIOD);
 
@@ -203,7 +202,7 @@ describe("Governance coverage gaps", function () {
     const [, priest, voter] = accounts;
 
     await mintToUsers(token, [priest, voter], ENTRY_FEE * 4n);
-    await purchaseAccess(templ, token, [priest, voter]);
+    await purchaseAccess(templ, token, [voter]);
 
     await templ
       .connect(priest)
@@ -225,7 +224,7 @@ describe("Governance coverage gaps", function () {
     const [, priest, voter] = accounts;
 
     await mintToUsers(token, [priest, voter], ENTRY_FEE * 4n);
-    await purchaseAccess(templ, token, [priest, voter]);
+    await purchaseAccess(templ, token, [voter]);
 
     await templ
       .connect(priest)
