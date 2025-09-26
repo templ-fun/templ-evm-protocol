@@ -30,14 +30,23 @@ function createTestNotifier(notifications) {
   };
 }
 
-function createTestConnectContract(handlerRegistry) {
+function createTestConnectContract(handlerRegistry, contractState = new Map()) {
   return (address) => {
     const key = String(address).toLowerCase();
-    const entry = { handlers: {}, metadata: new Map() };
+    if (!contractState.has(key)) {
+      contractState.set(key, null);
+    }
+    const entry = { handlers: {}, metadata: new Map(), priestAddress: contractState.get(key) };
     handlerRegistry.set(key, entry);
     return {
       on: (event, handler) => {
         entry.handlers[event] = async (...args) => {
+          if (event === 'PriestChanged') {
+            const [, newPriest] = args;
+            const nextPriest = newPriest ? String(newPriest).toLowerCase() : null;
+            entry.priestAddress = nextPriest;
+            contractState.set(key, nextPriest);
+          }
           if (event === 'ProposalCreated') {
             const [id,, , titleArg, descriptionArg] = args;
             entry.metadata.set(String(id), {
@@ -47,6 +56,9 @@ function createTestConnectContract(handlerRegistry) {
           }
           return handler(...args);
         };
+      },
+      async priest() {
+        return entry.priestAddress;
       },
       async getProposal(id) {
         const stored = entry.metadata.get(String(id));
@@ -81,13 +93,14 @@ function makeApp({ hasPurchased = async () => true } = {}) {
   const db = new Database(dbPath);
   const notifications = [];
   const handlerRegistry = new Map();
+  const contractState = new Map();
   const notifier = createTestNotifier(notifications);
-  const connectContract = createTestConnectContract(handlerRegistry);
+  const connectContract = createTestConnectContract(handlerRegistry, contractState);
   const app = createApp({ hasPurchased, db, connectContract, telegram: { notifier } });
-  return { app, db, tmpDir, notifications, handlerRegistry };
+  return { app, db, tmpDir, notifications, handlerRegistry, contractState, connectContract };
 }
 
-async function registerTempl(app, wallet, { telegramChatId = '12345', templHomeLink } = {}) {
+async function registerTempl(app, wallet, { telegramChatId = '12345', templHomeLink } = {}, options = {}) {
   const contractAddress = wallet.address;
   const typed = buildCreateTypedData({ chainId: 1337, contractAddress: contractAddress.toLowerCase() });
   const signature = await wallet.signTypedData(typed.domain, typed.types, typed.message);
@@ -105,6 +118,8 @@ async function registerTempl(app, wallet, { telegramChatId = '12345', templHomeL
       expiry: typed.message.expiry
     });
   assert.equal(res.status, 200);
+  const contractKey = contractAddress.toLowerCase();
+  options.contractState?.set(contractKey, wallet.address.toLowerCase());
   return { contractAddress: contractAddress.toLowerCase(), response: res.body };
 }
 
@@ -125,7 +140,7 @@ async function joinTempl(app, contractAddress, wallet) {
 }
 
 test('register templ persists record and wires contract listeners', async (t) => {
-  const { app, db, tmpDir, notifications, handlerRegistry } = makeApp();
+  const { app, db, tmpDir, notifications, handlerRegistry, contractState } = makeApp();
   t.after(async () => {
     await app.close?.();
     db.close();
@@ -133,7 +148,7 @@ test('register templ persists record and wires contract listeners', async (t) =>
   });
 
   const wallet = Wallet.createRandom();
-  const { contractAddress, response } = await registerTempl(app, wallet, { telegramChatId: 'telegram-chat-1' });
+  const { contractAddress, response } = await registerTempl(app, wallet, { telegramChatId: 'telegram-chat-1' }, { contractState });
 
   assert.equal(response.contract, contractAddress);
   assert.equal(response.priest, wallet.address.toLowerCase());
@@ -173,7 +188,7 @@ test('register templ persists record and wires contract listeners', async (t) =>
 });
 
 test('join endpoint validates membership', async (t) => {
-  const { app, db, tmpDir } = makeApp({ hasPurchased: async () => true });
+  const { app, db, tmpDir, contractState } = makeApp({ hasPurchased: async () => true });
   t.after(async () => {
     await app.close?.();
     db.close();
@@ -182,7 +197,7 @@ test('join endpoint validates membership', async (t) => {
 
   const templWallet = Wallet.createRandom();
   const memberWallet = Wallet.createRandom();
-  const { contractAddress } = await registerTempl(app, templWallet);
+  const { contractAddress } = await registerTempl(app, templWallet, undefined, { contractState });
 
   const res = await joinTempl(app, contractAddress, memberWallet);
   assert.equal(res.status, 200);
@@ -193,7 +208,7 @@ test('join endpoint validates membership', async (t) => {
 });
 
 test('join endpoint rejects non-members', async (t) => {
-  const { app, db, tmpDir } = makeApp({ hasPurchased: async () => false });
+  const { app, db, tmpDir, contractState } = makeApp({ hasPurchased: async () => false });
   t.after(async () => {
     await app.close?.();
     db.close();
@@ -202,7 +217,7 @@ test('join endpoint rejects non-members', async (t) => {
 
   const templWallet = Wallet.createRandom();
   const memberWallet = Wallet.createRandom();
-  const { contractAddress } = await registerTempl(app, templWallet);
+  const { contractAddress } = await registerTempl(app, templWallet, undefined, { contractState });
 
   const res = await joinTempl(app, contractAddress, memberWallet);
   assert.equal(res.status, 403);
@@ -210,7 +225,7 @@ test('join endpoint rejects non-members', async (t) => {
 });
 
 test('list templs includes registered entries', async (t) => {
-  const { app, db, tmpDir } = makeApp({ hasPurchased: async () => true });
+  const { app, db, tmpDir, contractState } = makeApp({ hasPurchased: async () => true });
   t.after(async () => {
     await app.close?.();
     db.close();
@@ -218,7 +233,7 @@ test('list templs includes registered entries', async (t) => {
   });
 
   const templWallet = Wallet.createRandom();
-  const { contractAddress } = await registerTempl(app, templWallet, { telegramChatId: 'chat-42' });
+  const { contractAddress } = await registerTempl(app, templWallet, { telegramChatId: 'chat-42' }, { contractState });
 
   const res = await request(app).get('/templs?include=chatId');
   assert.equal(res.status, 200);
@@ -231,7 +246,7 @@ test('list templs includes registered entries', async (t) => {
 });
 
 test('register templ without chat id issues binding code', async (t) => {
-  const { app, db, tmpDir } = makeApp();
+  const { app, db, tmpDir, contractState } = makeApp();
   t.after(async () => {
     await app.close?.();
     db.close();
@@ -239,7 +254,7 @@ test('register templ without chat id issues binding code', async (t) => {
   });
 
   const wallet = Wallet.createRandom();
-  const { contractAddress, response } = await registerTempl(app, wallet, { telegramChatId: null, templHomeLink: 'https://initial.link' });
+  const { contractAddress, response } = await registerTempl(app, wallet, { telegramChatId: null, templHomeLink: 'https://initial.link' }, { contractState });
 
   assert.equal(response.contract, contractAddress);
   assert.equal(response.telegramChatId, null);
@@ -256,7 +271,7 @@ test('register templ without chat id issues binding code', async (t) => {
 });
 
 test('templ without chat binding survives restart', async (t) => {
-  let { app, db, tmpDir } = makeApp();
+  let { app, db, tmpDir, contractState } = makeApp();
   let appReload = null;
   let dbReload = null;
   const hasPurchased = async () => true;
@@ -272,7 +287,7 @@ test('templ without chat binding survives restart', async (t) => {
 
   const dbPath = join(tmpDir, 'groups.db');
   const wallet = Wallet.createRandom();
-  const { contractAddress, response } = await registerTempl(app, wallet, { telegramChatId: null });
+  const { contractAddress, response } = await registerTempl(app, wallet, { telegramChatId: null }, { contractState });
   assert.ok(response.bindingCode);
 
   const initialRow = db.prepare('SELECT telegramChatId FROM templ_bindings WHERE contract = ?').get(contractAddress);
@@ -288,8 +303,11 @@ test('templ without chat binding survives restart', async (t) => {
   const notifications = [];
   const handlerRegistry = new Map();
   const notifier = createTestNotifier(notifications);
-  const connectContract = createTestConnectContract(handlerRegistry);
+  const connectContract = createTestConnectContract(handlerRegistry, contractState);
   appReload = createApp({ hasPurchased, db: dbReload, connectContract, telegram: { notifier } });
+
+  // allow asynchronous watcher hydration
+  await new Promise((resolve) => setImmediate(resolve));
 
   const restored = appReload.locals.templs.get(contractAddress);
   assert.ok(restored, 'templ restored into memory');
@@ -300,11 +318,13 @@ test('templ without chat binding survives restart', async (t) => {
   const listed = listRes.body.templs.find((row) => row.contract === contractAddress);
   assert.ok(listed, 'templ listed after restart');
   assert.equal(listed.telegramChatId, null);
+  assert.equal(listed.priest, wallet.address.toLowerCase());
 
   const memberWallet = Wallet.createRandom();
   const joinRes = await joinTempl(appReload, contractAddress, memberWallet);
   assert.equal(joinRes.status, 200);
   assert.equal(joinRes.body.templ.contract, contractAddress);
+  assert.equal(joinRes.body.templ.priest, wallet.address.toLowerCase());
 
   const persistedRow = dbReload.prepare('SELECT telegramChatId FROM templ_bindings WHERE contract = ?').get(contractAddress);
   assert.ok(persistedRow, 'row still present after restart');
@@ -312,7 +332,7 @@ test('templ without chat binding survives restart', async (t) => {
 });
 
 test('priest can request telegram rebind with signature', async (t) => {
-  const { app, db, tmpDir } = makeApp();
+  const { app, db, tmpDir, contractState } = makeApp();
   t.after(async () => {
     await app.close?.();
     db.close();
@@ -320,7 +340,7 @@ test('priest can request telegram rebind with signature', async (t) => {
   });
 
   const wallet = Wallet.createRandom();
-  const { contractAddress } = await registerTempl(app, wallet, { telegramChatId: 'chat-old' });
+  const { contractAddress } = await registerTempl(app, wallet, { telegramChatId: 'chat-old' }, { contractState });
 
   const typed = buildRebindTypedData({ chainId: 1337, contractAddress });
   const signature = await wallet.signTypedData(typed.domain, typed.types, typed.message);
@@ -352,7 +372,7 @@ test('priest can request telegram rebind with signature', async (t) => {
 });
 
 test('rebind rejects signatures from non-priest wallet', async (t) => {
-  const { app, db, tmpDir } = makeApp();
+  const { app, db, tmpDir, contractState } = makeApp();
   t.after(async () => {
     await app.close?.();
     db.close();
@@ -360,7 +380,7 @@ test('rebind rejects signatures from non-priest wallet', async (t) => {
   });
 
   const priestWallet = Wallet.createRandom();
-  const { contractAddress } = await registerTempl(app, priestWallet, { telegramChatId: 'chat-old' });
+  const { contractAddress } = await registerTempl(app, priestWallet, { telegramChatId: 'chat-old' }, { contractState });
   const intruder = Wallet.createRandom();
 
   const typed = buildRebindTypedData({ chainId: 1337, contractAddress });

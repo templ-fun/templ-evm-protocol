@@ -345,6 +345,19 @@ function createContractWatcher({ connectContract, templs, persist, notifier, log
       });
     }
 
+    if (!record.priest && typeof contract.priest === 'function') {
+      contract.priest().then((addr) => {
+        const nextPriest = addr ? String(addr).toLowerCase() : null;
+        if (nextPriest && record.priest !== nextPriest) {
+          record.priest = nextPriest;
+          templs.set(key, record);
+          persist?.(key, record);
+        }
+      }).catch((err) => {
+        logger?.debug?.({ err: String(err?.message || err), contract: key }, 'Failed to read templ priest');
+      });
+    }
+
     const wrapListener = (label, fn) => (...args) => {
       try {
         const maybe = fn(...args);
