@@ -30,13 +30,27 @@ function createTestNotifier(notifications) {
   };
 }
 
+function ensureContractState(contractState, key) {
+  const existing = contractState.get(key);
+  if (existing && typeof existing === 'object' && existing !== null) {
+    if (!existing.activeProposals) existing.activeProposals = new Map();
+    if (!existing.snapshots) existing.snapshots = new Map();
+    return existing;
+  }
+  const state = {
+    priestAddress: typeof existing === 'string' ? existing : null,
+    activeProposals: new Map(),
+    snapshots: new Map()
+  };
+  contractState.set(key, state);
+  return state;
+}
+
 function createTestConnectContract(handlerRegistry, contractState = new Map()) {
   return (address) => {
     const key = String(address).toLowerCase();
-    if (!contractState.has(key)) {
-      contractState.set(key, null);
-    }
-    const entry = { handlers: {}, metadata: new Map(), priestAddress: contractState.get(key) };
+    const state = ensureContractState(contractState, key);
+    const entry = { handlers: {}, metadata: new Map(), priestAddress: state.priestAddress };
     handlerRegistry.set(key, entry);
     return {
       on: (event, handler) => {
@@ -45,36 +59,62 @@ function createTestConnectContract(handlerRegistry, contractState = new Map()) {
             const [, newPriest] = args;
             const nextPriest = newPriest ? String(newPriest).toLowerCase() : null;
             entry.priestAddress = nextPriest;
-            contractState.set(key, nextPriest);
+            state.priestAddress = nextPriest;
           }
           if (event === 'ProposalCreated') {
-            const [id,, , titleArg, descriptionArg] = args;
+            const [id,, endTime, titleArg, descriptionArg] = args;
             entry.metadata.set(String(id), {
               title: titleArg ? String(titleArg) : '',
               description: descriptionArg ? String(descriptionArg) : ''
             });
+            const proposalKey = String(id);
+            const existingMeta = state.activeProposals.get(proposalKey) || {};
+            state.activeProposals.set(proposalKey, {
+              title: titleArg ? String(titleArg) : existingMeta.title || '',
+              description: descriptionArg ? String(descriptionArg) : existingMeta.description || '',
+              endTime: Number(endTime ?? existingMeta.endTime ?? 0),
+              executed: false,
+              passed: false
+            });
+          }
+          if (event === 'ProposalExecuted') {
+            const [id, success] = args;
+            const proposalKey = String(id);
+            const existingMeta = state.activeProposals.get(proposalKey);
+            if (existingMeta) {
+              existingMeta.executed = true;
+              existingMeta.passed = Boolean(success);
+            }
           }
           return handler(...args);
         };
       },
       async priest() {
-        return entry.priestAddress;
+        return state.priestAddress;
       },
       async getProposal(id) {
-        const stored = entry.metadata.get(String(id));
+        const keyStr = String(id);
+        const stored = entry.metadata.get(keyStr);
+        const stateMeta = state.activeProposals.get(keyStr) || {};
         return {
           proposer: null,
           yesVotes: 0,
           noVotes: 0,
-          endTime: 0,
-          executed: false,
-          passed: false,
-          title: stored?.title ?? '',
-          description: stored?.description ?? ''
+          endTime: stateMeta.endTime ?? 0,
+          executed: Boolean(stateMeta.executed),
+          passed: Boolean(stateMeta.passed),
+          title: stored?.title ?? stateMeta.title ?? '',
+          description: stored?.description ?? stateMeta.description ?? ''
         };
       },
-      async getProposalSnapshots() {
-        return [0, 0, 0, 0, 0, 0];
+      async getProposalSnapshots(id) {
+        const keyStr = String(id);
+        const snapshot = state.snapshots.get(keyStr);
+        if (!snapshot) return [0, 0, 0, 0, 0, 0];
+        return [snapshot.yesVotes ?? 0, snapshot.noVotes ?? 0, 0, 0, 0, snapshot.quorumReachedAt ?? 0];
+      },
+      async getActiveProposals() {
+        return Array.from(state.activeProposals.keys()).map((proposalId) => BigInt(proposalId));
       },
       async treasuryBalance() {
         return 0n;
@@ -96,7 +136,10 @@ function createTestProvider(contractState) {
       }
       const key = String(to || '').toLowerCase();
       const stored = contractState.get(key);
-      const response = stored ? getAddress(stored) : ZeroAddress;
+      const priestAddress = stored && typeof stored === 'object' && stored !== null
+        ? stored.priestAddress
+        : stored;
+      const response = priestAddress ? getAddress(priestAddress) : ZeroAddress;
       return iface.encodeFunctionResult('priest', [response]);
     },
     async getNetwork() {
@@ -143,7 +186,10 @@ async function registerTempl(app, wallet, { telegramChatId = '12345', templHomeL
     });
   assert.equal(res.status, 200);
   const contractKey = contractAddress.toLowerCase();
-  options.contractState?.set(contractKey, wallet.address.toLowerCase());
+  if (options.contractState) {
+    const state = ensureContractState(options.contractState, contractKey);
+    state.priestAddress = wallet.address.toLowerCase();
+  }
   return { contractAddress: contractAddress.toLowerCase(), response: res.body };
 }
 
@@ -363,6 +409,7 @@ test('signature replay rejected after restart with shared store', async (t) => {
 
   const dbReload = new Database(dbPath);
   appReload = createApp({ hasPurchased, db: dbReload, connectContract: createTestConnectContract(new Map(), contractState) });
+  await appReload.locals.restorationPromise;
 
   const replayRes = await request(appReload)
     .post('/templs')
@@ -413,9 +460,7 @@ test('templ without chat binding survives restart', async (t) => {
   const notifier = createTestNotifier(notifications);
   const connectContract = createTestConnectContract(handlerRegistry, contractState);
   appReload = createApp({ hasPurchased, db: dbReload, connectContract, telegram: { notifier } });
-
-  // allow asynchronous watcher hydration
-  await new Promise((resolve) => setImmediate(resolve));
+  await appReload.locals.restorationPromise;
 
   const restored = appReload.locals.templs.get(contractAddress);
   assert.ok(restored, 'templ restored into memory');
@@ -437,6 +482,48 @@ test('templ without chat binding survives restart', async (t) => {
   const persistedRow = dbReload.prepare('SELECT telegramChatId FROM templ_bindings WHERE contract = ?').get(contractAddress);
   assert.ok(persistedRow, 'row still present after restart');
   assert.equal(persistedRow.telegramChatId, null);
+});
+
+test('active proposals are backfilled after restart', async (t) => {
+  const { app, db, tmpDir, handlerRegistry, contractState } = makeApp();
+  let appReload = null;
+  let dbReload = null;
+  t.after(async () => {
+    await app?.close?.();
+    await appReload?.close?.();
+    try { db?.close?.(); } catch (err) { void err; }
+    try { dbReload?.close?.(); } catch (err) { void err; }
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  const dbPath = join(tmpDir, 'groups.db');
+  const wallet = Wallet.createRandom();
+  const { contractAddress } = await registerTempl(app, wallet, { telegramChatId: 'chat-restore' }, { contractState });
+  const entry = handlerRegistry.get(contractAddress);
+  assert.ok(entry, 'contract handlers registered');
+
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const endTime = BigInt(nowSeconds + 3_600);
+  await entry.handlers.ProposalCreated(1n, wallet.address, endTime, 'Backfilled proposal', 'Restored metadata');
+  const state = ensureContractState(contractState, contractAddress);
+  state.snapshots.set('1', { quorumReachedAt: nowSeconds - 120 });
+
+  await app.close?.();
+  db.close();
+
+  dbReload = new Database(dbPath);
+  const connectContract = createTestConnectContract(new Map(), contractState);
+  appReload = createApp({ hasPurchased: async () => true, db: dbReload, connectContract, telegram: { notifier: createTestNotifier([]) } });
+  await appReload.locals.restorationPromise;
+
+  const restored = appReload.locals.templs.get(contractAddress);
+  assert.ok(restored?.proposalsMeta?.has?.('1'));
+  const meta = restored.proposalsMeta.get('1');
+  assert.equal(meta.title, 'Backfilled proposal');
+  assert.equal(meta.description, 'Restored metadata');
+  assert.equal(meta.quorumNotified, true);
+  assert.equal(meta.votingClosedNotified, false);
+  assert.ok(meta.endTime > nowSeconds);
 });
 
 test('priest can request telegram rebind with signature', async (t) => {

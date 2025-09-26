@@ -24,6 +24,7 @@ const TEMPL_EVENT_ABI = [
   'event PriestChanged(address indexed oldPriest,address indexed newPriest)',
   'event ProposalExecuted(uint256 indexed proposalId,bool success,bytes returnData)',
   'event TemplHomeLinkUpdated(string previousLink,string newLink)',
+  'function getActiveProposals() view returns (uint256[])',
   'function treasuryBalance() view returns (uint256)',
   'function memberPoolBalance() view returns (uint256)',
   'function templHomeLink() view returns (string)',
@@ -300,7 +301,67 @@ function createContractWatcher({ connectContract, templs, persist, notifier, log
     return { watchContract: () => {} };
   }
   const listenerRegistry = new Map();
-  const watchContract = (contractAddress, record) => {
+  const backfillActiveProposals = async ({ contract, record, contractAddress }) => {
+    if (!record) return;
+    if (!record.proposalsMeta || typeof record.proposalsMeta.set !== 'function') {
+      record.proposalsMeta = new Map();
+    }
+    if (!contract || typeof contract.getActiveProposals !== 'function') return;
+    let activeIds;
+    try {
+      activeIds = await contract.getActiveProposals();
+    } catch (err) {
+      logger?.warn?.({ err: String(err?.message || err), contract: contractAddress }, 'Failed to load active proposals during backfill');
+      return;
+    }
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const activeKeys = new Set();
+    for (const proposalId of Array.isArray(activeIds) ? activeIds : []) {
+      const proposalKey = toProposalKey(proposalId);
+      if (!proposalKey) continue;
+      activeKeys.add(proposalKey);
+      const meta = ensureProposalMeta(record, proposalKey);
+      if (!meta) continue;
+      meta.quorumReachedAt = 0;
+      meta.quorumNotified = false;
+      meta.votingClosedNotified = false;
+      meta.executed = false;
+      meta.passed = false;
+      if (typeof contract.getProposal === 'function') {
+        try {
+          const details = await contract.getProposal(proposalId);
+          updateMetaFromDetails(meta, details);
+        } catch (err) {
+          logger?.warn?.({ err: String(err?.message || err), contract: contractAddress, proposalId: proposalKey }, 'Failed to load proposal details during backfill');
+        }
+      }
+      if (typeof contract.getProposalSnapshots === 'function') {
+        try {
+          const snapshots = await contract.getProposalSnapshots(proposalId);
+          updateMetaFromSnapshots(meta, snapshots);
+        } catch (err) {
+          logger?.warn?.({ err: String(err?.message || err), contract: contractAddress, proposalId: proposalKey }, 'Failed to load proposal snapshots during backfill');
+        }
+      }
+      if (meta.quorumReachedAt) {
+        meta.quorumNotified = true;
+      }
+      if (meta.executed || (meta.endTime && nowSeconds >= meta.endTime)) {
+        meta.votingClosedNotified = true;
+      }
+    }
+    for (const [proposalKey, meta] of record.proposalsMeta.entries()) {
+      if (!activeKeys.has(proposalKey) && meta) {
+        if (!meta.votingClosedNotified) {
+          meta.votingClosedNotified = true;
+        }
+        if (meta.quorumReachedAt && !meta.quorumNotified) {
+          meta.quorumNotified = true;
+        }
+      }
+    }
+  };
+  const watchContract = async (contractAddress, record) => {
     if (!contractAddress || !record) return;
     const key = String(contractAddress).toLowerCase();
     if (listenerRegistry.has(key)) {
@@ -324,6 +385,7 @@ function createContractWatcher({ connectContract, templs, persist, notifier, log
       } else if (typeof record.lastDigestAt !== 'number') {
         record.lastDigestAt = Date.now();
       }
+      await backfillActiveProposals({ contract: existing.contract, record, contractAddress: key });
       return;
     }
     let contract;
@@ -518,6 +580,7 @@ function createContractWatcher({ connectContract, templs, persist, notifier, log
         handleTemplHomeLinkUpdated
       }
     });
+    await backfillActiveProposals({ contract, record, contractAddress: key });
   };
 
   return { watchContract };
@@ -526,6 +589,7 @@ function createContractWatcher({ connectContract, templs, persist, notifier, log
 async function restoreGroupsFromPersistence({ listBindings, templs, watchContract, logger }) {
   try {
     const rows = typeof listBindings === 'function' ? listBindings() : [];
+    const pending = [];
     for (const row of rows) {
       const key = String(row?.contract || '').toLowerCase();
       if (!key) continue;
@@ -540,8 +604,18 @@ async function restoreGroupsFromPersistence({ listBindings, templs, watchContrac
       };
       templs.set(key, record);
       if (watchContract) {
-        watchContract(row.contract || key, record);
+        try {
+          const maybe = watchContract(row.contract || key, record);
+          if (maybe && typeof maybe.then === 'function') {
+            pending.push(maybe);
+          }
+        } catch (err) {
+          logger?.warn?.({ err: String(err?.message || err), contract: key }, 'Failed to watch contract during restore');
+        }
       }
+    }
+    if (pending.length) {
+      await Promise.allSettled(pending);
     }
   } catch (err) {
     logger?.warn?.({ err: String(err?.message || err) }, 'Failed to restore templs from persistence');
@@ -727,11 +801,18 @@ export function createApp(opts) {
 
   const { watchContract } = createContractWatcher({ connectContract, templs, persist, notifier, logger });
 
-  void restoreGroupsFromPersistence({ listBindings, templs, watchContract, logger });
+  const restorationPromise = restoreGroupsFromPersistence({ listBindings, templs, watchContract, logger });
 
   let backgroundTasks = null;
   if (enableBackgroundTasks) {
-    backgroundTasks = createBackgroundTasks({ templs, notifier, logger, persist });
+    restorationPromise
+      .then(() => {
+        backgroundTasks = createBackgroundTasks({ templs, notifier, logger, persist });
+        app.locals.backgroundTasks = backgroundTasks;
+      })
+      .catch((err) => {
+        logger?.warn?.({ err: String(err?.message || err) }, 'Failed to start background tasks after restore');
+      });
   }
 
   const context = {
@@ -750,12 +831,18 @@ export function createApp(opts) {
   app.use(joinRouter(context));
 
   app.close = async () => {
+    try {
+      await restorationPromise;
+    } catch {
+      /* ignore */
+    }
     await store.shutdown?.();
     closeDatabase();
     backgroundTasks?.stop?.();
   };
 
   app.locals.backgroundTasks = backgroundTasks;
+  app.locals.restorationPromise = restorationPromise;
 
   return app;
 }
