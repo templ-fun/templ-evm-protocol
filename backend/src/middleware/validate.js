@@ -67,7 +67,8 @@ export function verifyTypedSignature({ signatureStore = createSignatureStore(), 
       }
 
       const now = Date.now();
-      if (message?.expiry && Number(message.expiry) < now) {
+      const expiry = Number(message?.expiry);
+      if (!Number.isFinite(expiry) || expiry <= now) {
         return res.status(403).json({ error: 'Signature expired' });
       }
 
