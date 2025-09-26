@@ -2,17 +2,70 @@ import { useMemo, useState } from 'react';
 import templArtifact from '../contracts/TEMPL.json';
 import { proposeVote } from '../services/governance.js';
 
-const ACTIONS = [
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+
+// eslint-disable-next-line react-refresh/only-export-components
+export const ACTIONS = [
   { value: 'pause', label: 'Pause templ' },
   { value: 'unpause', label: 'Unpause templ' },
   { value: 'changePriest', label: 'Change priest' },
   { value: 'setMaxMembers', label: 'Set max members' },
   { value: 'enableDictatorship', label: 'Enable dictatorship' },
   { value: 'disableDictatorship', label: 'Disable dictatorship' },
+  { value: 'withdrawTreasury', label: 'Withdraw treasury funds' },
+  { value: 'disbandTreasury', label: 'Disband treasury' },
+  { value: 'updateConfig', label: 'Update templ config' },
   { value: 'updateHomeLink', label: 'Update templ home link' }
 ];
 
-function buildActionConfig(kind, params) {
+function normalizeAddress(value, label, ethersLib) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) {
+    throw new Error(`${label} is required`);
+  }
+  if (ethersLib?.isAddress?.(trimmed)) {
+    return ethersLib?.getAddress?.(trimmed) || trimmed;
+  }
+  throw new Error(`Invalid ${label}`);
+}
+
+function parseBigInt(value, label, { allowZero = false } = {}) {
+  const trimmed = String(value ?? '').trim();
+  if (!trimmed) {
+    throw new Error(`${label} is required`);
+  }
+  try {
+    const parsed = BigInt(trimmed);
+    if (!allowZero && parsed <= 0n) {
+      throw new Error(`${label} must be greater than zero`);
+    }
+    if (allowZero && parsed < 0n) {
+      throw new Error(`${label} must be non-negative`);
+    }
+    return parsed;
+  } catch {
+    throw new Error(`Invalid ${label}`);
+  }
+}
+
+function parsePercent(value, label) {
+  const trimmed = String(value ?? '').trim();
+  if (!trimmed) {
+    throw new Error(`${label} is required`);
+  }
+  const num = Number(trimmed);
+  if (!Number.isFinite(num) || !Number.isInteger(num)) {
+    throw new Error(`${label} must be an integer`);
+  }
+  if (num < 0 || num > 100) {
+    throw new Error(`${label} must be between 0 and 100`);
+  }
+  return num;
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function buildActionConfig(kind, params, helpers = {}) {
+  const ethersLib = helpers?.ethers;
   switch (kind) {
     case 'pause':
       return { action: 'setPaused', params: { paused: true } };
@@ -28,6 +81,60 @@ function buildActionConfig(kind, params) {
       return { action: 'setDictatorship', params: { enable: true } };
     case 'disableDictatorship':
       return { action: 'setDictatorship', params: { enable: false } };
+    case 'withdrawTreasury': {
+      const tokenInput = String(params.token ?? '').trim();
+      if (!tokenInput) throw new Error('Withdrawal token is required');
+      let tokenAddress;
+      if (tokenInput.toLowerCase() === 'eth') {
+        tokenAddress = ethersLib?.ZeroAddress ?? ZERO_ADDRESS;
+      } else {
+        tokenAddress = normalizeAddress(tokenInput, 'withdrawal token address', ethersLib);
+      }
+      const recipient = normalizeAddress(params.recipient, 'recipient address', ethersLib);
+      const amount = parseBigInt(params.amount, 'withdrawal amount');
+      const reason = String(params.reason ?? '').trim();
+      return {
+        action: 'withdrawTreasury',
+        params: { token: tokenAddress, recipient, amount, reason }
+      };
+    }
+    case 'disbandTreasury': {
+      const mode = String(params.tokenMode || 'accessToken');
+      if (mode === 'custom') {
+        const customToken = normalizeAddress(params.customToken, 'treasury token', ethersLib);
+        return { action: 'disbandTreasury', params: { token: customToken } };
+      }
+      if (mode === 'eth') {
+        return { action: 'disbandTreasury', params: { token: 'eth' } };
+      }
+      return { action: 'disbandTreasury', params: { token: '' } };
+    }
+    case 'updateConfig': {
+      const entryFeeRaw = String(params.entryFee ?? '').trim();
+      const shouldUpdateSplit = params.updateFeeSplit === true;
+      const nextParams = {};
+      if (entryFeeRaw) {
+        const entryFee = parseBigInt(entryFeeRaw, 'entry fee', { allowZero: true });
+        nextParams.newEntryFee = entryFee;
+      }
+      if (shouldUpdateSplit) {
+        const burn = parsePercent(params.burnPercent, 'burn percent');
+        const treasury = parsePercent(params.treasuryPercent, 'treasury percent');
+        const member = parsePercent(params.memberPercent, 'member pool percent');
+        const total = burn + treasury + member;
+        if (total !== 100) {
+          throw new Error(`Fee split must add up to 100 (received ${total})`);
+        }
+        nextParams.updateFeeSplit = true;
+        nextParams.newBurnPercent = burn;
+        nextParams.newTreasuryPercent = treasury;
+        nextParams.newMemberPoolPercent = member;
+      }
+      if (!('newEntryFee' in nextParams) && !shouldUpdateSplit) {
+        throw new Error('Provide at least one config change');
+      }
+      return { action: 'updateConfig', params: nextParams };
+    }
     case 'updateHomeLink':
       if (!params.homeLink) throw new Error('Home link is required');
       return { action: 'setHomeLink', params: { newHomeLink: params.homeLink } };
@@ -51,11 +158,25 @@ export function NewProposalPage({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [homeLink, setHomeLink] = useState('');
+  const [withdrawToken, setWithdrawToken] = useState('');
+  const [withdrawRecipient, setWithdrawRecipient] = useState('');
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [withdrawReason, setWithdrawReason] = useState('');
+  const [disbandTokenMode, setDisbandTokenMode] = useState('accessToken');
+  const [disbandCustomToken, setDisbandCustomToken] = useState('');
+  const [updateEntryFee, setUpdateEntryFee] = useState('');
+  const [updateFeeSplit, setUpdateFeeSplit] = useState(false);
+  const [updateBurnPercent, setUpdateBurnPercent] = useState('');
+  const [updateTreasuryPercent, setUpdateTreasuryPercent] = useState('');
+  const [updateMemberPercent, setUpdateMemberPercent] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const requiresPriest = useMemo(() => proposalType === 'changePriest', [proposalType]);
   const requiresMaxMembers = useMemo(() => proposalType === 'setMaxMembers', [proposalType]);
   const requiresHomeLink = useMemo(() => proposalType === 'updateHomeLink', [proposalType]);
+  const requiresWithdrawal = useMemo(() => proposalType === 'withdrawTreasury', [proposalType]);
+  const requiresDisband = useMemo(() => proposalType === 'disbandTreasury', [proposalType]);
+  const requiresConfigUpdate = useMemo(() => proposalType === 'updateConfig', [proposalType]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -75,8 +196,19 @@ export function NewProposalPage({
       const { action, params } = buildActionConfig(proposalType, {
         newPriest,
         maxMembers,
-        homeLink
-      });
+        homeLink,
+        token: withdrawToken,
+        recipient: withdrawRecipient,
+        amount: withdrawAmount,
+        reason: withdrawReason,
+        tokenMode: disbandTokenMode,
+        customToken: disbandCustomToken,
+        entryFee: updateEntryFee,
+        updateFeeSplit,
+        burnPercent: updateBurnPercent,
+        treasuryPercent: updateTreasuryPercent,
+        memberPercent: updateMemberPercent
+      }, { ethers });
       const votingPeriodValue = Number(votingPeriod || '0');
       const result = await proposeVote({
         ethers,
@@ -139,6 +271,124 @@ export function NewProposalPage({
             New home link
             <input type="text" value={homeLink} onChange={(e) => setHomeLink(e.target.value.trim())} placeholder="https://t.me/..." />
           </label>
+        )}
+        {requiresWithdrawal && (
+          <>
+            <label>
+              Withdrawal token (address or "ETH")
+              <input
+                type="text"
+                value={withdrawToken}
+                onChange={(e) => setWithdrawToken(e.target.value.trim())}
+                placeholder="0x… or ETH"
+              />
+            </label>
+            <label>
+              Withdrawal recipient
+              <input
+                type="text"
+                value={withdrawRecipient}
+                onChange={(e) => setWithdrawRecipient(e.target.value.trim())}
+                placeholder="0x…"
+              />
+            </label>
+            <label>
+              Withdrawal amount (wei)
+              <input
+                type="text"
+                value={withdrawAmount}
+                onChange={(e) => setWithdrawAmount(e.target.value.trim())}
+                placeholder="1000000000000000000"
+              />
+            </label>
+            <label>
+              Withdrawal reason
+              <textarea
+                value={withdrawReason}
+                onChange={(e) => setWithdrawReason(e.target.value)}
+                rows={2}
+                placeholder="Explain the withdrawal"
+              />
+            </label>
+          </>
+        )}
+        {requiresDisband && (
+          <>
+            <label>
+              Treasury token source
+              <select value={disbandTokenMode} onChange={(e) => setDisbandTokenMode(e.target.value)}>
+                <option value="accessToken">Use templ access token</option>
+                <option value="eth">Native ETH</option>
+                <option value="custom">Custom token address</option>
+              </select>
+            </label>
+            {disbandTokenMode === 'custom' && (
+              <label>
+                Custom token address
+                <input
+                  type="text"
+                  value={disbandCustomToken}
+                  onChange={(e) => setDisbandCustomToken(e.target.value.trim())}
+                  placeholder="0x…"
+                />
+              </label>
+            )}
+          </>
+        )}
+        {requiresConfigUpdate && (
+          <>
+            <label>
+              New entry fee (wei)
+              <input
+                type="text"
+                value={updateEntryFee}
+                onChange={(e) => setUpdateEntryFee(e.target.value.trim())}
+                placeholder="Leave blank to keep current fee"
+              />
+            </label>
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                checked={updateFeeSplit}
+                onChange={(e) => setUpdateFeeSplit(e.target.checked)}
+              />
+              Update fee split
+            </label>
+            {updateFeeSplit && (
+              <>
+                <label>
+                  Burn percent
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={updateBurnPercent}
+                    onChange={(e) => setUpdateBurnPercent(e.target.value)}
+                  />
+                </label>
+                <label>
+                  Treasury percent
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={updateTreasuryPercent}
+                    onChange={(e) => setUpdateTreasuryPercent(e.target.value)}
+                  />
+                </label>
+                <label>
+                  Member pool percent
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={updateMemberPercent}
+                    onChange={(e) => setUpdateMemberPercent(e.target.value)}
+                  />
+                </label>
+              </>
+            )}
+          </>
         )}
         <label>
           Voting period (seconds)
