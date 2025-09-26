@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { Wallet } from 'ethers';
+import { Wallet, Interface, ZeroAddress, getAddress } from 'ethers';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import os from 'node:os';
@@ -86,6 +86,29 @@ function createTestConnectContract(handlerRegistry, contractState = new Map()) {
   };
 }
 
+function createTestProvider(contractState) {
+  const iface = new Interface(['function priest() view returns (address)']);
+  const encodedPriestCall = iface.encodeFunctionData('priest');
+  return {
+    async call({ to, data }) {
+      if (data !== encodedPriestCall) {
+        return '0x';
+      }
+      const key = String(to || '').toLowerCase();
+      const stored = contractState.get(key);
+      const response = stored ? getAddress(stored) : ZeroAddress;
+      return iface.encodeFunctionResult('priest', [response]);
+    },
+    async getNetwork() {
+      return { chainId: 1337 };
+    },
+    async getCode(address) {
+      const key = String(address || '').toLowerCase();
+      return contractState.has(key) ? '0x1' : '0x';
+    }
+  };
+}
+
 
 function makeApp({ hasPurchased = async () => true } = {}) {
   const tmpDir = mkdtempSync(join(os.tmpdir(), 'templ-backend-'));
@@ -96,8 +119,9 @@ function makeApp({ hasPurchased = async () => true } = {}) {
   const contractState = new Map();
   const notifier = createTestNotifier(notifications);
   const connectContract = createTestConnectContract(handlerRegistry, contractState);
-  const app = createApp({ hasPurchased, db, connectContract, telegram: { notifier } });
-  return { app, db, tmpDir, notifications, handlerRegistry, contractState, connectContract };
+  const provider = createTestProvider(contractState);
+  const app = createApp({ hasPurchased, db, connectContract, provider, telegram: { notifier } });
+  return { app, db, tmpDir, notifications, handlerRegistry, contractState, connectContract, provider };
 }
 
 async function registerTempl(app, wallet, { telegramChatId = '12345', templHomeLink } = {}, options = {}) {
@@ -484,4 +508,43 @@ test('rebind rejects signatures from non-priest wallet', async (t) => {
 
   assert.equal(res.status, 403);
   assert.match(res.body.error, /signature/i);
+});
+
+test('rebind rejects non-priest after restart when cache is missing priest', async (t) => {
+  const { app, db, tmpDir, contractState } = makeApp();
+  t.after(async () => {
+    await app.close?.();
+    db.close();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  const priestWallet = Wallet.createRandom();
+  const { contractAddress } = await registerTempl(app, priestWallet, { telegramChatId: 'chat-old' }, { contractState });
+
+  const cachedRecord = app.locals.templs.get(contractAddress);
+  assert.ok(cachedRecord, 'record should exist in cache');
+  cachedRecord.priest = null;
+  app.locals.templs.set(contractAddress, cachedRecord);
+  db.prepare('UPDATE templ_bindings SET priest = NULL WHERE contract = ?').run(contractAddress);
+
+  const intruder = Wallet.createRandom();
+  const typed = buildRebindTypedData({ chainId: 1337, contractAddress });
+  const signature = await intruder.signTypedData(typed.domain, typed.types, typed.message);
+
+  const res = await request(app)
+    .post('/templs/rebind')
+    .send({
+      contractAddress,
+      priestAddress: intruder.address,
+      signature,
+      chainId: 1337,
+      nonce: typed.message.nonce,
+      issuedAt: typed.message.issuedAt,
+      expiry: typed.message.expiry
+    });
+
+  assert.equal(res.status, 403);
+  assert.match(res.body.error, /priest/i);
+  const reloaded = app.locals.templs.get(contractAddress);
+  assert.equal(reloaded?.priest, null);
 });
