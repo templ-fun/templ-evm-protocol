@@ -83,9 +83,9 @@ sequenceDiagram
 - Quorum threshold: `quorumPercent = 33` (33% yes votes of `eligibleVoters`).
 - On creation: proposer auto-YES, and `eligibleVoters` snapshots the member count at proposal creation. If quorum is immediately satisfied, `quorumReachedAt` is set, `postQuorumEligibleVoters` matches the creation snapshot, and `endTime` is reset to `now + executionDelayAfterQuorum`.
 - Before quorum: only members captured in the creation snapshot may vote; anyone joining later reverts with `JoinedAfterProposal` until quorum is reached.
-- After quorum: a new snapshot is recorded (`postQuorumEligibleVoters` + `quorumSnapshotBlock`). Members who joined before that quorum transaction can still vote; later joiners are rejected with `JoinedAfterProposal`. Because Ethereum timestamps are per block, joins mined in the same block that reached quorum remain eligible.
+- After quorum: a new snapshot is recorded (`postQuorumEligibleVoters` + `quorumSnapshotBlock`). Members who joined before that quorum transaction can still vote; later joiners are rejected with `JoinedAfterProposal`. Because Ethereum timestamps are per block, joins mined in the same block that reached quorum remain eligible. When quorum is later lost (YES votes drop below the threshold), execution reverts with `QuorumNotReached` until quorum support is restored.
 - Execution requires a simple majority (`yesVotes > noVotes`) and:
-  - if quorum is required: quorum must have been reached and the contract’s configured `executionDelayAfterQuorum` must have elapsed (default 7 days; customisable via the factory); otherwise it reverts with `QuorumNotReached` or `ExecutionDelayActive`.
+  - if quorum is required: quorum must have been reached and maintained, and the contract’s configured `executionDelayAfterQuorum` must have elapsed (default 7 days; customisable via the factory); otherwise it reverts with `QuorumNotReached` or `ExecutionDelayActive`.
   - priest exception: `createProposalDisbandTreasury(...)` proposed by `priest` is quorum-exempt and respects only its `endTime`.
 
 ### Proposal types (create functions)
@@ -117,7 +117,7 @@ Proposals emit `ProposalCreated(id, proposer, endTime, title, description)` and 
 - `claimMemberPool()` - withdraw accrued rewards; emits `MemberPoolClaimed`.
 - `getActiveProposals()` - returns IDs of active proposals (uses the same active predicate as pagination so the two endpoints stay consistent in fast-changing blocks).
 - `getActiveProposalsPaginated(uint256 offset, uint256 limit)` - returns `(ids, hasMore)`; `limit` in [1,100], else `LimitOutOfRange`. Results reuse the `getActiveProposals()` filter and only signal `hasMore` when the page filled.
-- `getProposal(uint256 id)` - returns `(proposer, yesVotes, noVotes, endTime, executed, passed, title, description)` with `passed` computed according to quorum/delay rules.
+- `getProposal(uint256 id)` - returns `(proposer, yesVotes, noVotes, endTime, executed, passed, title, description)` with `passed` computed according to quorum/delay rules and only when YES votes continue to satisfy quorum.
 - `getProposalSnapshots(uint256 id)` - returns `(eligibleVotersPreQuorum, eligibleVotersPostQuorum, preQuorumSnapshotBlock, quorumSnapshotBlock, createdAt, quorumReachedAt)` so clients can reason about eligibility windows.
 - `hasVoted(uint256 id, address voter)` - returns `(voted, support)`.
 - `hasAccess(address user)` - returns membership status.

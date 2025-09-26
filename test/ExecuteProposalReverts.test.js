@@ -46,6 +46,35 @@ describe("executeProposal reverts", function () {
       .to.be.revertedWithCustomError(templ, "QuorumNotReached");
   });
 
+  it("reverts when quorum support drops below the threshold after initial reach", async function () {
+    const {
+      templ: highQuorumTempl,
+      token: highQuorumToken,
+      accounts: highQuorumAccounts,
+    } = await deployTempl({ entryFee: ENTRY_FEE, quorumPercent: 60 });
+
+    const members = highQuorumAccounts.slice(2, 7);
+
+    await mintToUsers(highQuorumToken, members, ENTRY_FEE);
+    await purchaseAccess(highQuorumTempl, highQuorumToken, members);
+
+    await highQuorumTempl
+      .connect(members[0])
+      .createProposalSetPaused(false, 7 * 24 * 60 * 60, 'Keep running', 'Require quorum persistence');
+
+    await highQuorumTempl.connect(members[1]).vote(0, true);
+    await highQuorumTempl.connect(members[2]).vote(0, true);
+
+    await highQuorumTempl.connect(members[1]).vote(0, false);
+
+    const delay = Number(await highQuorumTempl.executionDelayAfterQuorum());
+    await ethers.provider.send("evm_increaseTime", [delay + 1]);
+    await ethers.provider.send("evm_mine", []);
+
+    await expect(highQuorumTempl.executeProposal(0))
+      .to.be.revertedWithCustomError(highQuorumTempl, "QuorumNotReached");
+  });
+
   it("reverts with InvalidCallData when proposal action is undefined", async function () {
     const signers = await ethers.getSigners();
     const [, priestSigner, member1, member2] = signers;

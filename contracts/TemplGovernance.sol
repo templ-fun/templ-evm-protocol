@@ -296,6 +296,12 @@ abstract contract TemplGovernance is TemplTreasury {
             if (block.timestamp < proposal.quorumReachedAt + executionDelayAfterQuorum) {
                 revert TemplErrors.ExecutionDelayActive();
             }
+            if (
+                proposal.eligibleVoters != 0 &&
+                proposal.yesVotes * 100 < quorumPercent * proposal.eligibleVoters
+            ) {
+                revert TemplErrors.QuorumNotReached();
+            }
         }
         if (proposal.executed) revert TemplErrors.AlreadyExecuted();
 
@@ -364,7 +370,10 @@ abstract contract TemplGovernance is TemplTreasury {
         if (proposal.quorumExempt) {
             passed = block.timestamp >= proposal.endTime && proposal.yesVotes > proposal.noVotes;
         } else if (proposal.quorumReachedAt != 0) {
+            bool quorumMaintained = proposal.eligibleVoters == 0 ||
+                proposal.yesVotes * 100 >= quorumPercent * proposal.eligibleVoters;
             passed = (block.timestamp >= (proposal.quorumReachedAt + executionDelayAfterQuorum)) &&
+                quorumMaintained &&
                 (proposal.yesVotes > proposal.noVotes);
         } else {
             passed = false;
