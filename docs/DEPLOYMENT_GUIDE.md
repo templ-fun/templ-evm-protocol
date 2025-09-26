@@ -68,7 +68,7 @@ You can deploy from the CLI or via the frontend. The CLI is convenient for scrip
 
 ## 3. Run and configure the backend
 
-1. Copy `backend/.env.example` to `backend/.env` and fill in:
+1. Create `backend/.env` (you can start by copying `backend/.env.test` if you want the local defaults) and fill in:
    ```ini
    RPC_URL=http://127.0.0.1:8545
    BACKEND_SERVER_ID=templ-dev

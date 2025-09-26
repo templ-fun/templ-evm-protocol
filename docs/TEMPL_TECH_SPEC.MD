@@ -18,10 +18,10 @@ See inline NatSpec comments and Hardhat tests for state transitions.
 - Validate templ registrations (`POST /templs`) with EIP-712 signatures and optional Telegram chat ids.
 - Issue new Telegram binding codes (`POST /templs/rebind`) after verifying the signed priest still owns the contract.
 - Confirm membership via `hasAccess` (`POST /join`).
-- Persist templ metadata in SQLite for fast lookups and restarts.
+- Store templ ↔ Telegram chat bindings in SQLite so notifications survive restarts; priest/home-link data is refreshed from chain when watchers attach.
 - Subscribe to templ events via `ethers.Contract` and forward them to Telegram:
   - `AccessPurchased` → “New member” message with join + claim links and live treasury/member-pool totals.
-  - `ProposalCreated` → “Proposal created” with link to `/proposals/:id`, including the on-chain title & description supplied at creation time.
+- `ProposalCreated` → “Proposal created” with link to `/proposals/:id/vote`, including the on-chain title & description supplied at creation time.
   - `VoteCast` → “Vote recorded” summary, echoing the proposal title when available.
   - `ProposalQuorumReached` (derived from snapshots) → one-off “Quorum reached” nudge so undecided members can still participate.
   - `ProposalVotingClosed` (time-based) → post-quorum notification explaining whether the proposal is executable.
