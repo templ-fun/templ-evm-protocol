@@ -13,7 +13,7 @@ import joinRouter from './routes/join.js';
 
 import { logger } from './logger.js';
 import { createTelegramNotifier } from './telegram.js';
-import { createSignatureStore } from './middleware/validate.js';
+import { createSignatureStore, createSqliteSignatureStore } from './middleware/validate.js';
 
 const { default: BetterSqlite } = await import('better-sqlite3');
 
@@ -701,8 +701,15 @@ export function createApp(opts) {
 
   const templs = new Map();
   app.locals.templs = templs;
-  const signatureStore = createSignatureStore();
   const { database, persist, listBindings, findBinding, close: closeDatabase } = initializeDatabase({ dbPath, db });
+  let signatureStore;
+  try {
+    signatureStore = createSqliteSignatureStore({ database });
+    signatureStore.prune?.();
+  } catch (err) {
+    logger.warn({ err: err?.message || err }, 'Falling back to in-memory signature store');
+    signatureStore = createSignatureStore();
+  }
 
   const { watchContract } = createContractWatcher({ connectContract, templs, persist, notifier, logger });
 

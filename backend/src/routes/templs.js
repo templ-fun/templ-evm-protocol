@@ -55,13 +55,12 @@ export default function templsRouter({ templs, persist, database, provider, watc
       } catch {/* ignore runtime merge errors */}
       const includeRaw = String(req.query.include || '').toLowerCase();
       const includeChat = includeRaw === 'chatid' || includeRaw === 'groupid';
-      const includeHomeLink = includeChat || includeRaw === 'homelink' || includeRaw === 'links';
+      if (includeChat) {
+        return res.status(403).json({ error: 'Chat id listing is restricted' });
+      }
+      const includeHomeLink = includeRaw === 'homelink' || includeRaw === 'links';
       const payload = rows.map((r) => {
         const base = { contract: r.contract, priest: r.priest };
-        if (includeChat) {
-          base.telegramChatId = r.telegramChatId;
-          base.groupId = r.telegramChatId; // compatibility field
-        }
         if (includeHomeLink) {
           base.templHomeLink = r.templHomeLink || '';
         }

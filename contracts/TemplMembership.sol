@@ -45,6 +45,10 @@ abstract contract TemplMembership is TemplBase {
         Member storage m = members[msg.sender];
         if (m.purchased) revert TemplErrors.AlreadyPurchased();
 
+        if (memberList.length > 0) {
+            _flushExternalRemainders();
+        }
+
         uint256 burnAmount = (entryFee * burnPercent) / TOTAL_PERCENT;
         uint256 treasuryAmount = (entryFee * treasuryPercent) / TOTAL_PERCENT;
         uint256 memberPoolAmount = (entryFee * memberPoolPercent) / TOTAL_PERCENT;
@@ -340,5 +344,30 @@ abstract contract TemplMembership is TemplBase {
         }
 
         return checkpoints[low - 1].cumulative;
+    }
+
+    /// @dev Distributes any outstanding external reward remainders to existing members before new joins.
+    function _flushExternalRemainders() internal {
+        uint256 currentMembers = memberList.length;
+        if (currentMembers == 0) {
+            return;
+        }
+        uint256 tokenCount = externalRewardTokens.length;
+        for (uint256 i = 0; i < tokenCount; i++) {
+            address token = externalRewardTokens[i];
+            ExternalRewardState storage rewards = externalRewards[token];
+            uint256 remainder = rewards.rewardRemainder;
+            if (remainder == 0) {
+                continue;
+            }
+            uint256 perMember = remainder / currentMembers;
+            if (perMember == 0) {
+                continue;
+            }
+            uint256 leftover = remainder % currentMembers;
+            rewards.rewardRemainder = leftover;
+            rewards.cumulativeRewards += perMember;
+            _recordExternalCheckpoint(rewards);
+        }
     }
 }

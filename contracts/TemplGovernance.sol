@@ -343,6 +343,7 @@ abstract contract TemplGovernance is TemplTreasury {
         }
 
         emit ProposalExecuted(_proposalId, true, hex"");
+        _removeActiveProposal(_proposalId);
     }
 
     /// @notice Returns core metadata for a proposal including vote totals and status.
@@ -442,24 +443,20 @@ abstract contract TemplGovernance is TemplTreasury {
 
     /// @notice Lists proposal ids that are still within their active voting/execution window.
     function getActiveProposals() external view returns (uint256[] memory) {
-        uint256 pc = proposalCount;
+        uint256 len = activeProposalIds.length;
         uint256 currentTime = block.timestamp;
-        uint256 activeCount = 0;
-
-        for (uint256 i = 0; i < pc; i++) {
-            if (_isActiveProposal(proposals[i], currentTime)) {
-                activeCount++;
+        uint256[] memory temp = new uint256[](len);
+        uint256 count = 0;
+        for (uint256 i = 0; i < len; i++) {
+            uint256 id = activeProposalIds[i];
+            if (_isActiveProposal(proposals[id], currentTime)) {
+                temp[count++] = id;
             }
         }
-
-        uint256[] memory activeIds = new uint256[](activeCount);
-        uint256 index = 0;
-        for (uint256 i = 0; i < pc; i++) {
-            if (_isActiveProposal(proposals[i], currentTime)) {
-                activeIds[index++] = i;
-            }
+        uint256[] memory activeIds = new uint256[](count);
+        for (uint256 i = 0; i < count; i++) {
+            activeIds[i] = temp[i];
         }
-
         return activeIds;
     }
 
@@ -476,30 +473,33 @@ abstract contract TemplGovernance is TemplTreasury {
         bool hasMore
     ) {
         if (limit == 0 || limit > 100) revert TemplErrors.LimitOutOfRange();
-        if (offset >= proposalCount) {
+        uint256 currentTime = block.timestamp;
+        uint256 len = activeProposalIds.length;
+        uint256 totalActive = 0;
+        for (uint256 i = 0; i < len; i++) {
+            if (_isActiveProposal(proposals[activeProposalIds[i]], currentTime)) {
+                totalActive++;
+            }
+        }
+        if (offset >= totalActive) {
             return (new uint256[](0), false);
         }
 
-        uint256 currentTime = block.timestamp;
         uint256[] memory tempIds = new uint256[](limit);
         uint256 count = 0;
-        uint256 scanned = offset;
-
-        for (uint256 i = offset; i < proposalCount && count < limit; i++) {
-            if (_isActiveProposal(proposals[i], currentTime)) {
-                tempIds[count++] = i;
+        uint256 activeSeen = 0;
+        for (uint256 i = 0; i < len && count < limit; i++) {
+            uint256 id = activeProposalIds[i];
+            if (!_isActiveProposal(proposals[id], currentTime)) {
+                continue;
             }
-            scanned = i + 1;
+            if (activeSeen++ < offset) {
+                continue;
+            }
+            tempIds[count++] = id;
         }
 
-        if (count == limit && scanned < proposalCount) {
-            for (uint256 i = scanned; i < proposalCount; i++) {
-                if (_isActiveProposal(proposals[i], currentTime)) {
-                    hasMore = true;
-                    break;
-                }
-            }
-        }
+        hasMore = (offset + count) < totalActive;
 
         proposalIds = new uint256[](count);
         for (uint256 i = 0; i < count; i++) {
@@ -555,9 +555,54 @@ abstract contract TemplGovernance is TemplTreasury {
             proposal.postQuorumEligibleVoters = proposal.eligibleVoters;
             proposal.endTime = block.timestamp + executionDelayAfterQuorum;
         }
+        _addActiveProposal(proposalId);
         hasActiveProposal[msg.sender] = true;
         activeProposalId[msg.sender] = proposalId;
         emit ProposalCreated(proposalId, msg.sender, proposal.endTime, _title, _description);
+    }
+
+    /// @notice Removes proposals that are no longer active from the tracked set.
+    /// @param maxRemovals Maximum number of entries to prune in this call.
+    /// @return removed Number of proposals removed from the active index.
+    function pruneInactiveProposals(uint256 maxRemovals) external returns (uint256 removed) {
+        if (maxRemovals == 0) {
+            return 0;
+        }
+        uint256 len = activeProposalIds.length;
+        if (len == 0) {
+            return 0;
+        }
+        uint256 currentTime = block.timestamp;
+        while (len > 0 && removed < maxRemovals) {
+            uint256 proposalId = activeProposalIds[len - 1];
+            if (_isActiveProposal(proposals[proposalId], currentTime)) {
+                break;
+            }
+            _removeActiveProposal(proposalId);
+            removed++;
+            len = activeProposalIds.length;
+        }
+    }
+
+    function _addActiveProposal(uint256 proposalId) internal {
+        activeProposalIds.push(proposalId);
+        activeProposalIndex[proposalId] = activeProposalIds.length;
+    }
+
+    function _removeActiveProposal(uint256 proposalId) internal {
+        uint256 indexPlusOne = activeProposalIndex[proposalId];
+        if (indexPlusOne == 0) {
+            return;
+        }
+        uint256 index = indexPlusOne - 1;
+        uint256 lastIndex = activeProposalIds.length - 1;
+        if (index != lastIndex) {
+            uint256 movedId = activeProposalIds[lastIndex];
+            activeProposalIds[index] = movedId;
+            activeProposalIndex[movedId] = index + 1;
+        }
+        activeProposalIds.pop();
+        activeProposalIndex[proposalId] = 0;
     }
 
     /// @dev Checks whether a member joined after a particular snapshot point, invalidating their vote.
