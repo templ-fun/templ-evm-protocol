@@ -1,4 +1,5 @@
 import { BACKEND_URL } from '../config.js';
+import { sanitizeLink } from '../../../shared/linkSanitizer.js';
 
 export function HomePage({ walletAddress, onConnectWallet, onNavigate, templs, loadingTempls, refreshTempls }) {
   return (
@@ -43,33 +44,38 @@ export function HomePage({ walletAddress, onConnectWallet, onNavigate, templs, l
               </tr>
             </thead>
             <tbody>
-              {templs.map((templ) => (
-                <tr key={templ.contract}>
-                  <td>
-                    <div className="mono">{templ.contract}</div>
-                    {templ.priest ? <div className="subtle">Priest: {templ.priest}</div> : null}
-                    {templ.telegramChatId ? (
-                      <div className="subtle">Telegram: {templ.telegramChatId}</div>
-                    ) : templ.telegramChatIdHidden ? (
-                      <div className="subtle">Telegram chat ID stored server-side</div>
-                    ) : null}
-                  </td>
-                  <td>
-                    <div>{templ.tokenSymbol}</div>
-                    {templ.tokenAddress ? <div className="subtle mono">{templ.tokenAddress}</div> : null}
-                  </td>
-                  <td>
-                    <div>{templ.burnedFormatted}</div>
-                    <div className="subtle">raw: {templ.burnedRaw?.toString?.() ?? String(templ.burnedRaw || 0)}</div>
-                  </td>
-                  <td className="table-actions">
-                    <button type="button" onClick={() => onNavigate(templ.links?.overview || `/templs/${templ.contract}`)}>View</button>
-                    {templ.links?.homeLink ? (
-                      <a href={templ.links.homeLink} target="_blank" rel="noreferrer" className="link-button">Open Home</a>
-                    ) : null}
-                  </td>
-                </tr>
-              ))}
+              {templs.map((templ) => {
+                const sanitizedHomeLink = sanitizeLink(templ.links?.homeLink);
+                return (
+                  <tr key={templ.contract}>
+                    <td>
+                      <div className="mono">{templ.contract}</div>
+                      {templ.priest ? <div className="subtle">Priest: {templ.priest}</div> : null}
+                      {templ.telegramChatId ? (
+                        <div className="subtle">Telegram: {templ.telegramChatId}</div>
+                      ) : templ.telegramChatIdHidden ? (
+                        <div className="subtle">Telegram chat ID stored server-side</div>
+                      ) : null}
+                    </td>
+                    <td>
+                      <div>{templ.tokenSymbol}</div>
+                      {templ.tokenAddress ? <div className="subtle mono">{templ.tokenAddress}</div> : null}
+                    </td>
+                    <td>
+                      <div>{templ.burnedFormatted}</div>
+                      <div className="subtle">raw: {templ.burnedRaw?.toString?.() ?? String(templ.burnedRaw || 0)}</div>
+                    </td>
+                    <td className="table-actions">
+                      <button type="button" onClick={() => onNavigate(templ.links?.overview || `/templs/${templ.contract}`)}>View</button>
+                      {sanitizedHomeLink.href ? (
+                        <a href={sanitizedHomeLink.href} target="_blank" rel="noreferrer" className="link-button">Open Home</a>
+                      ) : sanitizedHomeLink.text ? (
+                        <span>{sanitizedHomeLink.text}</span>
+                      ) : null}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
