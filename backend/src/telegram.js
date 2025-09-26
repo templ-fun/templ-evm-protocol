@@ -1,3 +1,4 @@
+import { sanitizeLink } from '../../shared/linkSanitizer.js';
 import { logger as defaultLogger } from './logger.js';
 
 /**
@@ -62,13 +63,12 @@ function formatAmount(label, value) {
 }
 
 function formatHomeLinkLine(value) {
-  if (value === null || value === undefined) return '';
-  const trimmed = String(value).trim();
-  if (!trimmed) return '';
-  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)) {
-    return `<b>Home:</b> <a href="${escapeAttribute(trimmed)}">${escapeHtml(trimmed)}</a>`;
+  const { href, text } = sanitizeLink(value);
+  if (!text) return '';
+  if (href) {
+    return `<b>Home:</b> <a href="${escapeAttribute(href)}">${escapeHtml(text)}</a>`;
   }
-  return `<b>Home:</b> ${escapeHtml(trimmed)}`;
+  return `<b>Home:</b> ${escapeHtml(text)}`;
 }
 
 /**

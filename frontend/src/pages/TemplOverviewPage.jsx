@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { sanitizeLink } from '../../../shared/linkSanitizer.js';
 import { requestTemplRebindBackend } from '../services/deployment.js';
 
 export function TemplOverviewPage({
@@ -63,6 +64,8 @@ export function TemplOverviewPage({
     }
   };
 
+  const sanitizedHomeLink = sanitizeLink(templRecord?.templHomeLink);
+
   return (
     <div className="page">
       <header className="page-header">
@@ -83,8 +86,12 @@ export function TemplOverviewPage({
           <div>
             <dt>Home link</dt>
             <dd>
-              {templRecord?.templHomeLink ? (
-                <a href={templRecord.templHomeLink} target="_blank" rel="noreferrer">{templRecord.templHomeLink}</a>
+              {sanitizedHomeLink.text ? (
+                sanitizedHomeLink.href ? (
+                  <a href={sanitizedHomeLink.href} target="_blank" rel="noreferrer">{sanitizedHomeLink.text}</a>
+                ) : (
+                  sanitizedHomeLink.text
+                )
               ) : (
                 '—'
               )}
