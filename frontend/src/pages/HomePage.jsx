@@ -44,7 +44,7 @@ export function HomePage({ walletAddress, onConnectWallet, onNavigate, templs, l
           <p className={text.subtle}>No templs discovered for this factory yet.</p>
         ) : (
           <div className={`${layout.tableWrapper} mt-4`}>
-            <table className={table.base}>
+            <table className={`${table.base} templs-table`}>
               <thead className={table.headRow}>
                 <tr>
                   <th className={table.headCell}>Templ</th>

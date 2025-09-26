@@ -7,6 +7,50 @@ const ERC20_METADATA_ABI = [
   'function decimals() view returns (uint8)'
 ];
 
+/**
+ * @typedef {{
+ *   tokenAddress?: string,
+ *   priest?: string,
+ *   entryFee?: bigint | string,
+ *   entryFeeRaw?: string,
+ *   tokenSymbol?: string,
+ *   templHomeLink?: string
+ * }} TemplMeta
+ */
+
+/**
+ * @typedef {Object} TemplStats
+ * @property {string} contract
+ * @property {string} priest
+ * @property {string} tokenAddress
+ * @property {string} tokenSymbol
+ * @property {number} tokenDecimals
+ * @property {string} entryFeeRaw
+ * @property {string} entryFeeFormatted
+ * @property {string} treasuryBalanceRaw
+ * @property {string} treasuryBalanceFormatted
+ * @property {string} memberPoolBalanceRaw
+ * @property {string} memberPoolBalanceFormatted
+ * @property {string} burnedRaw
+ * @property {string} burnedFormatted
+ * @property {number} memberCount
+ * @property {string} totalPurchases
+ * @property {string} totalTreasuryReceived
+ * @property {string} totalProtocolFees
+ * @property {string} templHomeLink
+ * @property {{ overview: string, homeLink?: string }} links
+ */
+
+const toBigInt = (value, fallback = 0n) => {
+  try {
+    if (typeof value === 'bigint') return value;
+    if (value === undefined || value === null || value === '') return fallback;
+    return BigInt(value);
+  } catch {
+    return fallback;
+  }
+};
+
 function formatValue(ethers, value, decimals) {
   try {
     return ethers.formatUnits(value, decimals);
@@ -41,7 +85,20 @@ async function fetchTokenMetadata({ ethers, provider, tokenAddress }) {
   }
 }
 
-export async function fetchTemplStats({ ethers, provider, templAddress, meta = {} }) {
+/**
+ * @param {object} params
+ * @param {typeof import('ethers')} params.ethers
+ * @param {import('ethers').Provider | import('ethers').Signer} params.provider
+ * @param {string} params.templAddress
+ * @param {TemplMeta} [params.meta]
+ * @returns {Promise<TemplStats>}
+ */
+export async function fetchTemplStats({
+  ethers,
+  provider,
+  templAddress,
+  meta
+}) {
   if (!ethers || !provider || !templAddress) {
     throw new Error('fetchTemplStats requires templ address and provider');
   }
@@ -52,12 +109,13 @@ export async function fetchTemplStats({ ethers, provider, templAddress, meta = {
     normalizedAddress = templAddress;
   }
   const templ = new ethers.Contract(normalizedAddress, templArtifact.abi, provider);
+  const metaInfo = /** @type {TemplMeta} */ (meta || {});
 
   let config;
   let treasuryInfo;
   let homeLink = '';
   let memberCount = 0n;
-  let priestAddress = meta.priest || '';
+  let priestAddress = metaInfo.priest || '';
   let totalBurned = 0n;
 
   try {
@@ -66,15 +124,15 @@ export async function fetchTemplStats({ ethers, provider, templAddress, meta = {
       templ.getTreasuryInfo().catch(() => null),
       templ.templHomeLink().catch(() => ''),
       templ.getMemberCount?.().catch(() => 0n),
-      templ.priest?.().catch(() => meta.priest || ''),
+      templ.priest?.().catch(() => metaInfo.priest || ''),
       templ.totalBurned().catch(() => 0n)
     ]);
   } catch (err) {
     console.warn('[templ] Failed to load templ summary', templAddress, err);
   }
 
-  let tokenAddress = meta.tokenAddress || '';
-  let entryFeeRaw = meta.entryFee ?? 0n;
+  let tokenAddress = metaInfo.tokenAddress || '';
+  let entryFeeRaw = metaInfo.entryFee !== undefined ? toBigInt(metaInfo.entryFee) : toBigInt(metaInfo.entryFeeRaw);
   let totalPurchases = 0n;
   let treasuryAvailable = 0n;
   let memberPoolBalance = 0n;
@@ -119,8 +177,8 @@ export async function fetchTemplStats({ ethers, provider, templAddress, meta = {
     }
   }
 
-  if (!tokenAddress && meta.tokenAddress) {
-    tokenAddress = meta.tokenAddress;
+  if (!tokenAddress && metaInfo.tokenAddress) {
+    tokenAddress = metaInfo.tokenAddress;
   }
 
   const { symbol: tokenSymbol, decimals: tokenDecimals } = await fetchTokenMetadata({ ethers, provider, tokenAddress });
@@ -134,9 +192,9 @@ export async function fetchTemplStats({ ethers, provider, templAddress, meta = {
 
   return {
     contract: normalizedAddress.toLowerCase(),
-    priest: priestAddress ? priestAddress.toLowerCase() : meta.priest || '',
+    priest: priestAddress ? priestAddress.toLowerCase() : metaInfo.priest || '',
     tokenAddress: tokenAddress || '',
-    tokenSymbol: tokenSymbol || meta.tokenSymbol || 'ERC20',
+    tokenSymbol: tokenSymbol || metaInfo.tokenSymbol || 'ERC20',
     tokenDecimals,
     entryFeeRaw: entryFeeRaw.toString(),
     entryFeeFormatted,
@@ -150,7 +208,7 @@ export async function fetchTemplStats({ ethers, provider, templAddress, meta = {
     totalPurchases: totalPurchases.toString(),
     totalTreasuryReceived: totalTreasuryReceived.toString(),
     totalProtocolFees: totalProtocolFees.toString(),
-    templHomeLink: normalizedHomeLink,
+    templHomeLink: normalizedHomeLink || metaInfo.templHomeLink || '',
     links: {
       overview: `/templs/${normalizedAddress.toLowerCase()}`,
       homeLink: normalizedHomeLink || undefined
@@ -206,6 +264,7 @@ export async function loadFactoryTempls({ ethers, provider, factoryAddress }) {
     return [];
   }
 
+  /** @type {Map<string, { tokenAddress: string, priest: string, entryFee: bigint }>} */
   const seen = new Map();
   for (const evt of events) {
     try {

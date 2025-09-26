@@ -27,6 +27,7 @@ runp() {
 }
 
 START_TS=$(date +%s)
+rm -rf frontend/.vite-cache
 phase "Phase 1: contracts + slither + typechecks in parallel"
 runp \
   "npm test" \
@@ -40,11 +41,13 @@ runp \
   "npm --prefix backend run lint"
 
 phase "Phase 3: frontend unit tests + lint in parallel"
+rm -rf frontend/.vite-cache
 runp \
   "VITEST_FORCE_CLEAN_EXIT=1 npm --prefix frontend test" \
   "npm --prefix frontend run lint"
 
 phase "Phase 4: frontend e2e"
+rm -rf frontend/.vite-cache
 npm --prefix frontend run test:e2e
 
 echo "[test:all] Completed in $(( $(date +%s) - START_TS ))s"

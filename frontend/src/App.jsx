@@ -171,7 +171,19 @@ export default function App() {
       if (readProvider) {
         merged = await Promise.all(merged.map(async (templ) => {
           try {
-            const stats = await fetchTemplStats({ ethers, provider: readProvider, templAddress: templ.contract, meta: templ });
+            const stats = await fetchTemplStats({
+              ethers,
+              provider: readProvider,
+              templAddress: templ.contract,
+              meta: {
+                priest: templ.priest,
+                tokenAddress: templ.tokenAddress,
+                entryFee: templ.entryFeeRaw ?? templ.entryFee,
+                entryFeeRaw: templ.entryFeeRaw,
+                tokenSymbol: templ.tokenSymbol,
+                templHomeLink: templ.templHomeLink
+              }
+            });
             return {
               ...templ,
               ...stats,
