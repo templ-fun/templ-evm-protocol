@@ -143,6 +143,30 @@ test.describe('Telegram basic flows', () => {
     await expect(page).toHaveURL(new RegExp(`/templs/${templAddress}/proposals/new`));
     await expect(page.getByLabel('Title')).toBeVisible();
     await expect(page.getByLabel('Description')).toBeVisible();
+    const typeSelect = page.getByLabel('Proposal type');
+    await typeSelect.selectOption('withdrawTreasury');
+    await expect(page.getByLabel('Withdrawal token (address or "ETH")')).toBeVisible();
+    await page.getByLabel('Withdrawal token (address or "ETH")').fill('ETH');
+    await page.getByLabel('Withdrawal recipient').fill(await wallets.member.getAddress());
+    await page.getByLabel('Withdrawal amount (wei)').fill('100000000000000000');
+    await page.getByLabel('Withdrawal reason').fill('Testing withdrawal');
+
+    await typeSelect.selectOption('disbandTreasury');
+    const tokenSourceSelect = page.getByLabel('Treasury token source');
+    await expect(tokenSourceSelect).toBeVisible();
+    await tokenSourceSelect.selectOption('eth');
+    await tokenSourceSelect.selectOption('custom');
+    const customTokenInput = page.getByRole('textbox', { name: 'Custom token address' });
+    await expect(customTokenInput).toBeVisible();
+    await customTokenInput.fill(await token.getAddress());
+
+    await typeSelect.selectOption('updateConfig');
+    await page.getByLabel('New entry fee (wei)').fill('0');
+    const updateSplitCheckbox = page.getByLabel('Update fee split');
+    await updateSplitCheckbox.check();
+    await page.getByLabel('Burn percent').fill('40');
+    await page.getByLabel('Treasury percent').fill('30');
+    await page.getByLabel('Member pool percent').fill('30');
 
     await page.goto(`/templs/join?address=${templAddress}`);
     await expect(page.getByLabel('Templ address')).toHaveValue(templAddress);
