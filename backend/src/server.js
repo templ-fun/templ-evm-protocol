@@ -150,15 +150,26 @@ function initializeDatabase({ dbPath, db }) {
   database.exec(`
     CREATE TABLE IF NOT EXISTS templ_bindings (
       contract TEXT PRIMARY KEY,
-      telegramChatId TEXT UNIQUE
+      telegramChatId TEXT UNIQUE,
+      priest TEXT
     )
   `);
 
+  try {
+    const columns = database.prepare("PRAGMA table_info('templ_bindings')").all();
+    const hasPriestColumn = Array.isArray(columns) && columns.some((column) => column?.name === 'priest');
+    if (!hasPriestColumn) {
+      database.exec('ALTER TABLE templ_bindings ADD COLUMN priest TEXT');
+    }
+  } catch {
+    /* ignore pragma errors */
+  }
+
   const insertBinding = database.prepare(
-    'INSERT INTO templ_bindings (contract, telegramChatId) VALUES (?, ?) ON CONFLICT(contract) DO UPDATE SET telegramChatId = excluded.telegramChatId'
+    'INSERT INTO templ_bindings (contract, telegramChatId, priest) VALUES (?, ?, ?) ON CONFLICT(contract) DO UPDATE SET telegramChatId = excluded.telegramChatId, priest = excluded.priest'
   );
-  const selectAllBindings = database.prepare('SELECT contract, telegramChatId FROM templ_bindings ORDER BY contract');
-  const selectBindingByContract = database.prepare('SELECT telegramChatId FROM templ_bindings WHERE contract = ?');
+  const selectAllBindings = database.prepare('SELECT contract, telegramChatId, priest FROM templ_bindings ORDER BY contract');
+  const selectBindingByContract = database.prepare('SELECT telegramChatId, priest FROM templ_bindings WHERE contract = ?');
   const countBindings = database.prepare('SELECT COUNT(1) AS count FROM templ_bindings');
 
   try {
@@ -192,17 +203,19 @@ function initializeDatabase({ dbPath, db }) {
     const key = contract ? String(contract).toLowerCase() : null;
     if (!key) return;
     const chatId = record?.telegramChatId != null ? String(record.telegramChatId) : null;
-    insertBinding.run(key, chatId);
+    const priest = record?.priest ? String(record.priest).toLowerCase() : null;
+    insertBinding.run(key, chatId, priest);
   };
 
   const listBindings = () => {
     try {
-      return selectAllBindings
-        .all()
-        .map((row) => ({
-          contract: String(row.contract).toLowerCase(),
-          telegramChatId: row.telegramChatId != null ? String(row.telegramChatId) : null
-        }));
+          return selectAllBindings
+            .all()
+            .map((row) => ({
+              contract: String(row.contract).toLowerCase(),
+              telegramChatId: row.telegramChatId != null ? String(row.telegramChatId) : null,
+              priest: row.priest != null ? String(row.priest).toLowerCase() : null
+            }));
     } catch {
       return [];
     }
@@ -215,7 +228,8 @@ function initializeDatabase({ dbPath, db }) {
       if (!row) return null;
       return {
         contract: String(contract).toLowerCase(),
-        telegramChatId: row.telegramChatId != null ? String(row.telegramChatId) : null
+        telegramChatId: row.telegramChatId != null ? String(row.telegramChatId) : null,
+        priest: row.priest != null ? String(row.priest).toLowerCase() : null
       };
     } catch {
       return null;
@@ -517,7 +531,7 @@ async function restoreGroupsFromPersistence({ listBindings, templs, watchContrac
       if (!key) continue;
       const record = {
         telegramChatId: row?.telegramChatId ? String(row.telegramChatId) : null,
-        priest: null,
+        priest: row?.priest ? String(row.priest).toLowerCase() : null,
         proposalsMeta: new Map(),
         lastDigestAt: Date.now(),
         contractAddress: key,
