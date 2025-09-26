@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { sanitizeLink } from '../../../shared/linkSanitizer.js';
 import templArtifact from '../contracts/TEMPL.json';
 import { approveEntryFee, loadEntryRequirements, purchaseAccess, verifyMembership } from '../services/membership.js';
 import { button, form, layout, text } from '../ui/theme.js';
@@ -292,13 +293,16 @@ export function JoinTemplPage({
             <div className="space-y-1">
               <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Home link</dt>
               <dd>
-                {verification.templ?.templHomeLink ? (
-                  <a className="text-primary underline" href={verification.templ.templHomeLink} target="_blank" rel="noreferrer">
-                    {verification.templ.templHomeLink}
-                  </a>
-                ) : (
-                  '—'
-                )}
+                {(() => {
+                  const { href, text: displayText } = sanitizeLink(verification.templ?.templHomeLink);
+                  if (!displayText) return '—';
+                  if (!href) return displayText;
+                  return (
+                    <a className="text-primary underline" href={href} target="_blank" rel="noreferrer">
+                      {displayText}
+                    </a>
+                  );
+                })()}
               </dd>
             </div>
           </dl>

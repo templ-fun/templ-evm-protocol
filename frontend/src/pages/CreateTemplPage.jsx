@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { sanitizeLink } from '../../../shared/linkSanitizer.js';
 import templArtifact from '../contracts/TEMPL.json';
 import templFactoryArtifact from '../contracts/TemplFactory.json';
 import { FACTORY_CONFIG } from '../config.js';
@@ -32,6 +33,7 @@ export function CreateTemplPage({
   const [factoryAddress, setFactoryAddress] = useState(() => FACTORY_CONFIG.address || '');
   const [submitting, setSubmitting] = useState(false);
   const [bindingInfo, setBindingInfo] = useState(null);
+  const sanitizedBindingHomeLink = sanitizeLink(bindingInfo?.templHomeLink);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -224,12 +226,18 @@ export function CreateTemplPage({
                 </p>
               </>
             )}
-            {bindingInfo.templHomeLink && (
+            {sanitizedBindingHomeLink.text ? (
               <p>
                 Current templ home link:{' '}
-                <a className="text-primary underline" href={bindingInfo.templHomeLink} target="_blank" rel="noreferrer">{bindingInfo.templHomeLink}</a>
+                {sanitizedBindingHomeLink.href ? (
+                  <a className="text-primary underline" href={sanitizedBindingHomeLink.href} target="_blank" rel="noreferrer">
+                    {sanitizedBindingHomeLink.text}
+                  </a>
+                ) : (
+                  sanitizedBindingHomeLink.text
+                )}
               </p>
-            )}
+            ) : null}
           </div>
           <div className={`${layout.cardActions} mt-6`}>
             <button type="button" className={button.base} onClick={refreshTempls}>
