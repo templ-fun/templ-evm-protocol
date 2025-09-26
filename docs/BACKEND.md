@@ -3,7 +3,7 @@
 Use this doc to configure and operate the Node 22 / Express backend that handles the “web2” side of templ:
 
 * verifies EIP-712 signatures for templ creation, rebind requests, and membership checks,
-* persists templ metadata needed for Telegram delivery (contract address, priest address, optional Telegram chat id, latest home link),
+* persists a minimal Telegram chat ↔ contract binding so notifications survive restarts,
 * confirms membership by asking the contract’s `hasAccess` function (no local member lists are stored), and
 * streams contract events into Telegram groups when configured.
 
@@ -32,21 +32,16 @@ Running the server requires a JSON-RPC endpoint and aligned frontend/server IDs.
 | `LOG_LEVEL` | Pino log level. | `info` |
 | `RATE_LIMIT_STORE` | `memory` or `redis`; automatically switches to Redis when `REDIS_URL` is provided. | auto |
 | `REDIS_URL` | Redis endpoint used for rate limiting when `RATE_LIMIT_STORE=redis`. | unset |
-| `DB_PATH` | SQLite path for persisted templ records. | `backend/groups.db` |
+| `DB_PATH` | SQLite path for persisted Telegram bindings. | `backend/groups.db` |
 | `CLEAR_DB` | When `1`, delete the SQLite database on boot (useful for tests). | `0` |
-| `BACKEND_USE_MEMORY_DB` | When `1`, skip the native `better-sqlite3` binding and use an in-memory JS database (handy for lightweight tests only). | `0` |
 
 ### Data model
 
-The backend stores templ metadata and replay protection state inside SQLite:
+The backend persists only the Telegram binding in SQLite:
 
-- `groups(contract TEXT PRIMARY KEY, groupId TEXT, priest TEXT, homeLink TEXT)` – `groupId` stores the Telegram chat id and `homeLink` mirrors the on-chain templ home link.
-- `signatures` – tracks used EIP-712 signatures for replay protection.
-- `pending_bindings(contract TEXT PRIMARY KEY, bindCode TEXT, createdAt INTEGER)` – queues one-time Telegram binding codes until the bot confirms a group.
+- `templ_bindings(contract TEXT PRIMARY KEY, telegramChatId TEXT UNIQUE)` – stores a durable mapping so the notifier can recover which chats belong to which templ contracts across restarts while retaining templs without Telegram bindings (rows keep `telegramChatId` as `NULL` until the binding completes).
 
-Membership rolls and treasury data always come from on-chain reads; the backend only caches proposal metadata and balances in memory so Telegram notifications can include contextual text without re-querying for every event.
-
-The in-memory cache mirrors SQLite entries and powers fast lookups during join flows and contract event handlers.
+Signature replay protection now lives in-memory with a 6 hour retention window; bindings, proposal metadata, and home links are derived from on-chain reads and cached only for the lifetime of the process.
 
 ## Routes
 
@@ -146,7 +141,7 @@ The server uses `ethers.Contract` to subscribe to templ events. Watchers are reg
 - Proposal metadata is cached in-memory when events fire so follow-up notifications can include the title even if the on-chain read fails.
 - Quorum checks run after every proposal creation and vote to emit a one-time "quorum reached" message once the threshold is crossed.
 - Background jobs monitor proposal deadlines, fire daily treasury/member-pool digests, and poll Telegram for binding codes until each templ is linked to a chat.
-- Priest and home-link updates are persisted so restarts retain the latest metadata.
+- Priest and home-link updates are cached in memory; the contract remains the source of truth and watchers refresh them after restarts.
 
 ## Testing
 

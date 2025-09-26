@@ -5,14 +5,14 @@ import { logger } from '../logger.js';
 import { joinTempl } from '../services/joinTempl.js';
 import { extractTypedRequestParams } from './typed.js';
 
-export default function joinRouter({ hasPurchased, templs, database }) {
+export default function joinRouter({ hasPurchased, templs, signatureStore }) {
   const router = express.Router();
 
   router.post(
     '/join',
     requireAddresses(['contractAddress', 'memberAddress']),
     verifyTypedSignature({
-      database,
+      signatureStore,
       addressField: 'memberAddress',
       buildTyped: (req) => {
         const { chainId, nonce, issuedAt, expiry } = extractTypedRequestParams(req.body);

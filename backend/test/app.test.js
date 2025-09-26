@@ -15,13 +15,8 @@ process.env.BACKEND_SERVER_ID = 'test-server';
 process.env.APP_BASE_URL = 'http://localhost:5173';
 
 
-function makeApp({ hasPurchased = async () => true } = {}) {
-  const tmpDir = mkdtempSync(join(os.tmpdir(), 'templ-backend-'));
-  const dbPath = join(tmpDir, 'groups.db');
-  const db = new Database(dbPath);
-  const notifications = [];
-  const handlerRegistry = new Map();
-  const notifier = {
+function createTestNotifier(notifications) {
+  return {
     notifyAccessPurchased: async (payload) => notifications.push({ type: 'access', payload }),
     notifyProposalCreated: async (payload) => notifications.push({ type: 'proposal', payload }),
     notifyVoteCast: async (payload) => notifications.push({ type: 'vote', payload }),
@@ -33,7 +28,10 @@ function makeApp({ hasPurchased = async () => true } = {}) {
     notifyBindingComplete: async (payload) => notifications.push({ type: 'binding', payload }),
     fetchUpdates: async () => ({ updates: [], nextOffset: 0 })
   };
-  const connectContract = (address) => {
+}
+
+function createTestConnectContract(handlerRegistry) {
+  return (address) => {
     const key = String(address).toLowerCase();
     const entry = { handlers: {}, metadata: new Map() };
     handlerRegistry.set(key, entry);
@@ -74,6 +72,17 @@ function makeApp({ hasPurchased = async () => true } = {}) {
       }
     };
   };
+}
+
+
+function makeApp({ hasPurchased = async () => true } = {}) {
+  const tmpDir = mkdtempSync(join(os.tmpdir(), 'templ-backend-'));
+  const dbPath = join(tmpDir, 'groups.db');
+  const db = new Database(dbPath);
+  const notifications = [];
+  const handlerRegistry = new Map();
+  const notifier = createTestNotifier(notifications);
+  const connectContract = createTestConnectContract(handlerRegistry);
   const app = createApp({ hasPurchased, db, connectContract, telegram: { notifier } });
   return { app, db, tmpDir, notifications, handlerRegistry };
 }
@@ -158,6 +167,9 @@ test('register templ persists record and wires contract listeners', async (t) =>
   assert.equal(storedMeta?.title, 'Proposal title');
   const cacheRecord = app.locals.templs.get(contractAddress);
   assert.equal(cacheRecord?.proposalsMeta?.get?.('1')?.title, 'Proposal title');
+
+  const storedRow = db.prepare('SELECT telegramChatId FROM templ_bindings WHERE contract = ?').get(contractAddress);
+  assert.equal(storedRow?.telegramChatId, 'telegram-chat-1');
 });
 
 test('join endpoint validates membership', async (t) => {
@@ -237,6 +249,66 @@ test('register templ without chat id issues binding code', async (t) => {
   const record = app.locals.templs.get(contractAddress);
   assert.equal(record.bindingCode, response.bindingCode);
   assert.equal(record.templHomeLink, 'https://initial.link');
+
+  const mappingRow = db.prepare('SELECT telegramChatId FROM templ_bindings WHERE contract = ?').get(contractAddress);
+  assert.ok(mappingRow, 'templ persisted without chat');
+  assert.equal(mappingRow.telegramChatId, null);
+});
+
+test('templ without chat binding survives restart', async (t) => {
+  let { app, db, tmpDir } = makeApp();
+  let appReload = null;
+  let dbReload = null;
+  const hasPurchased = async () => true;
+  t.after(async () => {
+    await app?.close?.();
+    await appReload?.close?.();
+    try { db?.close?.(); } catch (err) { void err; }
+    try { dbReload?.close?.(); } catch (err) { void err; }
+    if (tmpDir) {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  const dbPath = join(tmpDir, 'groups.db');
+  const wallet = Wallet.createRandom();
+  const { contractAddress, response } = await registerTempl(app, wallet, { telegramChatId: null });
+  assert.ok(response.bindingCode);
+
+  const initialRow = db.prepare('SELECT telegramChatId FROM templ_bindings WHERE contract = ?').get(contractAddress);
+  assert.ok(initialRow, 'row persisted during initial registration');
+  assert.equal(initialRow.telegramChatId, null);
+
+  await app.close?.();
+  app = null;
+  db.close();
+  db = null;
+
+  dbReload = new Database(dbPath);
+  const notifications = [];
+  const handlerRegistry = new Map();
+  const notifier = createTestNotifier(notifications);
+  const connectContract = createTestConnectContract(handlerRegistry);
+  appReload = createApp({ hasPurchased, db: dbReload, connectContract, telegram: { notifier } });
+
+  const restored = appReload.locals.templs.get(contractAddress);
+  assert.ok(restored, 'templ restored into memory');
+  assert.equal(restored.telegramChatId, null);
+
+  const listRes = await request(appReload).get('/templs?include=chatId');
+  assert.equal(listRes.status, 200);
+  const listed = listRes.body.templs.find((row) => row.contract === contractAddress);
+  assert.ok(listed, 'templ listed after restart');
+  assert.equal(listed.telegramChatId, null);
+
+  const memberWallet = Wallet.createRandom();
+  const joinRes = await joinTempl(appReload, contractAddress, memberWallet);
+  assert.equal(joinRes.status, 200);
+  assert.equal(joinRes.body.templ.contract, contractAddress);
+
+  const persistedRow = dbReload.prepare('SELECT telegramChatId FROM templ_bindings WHERE contract = ?').get(contractAddress);
+  assert.ok(persistedRow, 'row still present after restart');
+  assert.equal(persistedRow.telegramChatId, null);
 });
 
 test('priest can request telegram rebind with signature', async (t) => {
@@ -274,11 +346,9 @@ test('priest can request telegram rebind with signature', async (t) => {
   assert.equal(record?.bindingCode, res.body.bindingCode);
   assert.equal(record?.telegramChatId, null);
 
-  const bindingRow = db.prepare('SELECT bindCode FROM pending_bindings WHERE contract = ?').get(contractAddress);
-  assert.equal(bindingRow?.bindCode, res.body.bindingCode);
-
-  const groupRow = db.prepare('SELECT groupId FROM groups WHERE contract = ?').get(contractAddress);
-  assert.equal(groupRow?.groupId, null);
+  const mappingRow = db.prepare('SELECT telegramChatId FROM templ_bindings WHERE contract = ?').get(contractAddress);
+  assert.ok(mappingRow, 'templ persisted without chat across rebind');
+  assert.equal(mappingRow.telegramChatId, null);
 });
 
 test('rebind rejects signatures from non-priest wallet', async (t) => {

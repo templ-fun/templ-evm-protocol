@@ -8,16 +8,13 @@ On-chain storage lives inside each templ and the factory. See `contracts/` for s
 
 ## Backend
 
-The backend persists lightweight metadata in SQLite (via `better-sqlite3`). Tables of interest:
+The backend persists a single table in SQLite (via `better-sqlite3`):
 
 | Table | Columns | Purpose |
 | --- | --- | --- |
-| `groups` | `contract TEXT PRIMARY KEY`, `groupId TEXT`, `priest TEXT`, `homeLink TEXT` | Stores registered templs. `groupId` holds the Telegram chat id and `homeLink` mirrors the on-chain templ home link. |
-| `signatures` | `sig TEXT PRIMARY KEY`, `usedAt INTEGER` | Tracks signatures used for `/templs` and `/join` to prevent replay. |
+| `templ_bindings` | `contract TEXT PRIMARY KEY`, `telegramChatId TEXT UNIQUE` | Durable mapping between templ contracts and optional Telegram chats so the notifier survives restarts. `telegramChatId` remains `NULL` until a binding completes. |
 
-Beyond SQLite (or the `BACKEND_USE_MEMORY_DB=1` in-memory fallback), the backend keeps an in-memory cache per templ (proposal metadata, quorum/voting flags, home link, last digest timestamp) so Telegram notifications remain deterministic without widening the persisted schema.
-
-All routes read/write through the same DAO helpers so in-memory caches and the database stay in sync. Deleting the SQLite file is safe in development; production deployments should back it up alongside other app state.
+Signature replay protection and other runtime metadata live purely in memory—bindings, priests, home links, and proposal caches are refreshed from the contract whenever needed. Deleting the SQLite file is safe in development; production deployments should back up the bindings alongside other app state.
 
 ## Frontend
 

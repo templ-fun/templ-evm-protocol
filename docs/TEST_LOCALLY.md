@@ -106,7 +106,7 @@ Commonly used accounts (private keys are from Hardhat defaults—never use them 
 
 - **CORS / origin errors** – ensure `ALLOWED_ORIGINS` in `backend/.env` matches the frontend origin.
 - **Telegram messages not appearing** – confirm the bot is added to the group, the chat id is correct, and the backend logs show `notify*` calls. Missing `APP_BASE_URL` will omit deep links but shouldn’t block delivery.
-- **Signature rejected** – delete `backend/groups.db` (or set `CLEAR_DB=1`) to clear old signatures if you changed `BACKEND_SERVER_ID` or reran the flow with stale payloads.
+- **Signature rejected** – signatures are cached in-memory for 6 hours. Restart the backend (or wait for the retention window) if you reused an old payload with the same nonce.
 - **Contract reverts** – hardhat console logs will show revert reasons. Common issues are fee splits not summing to 100 or attempting to vote after the deadline.
 
 You now have a full local environment for iterating on templ governance and Telegram notifications.

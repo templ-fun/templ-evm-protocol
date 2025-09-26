@@ -13,19 +13,9 @@ import joinRouter from './routes/join.js';
 
 import { logger } from './logger.js';
 import { createTelegramNotifier } from './telegram.js';
-import { createMemoryDatabase } from './memoryDb.js';
+import { createSignatureStore } from './middleware/validate.js';
 
-let BetterSqlite = null;
-try {
-  const mod = await import('better-sqlite3');
-  BetterSqlite = mod.default;
-} catch (err) {
-  if (process.env.BACKEND_USE_MEMORY_DB === '1') {
-    // Memory DB fallback enabled; ignore missing native bindings.
-  } else {
-    throw err;
-  }
-}
+const { default: BetterSqlite } = await import('better-sqlite3');
 
 const TEMPL_EVENT_ABI = [
   'event AccessPurchased(address indexed purchaser,uint256 totalAmount,uint256 burnedAmount,uint256 treasuryAmount,uint256 memberPoolAmount,uint256 protocolAmount,uint256 timestamp,uint256 blockNumber,uint256 purchaseId)',
@@ -145,57 +135,103 @@ function updateMetaFromSnapshots(meta, snapshots) {
 }
 
 function initializeDatabase({ dbPath, db }) {
-  const useMemory = process.env.BACKEND_USE_MEMORY_DB === '1';
   let database;
   let owned = false;
   if (db) {
     database = db;
-  } else if (useMemory) {
-    database = createMemoryDatabase();
-    owned = true;
   } else {
     if (!BetterSqlite) {
-      throw new Error('better-sqlite3 bindings unavailable; set BACKEND_USE_MEMORY_DB=1 for an in-memory fallback');
+      throw new Error('better-sqlite3 bindings unavailable');
     }
     database = new BetterSqlite(dbPath ?? new URL('../groups.db', import.meta.url).pathname);
     owned = true;
   }
-  database.exec('CREATE TABLE IF NOT EXISTS groups (contract TEXT PRIMARY KEY, groupId TEXT, priest TEXT, homeLink TEXT)');
+
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS templ_bindings (
+      contract TEXT PRIMARY KEY,
+      telegramChatId TEXT UNIQUE
+    )
+  `);
+
+  const insertBinding = database.prepare(
+    'INSERT INTO templ_bindings (contract, telegramChatId) VALUES (?, ?) ON CONFLICT(contract) DO UPDATE SET telegramChatId = excluded.telegramChatId'
+  );
+  const selectAllBindings = database.prepare('SELECT contract, telegramChatId FROM templ_bindings ORDER BY contract');
+  const selectBindingByContract = database.prepare('SELECT telegramChatId FROM templ_bindings WHERE contract = ?');
+  const countBindings = database.prepare('SELECT COUNT(1) AS count FROM templ_bindings');
+
   try {
-    database.exec('ALTER TABLE groups ADD COLUMN homeLink TEXT');
-  } catch (err) {
-    if (!String(err?.message || err).toLowerCase().includes('duplicate column')) {
-      throw err;
+    const legacyGroups = database
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='groups'")
+      .get();
+    if (legacyGroups) {
+      const existing = countBindings.get()?.count ?? 0;
+      if (!existing) {
+        const legacyRows = database
+          .prepare('SELECT groupId, contract FROM groups WHERE groupId IS NOT NULL AND contract IS NOT NULL')
+          .all();
+        const migrate = database.transaction((rows) => {
+          for (const row of rows) {
+            const contractKey = String(row.contract || '').toLowerCase();
+            if (!contractKey) continue;
+            insertBinding.run(contractKey, row.groupId != null ? String(row.groupId) : null);
+          }
+        });
+        migrate(legacyRows);
+      }
+      database.exec('DROP TABLE IF EXISTS groups');
     }
+    database.exec('DROP TABLE IF EXISTS pending_bindings');
+    database.exec('DROP TABLE IF EXISTS signatures');
+  } catch (err) {
+    void err; // ignore migration errors
   }
-  database.exec('CREATE TABLE IF NOT EXISTS signatures (sig TEXT PRIMARY KEY, usedAt INTEGER)');
-  database.exec('CREATE INDEX IF NOT EXISTS idx_signatures_used_at ON signatures (usedAt)');
-  database.exec('CREATE TABLE IF NOT EXISTS pending_bindings (contract TEXT PRIMARY KEY, bindCode TEXT, createdAt INTEGER)');
-  const insertGroup = database.prepare('INSERT OR REPLACE INTO groups (contract, groupId, priest, homeLink) VALUES (?, ?, ?, ?)');
-  const insertBinding = database.prepare('INSERT OR REPLACE INTO pending_bindings (contract, bindCode, createdAt) VALUES (?, ?, ?)');
-  const deleteBinding = database.prepare('DELETE FROM pending_bindings WHERE contract = ?');
-  const selectBindings = database.prepare('SELECT contract, bindCode FROM pending_bindings');
+
   const persist = (contract, record) => {
-    insertGroup.run(contract, record.telegramChatId || null, record.priest, record.templHomeLink || null);
+    const key = contract ? String(contract).toLowerCase() : null;
+    if (!key) return;
+    const chatId = record?.telegramChatId != null ? String(record.telegramChatId) : null;
+    insertBinding.run(key, chatId);
   };
-  const saveBinding = (contract, code) => {
-    insertBinding.run(contract, code, Date.now());
-  };
-  const removeBinding = (contract) => {
-    deleteBinding.run(contract);
-  };
-  const loadBindings = () => {
+
+  const listBindings = () => {
     try {
-      return selectBindings.all();
+      return selectAllBindings
+        .all()
+        .map((row) => ({
+          contract: String(row.contract).toLowerCase(),
+          telegramChatId: row.telegramChatId != null ? String(row.telegramChatId) : null
+        }));
     } catch {
       return [];
     }
   };
-  const close = () => {
-    if (!owned || !database?.close) return;
-    try { database.close(); } catch {/* ignore close errors */}
+
+  const findBinding = (contract) => {
+    if (!contract) return null;
+    try {
+      const row = selectBindingByContract.get(String(contract).toLowerCase());
+      if (!row) return null;
+      return {
+        contract: String(contract).toLowerCase(),
+        telegramChatId: row.telegramChatId != null ? String(row.telegramChatId) : null
+      };
+    } catch {
+      return null;
+    }
   };
-  return { database, persist, saveBinding, removeBinding, loadBindings, close };
+
+  const close = () => {
+    if (!owned || typeof database?.close !== 'function') return;
+    try {
+      database.close();
+    } catch {
+      /* ignore close errors */
+    }
+  };
+
+  return { database, persist, listBindings, findBinding, close };
 }
 
 async function maybeNotifyQuorum({ record, contractAddress, proposalId, meta, notifier, logger }) {
@@ -460,19 +496,19 @@ function createContractWatcher({ connectContract, templs, persist, notifier, log
   return { watchContract };
 }
 
-async function restoreGroupsFromPersistence({ database, templs, watchContract, logger, loadBindings }) {
+async function restoreGroupsFromPersistence({ listBindings, templs, watchContract, logger }) {
   try {
-    const rows = database.prepare('SELECT contract, groupId, priest, homeLink FROM groups').all();
+    const rows = typeof listBindings === 'function' ? listBindings() : [];
     for (const row of rows) {
       const key = String(row?.contract || '').toLowerCase();
       if (!key) continue;
       const record = {
-        telegramChatId: row?.groupId || null,
-        priest: row?.priest ? String(row.priest).toLowerCase() : null,
+        telegramChatId: row?.telegramChatId ? String(row.telegramChatId) : null,
+        priest: null,
         proposalsMeta: new Map(),
         lastDigestAt: Date.now(),
         contractAddress: key,
-        templHomeLink: row?.homeLink || '',
+        templHomeLink: '',
         bindingCode: null
       };
       templs.set(key, record);
@@ -480,36 +516,12 @@ async function restoreGroupsFromPersistence({ database, templs, watchContract, l
         watchContract(row.contract || key, record);
       }
     }
-    if (typeof loadBindings === 'function') {
-      const pending = loadBindings() || [];
-      for (const row of pending) {
-        const key = String(row?.contract || '').toLowerCase();
-        if (!key) continue;
-        if (!templs.has(key)) {
-          templs.set(key, {
-            telegramChatId: null,
-            priest: null,
-            proposalsMeta: new Map(),
-            lastDigestAt: Date.now(),
-            contractAddress: key,
-            templHomeLink: '',
-            bindingCode: String(row.bindCode || '') || null
-          });
-          if (watchContract) {
-            watchContract(key, templs.get(key));
-          }
-        } else {
-          const record = templs.get(key);
-          record.bindingCode = row?.bindCode || null;
-        }
-      }
-    }
   } catch (err) {
     logger?.warn?.({ err: String(err?.message || err) }, 'Failed to restore templs from persistence');
   }
 }
 
-function createBackgroundTasks({ templs, notifier, logger, persist, removeBinding }) {
+function createBackgroundTasks({ templs, notifier, logger, persist }) {
   async function checkProposals() {
     const nowSeconds = Math.floor(Date.now() / 1000);
     for (const [contractAddress, record] of templs.entries()) {
@@ -607,7 +619,6 @@ function createBackgroundTasks({ templs, notifier, logger, persist, removeBindin
             record.bindingCode = null;
             templs.set(contractAddress, record);
             persist?.(contractAddress, record);
-            removeBinding?.(contractAddress);
             if (notifier?.notifyBindingComplete) {
               await notifier.notifyBindingComplete({
                 chatId: String(chatId),
@@ -677,15 +688,16 @@ export function createApp(opts) {
 
   const templs = new Map();
   app.locals.templs = templs;
-  const { database, persist, saveBinding, removeBinding, loadBindings, close: closeDatabase } = initializeDatabase({ dbPath, db });
+  const signatureStore = createSignatureStore();
+  const { database, persist, listBindings, findBinding, close: closeDatabase } = initializeDatabase({ dbPath, db });
 
   const { watchContract } = createContractWatcher({ connectContract, templs, persist, notifier, logger });
 
-  void restoreGroupsFromPersistence({ database, templs, watchContract, logger, loadBindings });
+  void restoreGroupsFromPersistence({ listBindings, templs, watchContract, logger });
 
   let backgroundTasks = null;
   if (enableBackgroundTasks) {
-    backgroundTasks = createBackgroundTasks({ templs, notifier, logger, persist, removeBinding });
+    backgroundTasks = createBackgroundTasks({ templs, notifier, logger, persist });
   }
 
   const context = {
@@ -693,11 +705,11 @@ export function createApp(opts) {
     database,
     templs,
     persist,
-    saveBinding,
-    removeBinding,
     provider,
     watchContract,
-    notifier
+    notifier,
+    signatureStore,
+    findBinding
   };
 
   app.use(templsRouter(context));

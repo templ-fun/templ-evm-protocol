@@ -84,10 +84,9 @@ In separate terminals you’ll typically run:
 | `APP_BASE_URL` | Optional base URL used when building deep links in Telegram messages. |
 | `REQUIRE_CONTRACT_VERIFY` | Set to `1` in production to enforce on-chain contract + priest validation. |
 | `CLEAR_DB` | When `1`, deletes the SQLite DB before boot (handy for tests). |
-| `DB_PATH` | Override file path for the groups SQLite DB (`backend/groups.db` by default). |
-| `BACKEND_USE_MEMORY_DB` | Test-only flag. Set to `1` for quick checks; production must use the SQLite database. |
+| `DB_PATH` | Override file path for the SQLite DB that stores Telegram bindings (`backend/groups.db` by default). |
 
-The backend stores templ registrations in SQLite (`groups`, `signatures`). Telegram chat ids reuse the old `groupId` column for persistence to avoid extra migrations.
+The backend stores templ registrations in SQLite (`templ_bindings`). Each row maps a templ contract to an optional Telegram chat id so bindings survive restarts while still allowing templs to exist without Telegram wiring.
 
 ### Frontend (`frontend/.env`)
 

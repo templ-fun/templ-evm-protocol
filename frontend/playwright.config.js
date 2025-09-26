@@ -69,7 +69,6 @@ export default defineConfig({
         CLEAR_DB: '1',
         LOG_LEVEL: 'info',
         NODE_ENV: 'test',
-        BACKEND_USE_MEMORY_DB: '1',
       },
       reuseExistingServer: false,
       timeout: 120 * 1000,

@@ -79,7 +79,7 @@ You can deploy from the CLI or via the frontend. The CLI is convenient for scrip
    ```bash
    npm --prefix backend start
    ```
-   The server persists templ registrations in `backend/groups.db` and begins watching contract events.
+   The server persists Telegram bindings in `backend/groups.db` and begins watching contract events.
 
 ### Telegram binding flow
 

@@ -142,7 +142,7 @@ flowchart LR
     D -->|rows restored on boot| B
 ```
 
-- `groups` table keeps templ contract → priest + Telegram chat id.
-- `signatures` table prevents replay attacks for `/templs` and `/join`.
+- `templ_bindings` table keeps the templ contract ↔ optional Telegram chat mapping so notifications resume after restarts (NULL chat ids indicate pending bindings).
+- Replay protection for `/templs` and `/join` lives in an in-memory cache with a rolling retention window.
 
 These flows should serve as the canonical reference for the Telegram-based architecture.

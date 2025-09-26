@@ -28,7 +28,7 @@ function normaliseChatId(value) {
 
 export async function registerTempl(body, context) {
   const { contractAddress, priestAddress } = body;
-  const { provider, logger, templs, persist, saveBinding, removeBinding, watchContract } = context;
+  const { provider, logger, templs, persist, watchContract } = context;
 
   const contract = normaliseAddress(contractAddress, 'contractAddress');
   const priest = normaliseAddress(priestAddress, 'priestAddress');
@@ -67,10 +67,9 @@ export async function registerTempl(body, context) {
       bindingCode = randomBytes(16).toString('hex');
     }
     existing.bindingCode = bindingCode;
-    saveBinding?.(contract, bindingCode);
+    // Binding codes now live purely in-memory; nothing to persist beyond the runtime map entry.
   } else {
     existing.bindingCode = null;
-    removeBinding?.(contract);
   }
 
   templs.set(contract, existing);

@@ -6,7 +6,7 @@ import { registerTempl } from '../services/registerTempl.js';
 import { requestTemplRebind } from '../services/requestTemplRebind.js';
 import { extractTypedRequestParams } from './typed.js';
 
-export default function templsRouter({ templs, persist, database, provider, watchContract, saveBinding, removeBinding }) {
+export default function templsRouter({ templs, persist, database, provider, watchContract, signatureStore }) {
   const router = express.Router();
 
   router.get('/templs', (req, res) => {
@@ -15,13 +15,13 @@ export default function templsRouter({ templs, persist, database, provider, watc
       try {
         if (database?.prepare) {
           rows = database
-            .prepare('SELECT contract, groupId, priest, homeLink FROM groups ORDER BY contract')
+            .prepare('SELECT telegramChatId, contract FROM templ_bindings ORDER BY contract')
             .all()
             .map((r) => ({
               contract: String(r.contract).toLowerCase(),
-              telegramChatId: r.groupId || null,
-              priest: r.priest ? String(r.priest).toLowerCase() : null,
-              templHomeLink: r.homeLink || ''
+              telegramChatId: r.telegramChatId ? String(r.telegramChatId) : null,
+              priest: null,
+              templHomeLink: ''
             }));
         }
       } catch {
@@ -45,6 +45,9 @@ export default function templsRouter({ templs, persist, database, provider, watc
               }
               if (!existing.telegramChatId && rec.telegramChatId) {
                 existing.telegramChatId = rec.telegramChatId;
+              }
+              if (!existing.priest && rec.priest) {
+                existing.priest = rec.priest;
               }
             }
           }
@@ -74,7 +77,7 @@ export default function templsRouter({ templs, persist, database, provider, watc
     '/templs',
     requireAddresses(['contractAddress', 'priestAddress']),
     verifyTypedSignature({
-      database,
+      signatureStore,
       addressField: 'priestAddress',
       buildTyped: (req) => {
         const { chainId, nonce, issuedAt, expiry } = extractTypedRequestParams(req.body);
@@ -88,9 +91,7 @@ export default function templsRouter({ templs, persist, database, provider, watc
           logger,
           templs,
           persist,
-          watchContract,
-          saveBinding,
-          removeBinding,
+          watchContract
         });
         const { templ, bindingCode } = result;
         res.json({
@@ -113,7 +114,7 @@ export default function templsRouter({ templs, persist, database, provider, watc
     '/templs/rebind',
     requireAddresses(['contractAddress', 'priestAddress']),
     verifyTypedSignature({
-      database,
+      signatureStore,
       addressField: 'priestAddress',
       buildTyped: (req) => {
         const { chainId, nonce, issuedAt, expiry } = extractTypedRequestParams(req.body);
@@ -125,10 +126,10 @@ export default function templsRouter({ templs, persist, database, provider, watc
         const result = await requestTemplRebind(req.body, {
           templs,
           persist,
-          saveBinding,
           provider,
           logger,
-          database
+          database,
+          signatureStore
         });
         res.json({
           contract: result.contract,

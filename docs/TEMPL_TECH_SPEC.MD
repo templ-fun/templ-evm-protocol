@@ -42,7 +42,7 @@ MetaMask/`window.ethereum` supplies the signer. All backend calls attach typed s
 ## 4. Telegram integration
 
 - Bot token lives in `TELEGRAM_BOT_TOKEN` (backend env). Without it, the notifier short-circuits and no messages are sent.
-- Chat ids are plain strings stored in SQLite (`groups.groupId`). Use negative ids for supergroups.
+- Chat ids are plain strings stored in SQLite (`templ_bindings.telegramChatId`). Use negative ids for supergroups.
 - Rebinding requires the current priest wallet to sign the `rebind` typed data; once the new code is observed in Telegram the backend clears the previous binding and stores the replacement chat id.
 - Messages include contract/member addresses in `<code>` blocks, the proposal title/description when present, and navigation links built from `APP_BASE_URL`.
 - Failures are logged at `warn` level; the backend never throws based on Telegram API errors.

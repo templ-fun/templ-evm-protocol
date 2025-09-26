@@ -21,32 +21,28 @@ function normaliseAddress(value, field) {
 }
 
 function ensureRecordLoaded(contract, context) {
-  const { templs, database } = context;
+  const { templs, findBinding } = context;
   let record = templs.get(contract);
   if (record) return record;
-  if (!database?.prepare) return null;
-  try {
-    const stmt = database.prepare('SELECT contract, groupId, priest, homeLink FROM groups WHERE contract = ?');
-    const row = stmt.get(contract);
-    if (!row) return null;
-    record = {
-      telegramChatId: row.groupId || null,
-      priest: row.priest ? String(row.priest).toLowerCase() : null,
-      templHomeLink: row.homeLink || '',
-      proposalsMeta: new Map(),
-      lastDigestAt: Date.now(),
-      bindingCode: null,
-      contractAddress: contract
-    };
-    templs.set(contract, record);
-    return record;
-  } catch {
+  const persisted = typeof findBinding === 'function' ? findBinding(contract) : null;
+  if (!persisted) {
     return null;
   }
+  record = {
+    telegramChatId: persisted.telegramChatId ?? null,
+    priest: null,
+    templHomeLink: '',
+    proposalsMeta: new Map(),
+    lastDigestAt: Date.now(),
+    bindingCode: null,
+    contractAddress: contract
+  };
+  templs.set(contract, record);
+  return record;
 }
 
 export async function requestTemplRebind(body, context) {
-  const { templs, persist, saveBinding, provider, logger } = context;
+  const { templs, persist, provider, logger } = context;
   const contract = normaliseAddress(body.contractAddress, 'contractAddress');
   const priest = normaliseAddress(body.priestAddress, 'priestAddress');
 
@@ -80,12 +76,6 @@ export async function requestTemplRebind(body, context) {
 
   templs.set(contract, record);
   persist?.(contract, record);
-  try {
-    saveBinding?.(contract, bindingCode);
-  } catch (err) {
-    logger?.warn?.({ err: String(err?.message || err), contract }, 'Failed to persist binding code');
-  }
-
   logger?.info?.({ contract, priest }, 'Telegram rebind requested');
 
   return {
