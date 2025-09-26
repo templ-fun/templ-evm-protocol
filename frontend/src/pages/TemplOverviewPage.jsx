@@ -13,6 +13,7 @@ export function TemplOverviewPage({
 }) {
   const [proposalId, setProposalId] = useState('0');
   const [localChatId, setLocalChatId] = useState(templRecord?.telegramChatId || '');
+  const [chatIdHidden, setChatIdHidden] = useState(Boolean(templRecord?.telegramChatIdHidden));
   const [currentPriest, setCurrentPriest] = useState(templRecord?.priest || '');
   const [bindingCode, setBindingCode] = useState(null);
   const [rebindPending, setRebindPending] = useState(false);
@@ -20,11 +21,12 @@ export function TemplOverviewPage({
 
   useEffect(() => {
     setLocalChatId(templRecord?.telegramChatId || '');
+    setChatIdHidden(Boolean(templRecord?.telegramChatIdHidden));
     setCurrentPriest(templRecord?.priest || '');
     if (templRecord?.telegramChatId) {
       setBindingCode(null);
     }
-  }, [templRecord?.telegramChatId, templRecord?.priest]);
+  }, [templRecord?.telegramChatId, templRecord?.priest, templRecord?.telegramChatIdHidden]);
 
   const isPriestWallet = walletAddress && currentPriest && walletAddress.toLowerCase() === currentPriest.toLowerCase();
 
@@ -45,6 +47,7 @@ export function TemplOverviewPage({
       if (result?.bindingCode) {
         setBindingCode(result.bindingCode);
         setLocalChatId('');
+        setChatIdHidden(false);
       }
       if (result?.priest) {
         setCurrentPriest(String(result.priest).toLowerCase());
@@ -75,7 +78,7 @@ export function TemplOverviewPage({
           </div>
           <div>
             <dt>Telegram chat id</dt>
-            <dd>{localChatId || '—'}</dd>
+            <dd>{chatIdHidden ? 'Stored server-side' : localChatId || '—'}</dd>
           </div>
           <div>
             <dt>Home link</dt>
@@ -99,6 +102,10 @@ export function TemplOverviewPage({
         {localChatId ? (
           <p>
             Notifications are currently delivered to <code>{localChatId}</code>. Request a new binding code if you need to move the bot to another chat.
+          </p>
+        ) : chatIdHidden ? (
+          <p>
+            Notifications are active, but the Telegram chat ID is stored on the server. Request a new binding code if you need to rotate the chat.
           </p>
         ) : bindingCode ? (
           <>

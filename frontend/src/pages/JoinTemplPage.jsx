@@ -99,7 +99,13 @@ export function JoinTemplPage({
             </div>
             <div>
               <dt>Telegram chat id</dt>
-              <dd>{verification.templ?.telegramChatId || '—'}</dd>
+              <dd>
+                {verification.templ?.telegramChatId
+                  ? verification.templ.telegramChatId
+                  : verification.templ?.telegramChatIdHidden
+                    ? 'Stored server-side'
+                    : '—'}
+              </dd>
             </div>
             <div>
               <dt>Home link</dt>
