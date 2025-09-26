@@ -113,15 +113,17 @@ export default function App() {
 
       let backendTempls = [];
       try {
-        const res = await fetch(`${BACKEND_URL}/templs?include=chatId`);
+        // Chat identifiers remain server-side; avoid include=chatId which now returns 403.
+        const res = await fetch(`${BACKEND_URL}/templs?include=homeLink`);
         if (res.ok) {
           const data = await res.json();
           if (Array.isArray(data.templs)) {
             backendTempls = data.templs.map((row) => ({
               contract: String(row.contract || '').toLowerCase(),
               telegramChatId: row.telegramChatId || row.groupId || '',
-              templHomeLink: row.templHomeLink || '',
-              priest: row.priest || ''
+              templHomeLink: row.templHomeLink || row.homeLink || '',
+              priest: row.priest || '',
+              telegramChatIdHidden: !Object.hasOwn(row, 'telegramChatId') && !Object.hasOwn(row, 'groupId')
             }));
           }
         }
@@ -140,6 +142,7 @@ export default function App() {
         return {
           ...templ,
           telegramChatId: backendInfo?.telegramChatId || '',
+          telegramChatIdHidden: backendInfo?.telegramChatIdHidden || false,
           templHomeLink: templ.templHomeLink || backendInfo?.templHomeLink || '',
           priest: templ.priest || backendInfo?.priest || '',
         };
@@ -153,6 +156,7 @@ export default function App() {
         burnedFormatted: '0',
         templHomeLink: templ.templHomeLink,
         telegramChatId: templ.telegramChatId || '',
+        telegramChatIdHidden: templ.telegramChatIdHidden || false,
         links: { overview: `/templs/${templ.contract}`, homeLink: templ.templHomeLink || undefined },
       }));
 

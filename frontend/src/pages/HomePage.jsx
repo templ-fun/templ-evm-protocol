@@ -48,7 +48,11 @@ export function HomePage({ walletAddress, onConnectWallet, onNavigate, templs, l
                   <td>
                     <div className="mono">{templ.contract}</div>
                     {templ.priest ? <div className="subtle">Priest: {templ.priest}</div> : null}
-                    {templ.telegramChatId ? <div className="subtle">Telegram: {templ.telegramChatId}</div> : null}
+                    {templ.telegramChatId ? (
+                      <div className="subtle">Telegram: {templ.telegramChatId}</div>
+                    ) : templ.telegramChatIdHidden ? (
+                      <div className="subtle">Telegram chat ID stored server-side</div>
+                    ) : null}
                   </td>
                   <td>
                     <div>{templ.tokenSymbol}</div>
