@@ -1,6 +1,6 @@
 # Backend Service
 
-Use this doc to configure and operate the Node 22 / Express backend that handles the “web2” side of templ:
+Use this doc to configure and operate the Node 22 / Express backend that handles the “web2” side of templ. The service now targets Cloudflare Workers by default (via the Node compatibility layer) while still running locally with `npm --prefix backend start`:
 
 * verifies EIP-712 signatures for templ creation, rebind requests, and membership checks,
 * persists a minimal Telegram chat ↔ contract binding so notifications survive restarts,
@@ -33,15 +33,16 @@ Running the server requires a JSON-RPC endpoint and aligned frontend/server IDs.
 | `LOG_LEVEL` | Pino log level. | `info` |
 | `RATE_LIMIT_STORE` | `memory` or `redis`; automatically switches to Redis when `REDIS_URL` is provided. | auto |
 | `REDIS_URL` | Redis endpoint used for rate limiting when `RATE_LIMIT_STORE=redis`. | unset |
-| `DB_PATH` | SQLite path for persisted Telegram bindings. | `backend/groups.db` |
-| `CLEAR_DB` | When `1`, delete the SQLite database on boot (useful for tests). | `0` |
+When deployed via Cloudflare Workers, bind the production D1 database (e.g. `TEMPL_DB`) in `wrangler.toml` and pass it to `createApp`. Local development without a binding automatically uses the in-memory adapter so you can iterate without provisioning D1. Signature replay protection still retains entries for ~6 hours (matching the defaults baked into the adapters).
+
+> Use `npm run deploy:cloudflare` (see `scripts/cloudflare.deploy.example.env`) to generate a Wrangler config, sync secrets, and deploy the Worker alongside the static frontend in one pass. The script automatically applies the D1 schema before publishing so the Worker can start accepting requests immediately.
 
 ### Data model
 
-SQLite is the default persistence layer and stores:
+Cloudflare D1 is the default persistence layer and stores:
 
 - `templ_bindings(contract TEXT PRIMARY KEY, telegramChatId TEXT UNIQUE, priest TEXT, bindingCode TEXT)` – durable mapping between templ contracts and their optional Telegram chats plus the last-seen priest address. `bindingCode` stores any outstanding binding snippet so servers can restart without invalidating it. Rows keep `telegramChatId = NULL` until a binding completes so watchers can resume after restarts without leaking chat ids.
-- `used_signatures(signature TEXT PRIMARY KEY, expiresAt INTEGER)` – replay protection for typed requests. Entries expire automatically (6 hour retention) and fall back to the in-memory cache only when SQLite is unavailable.
+- `used_signatures(signature TEXT PRIMARY KEY, expiresAt INTEGER)` – replay protection for typed requests. Entries expire automatically (6 hour retention) and fall back to the in-memory cache only when D1 is unavailable.
 
 Templ home links continue to live on-chain; watchers refresh them (and priest data) from the contract whenever listeners attach so the chain remains the canonical source of truth.
 
@@ -142,7 +143,7 @@ Messages are posted with Telegram `MarkdownV2` formatting—the notifier escapes
 
 ## Contract watchers
 
-The server uses `ethers.Contract` to subscribe to templ events. Watchers are registered when a templ is stored or restored from SQLite.
+The server uses `ethers.Contract` to subscribe to templ events. Watchers are registered when a templ is stored or restored from Cloudflare D1 (or the in-memory fallback during local development).
 
 - Listener errors are caught and logged (but do not crash the process).
 - Proposal metadata is cached in-memory when events fire so follow-up notifications can include the title even if the on-chain read fails.
@@ -156,7 +157,7 @@ The server uses `ethers.Contract` to subscribe to templ events. Watchers are reg
 `npm --prefix backend test` runs Node’s built-in test runner:
 
 - Shared `shared/signing.test.js` covers typed-data builders.
-- `backend/test/app.test.js` spins up the app against a temporary SQLite database, stubs a Telegram notifier, and checks templ registration, priest rebind flows, and membership checks.
+- `backend/test/app.test.js` spins up the app against the in-memory persistence adapter, stubs a Telegram notifier, and checks templ registration, priest rebind flows, and membership checks.
 
 Coverage uses `c8`; run `npm --prefix backend run coverage` for LCOV reports.
 

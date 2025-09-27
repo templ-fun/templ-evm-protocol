@@ -6,23 +6,20 @@ import { registerTempl } from '../services/registerTempl.js';
 import { requestTemplRebind } from '../services/requestTemplRebind.js';
 import { extractTypedRequestParams } from './typed.js';
 
-export default function templsRouter({ templs, persist, database, provider, watchContract, signatureStore, findBinding }) {
+export default function templsRouter({ templs, persist, provider, watchContract, signatureStore, findBinding, listBindings }) {
   const router = express.Router();
 
-  router.get('/templs', (req, res) => {
+  router.get('/templs', async (req, res) => {
     try {
       let rows = [];
       try {
-        if (database?.prepare) {
-          rows = database
-            .prepare('SELECT telegramChatId, contract, priest FROM templ_bindings ORDER BY contract')
-            .all()
-            .map((r) => ({
-              contract: String(r.contract).toLowerCase(),
-              telegramChatId: r.telegramChatId ? String(r.telegramChatId) : null,
-              priest: r.priest ? String(r.priest).toLowerCase() : null,
-              templHomeLink: ''
-            }));
+        if (typeof listBindings === 'function') {
+          rows = (await listBindings())?.map((r) => ({
+            contract: String(r.contract || '').toLowerCase(),
+            telegramChatId: r.telegramChatId != null ? String(r.telegramChatId) : null,
+            priest: r.priest != null ? String(r.priest).toLowerCase() : null,
+            templHomeLink: r.templHomeLink ? String(r.templHomeLink) : ''
+          })) ?? [];
         }
       } catch {
         rows = [];
@@ -128,7 +125,6 @@ export default function templsRouter({ templs, persist, database, provider, watc
           persist,
           provider,
           logger,
-          database,
           signatureStore,
           findBinding
         });

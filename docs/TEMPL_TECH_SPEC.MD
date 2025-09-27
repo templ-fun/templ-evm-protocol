@@ -19,7 +19,7 @@ See inline NatSpec comments and Hardhat tests for state transitions.
 - Validate templ registrations (`POST /templs`) with EIP-712 signatures and optional Telegram chat ids.
 - Issue new Telegram binding codes (`POST /templs/rebind`) after verifying the signed priest still owns the contract.
 - Confirm membership via `hasAccess` (`POST /join`).
-- Store templ ↔ Telegram chat bindings in SQLite so notifications survive restarts; priest/home-link data is refreshed from chain when watchers attach.
+- Store templ ↔ Telegram chat bindings in Cloudflare D1 (with an in-memory fallback for local development) so notifications survive restarts; priest/home-link data is refreshed from chain when watchers attach.
 - Subscribe to templ events via `ethers.Contract` and forward them to Telegram:
   - `AccessPurchased` → “New member” message with join + claim links and live treasury/member-pool totals.
   - `ProposalCreated` → “Proposal created” with link to `/proposals/:id/vote`, including the on-chain title & description supplied at creation time.
@@ -44,7 +44,7 @@ MetaMask/`window.ethereum` supplies the signer. All backend calls attach typed s
 ## 4. Telegram integration
 
 - Bot token lives in `TELEGRAM_BOT_TOKEN` (backend env). Without it, the notifier short-circuits and no messages are sent.
-- Chat ids are plain strings stored in SQLite (`templ_bindings.telegramChatId`). Use negative ids for supergroups.
+- Chat ids are plain strings stored in Cloudflare D1 (`templ_bindings.telegramChatId`) and replicated globally by Workers. Use negative ids for supergroups.
 - Rebinding requires the current priest wallet to sign the `rebind` typed data; once the new code is observed in Telegram the backend clears the previous binding and stores the replacement chat id.
 - Messages are rendered with Telegram Markdown V2: headings are bolded, contract/member addresses sit in `<code>` spans, and navigation links derived from `APP_BASE_URL` are escaped before sending.
 - Failures are logged at `warn` level; the backend never throws based on Telegram API errors.

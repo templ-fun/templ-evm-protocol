@@ -11,6 +11,7 @@ Run each script from the repo root unless noted. All commands assume dependencie
 
 ## At a glance
 - `deploy.js` - stand up a factory/templ pair with environment-driven configuration and save deployment metadata.
+- `deploy-cloudflare.js` - build the SPA, sync D1 schema + secrets, and push the backend Worker + Pages site to Cloudflare from a single env file.
 - `register-templ.js` - register an already-deployed templ with the backend API so the UI/alerts can discover it.
 - `gen-wallets.js` - mint fresh Hardhat wallets (and optional ERC-20 balances) for local integration or e2e runs.
 - `test-all.sh` - replicate CI locally in four phases so regressions surface before pushing.
@@ -23,6 +24,18 @@ Run each script from the repo root unless noted. All commands assume dependencie
 - When `BACKEND_URL` is exported, automatically signs the registration payload with the priest wallet and POSTs it to `${BACKEND_URL}/templs`, printing the binding code returned by the backend.
 
 **Run:** `npx hardhat run scripts/deploy.js --network <network>`
+
+## deploy-cloudflare.js
+- Consumes a `.env` (see `cloudflare.deploy.example.env`) to fill Worker vars/secrets, point the frontend build at the Worker URL, and name the Cloudflare Pages project.
+- Generates `backend/wrangler.deployment.toml`, applies the D1 schema, uploads Worker secrets, deploys the Worker, and finally deploys the static frontend to Pages.
+- Supports `--skip-worker` or `--skip-pages` flags when you need to update only one side of the stack.
+
+**Run:**
+```bash
+cp scripts/cloudflare.deploy.example.env .cloudflare.env
+# edit .cloudflare.env, then
+npm run deploy:cloudflare
+```
 
 ## register-templ.js
 - Registers an existing templ contract with the backend REST API using the priest wallet (requires the priest key in `PRIVATE_KEY`).

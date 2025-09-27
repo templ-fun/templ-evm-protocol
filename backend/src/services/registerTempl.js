@@ -54,7 +54,7 @@ export async function registerTempl(body, context) {
 
   let existing = templs.get(contract);
   if (!existing) {
-    const persisted = typeof findBinding === 'function' ? findBinding(contract) : null;
+    const persisted = typeof findBinding === 'function' ? await findBinding(contract) : null;
     existing = {
       telegramChatId: null,
       priest,
@@ -90,7 +90,7 @@ export async function registerTempl(body, context) {
   }
 
   templs.set(contract, existing);
-  persist(contract, existing);
+  await persist(contract, existing);
   if (typeof watchContract === 'function') {
     await watchContract(contract, existing);
   }

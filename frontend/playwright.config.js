@@ -65,8 +65,6 @@ export default defineConfig({
         PORT: '3001',
         ALLOWED_ORIGINS: 'http://localhost:5179',
         BACKEND_SERVER_ID: 'templ-dev',
-        DB_PATH: 'e2e-groups.db',
-        CLEAR_DB: '1',
         LOG_LEVEL: 'info',
         NODE_ENV: 'test',
       },

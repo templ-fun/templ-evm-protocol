@@ -113,6 +113,8 @@ You can deploy from the CLI or via the frontend. The CLI is convenient for scrip
 
 ## 3. Run and configure the backend
 
+### Local development
+
 1. Create `backend/.env` (you can start by copying `backend/.env.test` if you want the local defaults) and fill in:
    ```ini
    RPC_URL=http://127.0.0.1:8545
@@ -126,8 +128,96 @@ You can deploy from the CLI or via the frontend. The CLI is convenient for scrip
    ```bash
    npm --prefix backend start
    ```
-   The server persists Telegram bindings in `backend/groups.db` and begins watching contract events.
+   By default the backend uses the in-memory persistence adapter so you can iterate quickly without provisioning infrastructure. To test against a real D1 instance locally, install [Wrangler](https://developers.cloudflare.com/workers/wrangler/install/), create a database, and run `wrangler d1 execute templ-backend --file backend/src/persistence/schema.sql` (see the production steps below for the schema file).
    > The backend only recognises templs that call the `/templs` registration endpoint and (when `TRUSTED_FACTORY_ADDRESS` is set) were emitted by the trusted factory. The CLI deploy script can auto-register (see step 6 above) or run `scripts/register-templ.js`. Until registration completes, the frontend will not list the templ and membership verification requests will return 404.
+
+### Deploying the backend to Cloudflare Workers
+
+1. Install Wrangler and authenticate: `npm install -g wrangler && wrangler login`.
+2. Create a D1 database for templ bindings:
+   ```bash
+   wrangler d1 create templ-backend
+   ```
+   Record the generated `database_id`. Save the SQL schema below as `backend/src/persistence/schema.sql` if you want to execute migrations manually:
+   ```sql
+   CREATE TABLE IF NOT EXISTS templ_bindings (
+     contract TEXT PRIMARY KEY,
+     telegramChatId TEXT UNIQUE,
+     priest TEXT,
+     bindingCode TEXT
+   );
+   CREATE TABLE IF NOT EXISTS used_signatures (
+     signature TEXT PRIMARY KEY,
+     expiresAt INTEGER NOT NULL
+   );
+   ```
+3. Configure `backend/wrangler.toml` (values shown are examples—replace with your IDs and production URLs):
+   ```toml
+   name = "templ-backend"
+   main = "src/server.js"
+   compatibility_date = "2024-11-05"
+   node_compat = true
+
+   [vars]
+   APP_BASE_URL = "https://templ.example"
+   BACKEND_SERVER_ID = "templ-prod"
+   TRUSTED_FACTORY_ADDRESS = "0x..."
+
+   [[d1_databases]]
+   binding = "TEMPL_DB"
+   database_name = "templ-backend"
+   database_id = "<database_id from step 2>"
+   ```
+   The `node_compat` flag lets Wrangler run the existing Express app inside a Worker. Add the environment variables listed in `.env` via `wrangler secret put` (e.g. `wrangler secret put TELEGRAM_BOT_TOKEN`).
+4. Publish the backend:
+   ```bash
+   wrangler deploy --config backend/wrangler.toml
+   ```
+   Wrangler bundles the Express server, binds the `TEMPL_DB` D1 instance, and exposes your API as a Worker. Use `wrangler tail` to stream logs and confirm the process connected to your RPC provider.
+
+> **Note:** Express on Workers is powered by the Node.js compatibility layer. It is suitable for production traffic but still labelled beta by Cloudflare—keep Wrangler up to date and review the [Node compatibility documentation](https://developers.cloudflare.com/workers/runtime-apis/node-compatibility/) for the latest caveats.
+
+> **Why Workers + D1?** The backend now targets Cloudflare’s serverless primitives. Workers scale to zero between requests and fan out globally without warmup time, which keeps latency low for communities spread across regions. D1 provides durable storage with the same pay-for-what-you-use billing model, so low-volume templs stay inside the free tier while larger deployments only pay for their actual queries and storage. Because the Express app runs unmodified inside Workers, we avoid bespoke Lambda rewrites and can keep iterating locally with the in-memory adapter before binding a production D1 database.
+
+### Deploying the frontend to Cloudflare Pages
+
+Cloudflare Pages is an edge-cached static host with an extremely generous free tier (500 builds/month, 20k requests/day). The templ frontend is a static Vite build, so deploying is as simple as uploading the `frontend/dist/` directory:
+
+1. Create a Pages project (once per environment):
+   ```bash
+   wrangler pages project create templ-frontend --production-branch main
+   ```
+   Replace `templ-frontend` with your preferred project name; the script below will reuse it.
+2. Build the SPA with production env vars:
+   ```bash
+   VITE_BACKEND_URL=https://templ-backend.example.workers.dev \
+   VITE_BACKEND_SERVER_ID=templ-prod \
+   VITE_TEMPL_FACTORY_ADDRESS=0x... \
+   npm --prefix frontend run build
+   ```
+3. Deploy to Pages:
+   ```bash
+   wrangler pages deploy frontend/dist --project-name templ-frontend --branch production
+   ```
+   The default Pages domain follows `https://<project>.pages.dev`. Point `APP_BASE_URL` (backend + Telegram deep links) to this hostname or your custom domain.
+
+### Automating the Cloudflare deploy (backend + frontend)
+
+To avoid juggling multiple commands, use the bundled `scripts/deploy-cloudflare.js` wrapper. It reads a single env file, applies the D1 schema, deploys the Worker, builds the SPA with the correct `VITE_*` overrides, and publishes to Cloudflare Pages.
+
+1. Copy the template and fill it out with your production details (Worker name, D1 ids, secrets, Pages project, etc.):
+   ```bash
+   cp scripts/cloudflare.deploy.example.env .cloudflare.env
+   $EDITOR .cloudflare.env
+   ```
+2. Run the deploy:
+   ```bash
+   npm run deploy:cloudflare
+   ```
+   - `--skip-worker` skips the Worker/D1 steps when you only need to rebuild the frontend.
+   - `--skip-pages` skips the Pages deploy when you’re adjusting Worker configuration only.
+
+Pages and Workers both bill per request. Staying inside Cloudflare’s defaults keeps hobby templ communities effectively free while giving you a single global deployment surface when activity spikes.
 
 ### Telegram binding flow
 
@@ -177,8 +267,8 @@ If the suite reports a binding code, follow the Telegram steps above before re-r
 - Deploy `TemplFactory` and `TEMPL` to your target network with finalized parameters.
 - Set `NODE_ENV=production` and `REQUIRE_CONTRACT_VERIFY=1` for the backend so contract ownership is checked on registration.
 - Set `APP_BASE_URL` to the deployed frontend URL (used to build deep links in Telegram messages).
-- Provision `TELEGRAM_BOT_TOKEN` in a secure secret manager.
-- Use a persistent database path (set `DB_PATH`) for backend registrations.
+- Provision `TELEGRAM_BOT_TOKEN`, `RPC_URL`, and other secrets via `wrangler secret put` so they are not stored in git.
+- Bind the Cloudflare D1 database (see the Wrangler steps above) and confirm the tables exist before your first deploy.
 - Run `npm --prefix backend run lint` and `npm --prefix frontend run lint` before shipping.
 
 Once everything is live, members joining the templ will see:

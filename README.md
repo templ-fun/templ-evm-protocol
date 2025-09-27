@@ -27,8 +27,8 @@ Reference diagrams live in [`docs/CORE_FLOW_DOCS.MD`](docs/CORE_FLOW_DOCS.MD).
 ## Current Stack
 
 - **Contracts** – Solidity 0.8.23 factory + templ modules (see `contracts/`) mint templ instances with: configurable entry-fee splits (burn/treasury/member/protocol), auto-enrolment of the deploying priest (so the first paid member pool accrues to them), an on-chain home link for off-chain surfaces, and a typed governance router (pause/config/withdraw/disband/priest/cap/dictatorship/home-link). Disband proposals enforce a join lock, and optional member caps auto-pause new joins until governance adjusts the cap and explicitly unpauses. Fee accounting assumes standard ERC-20 transfers; taxed tokens are unsupported.
-- **Backend API + Telegram bot** – Node 22/Express server performs signature verification, tracks registered templs, confirms membership, and streams contract events to a Telegram group via a bot token.
-- **Frontend control center** – Vite + React single-page app for deploying templs, joining with proof-of-purchase, raising proposals (with on-chain title/description), and casting votes. The landing page pulls templ deployments directly from the configured factory (and merges Telegram metadata from the backend) so every community is one click away. Flows are split into dedicated routes:
+- **Backend API + Telegram bot** – Node 22/Express server that runs unchanged on Cloudflare Workers (via the Node compatibility layer). It persists templ metadata in Cloudflare D1, verifies signatures, confirms membership, and streams contract events to a Telegram group via a bot token.
+- **Frontend control center** – Vite + React single-page app for deploying templs, joining with proof-of-purchase, raising proposals (with on-chain title/description), and casting votes. The landing page pulls templ deployments directly from the configured factory (and merges Telegram metadata from the backend) so every community is one click away. The bundle is completely static, so production builds ship via Cloudflare Pages (edge-cached, zero-idle hosting). Flows are split into dedicated routes:
 - `/templs/create` – deploy + register and optionally bind a Telegram chat id.
 - `/templs/join` – purchase access, then verify membership via the backend.
 - `/templs/:address` – overview, quick links, and routing to proposal tools.
@@ -83,10 +83,8 @@ In separate terminals you’ll typically run:
 | `RATE_LIMIT_STORE` | `memory` or `redis`; auto-selects Redis when `REDIS_URL` is set. |
 | `REDIS_URL` | Redis endpoint used for distributed rate limiting (required when `RATE_LIMIT_STORE=redis`). |
 | `REQUIRE_CONTRACT_VERIFY` | Set to `1` in production to enforce on-chain contract + priest validation. |
-| `CLEAR_DB` | When `1`, deletes the SQLite DB before boot (handy for tests). |
-| `DB_PATH` | Override file path for the SQLite DB that stores Telegram bindings (`backend/groups.db` by default). |
 
-The backend stores templ registrations in SQLite (`templ_bindings`). Each row maps a templ contract to an optional Telegram chat id so bindings survive restarts while still allowing templs to exist without Telegram wiring.
+The backend persists templ registrations in Cloudflare D1 (`templ_bindings`) whenever a Worker binding is provided. Local development (or environments without D1) automatically fall back to the in-memory adapter so you can iterate without provisioning infrastructure. Bindings store the templ contract, optional Telegram chat id, last-seen priest, and any outstanding binding code so notifications resume instantly after a restart.
 
 ### Frontend (`frontend/.env`)
 
@@ -111,6 +109,27 @@ The frontend connects to the user’s browser wallet (MetaMask or any `window.et
    The backend polls the bot API, detects the code, and acknowledges the binding in the same chat. Once confirmed, all templ events (joins, proposals, quorum, vote closure, priest changes, daily digests, home-link updates) stream into the channel as plaintext notifications with deep links back to the frontend.
 
 Leaving the chat id empty is perfectly fine — the templ remains usable, and you can complete the binding later from the templ overview page. When governance appoints a new priest or the community moves chats, request a new binding code from the overview, sign the EIP-712 rebind payload, and post the snippet in the destination group to re-link the bot.
+
+### Cloudflare deployment & cost profile
+
+The backend is now optimised for Cloudflare’s serverless stack:
+
+- **Workers-hosted Express.** `wrangler` deploys the existing Express app (with no code changes) behind the Workers Node compatibility layer, giving us instant global distribution and automatic scaling to meet request bursts.
+- **Cloudflare D1 persistence.** Templ registrations and replay-protection entries live in a D1 database that scales with your usage. Workers bill per-request and D1 bills per query/storage, so low-traffic communities stay comfortably inside the generous free tier while larger deployments only pay for what they consume.
+- **Zero-idle infrastructure.** There are no VMs or containers to babysit. Deployments bundle the API, persistence schema, and background tasks into the Worker runtime, so the platform elastically scales down to zero when idle and up during spikes.
+- **Cloudflare Pages frontend.** The React SPA builds to static assets that Pages serves from every Cloudflare POP with built-in caching and generous free quotas (build minutes + bandwidth). Publishing the frontend alongside the Worker keeps the entire stack on pay-for-what-you-use primitives.
+
+This architecture is inexpensive (no always-on compute) and production-ready: the Cloudflare global network keeps p99 latencies low, and D1’s regional replicas provide durability without introducing another managed service.
+
+### One-command Cloudflare deploys
+
+Use `npm run deploy:cloudflare` to orchestrate a full-stack deploy once you populate `.cloudflare.env` (see `scripts/cloudflare.deploy.example.env`). The script:
+
+- Generates a Wrangler config with your Worker vars, applies the D1 schema, and syncs secrets such as `RPC_URL` + `TELEGRAM_BOT_TOKEN`.
+- Runs the Worker deploy via Wrangler (or skip with `--skip-worker`).
+- Builds the SPA with your `VITE_*` overrides and pushes the static bundle to Cloudflare Pages (skip with `--skip-pages`).
+
+By pinning everything to Cloudflare primitives you can update the API or UI independently but still ship both sides through a single command when bootstrapping a new environment.
 
 ## Repository layout
 
