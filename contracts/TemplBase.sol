@@ -30,6 +30,7 @@ abstract contract TemplBase is ReentrancyGuard {
     uint256 public treasuryBalance;
     uint256 public memberPoolBalance;
     bool public paused;
+    uint256 public activeDisbandJoinLocks;
     uint256 public MAX_MEMBERS;
 
     uint256 public quorumPercent;
@@ -88,6 +89,7 @@ abstract contract TemplBase is ReentrancyGuard {
         bool updateFeeSplit;
         uint256 preQuorumSnapshotBlock;
         bool setDictatorship;
+        bool disbandJoinLock;
     }
 
     uint256 public proposalCount;
@@ -227,6 +229,12 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @dev Ensures joins and other gated actions only execute when the templ is unpaused.
     modifier whenNotPaused() {
         if (paused) revert TemplErrors.ContractPausedError();
+        _;
+    }
+
+    /// @dev Blocks membership joins while a disband proposal is pending execution.
+    modifier whenDisbandUnlocked() {
+        if (activeDisbandJoinLocks != 0) revert TemplErrors.DisbandLockActive();
         _;
     }
 

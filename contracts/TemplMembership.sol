@@ -41,7 +41,7 @@ abstract contract TemplMembership is TemplBase {
     {}
 
     /// @notice Purchase templ membership using the configured access token.
-    function purchaseAccess() external whenNotPaused notSelf nonReentrant {
+    function purchaseAccess() external whenNotPaused whenDisbandUnlocked notSelf nonReentrant {
         Member storage m = members[msg.sender];
         if (m.purchased) revert TemplErrors.AlreadyPurchased();
 

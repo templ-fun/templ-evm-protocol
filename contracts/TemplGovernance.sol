@@ -173,6 +173,8 @@ abstract contract TemplGovernance is TemplTreasury {
         p.token = _token;
         if (msg.sender == priest) {
             p.quorumExempt = true;
+        } else if (p.quorumReachedAt != 0) {
+            _activateDisbandLock(p);
         }
         return id;
     }
@@ -270,6 +272,9 @@ abstract contract TemplGovernance is TemplTreasury {
                 proposal.quorumSnapshotBlock = block.number;
                 proposal.postQuorumEligibleVoters = memberList.length;
                 proposal.endTime = block.timestamp + executionDelayAfterQuorum;
+                if (proposal.action == Action.DisbandTreasury) {
+                    _activateDisbandLock(proposal);
+                }
             }
         }
 
@@ -330,6 +335,7 @@ abstract contract TemplGovernance is TemplTreasury {
             _withdrawTreasury(proposal.token, proposal.recipient, proposal.amount, proposal.reason, _proposalId);
         } else if (proposal.action == Action.DisbandTreasury) {
             _disbandTreasury(proposal.token, _proposalId);
+            _releaseDisbandLock(proposal);
         } else if (proposal.action == Action.ChangePriest) {
             _changePriest(proposal.recipient);
         } else if (proposal.action == Action.SetDictatorship) {
@@ -575,8 +581,17 @@ abstract contract TemplGovernance is TemplTreasury {
         uint256 currentTime = block.timestamp;
         while (len > 0 && removed < maxRemovals) {
             uint256 proposalId = activeProposalIds[len - 1];
-            if (_isActiveProposal(proposals[proposalId], currentTime)) {
+            Proposal storage proposal = proposals[proposalId];
+            if (_isActiveProposal(proposal, currentTime)) {
                 break;
+            }
+            if (
+                proposal.action == Action.DisbandTreasury &&
+                proposal.disbandJoinLock &&
+                !proposal.executed &&
+                currentTime >= proposal.endTime
+            ) {
+                _finalizeDisbandFailure(proposal);
             }
             _removeActiveProposal(proposalId);
             removed++;
@@ -587,6 +602,30 @@ abstract contract TemplGovernance is TemplTreasury {
     function _addActiveProposal(uint256 proposalId) internal {
         activeProposalIds.push(proposalId);
         activeProposalIndex[proposalId] = activeProposalIds.length;
+    }
+
+    function _activateDisbandLock(Proposal storage proposal) internal {
+        if (!proposal.disbandJoinLock) {
+            proposal.disbandJoinLock = true;
+            activeDisbandJoinLocks += 1;
+        }
+    }
+
+    function _releaseDisbandLock(Proposal storage proposal) internal {
+        if (proposal.disbandJoinLock) {
+            proposal.disbandJoinLock = false;
+            if (activeDisbandJoinLocks != 0) {
+                activeDisbandJoinLocks -= 1;
+            }
+        }
+    }
+
+    function _finalizeDisbandFailure(Proposal storage proposal) internal {
+        bool quorumMaintained = proposal.eligibleVoters == 0 ||
+            proposal.yesVotes * 100 >= quorumPercent * proposal.eligibleVoters;
+        if (!quorumMaintained || proposal.yesVotes <= proposal.noVotes) {
+            _releaseDisbandLock(proposal);
+        }
     }
 
     function _removeActiveProposal(uint256 proposalId) internal {

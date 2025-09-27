@@ -76,4 +76,6 @@ library TemplErrors {
     error DictatorshipEnabled();
     /// @notice Thrown when attempting to toggle dictatorship to its current state.
     error DictatorshipUnchanged();
+    /// @notice Thrown when membership joins are locked during an active disband execution window.
+    error DisbandLockActive();
 }
