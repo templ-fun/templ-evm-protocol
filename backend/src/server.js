@@ -6,6 +6,7 @@ import helmet from 'helmet';
 import rateLimit, { MemoryStore } from 'express-rate-limit';
 import { createRateLimitStore } from './config.js';
 import cors from 'cors';
+import { randomUUID } from 'crypto';
 
 import templsRouter from './routes/templs.js';
 import joinRouter from './routes/join.js';
@@ -51,6 +52,7 @@ const TEMPL_EVENT_ABI = [
 const PROPOSAL_CHECK_INTERVAL_MS = 60_000;
 const DAILY_DIGEST_CHECK_INTERVAL_MS = 60_000;
 const DAILY_DIGEST_PERIOD_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_LEADER_TTL_MS = 60_000;
 
 export { logger };
 
@@ -164,12 +166,21 @@ function updateMetaFromSnapshots(meta, snapshots) {
  *   retentionMs?: number
  * }} [opts]
  */
+/**
+ * @param {{
+ *   persistence?: import('./persistence/index.js').PersistenceAdapter,
+ *   d1?: any,
+ *   retentionMs?: number,
+ *   sqlitePath?: string
+ * }} [opts]
+ * @returns {Promise<import('./persistence/index.js').PersistenceAdapter>}
+ */
 async function initializePersistence(opts = {}) {
-  const { persistence, d1, retentionMs } = opts;
+  const { persistence, d1, retentionMs, sqlitePath } = opts;
   if (persistence) {
     return persistence;
   }
-  return createPersistence({ d1, retentionMs });
+  return createPersistence({ d1, retentionMs, sqlitePath });
 }
 
 async function maybeNotifyQuorum({ record, contractAddress, proposalId, meta, notifier, logger }) {
@@ -221,9 +232,15 @@ async function fetchBalances(record, logger) {
 
 function createContractWatcher({ connectContract, templs, persist, notifier, logger }) {
   if (!connectContract) {
-    return { watchContract: () => {} };
+    return {
+      watchContract: () => {},
+      pauseWatching: () => {},
+      resumeWatching: async () => {}
+    };
   }
   const listenerRegistry = new Map();
+  const trackedRecords = new Map();
+
   const backfillActiveProposals = async ({ contract, record, contractAddress }) => {
     if (!record) return;
     if (!record.proposalsMeta || typeof record.proposalsMeta.set !== 'function') {
@@ -284,33 +301,28 @@ function createContractWatcher({ connectContract, templs, persist, notifier, log
       }
     }
   };
-  const watchContract = async (contractAddress, record) => {
+
+  const detachListeners = (key) => {
+    const existing = listenerRegistry.get(key);
+    if (!existing) return;
+    const { contract, handlers } = existing;
+    try { contract.off('AccessPurchased', handlers.handleAccessPurchased); } catch (err) { void err; }
+    try { contract.off('ProposalCreated', handlers.handleProposal); } catch (err) { void err; }
+    try { contract.off('VoteCast', handlers.handleVote); } catch (err) { void err; }
+    try { contract.off('PriestChanged', handlers.handlePriestChanged); } catch (err) { void err; }
+    try { contract.off('ProposalExecuted', handlers.handleProposalExecuted); } catch (err) { void err; }
+    try { contract.off('TemplHomeLinkUpdated', handlers.handleTemplHomeLinkUpdated); } catch (err) { void err; }
+    listenerRegistry.delete(key);
+  };
+
+  const attachListeners = async (contractAddress, record) => {
     if (!contractAddress || !record) return;
     const key = String(contractAddress).toLowerCase();
-    if (listenerRegistry.has(key)) {
-      const existing = listenerRegistry.get(key);
-      const priorMeta = existing?.record?.proposalsMeta;
-      const previousRecord = existing?.record;
-      existing.record = record;
-      record.contract = existing.contract;
-      record.contractAddress = key;
-      if (priorMeta && (!record.proposalsMeta || typeof record.proposalsMeta.set !== 'function')) {
-        record.proposalsMeta = priorMeta;
-      }
-      if (previousRecord && (record.templHomeLink == null || record.templHomeLink === '')) {
-        record.templHomeLink = previousRecord.templHomeLink || '';
-      }
-      if (previousRecord && record.bindingCode == null) {
-        record.bindingCode = previousRecord.bindingCode || null;
-      }
-      if (previousRecord && typeof previousRecord.lastDigestAt === 'number') {
-        record.lastDigestAt = previousRecord.lastDigestAt;
-      } else if (typeof record.lastDigestAt !== 'number') {
-        record.lastDigestAt = Date.now();
-      }
-      await backfillActiveProposals({ contract: existing.contract, record, contractAddress: key });
-      return;
-    }
+    const previous = listenerRegistry.get(key);
+    const priorMeta = previous?.record?.proposalsMeta;
+    const previousRecord = previous?.record;
+    detachListeners(key);
+
     let contract;
     try {
       contract = connectContract(contractAddress);
@@ -324,8 +336,21 @@ function createContractWatcher({ connectContract, templs, persist, notifier, log
 
     record.contract = contract;
     record.contractAddress = key;
-    if (!record.proposalsMeta || typeof record.proposalsMeta.set !== 'function') {
+    if (priorMeta && (!record.proposalsMeta || typeof record.proposalsMeta.set !== 'function')) {
+      record.proposalsMeta = priorMeta;
+    } else if (!record.proposalsMeta || typeof record.proposalsMeta.set !== 'function') {
       record.proposalsMeta = new Map();
+    }
+    if (previousRecord && (record.templHomeLink == null || record.templHomeLink === '')) {
+      record.templHomeLink = previousRecord.templHomeLink || '';
+    }
+    if (previousRecord && record.bindingCode == null) {
+      record.bindingCode = previousRecord.bindingCode || null;
+    }
+    if (previousRecord && typeof previousRecord.lastDigestAt === 'number') {
+      record.lastDigestAt = previousRecord.lastDigestAt;
+    } else if (typeof record.lastDigestAt !== 'number') {
+      record.lastDigestAt = Date.now();
     }
     if (typeof record.templHomeLink !== 'string') {
       record.templHomeLink = '';
@@ -507,7 +532,34 @@ function createContractWatcher({ connectContract, templs, persist, notifier, log
     await backfillActiveProposals({ contract, record, contractAddress: key });
   };
 
-  return { watchContract };
+  let watchingEnabled = true;
+
+  const watchContract = async (contractAddress, record) => {
+    if (!contractAddress || !record) return;
+    const key = String(contractAddress).toLowerCase();
+    trackedRecords.set(key, record);
+    if (!watchingEnabled) {
+      return;
+    }
+    await attachListeners(contractAddress, record);
+  };
+
+  const pauseWatching = () => {
+    if (!watchingEnabled) return;
+    watchingEnabled = false;
+    for (const key of Array.from(listenerRegistry.keys())) {
+      detachListeners(key);
+    }
+  };
+
+  const resumeWatching = async () => {
+    if (watchingEnabled) return;
+    watchingEnabled = true;
+    const entries = Array.from(trackedRecords.entries());
+    await Promise.allSettled(entries.map(([key, record]) => attachListeners(record?.contractAddress ?? key, record)));
+  };
+
+  return { watchContract, pauseWatching, resumeWatching };
 }
 
 async function restoreGroupsFromPersistence({ listBindings, templs, watchContract, logger, provider, trustedFactoryAddress }) {
@@ -715,6 +767,23 @@ export async function createApp(opts) {
     logger: telegram?.logger ?? logger
   });
   const connectContract = providedConnectContract ?? (provider ? (address) => new ethers.Contract(address, TEMPL_EVENT_ABI, provider) : null);
+  const instanceId = (() => {
+    try {
+      if (typeof randomUUID === 'function') {
+        return randomUUID();
+      }
+    } catch (err) {
+      void err;
+    }
+    try {
+      if (globalThis?.crypto?.randomUUID) {
+        return globalThis.crypto.randomUUID();
+      }
+    } catch (err) {
+      void err;
+    }
+    return `templ-${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`;
+  })();
   const app = express();
   app.use(cors({ origin: buildAllowedOrigins() }));
   app.use(express.json());
@@ -728,7 +797,9 @@ export async function createApp(opts) {
   const templs = new Map();
   app.locals.templs = templs;
 
-  const persistenceAdapter = await initializePersistence({ persistence, d1, retentionMs: signatureRetentionMs });
+  const sqlitePath = process.env.SQLITE_DB_PATH?.trim() || null;
+  /** @type {import('./persistence/index.js').PersistenceAdapter} */
+  const persistenceAdapter = await initializePersistence({ persistence, d1, retentionMs: signatureRetentionMs, sqlitePath });
   const persist = persistenceAdapter?.persistBinding
     ? async (contract, record) => persistenceAdapter.persistBinding(contract, record)
     : async () => {};
@@ -747,7 +818,10 @@ export async function createApp(opts) {
 
   const trustedFactoryAddress = process.env.TRUSTED_FACTORY_ADDRESS?.trim() || null;
 
-  const { watchContract } = createContractWatcher({ connectContract, templs, persist, notifier, logger });
+  const contractWatcher = createContractWatcher({ connectContract, templs, persist, notifier, logger });
+  contractWatcher.pauseWatching();
+  const watchContract = contractWatcher.watchContract;
+  app.locals.backgroundTasks = null;
 
   const restorationPromise = restoreGroupsFromPersistence({
     listBindings,
@@ -758,17 +832,110 @@ export async function createApp(opts) {
     trustedFactoryAddress
   });
 
+  const leadershipSupported = typeof persistenceAdapter?.acquireLeadership === 'function';
+  let isLeader = false;
+  let leaderServicesActive = false;
   let backgroundTasks = null;
-  if (enableBackgroundTasks) {
-    restorationPromise
-      .then(() => {
-        backgroundTasks = createBackgroundTasks({ templs, notifier, logger, persist });
-        app.locals.backgroundTasks = backgroundTasks;
-      })
-      .catch((err) => {
-        logger?.warn?.({ err: String(err?.message || err) }, 'Failed to start background tasks after restore');
-      });
-  }
+  let leadershipTimer = null;
+  const leaderTtlRaw = Number(process.env.LEADER_TTL_MS ?? DEFAULT_LEADER_TTL_MS);
+  const leaderTtlMs = Number.isFinite(leaderTtlRaw) && leaderTtlRaw >= 15_000 ? leaderTtlRaw : DEFAULT_LEADER_TTL_MS;
+  const leaderRefreshMs = Math.max(5_000, Math.floor(leaderTtlMs / 2));
+  const leadershipReady = (() => {
+    let resolved = false;
+    let resolveFn;
+    const promise = new Promise((res) => {
+      resolveFn = res;
+    });
+    return {
+      promise,
+      resolve() {
+        if (resolved) return;
+        resolved = true;
+        resolveFn();
+      }
+    };
+  })();
+
+  const startLeaderServices = async () => {
+    if (leaderServicesActive) return;
+    leaderServicesActive = true;
+    try {
+      await restorationPromise;
+    } catch {
+      /* ignore */
+    }
+    await contractWatcher.resumeWatching();
+    if (enableBackgroundTasks && !backgroundTasks) {
+      backgroundTasks = createBackgroundTasks({ templs, notifier, logger, persist });
+      app.locals.backgroundTasks = backgroundTasks;
+    }
+    leadershipReady.resolve();
+  };
+
+  const stopLeaderServices = () => {
+    if (!leaderServicesActive) return;
+    leaderServicesActive = false;
+    contractWatcher.pauseWatching();
+    if (backgroundTasks) {
+      backgroundTasks.stop();
+      backgroundTasks = null;
+      app.locals.backgroundTasks = null;
+    }
+  };
+
+  const runLeadershipCycle = async () => {
+    if (!leadershipSupported) {
+      if (!isLeader) {
+        isLeader = true;
+        logger?.info?.({ instanceId }, 'Leadership defaulted (single instance)');
+        await startLeaderServices();
+      }
+      return;
+    }
+
+    if (isLeader) {
+      try {
+        const refreshed = await persistenceAdapter.refreshLeadership?.(instanceId, leaderTtlMs);
+        if (refreshed) {
+          return;
+        }
+        logger?.info?.({ instanceId }, 'Leadership lost');
+      } catch (err) {
+        logger?.warn?.({ err: String(err?.message || err), instanceId }, 'Failed to refresh leadership; relinquishing');
+      }
+      isLeader = false;
+      stopLeaderServices();
+      return;
+    }
+
+    try {
+      const acquired = await persistenceAdapter.acquireLeadership?.(instanceId, leaderTtlMs);
+      if (acquired) {
+        isLeader = true;
+        logger?.info?.({ instanceId }, 'Leadership acquired');
+        await startLeaderServices();
+      }
+    } catch (err) {
+      logger?.warn?.({ err: String(err?.message || err), instanceId }, 'Failed to acquire leadership');
+    }
+  };
+
+  restorationPromise
+    .then(async () => {
+      if (!leadershipSupported) {
+        await runLeadershipCycle();
+        return;
+      }
+      await runLeadershipCycle();
+      leadershipTimer = setInterval(() => {
+        void runLeadershipCycle().catch((err) => {
+          logger?.warn?.({ err: String(err?.message || err), instanceId }, 'Leadership cycle error');
+        });
+      }, leaderRefreshMs);
+    })
+    .catch((err) => {
+      logger?.warn?.({ err: String(err?.message || err) }, 'Failed to restore templ bindings');
+    });
 
   const context = {
     hasPurchased,
@@ -791,13 +958,27 @@ export async function createApp(opts) {
     } catch {
       /* ignore */
     }
+    if (leadershipTimer) {
+      clearInterval(leadershipTimer);
+      leadershipTimer = null;
+    }
+    if (leadershipSupported) {
+      try {
+        await persistenceAdapter.releaseLeadership?.(instanceId);
+      } catch (err) {
+        logger?.debug?.({ err: String(err?.message || err), instanceId }, 'Failed to release leadership on shutdown');
+      }
+    }
+    stopLeaderServices();
     await store.shutdown?.();
     await persistenceAdapter?.dispose?.();
-    backgroundTasks?.stop?.();
   };
 
-  app.locals.backgroundTasks = backgroundTasks;
+  if (!enableBackgroundTasks) {
+    app.locals.backgroundTasks = null;
+  }
   app.locals.restorationPromise = restorationPromise;
+  app.locals.leadershipReady = leadershipReady.promise;
 
   return app;
 }

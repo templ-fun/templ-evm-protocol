@@ -44,7 +44,7 @@ MetaMask/`window.ethereum` supplies the signer. All backend calls attach typed s
 ## 4. Telegram integration
 
 - Bot token lives in `TELEGRAM_BOT_TOKEN` (backend env). Without it, the notifier short-circuits and no messages are sent.
-- Chat ids are plain strings stored in Cloudflare D1 (`templ_bindings.telegramChatId`) and replicated globally by Workers. Use negative ids for supergroups.
+- Chat ids are plain strings stored in the persistence layer (`templ_bindings.telegramChatId`) and replicated to every backend instance (D1/SQLite). Use negative ids for supergroups.
 - Rebinding requires the current priest wallet to sign the `rebind` typed data; once the new code is observed in Telegram the backend clears the previous binding and stores the replacement chat id.
 - Messages are rendered with Telegram Markdown V2: headings are bolded, contract/member addresses sit in `<code>` spans, and navigation links derived from `APP_BASE_URL` are escaped before sending.
 - Failures are logged at `warn` level; the backend never throws based on Telegram API errors.

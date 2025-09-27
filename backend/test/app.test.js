@@ -394,6 +394,7 @@ test('signature replay rejected after restart with shared store', async (t) => {
     telegram: { notifier: createTestNotifier([]) }
   });
   await appReload.locals.restorationPromise;
+  await appReload.locals.leadershipReady;
 
   const replayRes = await request(appReload)
     .post('/templs')
@@ -494,6 +495,8 @@ test('active proposals are backfilled after restart', async (t) => {
     telegram: { notifier: createTestNotifier([]) }
   });
   await appReload.locals.restorationPromise;
+  await appReload.locals.leadershipReady;
+  await appReload.locals.leadershipReady;
 
   const restored = appReload.locals.templs.get(contractAddress);
   assert.ok(restored?.proposalsMeta?.has?.('1'));

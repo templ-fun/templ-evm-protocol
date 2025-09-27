@@ -29,6 +29,8 @@ BACKEND_SERVER_ID=templ-dev
 APP_BASE_URL=http://localhost:5173
 # Optional: wire up Telegram notifications by providing a bot token.
 # TELEGRAM_BOT_TOKEN=123456:bot-token-from-botfather
+# Optional: persist data locally between restarts.
+# SQLITE_DB_PATH=./templ.local.db
 ```
 
 Terminal B:
@@ -37,7 +39,7 @@ Terminal B:
 npm --prefix backend start
 ```
 
-The server listens on `http://localhost:3001`, verifies signatures, persists templ registrations in the in-memory adapter (matching the Cloudflare D1 schema), and—if a `TELEGRAM_BOT_TOKEN` is supplied—posts contract events to chat ids registered for each templ. You only need D1 when deploying to Workers; local development stays dependency-free.
+The server listens on `http://localhost:3001`, verifies signatures, persists templ registrations in the in-memory adapter (matching the Cloudflare D1/SQLite schema), and—if a `TELEGRAM_BOT_TOKEN` is supplied—posts contract events to chat ids registered for each templ. You only need a persistent store (SQLite or D1) in production; local development stays dependency-free.
 
 ## 3) Start the frontend
 
