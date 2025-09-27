@@ -24,6 +24,8 @@ redis_data/
 
 # Backend runtime files
 backend/groups.db
+.cloudflare.env
+backend/wrangler.deployment.toml
 
 # Build
 dist/

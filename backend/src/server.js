@@ -1,7 +1,6 @@
 // @ts-check
 import express from 'express';
 import dotenv from 'dotenv';
-import fs from 'fs';
 import { ethers } from 'ethers';
 import helmet from 'helmet';
 import rateLimit, { MemoryStore } from 'express-rate-limit';
@@ -13,10 +12,26 @@ import joinRouter from './routes/join.js';
 
 import { logger } from './logger.js';
 import { createTelegramNotifier } from './telegram.js';
-import { createSignatureStore, createSqliteSignatureStore } from './middleware/validate.js';
+import { createSignatureStore } from './middleware/validate.js';
 import { ensureTemplFromFactory } from './services/contractValidation.js';
 
-const { default: BetterSqlite } = await import('better-sqlite3');
+import { createPersistence } from './persistence/index.js';
+
+/**
+ * @typedef {{
+ *   bind(...values: Array<string | number | null | undefined>): D1Statement;
+ *   first<T = any>(): Promise<T | null>;
+ *   run(): Promise<{ success?: boolean | undefined, meta?: { changes?: number | null | undefined } | undefined }>;
+ *   all<T = any>(): Promise<{ results: Array<T> }>;
+ * }} D1Statement
+ */
+
+/**
+ * @typedef {{
+ *   prepare(statement: string): D1Statement;
+ *   exec(statement: string): Promise<unknown>;
+ * }} D1Database
+ */
 
 const TEMPL_EVENT_ABI = [
   'event AccessPurchased(address indexed purchaser,uint256 totalAmount,uint256 burnedAmount,uint256 treasuryAmount,uint256 memberPoolAmount,uint256 protocolAmount,uint256 timestamp,uint256 blockNumber,uint256 purchaseId)',
@@ -136,126 +151,25 @@ function updateMetaFromSnapshots(meta, snapshots) {
   if (asNum) meta.quorumReachedAt = asNum;
 }
 
-function initializeDatabase({ dbPath, db }) {
-  let database;
-  let owned = false;
-  if (db) {
-    database = db;
-  } else {
-    if (!BetterSqlite) {
-      throw new Error('better-sqlite3 bindings unavailable');
-    }
-    database = new BetterSqlite(dbPath ?? new URL('../groups.db', import.meta.url).pathname);
-    owned = true;
+/**
+ * @param {{
+ *   persistence?: {
+ *     persistBinding?: Function,
+ *     listBindings?: Function,
+ *     findBinding?: Function,
+ *     signatureStore?: { consume?: Function, prune?: Function },
+ *     dispose?: Function
+ *   } | null,
+ *   d1?: D1Database,
+ *   retentionMs?: number
+ * }} [opts]
+ */
+async function initializePersistence(opts = {}) {
+  const { persistence, d1, retentionMs } = opts;
+  if (persistence) {
+    return persistence;
   }
-
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS templ_bindings (
-      contract TEXT PRIMARY KEY,
-      telegramChatId TEXT UNIQUE,
-      priest TEXT,
-      bindingCode TEXT
-    )
-  `);
-
-  try {
-    const columns = database.prepare("PRAGMA table_info('templ_bindings')").all();
-    const hasPriestColumn = Array.isArray(columns) && columns.some((column) => column?.name === 'priest');
-    if (!hasPriestColumn) {
-      database.exec('ALTER TABLE templ_bindings ADD COLUMN priest TEXT');
-    }
-    const hasBindingColumn = Array.isArray(columns) && columns.some((column) => column?.name === 'bindingCode');
-    if (!hasBindingColumn) {
-      database.exec('ALTER TABLE templ_bindings ADD COLUMN bindingCode TEXT');
-    }
-  } catch {
-    /* ignore pragma errors */
-  }
-
-  const insertBinding = database.prepare(
-    'INSERT INTO templ_bindings (contract, telegramChatId, priest, bindingCode) VALUES (?, ?, ?, ?) ON CONFLICT(contract) DO UPDATE SET telegramChatId = excluded.telegramChatId, priest = excluded.priest, bindingCode = excluded.bindingCode'
-  );
-  const selectAllBindings = database.prepare('SELECT contract, telegramChatId, priest, bindingCode FROM templ_bindings ORDER BY contract');
-  const selectBindingByContract = database.prepare('SELECT telegramChatId, priest, bindingCode FROM templ_bindings WHERE contract = ?');
-  const countBindings = database.prepare('SELECT COUNT(1) AS count FROM templ_bindings');
-
-  try {
-    const legacyGroups = database
-      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='groups'")
-      .get();
-    if (legacyGroups) {
-      const existing = countBindings.get()?.count ?? 0;
-      if (!existing) {
-        const legacyRows = database
-          .prepare('SELECT groupId, contract FROM groups WHERE groupId IS NOT NULL AND contract IS NOT NULL')
-          .all();
-        const migrate = database.transaction((rows) => {
-          for (const row of rows) {
-            const contractKey = String(row.contract || '').toLowerCase();
-            if (!contractKey) continue;
-            insertBinding.run(contractKey, row.groupId != null ? String(row.groupId) : null);
-          }
-        });
-        migrate(legacyRows);
-      }
-      database.exec('DROP TABLE IF EXISTS groups');
-    }
-    database.exec('DROP TABLE IF EXISTS pending_bindings');
-    database.exec('DROP TABLE IF EXISTS signatures');
-  } catch (err) {
-    void err; // ignore migration errors
-  }
-
-  const persist = (contract, record) => {
-    const key = contract ? String(contract).toLowerCase() : null;
-    if (!key) return;
-    const chatId = record?.telegramChatId != null ? String(record.telegramChatId) : null;
-    const priest = record?.priest ? String(record.priest).toLowerCase() : null;
-    const bindingCode = record?.bindingCode != null ? String(record.bindingCode) : null;
-    insertBinding.run(key, chatId, priest, bindingCode);
-  };
-
-  const listBindings = () => {
-    try {
-          return selectAllBindings
-            .all()
-            .map((row) => ({
-              contract: String(row.contract).toLowerCase(),
-              telegramChatId: row.telegramChatId != null ? String(row.telegramChatId) : null,
-              priest: row.priest != null ? String(row.priest).toLowerCase() : null,
-              bindingCode: row.bindingCode != null ? String(row.bindingCode) : null
-            }));
-    } catch {
-      return [];
-    }
-  };
-
-  const findBinding = (contract) => {
-    if (!contract) return null;
-    try {
-      const row = selectBindingByContract.get(String(contract).toLowerCase());
-      if (!row) return null;
-      return {
-        contract: String(contract).toLowerCase(),
-        telegramChatId: row.telegramChatId != null ? String(row.telegramChatId) : null,
-        priest: row.priest != null ? String(row.priest).toLowerCase() : null,
-        bindingCode: row.bindingCode != null ? String(row.bindingCode) : null
-      };
-    } catch {
-      return null;
-    }
-  };
-
-  const close = () => {
-    if (!owned || typeof database?.close !== 'function') return;
-    try {
-      database.close();
-    } catch {
-      /* ignore close errors */
-    }
-  };
-
-  return { database, persist, listBindings, findBinding, close };
+  return createPersistence({ d1, retentionMs });
 }
 
 async function maybeNotifyQuorum({ record, contractAddress, proposalId, meta, notifier, logger }) {
@@ -418,39 +332,40 @@ function createContractWatcher({ connectContract, templs, persist, notifier, log
     }
 
     if (typeof contract.templHomeLink === 'function') {
-      contract.templHomeLink().then((link) => {
-        const current = record.templHomeLink ?? '';
-        if (typeof link === 'string' && link !== current) {
-          record.templHomeLink = link;
-          templs.set(key, record);
-          persist?.(key, record);
-        }
-      }).catch((err) => {
-        logger?.debug?.({ err: String(err?.message || err), contract: key }, 'Failed to read templ home link');
-      });
+      contract
+        .templHomeLink()
+        .then(async (link) => {
+          const current = record.templHomeLink ?? '';
+          if (typeof link === 'string' && link !== current) {
+            record.templHomeLink = link;
+            templs.set(key, record);
+            await persist?.(key, record);
+          }
+        })
+        .catch((err) => {
+          logger?.debug?.({ err: String(err?.message || err), contract: key }, 'Failed to read templ home link');
+        });
     }
 
     if (!record.priest && typeof contract.priest === 'function') {
-      contract.priest().then((addr) => {
-        const nextPriest = addr ? String(addr).toLowerCase() : null;
-        if (nextPriest && record.priest !== nextPriest) {
-          record.priest = nextPriest;
-          templs.set(key, record);
-          persist?.(key, record);
-        }
-      }).catch((err) => {
-        logger?.debug?.({ err: String(err?.message || err), contract: key }, 'Failed to read templ priest');
-      });
+      contract
+        .priest()
+        .then(async (addr) => {
+          const nextPriest = addr ? String(addr).toLowerCase() : null;
+          if (nextPriest && record.priest !== nextPriest) {
+            record.priest = nextPriest;
+            templs.set(key, record);
+            await persist?.(key, record);
+          }
+        })
+        .catch((err) => {
+          logger?.debug?.({ err: String(err?.message || err), contract: key }, 'Failed to read templ priest');
+        });
     }
 
-    const wrapListener = (label, fn) => (...args) => {
+    const wrapListener = (label, fn) => async (...args) => {
       try {
-        const maybe = fn(...args);
-        if (maybe && typeof maybe.then === 'function') {
-          maybe.catch((err) => {
-            logger?.warn?.({ err: String(err?.message || err), contract: key }, label);
-          });
-        }
+        await fn(...args);
       } catch (err) {
         logger?.warn?.({ err: String(err?.message || err), contract: key }, label);
       }
@@ -533,7 +448,7 @@ function createContractWatcher({ connectContract, templs, persist, notifier, log
       const nextKey = String(newPriest || '').toLowerCase();
       record.priest = nextKey;
       templs.set(key, record);
-      persist(key, record);
+      await persist(key, record);
       logger?.info?.({ contract: key, oldPriest: oldKey, newPriest: nextKey }, 'Priest updated from contract event');
 
       if (!record.telegramChatId || !notifier?.notifyPriestChanged) return;
@@ -559,7 +474,7 @@ function createContractWatcher({ connectContract, templs, persist, notifier, log
       const nextLink = newLink ?? '';
       record.templHomeLink = nextLink;
       templs.set(key, record);
-      persist(key, record);
+      await persist(key, record);
       if (record.telegramChatId && notifier?.notifyTemplHomeLinkUpdated) {
         await notifier.notifyTemplHomeLinkUpdated({
           chatId: record.telegramChatId,
@@ -597,7 +512,7 @@ function createContractWatcher({ connectContract, templs, persist, notifier, log
 
 async function restoreGroupsFromPersistence({ listBindings, templs, watchContract, logger, provider, trustedFactoryAddress }) {
   try {
-    const rows = typeof listBindings === 'function' ? listBindings() : [];
+    const rows = typeof listBindings === 'function' ? await listBindings() : [];
     const pending = [];
     for (const row of rows) {
       const key = String(row?.contract || '').toLowerCase();
@@ -739,7 +654,7 @@ function createBackgroundTasks({ templs, notifier, logger, persist }) {
             record.telegramChatId = String(chatId);
             record.bindingCode = null;
             templs.set(contractAddress, record);
-            persist?.(contractAddress, record);
+            await persist?.(contractAddress, record);
             if (notifier?.notifyBindingComplete) {
               await notifier.notifyBindingComplete({
                 chatId: String(chatId),
@@ -780,17 +695,20 @@ function createBackgroundTasks({ templs, notifier, logger, persist }) {
   };
 }
 
-export function createApp(opts) {
+export async function createApp(opts) {
   const {
     hasPurchased,
     connectContract: providedConnectContract,
-    dbPath,
-    db,
     rateLimitStore,
     provider,
     telegram,
-    enableBackgroundTasks = process.env.NODE_ENV !== 'test'
+    enableBackgroundTasks = process.env.NODE_ENV !== 'test',
+    signatureStore: providedSignatureStore,
+    persistence,
+    d1,
+    signatureRetentionMs
   } = opts || {};
+
   const notifier = telegram?.notifier ?? createTelegramNotifier({
     botToken: telegram?.botToken ?? process.env.TELEGRAM_BOT_TOKEN,
     linkBaseUrl: telegram?.linkBaseUrl ?? process.env.APP_BASE_URL,
@@ -809,15 +727,23 @@ export function createApp(opts) {
 
   const templs = new Map();
   app.locals.templs = templs;
-  const { database, persist, listBindings, findBinding, close: closeDatabase } = initializeDatabase({ dbPath, db });
-  let signatureStore;
-  try {
-    signatureStore = createSqliteSignatureStore({ database });
-    signatureStore.prune?.();
-  } catch (err) {
-    logger.warn({ err: err?.message || err }, 'Falling back to in-memory signature store');
+
+  const persistenceAdapter = await initializePersistence({ persistence, d1, retentionMs: signatureRetentionMs });
+  const persist = persistenceAdapter?.persistBinding
+    ? async (contract, record) => persistenceAdapter.persistBinding(contract, record)
+    : async () => {};
+  const listBindings = persistenceAdapter?.listBindings
+    ? async () => persistenceAdapter.listBindings()
+    : async () => [];
+  const findBinding = persistenceAdapter?.findBinding
+    ? async (contract) => persistenceAdapter.findBinding(contract)
+    : async () => null;
+
+  let signatureStore = providedSignatureStore ?? persistenceAdapter?.signatureStore ?? null;
+  if (!signatureStore) {
     signatureStore = createSignatureStore();
   }
+  await signatureStore?.prune?.();
 
   const trustedFactoryAddress = process.env.TRUSTED_FACTORY_ADDRESS?.trim() || null;
 
@@ -846,14 +772,14 @@ export function createApp(opts) {
 
   const context = {
     hasPurchased,
-    database,
     templs,
     persist,
     provider,
     watchContract,
     notifier,
     signatureStore,
-    findBinding
+    findBinding,
+    listBindings
   };
 
   app.use(templsRouter(context));
@@ -866,7 +792,7 @@ export function createApp(opts) {
       /* ignore */
     }
     await store.shutdown?.();
-    closeDatabase();
+    await persistenceAdapter?.dispose?.();
     backgroundTasks?.stop?.();
   };
 
@@ -883,12 +809,6 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     throw new Error('Missing RPC_URL environment variable');
   }
   const provider = new ethers.JsonRpcProvider(RPC_URL);
-  const dbPathEnv = process.env.DB_PATH;
-  const defaultDbPath = new URL('../groups.db', import.meta.url).pathname;
-  const dbPath = dbPathEnv || defaultDbPath;
-  if (dbPath && process.env.CLEAR_DB === '1') {
-    try { fs.rmSync(dbPath, { force: true }); } catch (e) { logger.warn({ err: e?.message || e }); }
-  }
 
   const hasPurchased = async (contractAddress, memberAddress) => {
     const contract = new ethers.Contract(
@@ -905,7 +825,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     linkBaseUrl: process.env.APP_BASE_URL,
     logger
   });
-  const app = createApp({ hasPurchased, dbPath, rateLimitStore, provider, telegram: { notifier } });
+  const app = await createApp({ hasPurchased, rateLimitStore, provider, telegram: { notifier } });
   const port = process.env.PORT || 3001;
   app.listen(port, () => {
     logger.info({ port }, 'TEMPL backend listening');

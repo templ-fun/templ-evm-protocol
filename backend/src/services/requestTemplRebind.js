@@ -19,11 +19,11 @@ function normaliseAddress(value, field) {
   return checksum.toLowerCase();
 }
 
-function ensureRecordLoaded(contract, context) {
+async function ensureRecordLoaded(contract, context) {
   const { templs, findBinding } = context;
   let record = templs.get(contract);
   if (record) return record;
-  const persisted = typeof findBinding === 'function' ? findBinding(contract) : null;
+  const persisted = typeof findBinding === 'function' ? await findBinding(contract) : null;
   if (!persisted) {
     return null;
   }
@@ -45,7 +45,7 @@ export async function requestTemplRebind(body, context) {
   const contract = normaliseAddress(body.contractAddress, 'contractAddress');
   const priest = normaliseAddress(body.priestAddress, 'priestAddress');
 
-  const record = ensureRecordLoaded(contract, context);
+  const record = await ensureRecordLoaded(contract, context);
   if (!record) {
     throw templError('Templ not registered', 404);
   }
@@ -74,7 +74,7 @@ export async function requestTemplRebind(body, context) {
   record.contractAddress = contract;
 
   templs.set(contract, record);
-  persist?.(contract, record);
+  await persist?.(contract, record);
   logger?.info?.({ contract, priest }, 'Telegram rebind requested');
 
   return {

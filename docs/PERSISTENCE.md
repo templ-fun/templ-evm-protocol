@@ -1,6 +1,6 @@
 # Persistence
 
-Use this doc to see where templ persists data: what lives on-chain, what the backend stores in SQLite, and what the frontend keeps ephemeral.
+Use this doc to see where templ persists data: what lives on-chain, what the backend stores in Cloudflare D1, and what the frontend keeps ephemeral.
 
 ## Contracts
 
@@ -8,14 +8,14 @@ On-chain storage lives inside each templ and the factory. See `contracts/` for s
 
 ## Backend
 
-The backend persists a single table in SQLite (via `better-sqlite3`):
+The backend persists two tables in Cloudflare D1 (exposed locally through an in-memory adapter for tests):
 
 | Table | Columns | Purpose |
 | --- | --- | --- |
 | `templ_bindings` | `contract TEXT PRIMARY KEY`, `telegramChatId TEXT UNIQUE`, `priest TEXT`, `bindingCode TEXT` | Durable mapping between templ contracts and optional Telegram chats so the notifier survives restarts. `telegramChatId` remains `NULL` until a binding completes; `bindingCode` stores pending binding snippets and survives restarts; the last-seen priest address is stored to speed up watcher restores. |
-| `used_signatures` | `signature TEXT PRIMARY KEY`, `expiresAt INTEGER` | Replay protection for typed requests (`/templs`, `/templs/rebind`, `/join`). Entries expire after ~6 hours and fall back to in-memory storage only when SQLite is unavailable. |
+| `used_signatures` | `signature TEXT PRIMARY KEY`, `expiresAt INTEGER` | Replay protection for typed requests (`/templs`, `/templs/rebind`, `/join`). Entries expire after ~6 hours and fall back to the in-memory store only when D1 is unavailable. |
 
-Bindings, priests, home links, and proposal caches are refreshed from the contract whenever needed. Event cursors are not stored; after a restart the backend reattaches its watchers and streams newly emitted events. Deleting the SQLite file is safe in development; production deployments should back up the database so bindings and signature history survive restarts.
+Bindings, priests, home links, and proposal caches are refreshed from the contract whenever needed. Event cursors are not stored; after a restart the backend reattaches its watchers and streams newly emitted events. Cloudflare D1 automatically provides durability in production. Local development can rely on the provided in-memory adapter, but production deployments should provision a D1 database to keep bindings and signature history across restarts.
 
 ## Frontend
 

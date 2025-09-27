@@ -16,6 +16,8 @@ After deploying, the UI surfaces a one-time Telegram binding code. Invite `@temp
 
 The app focuses on templ lifecycle flows while Telegram handles coordination through backend-triggered notifications.
 
+Because the build output is static, production runs deploy cleanly to [Cloudflare Pages](https://pages.cloudflare.com/) (edge-cached, zero-idle hosting). Pair Pages with the Workers backend to keep the entire stack inside Cloudflare’s free/usage-based tiers.
+
 ## Local development
 
 ```bash
@@ -46,6 +48,21 @@ The app uses `ethers.BrowserProvider` and the injected `window.ethereum`. Connec
 1. User connects a wallet and navigates to `/templs/create`.
 2. The UI validates fee splits and calls `factory.createTemplWithConfig`. When the form detects a deployed factory address it automatically locks the protocol percent input to the factory’s on-chain share so deployments stay in sync with backend enforcement.
 3. After the transaction confirms, the app signs the EIP-712 registration payload and POSTs it to the backend (including an optional Telegram chat id).
+
+### Production build & Pages deploy
+
+- Build with the production API URL and factory settings:
+  ```bash
+  VITE_BACKEND_URL=https://templ-backend.example.workers.dev \
+  VITE_BACKEND_SERVER_ID=templ-prod \
+  VITE_TEMPL_FACTORY_ADDRESS=0x... \
+  npm --prefix frontend run build
+  ```
+- Deploy `frontend/dist/` to Cloudflare Pages:
+  ```bash
+  wrangler pages deploy frontend/dist --project-name templ-frontend --branch production
+  ```
+- Or reuse the top-level `npm run deploy:cloudflare` helper to deploy the Worker and Pages site in one command (see `scripts/cloudflare.deploy.example.env`).
 
 ### Join flow
 

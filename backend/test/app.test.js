@@ -2,13 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import { Wallet, Interface, ZeroAddress, getAddress } from 'ethers';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
-import os from 'node:os';
-import Database from 'better-sqlite3';
-
 import { createApp } from '../src/server.js';
 import { buildCreateTypedData, buildJoinTypedData, buildRebindTypedData } from '../../shared/signing.js';
+import { createMemoryPersistence } from '../src/persistence/index.js';
 
 process.env.NODE_ENV = 'test';
 process.env.BACKEND_SERVER_ID = 'test-server';
@@ -153,18 +149,15 @@ function createTestProvider(contractState) {
 }
 
 
-function makeApp({ hasPurchased = async () => true } = {}) {
-  const tmpDir = mkdtempSync(join(os.tmpdir(), 'templ-backend-'));
-  const dbPath = join(tmpDir, 'groups.db');
-  const db = new Database(dbPath);
+async function makeApp({ hasPurchased = async () => true, persistence = createMemoryPersistence() } = {}) {
   const notifications = [];
   const handlerRegistry = new Map();
   const contractState = new Map();
   const notifier = createTestNotifier(notifications);
   const connectContract = createTestConnectContract(handlerRegistry, contractState);
   const provider = createTestProvider(contractState);
-  const app = createApp({ hasPurchased, db, connectContract, provider, telegram: { notifier } });
-  return { app, db, tmpDir, notifications, handlerRegistry, contractState, connectContract, provider };
+  const app = await createApp({ hasPurchased, persistence, connectContract, provider, telegram: { notifier } });
+  return { app, persistence, notifications, handlerRegistry, contractState, connectContract, provider };
 }
 
 async function registerTempl(app, wallet, { telegramChatId = '12345', templHomeLink } = {}, options = {}) {
@@ -210,11 +203,9 @@ async function joinTempl(app, contractAddress, wallet) {
 }
 
 test('register templ persists record and wires contract listeners', async (t) => {
-  const { app, db, tmpDir, notifications, handlerRegistry, contractState } = makeApp();
+  const { app, persistence, notifications, handlerRegistry, contractState } = await makeApp();
   t.after(async () => {
     await app.close?.();
-    db.close();
-    rmSync(tmpDir, { recursive: true, force: true });
   });
 
   const wallet = Wallet.createRandom();
@@ -253,17 +244,16 @@ test('register templ persists record and wires contract listeners', async (t) =>
   const cacheRecord = app.locals.templs.get(contractAddress);
   assert.equal(cacheRecord?.proposalsMeta?.get?.('1')?.title, 'Proposal title');
 
-  const storedRow = db.prepare('SELECT telegramChatId, bindingCode FROM templ_bindings WHERE contract = ?').get(contractAddress);
+  const bindings = await persistence.listBindings();
+  const storedRow = bindings.find((row) => row.contract === contractAddress);
   assert.equal(storedRow?.telegramChatId, 'telegram-chat-1');
   assert.equal(storedRow?.bindingCode, null);
 });
 
 test('join endpoint validates membership', async (t) => {
-  const { app, db, tmpDir, contractState } = makeApp({ hasPurchased: async () => true });
+  const { app, contractState } = await makeApp({ hasPurchased: async () => true });
   t.after(async () => {
     await app.close?.();
-    db.close();
-    rmSync(tmpDir, { recursive: true, force: true });
   });
 
   const templWallet = Wallet.createRandom();
@@ -279,11 +269,9 @@ test('join endpoint validates membership', async (t) => {
 });
 
 test('join endpoint rejects non-members', async (t) => {
-  const { app, db, tmpDir, contractState } = makeApp({ hasPurchased: async () => false });
+  const { app, contractState } = await makeApp({ hasPurchased: async () => false });
   t.after(async () => {
     await app.close?.();
-    db.close();
-    rmSync(tmpDir, { recursive: true, force: true });
   });
 
   const templWallet = Wallet.createRandom();
@@ -296,11 +284,9 @@ test('join endpoint rejects non-members', async (t) => {
 });
 
 test('list templs includes registered entries', async (t) => {
-  const { app, db, tmpDir, contractState } = makeApp({ hasPurchased: async () => true });
+  const { app, contractState } = await makeApp({ hasPurchased: async () => true });
   t.after(async () => {
     await app.close?.();
-    db.close();
-    rmSync(tmpDir, { recursive: true, force: true });
   });
 
   const templWallet = Wallet.createRandom();
@@ -320,11 +306,9 @@ test('list templs includes registered entries', async (t) => {
 });
 
 test('templs listing exposes home links but never chat ids', async (t) => {
-  const { app, db, tmpDir, contractState } = makeApp({ hasPurchased: async () => true });
+  const { app, contractState } = await makeApp({ hasPurchased: async () => true });
   t.after(async () => {
     await app.close?.();
-    db.close();
-    rmSync(tmpDir, { recursive: true, force: true });
   });
 
   const templWallet = Wallet.createRandom();
@@ -341,11 +325,9 @@ test('templs listing exposes home links but never chat ids', async (t) => {
 });
 
 test('register templ without chat id issues binding code', async (t) => {
-  const { app, db, tmpDir, contractState } = makeApp();
+  const { app, persistence, contractState } = await makeApp();
   t.after(async () => {
     await app.close?.();
-    db.close();
-    rmSync(tmpDir, { recursive: true, force: true });
   });
 
   const wallet = Wallet.createRandom();
@@ -360,27 +342,24 @@ test('register templ without chat id issues binding code', async (t) => {
   assert.equal(record.bindingCode, response.bindingCode);
   assert.equal(record.templHomeLink, 'https://initial.link');
 
-  const mappingRow = db.prepare('SELECT telegramChatId, bindingCode FROM templ_bindings WHERE contract = ?').get(contractAddress);
+  const bindings = await persistence.listBindings();
+  const mappingRow = bindings.find((row) => row.contract === contractAddress);
   assert.ok(mappingRow, 'templ persisted without chat');
   assert.equal(mappingRow.telegramChatId, null);
   assert.equal(mappingRow.bindingCode, response.bindingCode);
 });
 
 test('signature replay rejected after restart with shared store', async (t) => {
-  let { app, db, tmpDir, contractState } = makeApp();
+  const persistence = createMemoryPersistence();
+  let { app, contractState } = await makeApp({ persistence });
   let appReload = null;
   const wallet = Wallet.createRandom();
   const hasPurchased = async () => true;
   t.after(async () => {
     await app?.close?.();
     await appReload?.close?.();
-    db?.close?.();
-    if (tmpDir) {
-      rmSync(tmpDir, { recursive: true, force: true });
-    }
   });
 
-  const dbPath = join(tmpDir, 'groups.db');
   const issuedAt = Date.now();
   const chainId = 1337;
   const typed = buildCreateTypedData({
@@ -407,10 +386,13 @@ test('signature replay rejected after restart with shared store', async (t) => {
 
   await app.close?.();
   app = null;
-  db.close();
 
-  const dbReload = new Database(dbPath);
-  appReload = createApp({ hasPurchased, db: dbReload, connectContract: createTestConnectContract(new Map(), contractState) });
+  appReload = await createApp({
+    hasPurchased,
+    persistence,
+    connectContract: createTestConnectContract(new Map(), contractState),
+    telegram: { notifier: createTestNotifier([]) }
+  });
   await appReload.locals.restorationPromise;
 
   const replayRes = await request(appReload)
@@ -428,41 +410,33 @@ test('signature replay rejected after restart with shared store', async (t) => {
 });
 
 test('templ without chat binding survives restart', async (t) => {
-  let { app, db, tmpDir, contractState } = makeApp();
+  const persistence = createMemoryPersistence();
+  let { app, contractState } = await makeApp({ persistence });
   let appReload = null;
-  let dbReload = null;
   const hasPurchased = async () => true;
   t.after(async () => {
     await app?.close?.();
     await appReload?.close?.();
-    try { db?.close?.(); } catch (err) { void err; }
-    try { dbReload?.close?.(); } catch (err) { void err; }
-    if (tmpDir) {
-      rmSync(tmpDir, { recursive: true, force: true });
-    }
   });
 
-  const dbPath = join(tmpDir, 'groups.db');
   const wallet = Wallet.createRandom();
   const { contractAddress, response } = await registerTempl(app, wallet, { telegramChatId: null }, { contractState });
   assert.ok(response.bindingCode);
 
-  const initialRow = db.prepare('SELECT telegramChatId, bindingCode FROM templ_bindings WHERE contract = ?').get(contractAddress);
+  const bindings = await persistence.listBindings();
+  const initialRow = bindings.find((row) => row.contract === contractAddress);
   assert.ok(initialRow, 'row persisted during initial registration');
   assert.equal(initialRow.telegramChatId, null);
   assert.equal(initialRow.bindingCode, response.bindingCode);
 
   await app.close?.();
   app = null;
-  db.close();
-  db = null;
 
-  dbReload = new Database(dbPath);
   const notifications = [];
   const handlerRegistry = new Map();
   const notifier = createTestNotifier(notifications);
   const connectContract = createTestConnectContract(handlerRegistry, contractState);
-  appReload = createApp({ hasPurchased, db: dbReload, connectContract, telegram: { notifier } });
+  appReload = await createApp({ hasPurchased, persistence, connectContract, telegram: { notifier } });
   await appReload.locals.restorationPromise;
 
   const restored = appReload.locals.templs.get(contractAddress);
@@ -483,25 +457,22 @@ test('templ without chat binding survives restart', async (t) => {
   assert.equal(joinRes.body.templ.contract, contractAddress);
   assert.equal(joinRes.body.templ.priest, wallet.address.toLowerCase());
 
-  const persistedRow = dbReload.prepare('SELECT telegramChatId, bindingCode FROM templ_bindings WHERE contract = ?').get(contractAddress);
+  const afterJoinBindings = await persistence.listBindings();
+  const persistedRow = afterJoinBindings.find((row) => row.contract === contractAddress);
   assert.ok(persistedRow, 'row still present after restart');
   assert.equal(persistedRow.telegramChatId, null);
   assert.equal(persistedRow.bindingCode, response.bindingCode);
 });
 
 test('active proposals are backfilled after restart', async (t) => {
-  const { app, db, tmpDir, handlerRegistry, contractState } = makeApp();
+  const persistence = createMemoryPersistence();
+  const { app, handlerRegistry, contractState } = await makeApp({ persistence });
   let appReload = null;
-  let dbReload = null;
   t.after(async () => {
     await app?.close?.();
     await appReload?.close?.();
-    try { db?.close?.(); } catch (err) { void err; }
-    try { dbReload?.close?.(); } catch (err) { void err; }
-    rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  const dbPath = join(tmpDir, 'groups.db');
   const wallet = Wallet.createRandom();
   const { contractAddress } = await registerTempl(app, wallet, { telegramChatId: 'chat-restore' }, { contractState });
   const entry = handlerRegistry.get(contractAddress);
@@ -514,11 +485,14 @@ test('active proposals are backfilled after restart', async (t) => {
   state.snapshots.set('1', { quorumReachedAt: nowSeconds - 120 });
 
   await app.close?.();
-  db.close();
 
-  dbReload = new Database(dbPath);
   const connectContract = createTestConnectContract(new Map(), contractState);
-  appReload = createApp({ hasPurchased: async () => true, db: dbReload, connectContract, telegram: { notifier: createTestNotifier([]) } });
+  appReload = await createApp({
+    hasPurchased: async () => true,
+    persistence,
+    connectContract,
+    telegram: { notifier: createTestNotifier([]) }
+  });
   await appReload.locals.restorationPromise;
 
   const restored = appReload.locals.templs.get(contractAddress);
@@ -532,11 +506,9 @@ test('active proposals are backfilled after restart', async (t) => {
 });
 
 test('priest can request telegram rebind with signature', async (t) => {
-  const { app, db, tmpDir, contractState } = makeApp();
+  const { app, persistence, contractState } = await makeApp();
   t.after(async () => {
     await app.close?.();
-    db.close();
-    rmSync(tmpDir, { recursive: true, force: true });
   });
 
   const wallet = Wallet.createRandom();
@@ -566,18 +538,17 @@ test('priest can request telegram rebind with signature', async (t) => {
   assert.equal(record?.bindingCode, res.body.bindingCode);
   assert.equal(record?.telegramChatId, null);
 
-  const mappingRow = db.prepare('SELECT telegramChatId, bindingCode FROM templ_bindings WHERE contract = ?').get(contractAddress);
+  const bindings = await persistence.listBindings();
+  const mappingRow = bindings.find((row) => row.contract === contractAddress);
   assert.ok(mappingRow, 'templ persisted without chat across rebind');
   assert.equal(mappingRow.telegramChatId, null);
   assert.equal(mappingRow.bindingCode, res.body.bindingCode);
 });
 
 test('rebind rejects signatures from non-priest wallet', async (t) => {
-  const { app, db, tmpDir, contractState } = makeApp();
+  const { app, contractState } = await makeApp();
   t.after(async () => {
     await app.close?.();
-    db.close();
-    rmSync(tmpDir, { recursive: true, force: true });
   });
 
   const priestWallet = Wallet.createRandom();
@@ -604,11 +575,9 @@ test('rebind rejects signatures from non-priest wallet', async (t) => {
 });
 
 test('rebind rejects non-priest after restart when cache is missing priest', async (t) => {
-  const { app, db, tmpDir, contractState } = makeApp();
+  const { app, persistence, contractState } = await makeApp();
   t.after(async () => {
     await app.close?.();
-    db.close();
-    rmSync(tmpDir, { recursive: true, force: true });
   });
 
   const priestWallet = Wallet.createRandom();
@@ -618,7 +587,11 @@ test('rebind rejects non-priest after restart when cache is missing priest', asy
   assert.ok(cachedRecord, 'record should exist in cache');
   cachedRecord.priest = null;
   app.locals.templs.set(contractAddress, cachedRecord);
-  db.prepare('UPDATE templ_bindings SET priest = NULL WHERE contract = ?').run(contractAddress);
+  await persistence.persistBinding(contractAddress, {
+    telegramChatId: cachedRecord.telegramChatId,
+    priest: null,
+    bindingCode: cachedRecord.bindingCode
+  });
 
   const intruder = Wallet.createRandom();
   const typed = buildRebindTypedData({ chainId: 1337, contractAddress });

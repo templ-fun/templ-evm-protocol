@@ -37,7 +37,7 @@ Terminal B:
 npm --prefix backend start
 ```
 
-The server listens on `http://localhost:3001`, verifies signatures, persists templ registrations in SQLite, and—if a `TELEGRAM_BOT_TOKEN` is supplied—posts contract events to chat ids registered for each templ.
+The server listens on `http://localhost:3001`, verifies signatures, persists templ registrations in the in-memory adapter (matching the Cloudflare D1 schema), and—if a `TELEGRAM_BOT_TOKEN` is supplied—posts contract events to chat ids registered for each templ. You only need D1 when deploying to Workers; local development stays dependency-free.
 
 ## 3) Start the frontend
 
