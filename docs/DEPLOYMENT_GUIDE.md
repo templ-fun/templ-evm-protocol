@@ -71,10 +71,11 @@ You can deploy from the CLI or via the frontend. The CLI is convenient for scrip
    The script deploys `TemplFactory` automatically when `FACTORY_ADDRESS` is unset and then mints the templ. Copy the logged factory address and export it as `FACTORY_ADDRESS` before subsequent deployments on the same network so every templ originates from the same factory. When you reuse an existing factory the script automatically reads its on-chain protocol share and ignores any `PROTOCOL_PERCENT` override. The script prints both the `TemplFactory` and `TEMPL` addresses.
 
 5. Record the trusted factory address for downstream services:
-   ```bash
-   export TRUSTED_FACTORY_ADDRESS=<factory address from step 4>
-   ```
-   Use this value in your backend configuration so the Telegram bot only services templs created by that factory. Additional templ deployments should continue to use the same factory to remain eligible for alerts.
+  ```bash
+  export TRUSTED_FACTORY_ADDRESS=<factory address from step 4>
+  export TRUSTED_FACTORY_DEPLOYMENT_BLOCK=<block number the factory was deployed>
+  ```
+   Use this value in your backend configuration so the Telegram bot only services templs created by that factory. Additional templ deployments should continue to use the same factory to remain eligible for alerts. Providing `TRUSTED_FACTORY_DEPLOYMENT_BLOCK` lets the backend verify older templs without hitting RPC log-range limits.
 
 6. Register the templ with the backend so the UI and Telegram bridge can discover it:
    - If you exported `BACKEND_URL` before running the deploy script and the deployer signer matches the priest, the script already POSTed to `${BACKEND_URL}/templs`. Check the console output for a binding code or stored chat id.
@@ -118,6 +119,7 @@ You can deploy from the CLI or via the frontend. The CLI is convenient for scrip
    APP_BASE_URL=http://localhost:5173
    TELEGRAM_BOT_TOKEN=123456:bot-token-from-botfather
    TRUSTED_FACTORY_ADDRESS=0x...   ; same factory used during deployment
+   TRUSTED_FACTORY_DEPLOYMENT_BLOCK=0 ; optional: earliest block to scan for factory logs
    ```
 2. Start the backend:
    ```bash

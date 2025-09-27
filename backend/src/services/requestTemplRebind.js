@@ -1,4 +1,5 @@
 import { randomBytes } from 'crypto';
+import { getAddress } from 'ethers';
 import { ensurePriestMatchesOnChain, ensureTemplFromFactory } from './contractValidation.js';
 
 function templError(message, statusCode) {
@@ -9,11 +10,13 @@ function normaliseAddress(value, field) {
   if (!value || typeof value !== 'string') {
     throw templError(`Missing ${field}`, 400);
   }
-  const normalised = value.toLowerCase();
-  if (!normalised.startsWith('0x') || normalised.length !== 42) {
+  let checksum;
+  try {
+    checksum = getAddress(value);
+  } catch {
     throw templError(`Invalid ${field}`, 400);
   }
-  return normalised;
+  return checksum.toLowerCase();
 }
 
 function ensureRecordLoaded(contract, context) {

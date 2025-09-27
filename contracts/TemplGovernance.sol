@@ -623,7 +623,7 @@ abstract contract TemplGovernance is TemplTreasury {
     function _finalizeDisbandFailure(Proposal storage proposal) internal {
         bool quorumMaintained = proposal.eligibleVoters == 0 ||
             proposal.yesVotes * 100 >= quorumPercent * proposal.eligibleVoters;
-        if (!quorumMaintained || proposal.yesVotes <= proposal.noVotes) {
+        if (!proposal.executed || !quorumMaintained || proposal.yesVotes <= proposal.noVotes) {
             _releaseDisbandLock(proposal);
         }
     }
