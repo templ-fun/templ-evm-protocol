@@ -67,11 +67,6 @@ abstract contract TemplMembership is TemplBase {
             distributed += remainder;
         }
 
-        if (existingMembers == 0) {
-            treasuryAmount += memberPoolAmount;
-            memberPoolAmount = 0;
-        }
-
         uint256 toContract = treasuryAmount + memberPoolAmount;
 
         if (IERC20(accessToken).balanceOf(msg.sender) < entryFee) revert TemplErrors.InsufficientBalance();
