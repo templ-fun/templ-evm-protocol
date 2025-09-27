@@ -163,12 +163,8 @@ abstract contract TemplTreasury is TemplMembership {
         emit ConfigUpdated(accessToken, entryFee, burnPercent, treasuryPercent, memberPoolPercent, protocolPercent);
     }
 
-    /// @dev Sets the paused flag, clearing membership limits if necessary when resuming.
+    /// @dev Sets the paused flag without mutating membership limits during manual resumes.
     function _setPaused(bool _paused) internal {
-        if (!_paused && MAX_MEMBERS > 0 && memberList.length >= MAX_MEMBERS) {
-            MAX_MEMBERS = 0;
-            emit MaxMembersUpdated(0);
-        }
         paused = _paused;
         emit ContractPaused(_paused);
     }

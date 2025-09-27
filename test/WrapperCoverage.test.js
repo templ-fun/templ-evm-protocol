@@ -141,7 +141,7 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
 
   it("covers membership cap wrappers and home link updates", async function () {
     const { accounts, token, templ } = await deployHarness();
-    const [, , memberA, memberB] = accounts;
+    const [, , memberA, memberB, memberC] = accounts;
 
     await token.mint(memberA.address, ENTRY_FEE);
     await token.connect(memberA).approve(templ.target, ENTRY_FEE);
@@ -161,7 +161,12 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
 
     await templ.daoPause(false);
     expect(await templ.paused()).to.equal(false);
-    expect(await templ.MAX_MEMBERS()).to.equal(0n);
+    expect(await templ.MAX_MEMBERS()).to.equal(3n);
+
+    await token.mint(memberC.address, ENTRY_FEE);
+    await token.connect(memberC).approve(templ.target, ENTRY_FEE);
+    await expect(templ.connect(memberC).purchaseAccess())
+      .to.be.revertedWithCustomError(templ, "MemberLimitReached");
 
     const link = "https://example.templ";
     await templ.daoSetHomeLink(link);

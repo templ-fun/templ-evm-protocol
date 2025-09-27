@@ -64,6 +64,7 @@ You can deploy from the CLI or via the frontend. The CLI is convenient for scrip
    export BACKEND_URL=http://localhost:3001  # auto-register with backend (requires priest PRIVATE_KEY)
    export TELEGRAM_CHAT_ID=-1001234567890   # optional: seed the backend with an existing chat id
    ```
+   When `MAX_MEMBERS` is non-zero the templ auto-pauses new joins once the cap is met. Additional purchases revert with the on-chain `MemberLimitReached` error until governance raises or clears the limit.
 4. Deploy a templ with custom parameters:
   ```bash
   npx hardhat run scripts/deploy.js --network localhost   # use --network base when targeting Base mainnet

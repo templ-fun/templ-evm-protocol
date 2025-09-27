@@ -47,6 +47,10 @@ abstract contract TemplMembership is TemplBase {
 
         uint256 existingMembers = memberList.length;
 
+        if (MAX_MEMBERS > 0 && existingMembers >= MAX_MEMBERS) {
+            revert TemplErrors.MemberLimitReached();
+        }
+
         if (existingMembers > 0) {
             _flushExternalRemainders();
         }

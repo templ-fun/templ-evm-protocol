@@ -12,11 +12,12 @@ describe("Disband Treasury", function () {
   let token;
   let accounts;
   let owner;
+  let priest;
   let m1, m2, m3;
 
   beforeEach(async function () {
     ({ templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE }));
-    [owner, , m1, m2, m3] = accounts;
+    [owner, priest, m1, m2, m3] = accounts;
     await mintToUsers(token, [m1, m2, m3], TOKEN_SUPPLY);
     await purchaseAccess(templ, token, [m1, m2, m3]);
   });
@@ -90,9 +91,6 @@ describe("Disband Treasury", function () {
   });
 
   it("allows priest quorum-exempt disband after voting window", async function () {
-    const priest = accounts[1];
-    await mintToUsers(token, [priest], TOKEN_SUPPLY);
-
     const accessToken = await templ.accessToken();
     await templ.connect(priest).createProposalDisbandTreasury(accessToken, VOTING_PERIOD);
     const proposal = await templ.proposals(0);
@@ -105,6 +103,38 @@ describe("Disband Treasury", function () {
 
     expect((await templ.proposals(0)).executed).to.equal(true);
     expect(await templ.treasuryBalance()).to.equal(0n);
+  });
+
+  it("activates the disband lock immediately for priest quorum-exempt proposals", async function () {
+    const joiner = accounts[5];
+    const accessToken = await templ.accessToken();
+
+    await mintToUsers(token, [joiner], ENTRY_FEE);
+
+    await templ.connect(priest).createProposalDisbandTreasury(accessToken, VOTING_PERIOD);
+
+    expect(await templ.activeDisbandJoinLocks()).to.equal(1n);
+
+    await token.connect(joiner).approve(await templ.getAddress(), ENTRY_FEE);
+    await expect(templ.connect(joiner).purchaseAccess())
+      .to.be.revertedWithCustomError(templ, "DisbandLockActive");
+  });
+
+  it("activates the disband lock immediately for member proposals", async function () {
+    const lateJoiner = accounts[6];
+    const accessToken = await templ.accessToken();
+
+    await mintToUsers(token, [lateJoiner], ENTRY_FEE);
+
+    await templ
+      .connect(m1)
+      .createProposalDisbandTreasury(accessToken, VOTING_PERIOD);
+
+    expect(await templ.activeDisbandJoinLocks()).to.equal(1n);
+
+    await token.connect(lateJoiner).approve(await templ.getAddress(), ENTRY_FEE);
+    await expect(templ.connect(lateJoiner).purchaseAccess())
+      .to.be.revertedWithCustomError(templ, "DisbandLockActive");
   });
 
   it("reverts when treasury is empty", async function () {

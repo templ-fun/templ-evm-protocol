@@ -173,9 +173,8 @@ abstract contract TemplGovernance is TemplTreasury {
         p.token = _token;
         if (msg.sender == priest) {
             p.quorumExempt = true;
-        } else if (p.quorumReachedAt != 0) {
-            _activateDisbandLock(p);
         }
+        _activateDisbandLock(p);
         return id;
     }
 

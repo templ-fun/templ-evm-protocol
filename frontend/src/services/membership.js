@@ -12,6 +12,39 @@ const ERC20_ABI = [
   'function symbol() view returns (string)'
 ];
 
+function resolveCustomErrorName(err) {
+  if (!err) return null;
+  if (err.errorName && typeof err.errorName === 'string') return err.errorName;
+  if (typeof err.shortMessage === 'string') {
+    if (err.shortMessage.includes('MemberLimitReached')) return 'MemberLimitReached';
+    if (err.shortMessage.includes('DisbandLockActive')) return 'DisbandLockActive';
+  }
+  const data = err.data ?? err.error?.data;
+  if (data && typeof data === 'object') {
+    if (typeof data.errorName === 'string') return data.errorName;
+    if (typeof data.message === 'string') {
+      if (data.message.includes('MemberLimitReached')) return 'MemberLimitReached';
+      if (data.message.includes('DisbandLockActive')) return 'DisbandLockActive';
+    }
+  }
+  if (typeof err.reason === 'string') {
+    if (err.reason.includes('MemberLimitReached')) return 'MemberLimitReached';
+    if (err.reason.includes('DisbandLockActive')) return 'DisbandLockActive';
+  }
+  return null;
+}
+
+function translateJoinCallError(err) {
+  const name = resolveCustomErrorName(err);
+  if (name === 'MemberLimitReached') {
+    return new Error('Membership is currently capped. Governance must raise or clear the limit before new joins succeed.');
+  }
+  if (name === 'DisbandLockActive') {
+    return new Error('This templ is disbanding. New joins are locked until the proposal resolves.');
+  }
+  return err instanceof Error ? err : new Error(err?.message ?? 'Join transaction failed');
+}
+
 async function resolveMemberAddress({ signer, walletAddress }) {
   if (walletAddress) return walletAddress;
   if (signer?.getAddress) {
@@ -209,18 +242,26 @@ export async function purchaseAccess({
   try {
     tx = await contract.purchaseAccess(overrides);
   } catch (err) {
+    const translated = translateJoinCallError(err);
+    if (translated !== err) {
+      throw translated;
+    }
     if (err?.code === 'CALL_EXCEPTION' && !err?.data) {
       throw new Error('Access token transfer failed. Ensure you hold the entry fee amount of the access token and try again.');
     }
-    throw err;
+    throw translated;
   }
   try {
     await tx.wait();
   } catch (err) {
+    const translated = translateJoinCallError(err);
+    if (translated !== err) {
+      throw translated;
+    }
     if (err?.code === 'CALL_EXCEPTION' && !err?.data) {
       throw new Error('Access token transfer failed during confirmation. Double-check your token balance and allowance.');
     }
-    throw err;
+    throw translated;
   }
   return { purchased: true };
 }

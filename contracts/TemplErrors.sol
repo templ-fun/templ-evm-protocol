@@ -58,6 +58,8 @@ library TemplErrors {
     error InsufficientPoolBalance();
     /// @notice Thrown when attempting to set the member limit below the current member count.
     error MemberLimitTooLow();
+    /// @notice Thrown when attempting to join while the membership cap is already full.
+    error MemberLimitReached();
     /// @notice Thrown when a limit is zero or exceeds the maximum allowed.
     error LimitOutOfRange();
     /// @notice Thrown when the caller is the contract itself.

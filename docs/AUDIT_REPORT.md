@@ -10,7 +10,7 @@
 
 ### High Severity
 1. **Disband join lock can remain permanently engaged when execution reverts**
-   - When a disband proposal reaches quorum the contract increments `activeDisbandJoinLocks` and flips `proposal.disbandJoinLock` so new memberships are blocked.【F:contracts/TemplGovernance.sol†L588-L619】
+  - Disband proposals now increment `activeDisbandJoinLocks` and flip `proposal.disbandJoinLock` immediately at creation so new memberships are blocked while the vote is pending.【F:contracts/TemplGovernance.sol†L588-L619】
    - If execution later reverts (e.g., treasury already emptied) the proposal stays unexecuted but still counted as passed. `pruneInactiveProposals` only releases the lock when quorum was lost or the proposal had more NO than YES votes, so the lock never unwinds and `purchaseAccess` will revert forever.【F:contracts/TemplGovernance.sol†L570-L629】
    - **Impact:** New members can never join again even though the disband failed, effectively bricking the templ until a manual state intervention.
    - **Recommendation:** Always call `_releaseDisbandLock` when pruning an expired disband proposal, or broaden `_finalizeDisbandFailure` to release locks whenever execution did not succeed (e.g., `!proposal.executed`) regardless of the vote tally. Add regression coverage that simulates a quorumed disband whose execution reverts to ensure the lock clears.
