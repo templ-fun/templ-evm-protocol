@@ -263,3 +263,150 @@ export function watchProposals({ ethers, provider, templAddress, templArtifact, 
     contract.off('VoteCast', voteHandler);
   };
 }
+
+function toNumber(value, fallback = 0) {
+  if (value === undefined || value === null) {
+    return fallback;
+  }
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : fallback;
+  }
+  if (typeof value === 'bigint') {
+    const asNumber = Number(value);
+    return Number.isFinite(asNumber) ? asNumber : fallback;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function toStringValue(value, fallback = '0') {
+  if (value === undefined || value === null) {
+    return fallback;
+  }
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (typeof value === 'bigint') {
+    return value.toString();
+  }
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? String(value) : fallback;
+  }
+  try {
+    return String(value);
+  } catch {
+    return fallback;
+  }
+}
+
+export async function fetchGovernanceParameters({
+  ethers,
+  provider,
+  templAddress,
+  templArtifact
+}) {
+  if (!ethers || !provider || !templAddress || !templArtifact) {
+    return null;
+  }
+  const contract = new ethers.Contract(templAddress, templArtifact.abi, provider);
+  try {
+    const [defaultVotingPeriod, minVotingPeriod, maxVotingPeriod, quorumPercent, executionDelay] = await Promise.all([
+      contract.DEFAULT_VOTING_PERIOD?.().catch(() => null),
+      contract.MIN_VOTING_PERIOD?.().catch(() => null),
+      contract.MAX_VOTING_PERIOD?.().catch(() => null),
+      contract.quorumPercent?.().catch(() => null),
+      contract.executionDelayAfterQuorum?.().catch(() => null)
+    ]);
+    return {
+      defaultVotingPeriod: toNumber(defaultVotingPeriod, 7 * 24 * 60 * 60),
+      minVotingPeriod: toNumber(minVotingPeriod, 7 * 24 * 60 * 60),
+      maxVotingPeriod: toNumber(maxVotingPeriod, 30 * 24 * 60 * 60),
+      quorumPercent: toNumber(quorumPercent, 0),
+      executionDelay: toNumber(executionDelay, 0)
+    };
+  } catch (err) {
+    console.warn('[templ] Failed to load governance parameters', err);
+    return null;
+  }
+}
+
+export async function fetchTemplProposals({
+  ethers,
+  provider,
+  templAddress,
+  templArtifact,
+  voterAddress,
+  limit = 50
+}) {
+  if (!ethers || !provider || !templAddress || !templArtifact) {
+    return [];
+  }
+  const contract = new ethers.Contract(templAddress, templArtifact.abi, provider);
+  let count = 0;
+  try {
+    const rawCount = await contract.proposalCount();
+    count = toNumber(rawCount, 0);
+  } catch (err) {
+    console.warn('[templ] Failed to read proposal count', err);
+    return [];
+  }
+  if (count <= 0) {
+    return [];
+  }
+  const max = Math.max(0, Math.min(count, limit));
+  const ids = [];
+  for (let i = count - 1; i >= 0 && ids.length < max; i--) {
+    ids.push(i);
+  }
+  const voter = voterAddress ? String(voterAddress).toLowerCase() : '';
+  const results = await Promise.all(ids.map(async (id) => {
+    try {
+      const [rawProposal, proposalView, voteInfo] = await Promise.all([
+        contract.proposals(id),
+        contract.getProposal(id).catch(() => null),
+        voter ? contract.hasVoted(id, voter).catch(() => [false, false]) : [false, false]
+      ]);
+      const voted = Array.isArray(voteInfo) ? voteInfo[0] : voteInfo?.voted;
+      const support = Array.isArray(voteInfo) ? voteInfo[1] : voteInfo?.support;
+      const passed = proposalView?.passed ?? (Array.isArray(proposalView) ? proposalView[5] : false);
+      return {
+        id,
+        proposer: rawProposal?.proposer || proposalView?.proposer || ethers.ZeroAddress,
+        action: toNumber(rawProposal?.action, 8),
+        token: rawProposal?.token || ethers.ZeroAddress,
+        recipient: rawProposal?.recipient || ethers.ZeroAddress,
+        amount: toStringValue(rawProposal?.amount),
+        title: rawProposal?.title || proposalView?.title || '',
+        description: rawProposal?.description || proposalView?.description || '',
+        reason: rawProposal?.reason || '',
+        paused: Boolean(rawProposal?.paused),
+        newEntryFee: toStringValue(rawProposal?.newEntryFee),
+        newBurnPercent: toNumber(rawProposal?.newBurnPercent),
+        newTreasuryPercent: toNumber(rawProposal?.newTreasuryPercent),
+        newMemberPoolPercent: toNumber(rawProposal?.newMemberPoolPercent),
+        newHomeLink: rawProposal?.newHomeLink || '',
+        newMaxMembers: toStringValue(rawProposal?.newMaxMembers),
+        yesVotes: toNumber(rawProposal?.yesVotes),
+        noVotes: toNumber(rawProposal?.noVotes),
+        endTime: toNumber(rawProposal?.endTime),
+        createdAt: toNumber(rawProposal?.createdAt),
+        executed: Boolean(rawProposal?.executed),
+        eligibleVoters: toNumber(rawProposal?.eligibleVoters),
+        postQuorumEligibleVoters: toNumber(rawProposal?.postQuorumEligibleVoters),
+        quorumReachedAt: toNumber(rawProposal?.quorumReachedAt),
+        quorumSnapshotBlock: toNumber(rawProposal?.quorumSnapshotBlock),
+        quorumExempt: Boolean(rawProposal?.quorumExempt),
+        updateFeeSplit: Boolean(rawProposal?.updateFeeSplit),
+        preQuorumSnapshotBlock: toNumber(rawProposal?.preQuorumSnapshotBlock),
+        setDictatorship: Boolean(rawProposal?.setDictatorship),
+        voted: Boolean(voted),
+        support: Boolean(support),
+        passed: Boolean(passed)
+      };
+    } catch (err) {
+      console.warn('[templ] Failed to load proposal', id, err);
+      return null;
+    }
+  }));
+  return results.filter(Boolean);
+}

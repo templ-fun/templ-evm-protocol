@@ -74,3 +74,41 @@ function selectUnit(decimals, fallback) {
   }
   return fallback;
 }
+
+/**
+ * Format a duration in seconds into a human readable string.
+ * @param {number | string | bigint} seconds
+ * @returns {string}
+ */
+export function formatDuration(seconds) {
+  if (seconds === undefined || seconds === null) {
+    return '0s';
+  }
+  let total = Number(seconds);
+  if (!Number.isFinite(total)) {
+    return '0s';
+  }
+  if (total <= 0) {
+    return '0s';
+  }
+  total = Math.floor(total);
+  const units = [
+    { label: 'day', seconds: 24 * 60 * 60 },
+    { label: 'hour', seconds: 60 * 60 },
+    { label: 'minute', seconds: 60 },
+    { label: 'second', seconds: 1 }
+  ];
+  const parts = [];
+  for (const unit of units) {
+    if (total < unit.seconds) continue;
+    const count = Math.floor(total / unit.seconds);
+    total -= count * unit.seconds;
+    const suffix = count === 1 ? unit.label : `${unit.label}s`;
+    parts.push(`${count} ${suffix}`);
+    if (parts.length === 2) break;
+  }
+  if (parts.length === 0) {
+    return '0s';
+  }
+  return parts.join(', ');
+}
