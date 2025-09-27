@@ -138,7 +138,7 @@ When `TELEGRAM_BOT_TOKEN` is provided, the backend creates a notifier that emits
 - Daily digest – once every 24 hours each templ receives a "gm" message summarising treasury + unclaimed member pool totals with a call-to-action to claim.
 - Binding acknowledgements – after a user posts the binding code (`templ <hash>`) in their Telegram group, the bot confirms the bridge is active.
 
-Messages are posted as plain text (no `parse_mode`) with labelled contract/member addresses to aid scanning. If no bot token exists the backend skips delivery gracefully. When a templ is registered without a chat id, the backend issues a binding code; invite `@templfunbot` to the group and post the code once to finish the handshake.
+Messages are posted with Telegram `MarkdownV2` formatting—the notifier escapes links, addresses, and labels before calling the API with `parse_mode=MarkdownV2`—so alerts can mix bold headings, monospace addresses, and deep links back to the app. If no bot token exists the backend skips delivery gracefully. When a templ is registered without a chat id, the backend issues a binding code; invite `@templfunbot` to the group and post the code once to finish the handshake.
 
 ## Contract watchers
 
