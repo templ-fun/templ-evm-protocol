@@ -257,6 +257,7 @@ export default function App() {
           signer={signer}
           walletAddress={walletAddress}
           templAddress={address}
+          readProvider={readProvider}
           onConnectWallet={connectWallet}
           pushMessage={pushMessage}
           onNavigate={navigate}
@@ -302,6 +303,7 @@ export default function App() {
           templRecord={templRecord}
           onNavigate={navigate}
           signer={signer}
+          readProvider={readProvider}
           walletAddress={walletAddress}
           onConnectWallet={connectWallet}
           pushMessage={pushMessage}

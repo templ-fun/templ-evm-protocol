@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import templArtifact from '../contracts/TEMPL.json';
-import { proposeVote } from '../services/governance.js';
-import { button, form, layout, surface } from '../ui/theme.js';
+import { fetchGovernanceParameters, proposeVote } from '../services/governance.js';
+import { button, form, layout, surface, text } from '../ui/theme.js';
+import { formatDuration } from '../ui/format.js';
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
@@ -148,6 +149,7 @@ export function NewProposalPage({
   ethers,
   signer,
   templAddress,
+  readProvider,
   onConnectWallet,
   pushMessage,
   onNavigate
@@ -171,6 +173,13 @@ export function NewProposalPage({
   const [updateTreasuryPercent, setUpdateTreasuryPercent] = useState('');
   const [updateMemberPercent, setUpdateMemberPercent] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [governanceInfo, setGovernanceInfo] = useState({
+    defaultVotingPeriod: 7 * 24 * 60 * 60,
+    minVotingPeriod: 7 * 24 * 60 * 60,
+    maxVotingPeriod: 30 * 24 * 60 * 60,
+    quorumPercent: 0,
+    executionDelay: 0
+  });
 
   const requiresPriest = useMemo(() => proposalType === 'changePriest', [proposalType]);
   const requiresMaxMembers = useMemo(() => proposalType === 'setMaxMembers', [proposalType]);
@@ -178,6 +187,35 @@ export function NewProposalPage({
   const requiresWithdrawal = useMemo(() => proposalType === 'withdrawTreasury', [proposalType]);
   const requiresDisband = useMemo(() => proposalType === 'disbandTreasury', [proposalType]);
   const requiresConfigUpdate = useMemo(() => proposalType === 'updateConfig', [proposalType]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const provider = signer?.provider ?? readProvider;
+    if (!ethers || !provider || !templAddress) {
+      return undefined;
+    }
+    (async () => {
+      try {
+        const params = await fetchGovernanceParameters({
+          ethers,
+          provider,
+          templAddress,
+          templArtifact
+        });
+        if (params && !cancelled) {
+          setGovernanceInfo((prev) => ({
+            ...prev,
+            ...params
+          }));
+        }
+      } catch (err) {
+        console.warn('[templ] Failed to load templ governance config', err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [ethers, signer, readProvider, templAddress]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -238,6 +276,31 @@ export function NewProposalPage({
         <h1 className="text-3xl font-semibold tracking-tight">New Proposal</h1>
         <span className={surface.pill}>Templ {templAddress}</span>
       </header>
+      <section className={`${layout.card} space-y-3 text-sm text-slate-700`}>
+        <h2 className="text-base font-semibold text-slate-900">Governance basics</h2>
+        <p>
+          Quorum is satisfied when YES votes represent at least{' '}
+          <strong>{governanceInfo.quorumPercent}%</strong> of the eligible members captured when the proposal was
+          created. Once quorum is achieved, the proposal waits{' '}
+          <strong>{formatDuration(governanceInfo.executionDelay)}</strong> before it can be executed, provided YES votes
+          still outnumber NO votes.
+        </p>
+        <p className={text.subtle}>
+          Leaving the voting period blank or setting it to 0 seconds will use the templ default of{' '}
+          <strong>
+            {governanceInfo.defaultVotingPeriod} seconds ({formatDuration(governanceInfo.defaultVotingPeriod)})
+          </strong>
+          . Voting windows must be at least{' '}
+          <strong>
+            {governanceInfo.minVotingPeriod} seconds ({formatDuration(governanceInfo.minVotingPeriod)})
+          </strong>{' '}
+          and no longer than{' '}
+          <strong>
+            {governanceInfo.maxVotingPeriod} seconds ({formatDuration(governanceInfo.maxVotingPeriod)})
+          </strong>
+          .
+        </p>
+      </section>
       <form className={`${layout.card} flex flex-col gap-4`} onSubmit={handleSubmit}>
         <label className={form.label}>
           Title
@@ -446,6 +509,9 @@ export function NewProposalPage({
             value={votingPeriod}
             onChange={(e) => setVotingPeriod(e.target.value)}
           />
+          <span className={text.hint}>
+            Enter 0 to fall back to {governanceInfo.defaultVotingPeriod} seconds ({formatDuration(governanceInfo.defaultVotingPeriod)}).
+          </span>
         </label>
         <button type="submit" className={button.primary} disabled={submitting}>
           {submitting ? 'Submitting…' : 'Create proposal'}
