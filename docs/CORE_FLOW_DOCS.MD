@@ -176,7 +176,7 @@ flowchart LR
     D -->|"rows restored on boot"| B;
 ```
 
-- `templ_bindings` table keeps the templ contract ↔ optional Telegram chat mapping so notifications resume after restarts (NULL chat ids indicate pending bindings).
-- Replay protection for `/templs` and `/join` lives in an in-memory cache with a rolling retention window.
+- `templ_bindings` keeps the templ contract ↔ optional Telegram chat mapping plus the last-seen priest address so notifications resume after restarts (NULL chat ids indicate pending bindings).
+- `used_signatures` records typed-request signatures for ~6 hours. The backend prefers this SQLite store and only falls back to the in-memory cache when the database is unavailable.
 
 These flows should serve as the canonical reference for the Telegram-based architecture.

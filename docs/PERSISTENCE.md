@@ -12,9 +12,10 @@ The backend persists a single table in SQLite (via `better-sqlite3`):
 
 | Table | Columns | Purpose |
 | --- | --- | --- |
-| `templ_bindings` | `contract TEXT PRIMARY KEY`, `telegramChatId TEXT UNIQUE` | Durable mapping between templ contracts and optional Telegram chats so the notifier survives restarts. `telegramChatId` remains `NULL` until a binding completes. |
+| `templ_bindings` | `contract TEXT PRIMARY KEY`, `telegramChatId TEXT UNIQUE`, `priest TEXT` | Durable mapping between templ contracts and optional Telegram chats so the notifier survives restarts. `telegramChatId` remains `NULL` until a binding completes; the last-seen priest address is stored to speed up watcher restores. |
+| `used_signatures` | `signature TEXT PRIMARY KEY`, `expiresAt INTEGER` | Replay protection for typed requests (`/templs`, `/templs/rebind`, `/join`). Entries expire after ~6 hours and fall back to in-memory storage only when SQLite is unavailable. |
 
-Signature replay protection and other runtime metadata live purely in memory—bindings, priests, home links, and proposal caches are refreshed from the contract whenever needed. Event cursors are not stored; after a restart the backend simply reattaches its watchers and streams newly emitted events. Deleting the SQLite file is safe in development; production deployments should back up the bindings alongside other app state.
+Bindings, priests, home links, and proposal caches are refreshed from the contract whenever needed. Event cursors are not stored; after a restart the backend reattaches its watchers and streams newly emitted events. Deleting the SQLite file is safe in development; production deployments should back up the database so bindings and signature history survive restarts.
 
 ## Frontend
 

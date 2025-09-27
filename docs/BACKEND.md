@@ -37,19 +37,18 @@ Running the server requires a JSON-RPC endpoint and aligned frontend/server IDs.
 
 ### Data model
 
-The backend persists only the Telegram binding in SQLite:
+SQLite is the default persistence layer and stores:
 
-- `templ_bindings(contract TEXT PRIMARY KEY, telegramChatId TEXT UNIQUE)` – stores a durable mapping so the notifier can recover which chats belong to which templ contracts across restarts while retaining templs without Telegram bindings (rows keep `telegramChatId` as `NULL` until the binding completes).
+- `templ_bindings(contract TEXT PRIMARY KEY, telegramChatId TEXT UNIQUE, priest TEXT)` – durable mapping between templ contracts and their optional Telegram chats plus the last-seen priest address. Rows keep `telegramChatId = NULL` until a binding completes so watchers can resume after restarts without leaking chat ids.
+- `used_signatures(signature TEXT PRIMARY KEY, expiresAt INTEGER)` – replay protection for typed requests. Entries expire automatically (6 hour retention) and fall back to the in-memory cache only when SQLite is unavailable.
 
-Priest addresses and templ home links are always recovered from the contract when watchers attach after boot, so the chain remains the canonical source of truth for administrative metadata.
-
-Signature replay protection now lives in-memory with a 6 hour retention window; bindings, proposal metadata, and home links are derived from on-chain reads and cached only for the lifetime of the process.
+Templ home links continue to live on-chain; watchers refresh them (and priest data) from the contract whenever listeners attach so the chain remains the canonical source of truth.
 
 ## Routes
 
 ### `GET /templs`
 
-Returns the list of registered templs. Chat identifiers are never exposed; requests with `?include=chatId`/`groupId` now return `403` to deter scraping.
+Returns the list of registered templs. Chat identifiers are never exposed; requests with `?include=chatId`/`groupId` return `403` to deter scraping. Provide `?include=homeLink` (or `links`) to surface the stored templ home link alongside contract/priest metadata.
 
 ```json
 {
@@ -57,21 +56,24 @@ Returns the list of registered templs. Chat identifiers are never exposed; reque
     {
       "contract": "0xabc…",
       "priest": "0xdef…",
-      "telegramChatId": "-100123456"
+      "templHomeLink": "https://example.com"
     }
   ]
 }
 ```
 
+> `templHomeLink` appears only when `include=homeLink` (or `links`) is provided.
+
 ### `POST /templs`
 
-Registers a templ. Requires an EIP-712 typed signature from the priest (`buildCreateTypedData`). Optional `telegramChatId` binds the backend to a Telegram group for notifications.
+Registers a templ. Requires an EIP-712 typed signature from the priest (`buildCreateTypedData`). Optional `telegramChatId` seeds an existing Telegram binding and `templHomeLink` lets deployers publish the canonical landing page immediately.
 
 ```json
 {
   "contractAddress": "0xabc…",
   "priestAddress": "0xdef…",
   "telegramChatId": "-100123456",
+  "templHomeLink": "https://example.com",
   "chainId": 8453,
   "signature": "0x…",
   "nonce": 1700000000000,
@@ -81,7 +83,7 @@ Registers a templ. Requires an EIP-712 typed signature from the priest (`buildCr
 ```
 
 When `REQUIRE_CONTRACT_VERIFY=1`, the server confirms that the address hosts bytecode and that `priest()` matches the signed address before persisting anything.
-If `telegramChatId` is omitted the response also contains a `bindingCode`. Invite `@templfunbot` to your group and post `templ <bindingCode>` once—the backend polls Telegram until it observes the code and then stores the resolved chat id.
+If `telegramChatId` is omitted the response contains a `bindingCode` together with the templ metadata (including the stored `templHomeLink`). Invite `@templfunbot` to your group and post `templ <bindingCode>` once—the backend polls Telegram until it observes the code and then stores the resolved chat id.
 
 ### `POST /templs/rebind`
 
@@ -105,7 +107,7 @@ The response includes the new `bindingCode`; once the bot sees that code inside 
 
 Verifies a member has purchased access and returns templ metadata plus convenience links.
 
-Request body mirrors the frontend’s join payload (`buildJoinTypedData`). The backend calls `hasAccess(member)` on the contract. On success the response includes the templ data (including the Telegram chat id) and computed URLs:
+Request body mirrors the frontend’s join payload (`buildJoinTypedData`). The backend calls `hasAccess(member)` on the contract. On success the response includes templ metadata (including the Telegram chat id when one exists) and convenience URLs:
 
 ```json
 {
@@ -113,8 +115,10 @@ Request body mirrors the frontend’s join payload (`buildJoinTypedData`). The b
   "templ": { "contract": "0xabc…", "telegramChatId": "-100123456", "templHomeLink": "https://t.me/templ-group", "priest": "0xdef…" },
   "links": {
     "templ": "https://app.templ.fun/templs/0xabc…",
+    "proposals": "https://app.templ.fun/templs/0xabc…/proposals",
+    "vote": "https://app.templ.fun/templs/0xabc…/proposals",
     "join": "https://app.templ.fun/templs/join?address=0xabc…",
-    "proposals": "https://app.templ.fun/templs/0xabc…/proposals"
+    "claim": "https://app.templ.fun/templs/0xabc…/claim"
   }
 }
 ```
