@@ -101,7 +101,7 @@ Commonly used accounts (private keys are from Hardhat defaults—never use them 
   - Voting window closures with an execute/not-executable summary.
   - Priest changes and templ home-link updates.
   - Daily treasury/member-pool digests (every 24h) when the server remains online.
-  Each message links back to the relevant frontend route so members can take action quickly. Posting the one-time binding code also yields an immediate “Telegram bridge active” acknowledgement.
+  Each message links back to the relevant frontend route so members can take action quickly and is formatted with Telegram Markdown V2 for consistent bold headers, code spans, and deep links. Posting the one-time binding code also yields an immediate “Telegram bridge active” acknowledgement.
 - `/templs/:address/claim` lets connected wallets see the raw member pool balance and call `claimMemberPool()`.
 
 ## Troubleshooting

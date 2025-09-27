@@ -31,7 +31,7 @@ See inline NatSpec comments and Hardhat tests for state transitions.
 - Background tasks send a daily digest (“gm templ crew!”) with treasury/member-pool totals, poll Telegram for binding codes, and acknowledge successful bindings with a “Telegram bridge active” message.
 - Log all failures but keep the HTTP surface responsive.
 
-The notifier posts newline-delimited plain text (no Telegram `parse_mode`). Links are constructed from `APP_BASE_URL` plus appropriate routes.
+The notifier posts MarkdownV2-formatted messages (`parse_mode=MarkdownV2`) so alerts can mix bold sections and deep links back to the app.
 
 ## 3. Frontend flows
 
@@ -46,7 +46,7 @@ MetaMask/`window.ethereum` supplies the signer. All backend calls attach typed s
 - Bot token lives in `TELEGRAM_BOT_TOKEN` (backend env). Without it, the notifier short-circuits and no messages are sent.
 - Chat ids are plain strings stored in SQLite (`templ_bindings.telegramChatId`). Use negative ids for supergroups.
 - Rebinding requires the current priest wallet to sign the `rebind` typed data; once the new code is observed in Telegram the backend clears the previous binding and stores the replacement chat id.
-- Messages include labelled contract/member addresses, the proposal title/description when present, and navigation links built from `APP_BASE_URL`.
+- Messages are rendered with Telegram Markdown V2: headings are bolded, contract/member addresses sit in `<code>` spans, and navigation links derived from `APP_BASE_URL` are escaped before sending.
 - Failures are logged at `warn` level; the backend never throws based on Telegram API errors.
 
 ## 5. Security
@@ -66,3 +66,4 @@ MetaMask/`window.ethereum` supplies the signer. All backend calls attach typed s
 - Richer Telegram formatting (buttons, proposal summaries) once long-lived bot tokens are configured.
 - Optional webhook that mirrors events to other tooling (Discord, Matrix).
 - Automated pruning / archiving of templ entries when factories upgrade.
+- Scale templ discovery by adding paginated log queries or a subgraph so the frontend can enumerate large factories without hitting provider range limits.

@@ -13,6 +13,40 @@ import { logger as defaultLogger } from './logger.js';
  */
 
 const TELEGRAM_API_BASE = 'https://api.telegram.org';
+const MARKDOWN_SPECIAL_CHARS = new Set(['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '=', '|', '{', '}', '.', '!', '\\', '-']);
+
+function escapeMarkdownLinkUrl(url) {
+  if (url === null || url === undefined) return '';
+  return String(url)
+    .replace(/\\/g, '\\\\')
+    .replace(/\(/g, '\\(')
+    .replace(/\)/g, '\\)');
+}
+
+function escapeMarkdown(text) {
+  if (text === null || text === undefined) return '';
+  let output = '';
+  for (const ch of String(text)) {
+    output += MARKDOWN_SPECIAL_CHARS.has(ch) ? `\\${ch}` : ch;
+  }
+  return output;
+}
+
+function formatBold(text) {
+  const escaped = escapeMarkdown(text);
+  return `*${escaped}*`;
+}
+
+function formatCode(text) {
+  const escaped = escapeMarkdown(String(text).replace(/`/g, '\\`'));
+  return `\`${escaped}\``;
+}
+
+function formatLink(label, url) {
+  if (!url) return escapeMarkdown(label);
+  const cleanUrl = escapeMarkdownLinkUrl(url);
+  return `[${escapeMarkdown(label)}](${cleanUrl})`;
+}
 
 function normaliseInline(value) {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
@@ -25,7 +59,7 @@ function normaliseMultiline(value) {
 function formatAddress(label, address) {
   const normalised = normaliseInline(address);
   if (!normalised) return '';
-  return `${label} ${normalised.toLowerCase()}`;
+  return `${formatBold(label)} ${formatCode(normalised.toLowerCase())}`;
 }
 
 function formatTimestamp(seconds) {
@@ -35,7 +69,7 @@ function formatTimestamp(seconds) {
   try {
     const ts = Number(seconds);
     const date = ts > 10_000 ? new Date(ts * 1000) : new Date(ts);
-    return `When: ${date.toISOString()}`;
+    return `${formatBold('When:')} ${escapeMarkdown(date.toISOString())}`;
   } catch {
     return '';
   }
@@ -45,9 +79,9 @@ function formatAmount(label, value) {
   if (value === undefined || value === null) return '';
   try {
     const asBigInt = BigInt(value);
-    return `${label} ${asBigInt.toString()}`;
+    return `${formatBold(label)} ${formatCode(asBigInt.toString())}`;
   } catch {
-    return `${label} ${normaliseInline(value)}`;
+    return `${formatBold(label)} ${escapeMarkdown(normaliseInline(value))}`;
   }
 }
 
@@ -55,7 +89,7 @@ function formatDescriptionBlock(description) {
   const text = normaliseMultiline(description);
   if (!text) return [];
   const lines = text.split('\n').map((line) => line.trimEnd());
-  return ['', 'Description:', ...lines];
+  return ['', formatBold('Description:'), ...lines.map((line) => `• ${escapeMarkdown(line)}`)];
 }
 
 function formatHomeLinkLines(value) {
@@ -63,12 +97,12 @@ function formatHomeLinkLines(value) {
   const trimmedText = normaliseInline(text);
   if (href) {
     if (trimmedText && trimmedText !== href) {
-      return [`Home: ${trimmedText}`, href];
+      return [`${formatBold('Home:')} ${formatLink(trimmedText, href)}`];
     }
-    return [`Home: ${href}`];
+    return [`${formatBold('Home:')} ${formatLink(href, href)}`];
   }
   if (trimmedText) {
-    return [`Home: ${trimmedText}`];
+    return [`${formatBold('Home:')} ${escapeMarkdown(trimmedText)}`];
   }
   return [];
 }
@@ -82,6 +116,7 @@ async function postTelegramMessage({ botToken, chatId, text, disablePreview = tr
   const body = new URLSearchParams();
   body.set('chat_id', String(chatId));
   body.set('text', text);
+  body.set('parse_mode', 'MarkdownV2');
   if (disablePreview) body.set('disable_web_page_preview', 'true');
 
   try {
@@ -155,17 +190,17 @@ export function createTelegramNotifier({ botToken, linkBaseUrl, logger = default
     if (!baseUrl) return '';
     const base = baseUrl.replace(/\/$/, '');
     const url = `${base}${path}`;
-    return `${label}: ${url}`;
+    return formatLink(label, url);
   }
 
   return {
     isEnabled: Boolean(token),
     async notifyAccessPurchased({ chatId, contractAddress, memberAddress, purchaseId, treasuryBalance, memberPoolBalance, timestamp, homeLink }) {
       await send(chatId, [
-        'New member joined',
+        formatBold('New member joined'),
         formatAddress('Templ:', contractAddress),
         formatAddress('Member:', memberAddress),
-        purchaseId != null ? `Purchase ID: ${normaliseInline(purchaseId)}` : '',
+        purchaseId != null ? `${formatBold('Purchase ID:')} ${escapeMarkdown(normaliseInline(purchaseId))}` : '',
         formatTimestamp(timestamp),
         formatAmount('Treasury balance:', treasuryBalance),
         formatAmount('Member pool:', memberPoolBalance),
@@ -177,12 +212,12 @@ export function createTelegramNotifier({ botToken, linkBaseUrl, logger = default
       ]);
     },
     async notifyProposalCreated({ chatId, contractAddress, proposer, proposalId, endTime, title, description, homeLink }) {
-      const header = title ? `Proposal: ${normaliseInline(title)}` : 'Proposal created';
+      const header = title ? `${formatBold('Proposal:')} ${escapeMarkdown(normaliseInline(title))}` : formatBold('Proposal created');
       await send(chatId, [
         header,
         formatAddress('Templ:', contractAddress),
         formatAddress('Proposer:', proposer),
-        proposalId != null ? `Proposal ID: ${normaliseInline(proposalId)}` : '',
+        proposalId != null ? `${formatBold('Proposal ID:')} ${escapeMarkdown(normaliseInline(proposalId))}` : '',
         endTime ? formatTimestamp(endTime) : '',
         formatDescriptionBlock(description),
         buildLinksBlock(
@@ -196,8 +231,8 @@ export function createTelegramNotifier({ botToken, linkBaseUrl, logger = default
     },
     async notifyProposalQuorumReached({ chatId, contractAddress, proposalId, title, description, quorumReachedAt, homeLink }) {
       await send(chatId, [
-        'Quorum reached',
-        title ? `Proposal: ${normaliseInline(title)}` : '',
+        formatBold('Quorum reached'),
+        title ? `${formatBold('Proposal:')} ${escapeMarkdown(normaliseInline(title))}` : '',
         formatDescriptionBlock(description),
         formatTimestamp(quorumReachedAt),
         buildLinksBlock(
@@ -210,14 +245,16 @@ export function createTelegramNotifier({ botToken, linkBaseUrl, logger = default
       ]);
     },
     async notifyVoteCast({ chatId, contractAddress, voter, proposalId, support, title, homeLink }) {
-      const supportLabel = support === true || String(support).toLowerCase() === 'true' ? 'YES' : 'NO';
+      const supportLabel = support === true || String(support).toLowerCase() === 'true'
+        ? formatBold('YES')
+        : formatBold('NO');
       await send(chatId, [
-        'Vote recorded',
+        formatBold('Vote recorded'),
         formatAddress('Templ:', contractAddress),
         formatAddress('Voter:', voter),
-        proposalId != null ? `Proposal ID: ${normaliseInline(proposalId)}` : '',
-        title ? `Title: ${normaliseInline(title)}` : '',
-        `Choice: ${supportLabel}`,
+        proposalId != null ? `${formatBold('Proposal ID:')} ${escapeMarkdown(normaliseInline(proposalId))}` : '',
+        title ? `${formatBold('Title:')} ${escapeMarkdown(normaliseInline(title))}` : '',
+        `${formatBold('Choice:')} ${supportLabel}`,
         buildLinksBlock(
           templLink(
             `/templs/${encodeURIComponent(String(contractAddress || ''))}/proposals/${encodeURIComponent(String(proposalId || ''))}/vote`,
@@ -228,10 +265,12 @@ export function createTelegramNotifier({ botToken, linkBaseUrl, logger = default
       ]);
     },
     async notifyProposalVotingClosed({ chatId, contractAddress, proposalId, title, description, endedAt, canExecute, homeLink }) {
-      const statusLine = canExecute ? 'Status: Ready for execution ✅' : 'Status: Not executable ❌';
+      const statusLine = canExecute
+        ? `${formatBold('Status:')} ${escapeMarkdown('Ready for execution ✅')}`
+        : `${formatBold('Status:')} ${escapeMarkdown('Not executable ❌')}`;
       await send(chatId, [
-        'Voting window ended',
-        title ? `Proposal: ${normaliseInline(title)}` : '',
+        formatBold('Voting window ended'),
+        title ? `${formatBold('Proposal:')} ${escapeMarkdown(normaliseInline(title))}` : '',
         formatDescriptionBlock(description),
         formatTimestamp(endedAt),
         statusLine,
@@ -246,7 +285,7 @@ export function createTelegramNotifier({ botToken, linkBaseUrl, logger = default
     },
     async notifyPriestChanged({ chatId, contractAddress, oldPriest, newPriest, homeLink }) {
       await send(chatId, [
-        'Priest updated',
+        formatBold('Priest updated'),
         formatAddress('Templ:', contractAddress),
         formatAddress('Old priest:', oldPriest),
         formatAddress('New priest:', newPriest),
@@ -258,7 +297,7 @@ export function createTelegramNotifier({ botToken, linkBaseUrl, logger = default
     },
     async notifyDailyDigest({ chatId, contractAddress, treasuryBalance, memberPoolBalance, homeLink }) {
       await send(chatId, [
-        'gm templ crew!',
+        formatBold('gm templ crew!'),
         formatAmount('Treasury balance:', treasuryBalance),
         formatAmount('Member pool (unclaimed):', memberPoolBalance),
         buildLinksBlock(
@@ -269,10 +308,10 @@ export function createTelegramNotifier({ botToken, linkBaseUrl, logger = default
       ]);
     },
     async notifyTemplHomeLinkUpdated({ chatId, contractAddress, previousLink, newLink }) {
-      const previousLines = formatHomeLinkLines(previousLink).map((line) => line.replace(/^Home:/, 'Previous:'));
-      const newLines = formatHomeLinkLines(newLink).map((line) => line.replace(/^Home:/, 'New:'));
+      const previousLines = formatHomeLinkLines(previousLink).map((line) => line.replace(formatBold('Home:'), formatBold('Previous:')));
+      const newLines = formatHomeLinkLines(newLink).map((line) => line.replace(formatBold('Home:'), formatBold('New:')));
       await send(chatId, [
-        'Templ home link updated',
+        formatBold('Templ home link updated'),
         formatAddress('Templ:', contractAddress),
         previousLines,
         newLines,
@@ -284,7 +323,7 @@ export function createTelegramNotifier({ botToken, linkBaseUrl, logger = default
     },
     async notifyBindingComplete({ chatId, contractAddress, homeLink }) {
       await send(chatId, [
-        'Telegram bridge active',
+        formatBold('Telegram bridge active'),
         formatAddress('Templ:', contractAddress),
         buildLinksBlock(
           templLink(`/templs/${encodeURIComponent(String(contractAddress || ''))}`, 'Open templ overview'),
