@@ -28,6 +28,7 @@ Running the server requires a JSON-RPC endpoint and aligned frontend/server IDs.
 | `BACKEND_SERVER_ID` | Identifier embedded in EIP-712 typed data. Must match the frontend’s `VITE_BACKEND_SERVER_ID`. | – |
 | `APP_BASE_URL` | Base URL used when generating links inside Telegram messages. | unset |
 | `TELEGRAM_BOT_TOKEN` | Bot token used to post templ updates and poll binding codes. Leave unset to disable Telegram delivery. | unset |
+| `TRUSTED_FACTORY_ADDRESS` | Optional factory address; when set, only templs emitted by this factory may register or rebind, and cached records from other factories are skipped on restart. | unset |
 | `REQUIRE_CONTRACT_VERIFY` | When `1` (or `NODE_ENV=production`), enforce contract deployment + priest matching before accepting `/templs` requests. | `0` |
 | `LOG_LEVEL` | Pino log level. | `info` |
 | `RATE_LIMIT_STORE` | `memory` or `redis`; automatically switches to Redis when `REDIS_URL` is provided. | auto |
@@ -39,7 +40,7 @@ Running the server requires a JSON-RPC endpoint and aligned frontend/server IDs.
 
 SQLite is the default persistence layer and stores:
 
-- `templ_bindings(contract TEXT PRIMARY KEY, telegramChatId TEXT UNIQUE, priest TEXT)` – durable mapping between templ contracts and their optional Telegram chats plus the last-seen priest address. Rows keep `telegramChatId = NULL` until a binding completes so watchers can resume after restarts without leaking chat ids.
+- `templ_bindings(contract TEXT PRIMARY KEY, telegramChatId TEXT UNIQUE, priest TEXT, bindingCode TEXT)` – durable mapping between templ contracts and their optional Telegram chats plus the last-seen priest address. `bindingCode` stores any outstanding binding snippet so servers can restart without invalidating it. Rows keep `telegramChatId = NULL` until a binding completes so watchers can resume after restarts without leaking chat ids.
 - `used_signatures(signature TEXT PRIMARY KEY, expiresAt INTEGER)` – replay protection for typed requests. Entries expire automatically (6 hour retention) and fall back to the in-memory cache only when SQLite is unavailable.
 
 Templ home links continue to live on-chain; watchers refresh them (and priest data) from the contract whenever listeners attach so the chain remains the canonical source of truth.

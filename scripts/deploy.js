@@ -103,7 +103,7 @@ async function main() {
   const treasuryPercent = readSplitPercent('TREASURY_PERCENT', process.env.TREASURY_PERCENT, process.env.TREASURY_BP, DEFAULT_TREASURY_PERCENT);
   const memberPoolPercent = readSplitPercent('MEMBER_POOL_PERCENT', process.env.MEMBER_POOL_PERCENT, process.env.MEMBER_POOL_BP, DEFAULT_MEMBER_POOL_PERCENT);
   const rawProtocolPercent = process.env.PROTOCOL_PERCENT ?? process.env.PROTOCOL_BP ?? '10';
-  const PROTOCOL_PERCENT = Number(rawProtocolPercent);
+  let PROTOCOL_PERCENT = Number(rawProtocolPercent);
   const QUORUM_PERCENT = process.env.QUORUM_PERCENT !== undefined ? Number(process.env.QUORUM_PERCENT) : undefined;
   const EXECUTION_DELAY_SECONDS = process.env.EXECUTION_DELAY_SECONDS !== undefined ? Number(process.env.EXECUTION_DELAY_SECONDS) : undefined;
   const BURN_ADDRESS = (process.env.BURN_ADDRESS || '').trim();
@@ -122,11 +122,40 @@ async function main() {
   if (!ENTRY_FEE) {
     throw new Error("ENTRY_FEE not set in environment");
   }
+  if (!FACTORY_ADDRESS_ENV) {
+    if (!Number.isFinite(PROTOCOL_PERCENT)) {
+      throw new Error('PROTOCOL_PERCENT must be a valid number');
+    }
+    if (PROTOCOL_PERCENT < 0 || PROTOCOL_PERCENT > 100) {
+      throw new Error('PROTOCOL_PERCENT must be between 0 and 100');
+    }
+  }
+
+  let protocolPercentSource = 'env';
+  if (FACTORY_ADDRESS_ENV) {
+    try {
+      const existingFactory = await hre.ethers.getContractAt('TemplFactory', FACTORY_ADDRESS_ENV);
+      const onChainPercent = Number(await existingFactory.protocolPercent());
+      if (!Number.isFinite(onChainPercent)) {
+        throw new Error('Factory protocol percent is not a finite number');
+      }
+      if (Number.isFinite(PROTOCOL_PERCENT) && PROTOCOL_PERCENT !== onChainPercent) {
+        console.warn(
+          `[warn] Ignoring PROTOCOL_PERCENT=${PROTOCOL_PERCENT} from environment; factory ${FACTORY_ADDRESS_ENV} enforces ${onChainPercent}.`
+        );
+      }
+      PROTOCOL_PERCENT = onChainPercent;
+      protocolPercentSource = 'factory';
+    } catch (err) {
+      throw new Error(`Failed to read protocol percent from factory ${FACTORY_ADDRESS_ENV}: ${err?.message || err}`);
+    }
+  }
+
   if (!Number.isFinite(PROTOCOL_PERCENT)) {
-    throw new Error('PROTOCOL_PERCENT must be a valid number');
+    throw new Error('Resolved protocol percent is not a valid number');
   }
   if (PROTOCOL_PERCENT < 0 || PROTOCOL_PERCENT > 100) {
-    throw new Error('PROTOCOL_PERCENT must be between 0 and 100');
+    throw new Error('Resolved protocol percent must be between 0 and 100');
   }
 
   const totalSplit = burnPercent.resolvedPercent + treasuryPercent.resolvedPercent + memberPoolPercent.resolvedPercent + PROTOCOL_PERCENT;
@@ -201,6 +230,10 @@ async function main() {
   console.log("Execution Delay (seconds):", EXECUTION_DELAY_SECONDS ?? 7 * 24 * 60 * 60);
   console.log("Burn Address:", effectiveBurnAddress);
   console.log("Priest Dictatorship:", PRIEST_IS_DICTATOR ? 'enabled' : 'disabled');
+  console.log(
+    `Protocol Percent (${protocolPercentSource === 'factory' ? 'factory' : 'env'}):`,
+    PROTOCOL_PERCENT
+  );
   
   if (network.chainId === 8453n) {
     console.log("\n⚠️  Deploying to BASE MAINNET");

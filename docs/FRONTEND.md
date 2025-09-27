@@ -44,7 +44,7 @@ The app uses `ethers.BrowserProvider` and the injected `window.ethereum`. Connec
 ### Deployment flow
 
 1. User connects a wallet and navigates to `/templs/create`.
-2. The UI validates fee splits and calls `factory.createTemplWithConfig`.
+2. The UI validates fee splits and calls `factory.createTemplWithConfig`. When the form detects a deployed factory address it automatically locks the protocol percent input to the factory’s on-chain share so deployments stay in sync with backend enforcement.
 3. After the transaction confirms, the app signs the EIP-712 registration payload and POSTs it to the backend (including an optional Telegram chat id).
 
 ### Join flow

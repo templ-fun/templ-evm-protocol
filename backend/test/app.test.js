@@ -253,8 +253,9 @@ test('register templ persists record and wires contract listeners', async (t) =>
   const cacheRecord = app.locals.templs.get(contractAddress);
   assert.equal(cacheRecord?.proposalsMeta?.get?.('1')?.title, 'Proposal title');
 
-  const storedRow = db.prepare('SELECT telegramChatId FROM templ_bindings WHERE contract = ?').get(contractAddress);
+  const storedRow = db.prepare('SELECT telegramChatId, bindingCode FROM templ_bindings WHERE contract = ?').get(contractAddress);
   assert.equal(storedRow?.telegramChatId, 'telegram-chat-1');
+  assert.equal(storedRow?.bindingCode, null);
 });
 
 test('join endpoint validates membership', async (t) => {
@@ -359,9 +360,10 @@ test('register templ without chat id issues binding code', async (t) => {
   assert.equal(record.bindingCode, response.bindingCode);
   assert.equal(record.templHomeLink, 'https://initial.link');
 
-  const mappingRow = db.prepare('SELECT telegramChatId FROM templ_bindings WHERE contract = ?').get(contractAddress);
+  const mappingRow = db.prepare('SELECT telegramChatId, bindingCode FROM templ_bindings WHERE contract = ?').get(contractAddress);
   assert.ok(mappingRow, 'templ persisted without chat');
   assert.equal(mappingRow.telegramChatId, null);
+  assert.equal(mappingRow.bindingCode, response.bindingCode);
 });
 
 test('signature replay rejected after restart with shared store', async (t) => {
@@ -445,9 +447,10 @@ test('templ without chat binding survives restart', async (t) => {
   const { contractAddress, response } = await registerTempl(app, wallet, { telegramChatId: null }, { contractState });
   assert.ok(response.bindingCode);
 
-  const initialRow = db.prepare('SELECT telegramChatId FROM templ_bindings WHERE contract = ?').get(contractAddress);
+  const initialRow = db.prepare('SELECT telegramChatId, bindingCode FROM templ_bindings WHERE contract = ?').get(contractAddress);
   assert.ok(initialRow, 'row persisted during initial registration');
   assert.equal(initialRow.telegramChatId, null);
+  assert.equal(initialRow.bindingCode, response.bindingCode);
 
   await app.close?.();
   app = null;
@@ -465,6 +468,7 @@ test('templ without chat binding survives restart', async (t) => {
   const restored = appReload.locals.templs.get(contractAddress);
   assert.ok(restored, 'templ restored into memory');
   assert.equal(restored.telegramChatId, null);
+  assert.equal(restored.bindingCode, response.bindingCode);
 
   const listRes = await request(appReload).get('/templs');
   assert.equal(listRes.status, 200);
@@ -479,9 +483,10 @@ test('templ without chat binding survives restart', async (t) => {
   assert.equal(joinRes.body.templ.contract, contractAddress);
   assert.equal(joinRes.body.templ.priest, wallet.address.toLowerCase());
 
-  const persistedRow = dbReload.prepare('SELECT telegramChatId FROM templ_bindings WHERE contract = ?').get(contractAddress);
+  const persistedRow = dbReload.prepare('SELECT telegramChatId, bindingCode FROM templ_bindings WHERE contract = ?').get(contractAddress);
   assert.ok(persistedRow, 'row still present after restart');
   assert.equal(persistedRow.telegramChatId, null);
+  assert.equal(persistedRow.bindingCode, response.bindingCode);
 });
 
 test('active proposals are backfilled after restart', async (t) => {
@@ -561,9 +566,10 @@ test('priest can request telegram rebind with signature', async (t) => {
   assert.equal(record?.bindingCode, res.body.bindingCode);
   assert.equal(record?.telegramChatId, null);
 
-  const mappingRow = db.prepare('SELECT telegramChatId FROM templ_bindings WHERE contract = ?').get(contractAddress);
+  const mappingRow = db.prepare('SELECT telegramChatId, bindingCode FROM templ_bindings WHERE contract = ?').get(contractAddress);
   assert.ok(mappingRow, 'templ persisted without chat across rebind');
   assert.equal(mappingRow.telegramChatId, null);
+  assert.equal(mappingRow.bindingCode, res.body.bindingCode);
 });
 
 test('rebind rejects signatures from non-priest wallet', async (t) => {

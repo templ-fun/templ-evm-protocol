@@ -1,5 +1,5 @@
 import { randomBytes } from 'crypto';
-import { ensurePriestMatchesOnChain } from './contractValidation.js';
+import { ensurePriestMatchesOnChain, ensureTemplFromFactory } from './contractValidation.js';
 
 function templError(message, statusCode) {
   return Object.assign(new Error(message), { statusCode });
@@ -30,7 +30,7 @@ function ensureRecordLoaded(contract, context) {
     templHomeLink: '',
     proposalsMeta: new Map(),
     lastDigestAt: Date.now(),
-    bindingCode: null,
+    bindingCode: persisted.bindingCode ? String(persisted.bindingCode) : null,
     contractAddress: contract
   };
   templs.set(contract, record);
@@ -45,6 +45,11 @@ export async function requestTemplRebind(body, context) {
   const record = ensureRecordLoaded(contract, context);
   if (!record) {
     throw templError('Templ not registered', 404);
+  }
+
+  const trustedFactory = process.env.TRUSTED_FACTORY_ADDRESS?.trim();
+  if (trustedFactory) {
+    await ensureTemplFromFactory({ provider, contractAddress: contract, factoryAddress: trustedFactory });
   }
 
   const currentPriest = record.priest ? String(record.priest).toLowerCase() : null;

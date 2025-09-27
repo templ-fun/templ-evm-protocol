@@ -18,7 +18,7 @@ Run each script from the repo root unless noted. All commands assume dependencie
 ## deploy.js
 - Deploys `TemplFactory` (when `FACTORY_ADDRESS` is unset) and creates a new templ via `createTemplWithConfig`.
 - Reads configuration from `.env` (fee splits, quorum, delay, burn address) and persists outputs under `deployments/`.
-- Validates invariants locally (percent totals, entry-fee divisibility, quorum/delay bounds) before broadcasting.
+- Validates invariants locally (percent totals, entry-fee divisibility, quorum/delay bounds) before broadcasting and automatically reuses the factory’s on-chain protocol share when `FACTORY_ADDRESS` is supplied (any `PROTOCOL_PERCENT` override is ignored in that case).
 - Recognizes `PRIEST_IS_DICTATOR=1`/`true` to bypass proposal governance and grant the priest instant control of all DAO actions; the toggle can be flipped later through the on-chain `setDictatorship` governance proposal.
 - When `BACKEND_URL` is exported, automatically signs the registration payload with the priest wallet and POSTs it to `${BACKEND_URL}/templs`, printing the binding code returned by the backend.
 

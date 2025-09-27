@@ -90,7 +90,8 @@ export default function templsRouter({ templs, persist, database, provider, watc
           logger,
           templs,
           persist,
-          watchContract
+          watchContract,
+          findBinding
         });
         const { templ, bindingCode } = result;
         res.json({

@@ -1,5 +1,5 @@
 import { randomBytes } from 'crypto';
-import { ensureContractDeployed, ensurePriestMatchesOnChain } from './contractValidation.js';
+import { ensureContractDeployed, ensurePriestMatchesOnChain, ensureTemplFromFactory } from './contractValidation.js';
 
 function templError(message, statusCode) {
   return Object.assign(new Error(message), { statusCode });
@@ -28,7 +28,7 @@ function normaliseChatId(value) {
 
 export async function registerTempl(body, context) {
   const { contractAddress, priestAddress } = body;
-  const { provider, logger, templs, persist, watchContract } = context;
+  const { provider, logger, templs, persist, watchContract, findBinding } = context;
 
   const contract = normaliseAddress(contractAddress, 'contractAddress');
   const priest = normaliseAddress(priestAddress, 'priestAddress');
@@ -44,14 +44,29 @@ export async function registerTempl(body, context) {
     await ensurePriestMatchesOnChain({ provider, contractAddress: contract, priestAddress: priest });
   }
 
-  const existing = templs.get(contract) || {
-    telegramChatId: null,
-    priest,
-    proposalsMeta: new Map(),
-    lastDigestAt: Date.now(),
-    templHomeLink: '',
-    bindingCode: null
-  };
+  const trustedFactory = process.env.TRUSTED_FACTORY_ADDRESS?.trim();
+  if (trustedFactory) {
+    await ensureTemplFromFactory({ provider, contractAddress: contract, factoryAddress: trustedFactory });
+  }
+
+  let existing = templs.get(contract);
+  if (!existing) {
+    const persisted = typeof findBinding === 'function' ? findBinding(contract) : null;
+    existing = {
+      telegramChatId: null,
+      priest,
+      proposalsMeta: new Map(),
+      lastDigestAt: Date.now(),
+      templHomeLink: '',
+      bindingCode: persisted?.bindingCode ?? null
+    };
+    if (persisted?.telegramChatId) {
+      existing.telegramChatId = String(persisted.telegramChatId);
+    }
+    if (persisted?.priest) {
+      existing.priest = String(persisted.priest).toLowerCase();
+    }
+  }
   if (!existing.proposalsMeta) existing.proposalsMeta = new Map();
   if (typeof existing.lastDigestAt !== 'number') existing.lastDigestAt = Date.now();
   existing.priest = priest;
@@ -67,7 +82,6 @@ export async function registerTempl(body, context) {
       bindingCode = randomBytes(16).toString('hex');
     }
     existing.bindingCode = bindingCode;
-    // Binding codes now live purely in-memory; nothing to persist beyond the runtime map entry.
   } else {
     existing.bindingCode = null;
   }

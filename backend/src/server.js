@@ -14,6 +14,7 @@ import joinRouter from './routes/join.js';
 import { logger } from './logger.js';
 import { createTelegramNotifier } from './telegram.js';
 import { createSignatureStore, createSqliteSignatureStore } from './middleware/validate.js';
+import { ensureTemplFromFactory } from './services/contractValidation.js';
 
 const { default: BetterSqlite } = await import('better-sqlite3');
 
@@ -152,7 +153,8 @@ function initializeDatabase({ dbPath, db }) {
     CREATE TABLE IF NOT EXISTS templ_bindings (
       contract TEXT PRIMARY KEY,
       telegramChatId TEXT UNIQUE,
-      priest TEXT
+      priest TEXT,
+      bindingCode TEXT
     )
   `);
 
@@ -162,15 +164,19 @@ function initializeDatabase({ dbPath, db }) {
     if (!hasPriestColumn) {
       database.exec('ALTER TABLE templ_bindings ADD COLUMN priest TEXT');
     }
+    const hasBindingColumn = Array.isArray(columns) && columns.some((column) => column?.name === 'bindingCode');
+    if (!hasBindingColumn) {
+      database.exec('ALTER TABLE templ_bindings ADD COLUMN bindingCode TEXT');
+    }
   } catch {
     /* ignore pragma errors */
   }
 
   const insertBinding = database.prepare(
-    'INSERT INTO templ_bindings (contract, telegramChatId, priest) VALUES (?, ?, ?) ON CONFLICT(contract) DO UPDATE SET telegramChatId = excluded.telegramChatId, priest = excluded.priest'
+    'INSERT INTO templ_bindings (contract, telegramChatId, priest, bindingCode) VALUES (?, ?, ?, ?) ON CONFLICT(contract) DO UPDATE SET telegramChatId = excluded.telegramChatId, priest = excluded.priest, bindingCode = excluded.bindingCode'
   );
-  const selectAllBindings = database.prepare('SELECT contract, telegramChatId, priest FROM templ_bindings ORDER BY contract');
-  const selectBindingByContract = database.prepare('SELECT telegramChatId, priest FROM templ_bindings WHERE contract = ?');
+  const selectAllBindings = database.prepare('SELECT contract, telegramChatId, priest, bindingCode FROM templ_bindings ORDER BY contract');
+  const selectBindingByContract = database.prepare('SELECT telegramChatId, priest, bindingCode FROM templ_bindings WHERE contract = ?');
   const countBindings = database.prepare('SELECT COUNT(1) AS count FROM templ_bindings');
 
   try {
@@ -205,7 +211,8 @@ function initializeDatabase({ dbPath, db }) {
     if (!key) return;
     const chatId = record?.telegramChatId != null ? String(record.telegramChatId) : null;
     const priest = record?.priest ? String(record.priest).toLowerCase() : null;
-    insertBinding.run(key, chatId, priest);
+    const bindingCode = record?.bindingCode != null ? String(record.bindingCode) : null;
+    insertBinding.run(key, chatId, priest, bindingCode);
   };
 
   const listBindings = () => {
@@ -215,7 +222,8 @@ function initializeDatabase({ dbPath, db }) {
             .map((row) => ({
               contract: String(row.contract).toLowerCase(),
               telegramChatId: row.telegramChatId != null ? String(row.telegramChatId) : null,
-              priest: row.priest != null ? String(row.priest).toLowerCase() : null
+              priest: row.priest != null ? String(row.priest).toLowerCase() : null,
+              bindingCode: row.bindingCode != null ? String(row.bindingCode) : null
             }));
     } catch {
       return [];
@@ -230,7 +238,8 @@ function initializeDatabase({ dbPath, db }) {
       return {
         contract: String(contract).toLowerCase(),
         telegramChatId: row.telegramChatId != null ? String(row.telegramChatId) : null,
-        priest: row.priest != null ? String(row.priest).toLowerCase() : null
+        priest: row.priest != null ? String(row.priest).toLowerCase() : null,
+        bindingCode: row.bindingCode != null ? String(row.bindingCode) : null
       };
     } catch {
       return null;
@@ -586,13 +595,24 @@ function createContractWatcher({ connectContract, templs, persist, notifier, log
   return { watchContract };
 }
 
-async function restoreGroupsFromPersistence({ listBindings, templs, watchContract, logger }) {
+async function restoreGroupsFromPersistence({ listBindings, templs, watchContract, logger, provider, trustedFactoryAddress }) {
   try {
     const rows = typeof listBindings === 'function' ? listBindings() : [];
     const pending = [];
     for (const row of rows) {
       const key = String(row?.contract || '').toLowerCase();
       if (!key) continue;
+      if (trustedFactoryAddress && provider) {
+        try {
+          await ensureTemplFromFactory({ provider, contractAddress: key, factoryAddress: trustedFactoryAddress });
+        } catch (err) {
+          logger?.warn?.({ err: String(err?.message || err), contract: key }, 'Skipping templ restored from persistence due to factory mismatch');
+          continue;
+        }
+      } else if (trustedFactoryAddress && !provider) {
+        logger?.warn?.({ contract: key }, 'Skipping templ restore: trusted factory configured but no provider available');
+        continue;
+      }
       const record = {
         telegramChatId: row?.telegramChatId ? String(row.telegramChatId) : null,
         priest: row?.priest ? String(row.priest).toLowerCase() : null,
@@ -600,7 +620,7 @@ async function restoreGroupsFromPersistence({ listBindings, templs, watchContrac
         lastDigestAt: Date.now(),
         contractAddress: key,
         templHomeLink: '',
-        bindingCode: null
+        bindingCode: row?.bindingCode ? String(row.bindingCode) : null
       };
       templs.set(key, record);
       if (watchContract) {
@@ -799,9 +819,18 @@ export function createApp(opts) {
     signatureStore = createSignatureStore();
   }
 
+  const trustedFactoryAddress = process.env.TRUSTED_FACTORY_ADDRESS?.trim() || null;
+
   const { watchContract } = createContractWatcher({ connectContract, templs, persist, notifier, logger });
 
-  const restorationPromise = restoreGroupsFromPersistence({ listBindings, templs, watchContract, logger });
+  const restorationPromise = restoreGroupsFromPersistence({
+    listBindings,
+    templs,
+    watchContract,
+    logger,
+    provider,
+    trustedFactoryAddress
+  });
 
   let backgroundTasks = null;
   if (enableBackgroundTasks) {

@@ -230,6 +230,7 @@ export default function App() {
           pushMessage={pushMessage}
           onNavigate={navigate}
           refreshTempls={refreshTempls}
+          readProvider={readProvider}
         />
       );
     }

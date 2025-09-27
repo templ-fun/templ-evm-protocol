@@ -43,14 +43,14 @@ You can deploy from the CLI or via the frontend. The CLI is convenient for scrip
    npm run node
    ```
 3. Export the deployment parameters required by `scripts/deploy.js`:
-   ```bash
-   export TOKEN_ADDRESS=0x...       # required: ERC-20 token gating access
-   export ENTRY_FEE=1000000000000   # required: must be >= 10 and divisible by 10
-   export PROTOCOL_FEE_RECIPIENT=0x...  # required: protocol treasury address
-   export PROTOCOL_PERCENT=10            # optional override (defaults to 10)
-   export PRIEST_ADDRESS=0x...           # optional (defaults to deployer)
-   export FACTORY_ADDRESS=0x...          # optional: reuse an existing factory; leave unset to deploy a new one
-   ```
+  ```bash
+  export TOKEN_ADDRESS=0x...       # required: ERC-20 token gating access
+  export ENTRY_FEE=1000000000000   # required: must be >= 10 and divisible by 10
+  export PROTOCOL_FEE_RECIPIENT=0x...  # required: protocol treasury address
+   export PROTOCOL_PERCENT=10            # only used when deploying a brand new factory (defaults to 10)
+  export PRIEST_ADDRESS=0x...           # optional (defaults to deployer)
+  export FACTORY_ADDRESS=0x...          # optional: reuse an existing factory; leave unset to deploy a new one
+  ```
 
    > For remote deployments, confirm `PRIVATE_KEY` is still exported in your shell so Hardhat can access the deployer signer.
 
@@ -65,12 +65,18 @@ You can deploy from the CLI or via the frontend. The CLI is convenient for scrip
    export TELEGRAM_CHAT_ID=-1001234567890   # optional: seed the backend with an existing chat id
    ```
 4. Deploy a templ with custom parameters:
-   ```bash
-   npx hardhat run scripts/deploy.js --network localhost   # use --network base when targeting Base mainnet
-   ```
-   The script deploys `TemplFactory` automatically when `FACTORY_ADDRESS` is unset and then mints the templ. Copy the logged factory address and export it as `FACTORY_ADDRESS` before subsequent deployments on the same network so every templ originates from the same factory. The script prints both the `TemplFactory` and `TEMPL` addresses.
+  ```bash
+  npx hardhat run scripts/deploy.js --network localhost   # use --network base when targeting Base mainnet
+  ```
+   The script deploys `TemplFactory` automatically when `FACTORY_ADDRESS` is unset and then mints the templ. Copy the logged factory address and export it as `FACTORY_ADDRESS` before subsequent deployments on the same network so every templ originates from the same factory. When you reuse an existing factory the script automatically reads its on-chain protocol share and ignores any `PROTOCOL_PERCENT` override. The script prints both the `TemplFactory` and `TEMPL` addresses.
 
-5. Register the templ with the backend so the UI and Telegram bridge can discover it:
+5. Record the trusted factory address for downstream services:
+   ```bash
+   export TRUSTED_FACTORY_ADDRESS=<factory address from step 4>
+   ```
+   Use this value in your backend configuration so the Telegram bot only services templs created by that factory. Additional templ deployments should continue to use the same factory to remain eligible for alerts.
+
+6. Register the templ with the backend so the UI and Telegram bridge can discover it:
    - If you exported `BACKEND_URL` before running the deploy script and the deployer signer matches the priest, the script already POSTed to `${BACKEND_URL}/templs`. Check the console output for a binding code or stored chat id.
    - Otherwise run the helper script with the priest key:
      ```bash
@@ -81,7 +87,7 @@ You can deploy from the CLI or via the frontend. The CLI is convenient for scrip
      ```
      The backend responds with either a binding code (invite @templfunbot and send `templ <code>`) or the stored chat id if you pre-populated one. Registration is required before the frontend can list the templ or membership verification will succeed.
 
-6. (Optional) Verify the factory once you deploy to a public network:
+7. (Optional) Verify the factory once you deploy to a public network:
    ```bash
    npx hardhat verify --network <network> $FACTORY_ADDRESS $PROTOCOL_FEE_RECIPIENT $PROTOCOL_PERCENT
    ```
@@ -111,13 +117,14 @@ You can deploy from the CLI or via the frontend. The CLI is convenient for scrip
    BACKEND_SERVER_ID=templ-dev
    APP_BASE_URL=http://localhost:5173
    TELEGRAM_BOT_TOKEN=123456:bot-token-from-botfather
+   TRUSTED_FACTORY_ADDRESS=0x...   ; same factory used during deployment
    ```
 2. Start the backend:
    ```bash
    npm --prefix backend start
    ```
    The server persists Telegram bindings in `backend/groups.db` and begins watching contract events.
-   > The backend only recognises templs that call the `/templs` registration endpoint. The CLI deploy script can auto-register (see step 5 above) or run `scripts/register-templ.js`. Until registration completes, the frontend will not list the templ and membership verification requests will return 404.
+   > The backend only recognises templs that call the `/templs` registration endpoint and (when `TRUSTED_FACTORY_ADDRESS` is set) were emitted by the trusted factory. The CLI deploy script can auto-register (see step 6 above) or run `scripts/register-templ.js`. Until registration completes, the frontend will not list the templ and membership verification requests will return 404.
 
 ### Telegram binding flow
 
@@ -130,6 +137,7 @@ Every templ can expose notifications in a Telegram group. When you register a te
    templ ca83cfbc0f47a9d1
    ```
    The backend polls the bot API, detects the binding code, and links the templ to the chat automatically.
+   Binding codes persist in the backend database, so a server restart will not invalidate them—request a new code only when you intentionally rotate chats.
 3. The bot replies with “Telegram bridge active” to confirm it will relay events.
 
 When governance appoints a new priest or the community moves to another Telegram group, open the templ overview, click **Request binding code**, and approve the EIP-712 signature. The backend verifies the priest wallet against the contract before issuing a fresh code so only the current priest can rebind notifications.

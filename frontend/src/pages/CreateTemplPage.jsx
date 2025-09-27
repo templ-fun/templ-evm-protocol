@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { sanitizeLink } from '../../../shared/linkSanitizer.js';
 import templArtifact from '../contracts/TEMPL.json';
 import templFactoryArtifact from '../contracts/TemplFactory.json';
@@ -15,7 +15,8 @@ export function CreateTemplPage({
   onConnectWallet,
   pushMessage,
   onNavigate,
-  refreshTempls
+  refreshTempls,
+  readProvider
 }) {
   const [tokenAddress, setTokenAddress] = useState('');
   const [entryFee, setEntryFee] = useState('0');
@@ -26,6 +27,7 @@ export function CreateTemplPage({
     const pct = FACTORY_CONFIG.protocolPercent;
     return pct !== undefined ? String(pct) : '10';
   });
+  const [protocolPercentLocked, setProtocolPercentLocked] = useState(() => FACTORY_CONFIG.protocolPercent !== undefined);
   const [maxMembers, setMaxMembers] = useState('0');
   const [dictatorship, setDictatorship] = useState(false);
   const [telegramChatId, setTelegramChatId] = useState('');
@@ -34,6 +36,43 @@ export function CreateTemplPage({
   const [submitting, setSubmitting] = useState(false);
   const [bindingInfo, setBindingInfo] = useState(null);
   const sanitizedBindingHomeLink = sanitizeLink(bindingInfo?.templHomeLink);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function syncProtocolPercent() {
+      setProtocolPercentLocked(false);
+      if (!ethers) return;
+      const addr = factoryAddress?.trim?.() ?? '';
+      if (!/^0x[0-9a-fA-F]{40}$/.test(addr)) {
+        return;
+      }
+      const provider = readProvider || signer?.provider;
+      if (!provider) {
+        return;
+      }
+      try {
+        const factory = new ethers.Contract(addr, templFactoryArtifact.abi, provider);
+        const raw = await factory.protocolPercent();
+        const resolved = Number(raw);
+        if (!Number.isFinite(resolved)) {
+          return;
+        }
+        if (!cancelled) {
+          setProtocolPercent(String(resolved));
+          setProtocolPercentLocked(true);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setProtocolPercentLocked(false);
+        }
+        console.warn('[templ] Failed to load factory protocol percent', err);
+      }
+    }
+    void syncProtocolPercent();
+    return () => {
+      cancelled = true;
+    };
+  }, [factoryAddress, ethers, readProvider, signer?.provider]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -158,7 +197,11 @@ export function CreateTemplPage({
               className={form.input}
               value={protocolPercent}
               onChange={(e) => setProtocolPercent(e.target.value)}
+              disabled={protocolPercentLocked}
             />
+            {protocolPercentLocked ? (
+              <span className={text.hint}>Locked to factory protocol fee</span>
+            ) : null}
           </label>
         </div>
         <label className={form.label}>
