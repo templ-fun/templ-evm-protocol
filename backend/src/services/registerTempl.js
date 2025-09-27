@@ -78,15 +78,7 @@ export async function registerTempl(body, context) {
   next.bindingCode = bindingCode;
 
   if (typeof persist === 'function') {
-    try {
-      persist(contract, next);
-    } catch (err) {
-      const message = String(err?.message || '');
-      if (err?.code === 'SQLITE_CONSTRAINT' || /UNIQUE constraint failed/i.test(message)) {
-        throw templError('Telegram chat already linked', 409);
-      }
-      throw err;
-    }
+    persist(contract, next);
   }
 
   let stored = next;

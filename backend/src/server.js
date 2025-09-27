@@ -150,10 +150,43 @@ function initializeDatabase({ dbPath, db }) {
   database.exec(`
     CREATE TABLE IF NOT EXISTS templ_bindings (
       contract TEXT PRIMARY KEY,
-      telegramChatId TEXT UNIQUE,
+      telegramChatId TEXT,
       priest TEXT
     )
   `);
+
+  try {
+    const indexes = database.prepare("PRAGMA index_list('templ_bindings')").all();
+    const hasTelegramUniqueIndex = Array.isArray(indexes) && indexes.some((index) => {
+      if (!index?.unique) return false;
+      try {
+        const columns = database.prepare(`PRAGMA index_info('${index.name}')`).all();
+        return columns.some((column) => column?.name === 'telegramChatId');
+      } catch {
+        return false;
+      }
+    });
+    if (hasTelegramUniqueIndex) {
+      const dropUnique = database.transaction(() => {
+        database.exec('ALTER TABLE templ_bindings RENAME TO templ_bindings_legacy_unique');
+        database.exec(`
+          CREATE TABLE templ_bindings (
+            contract TEXT PRIMARY KEY,
+            telegramChatId TEXT,
+            priest TEXT
+          )
+        `);
+        database.exec(`
+          INSERT INTO templ_bindings (contract, telegramChatId, priest)
+          SELECT contract, telegramChatId, priest FROM templ_bindings_legacy_unique
+        `);
+        database.exec('DROP TABLE templ_bindings_legacy_unique');
+      });
+      dropUnique();
+    }
+  } catch {
+    /* ignore pragma errors */
+  }
 
   try {
     const columns = database.prepare("PRAGMA table_info('templ_bindings')").all();
