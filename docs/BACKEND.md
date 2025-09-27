@@ -126,7 +126,7 @@ Request body mirrors the frontend’s join payload (`buildJoinTypedData`). The b
 
 ## Telegram notifications
 
-When `TELEGRAM_BOT_TOKEN` is provided, the backend creates a notifier that emits HTML-formatted messages for key lifecycle moments:
+When `TELEGRAM_BOT_TOKEN` is provided, the backend creates a notifier that emits plain-text, newline-delimited messages for key lifecycle moments:
 
 - `AccessPurchased` – announces new members, surfaces the current treasury + unclaimed member pool balances, links to `/templs/join` and `/templs/:address/claim`, and repeats the templ home link when present.
 - `ProposalCreated` – highlights new proposals with their on-chain title/description and links directly to the vote page.
@@ -138,7 +138,7 @@ When `TELEGRAM_BOT_TOKEN` is provided, the backend creates a notifier that emits
 - Daily digest – once every 24 hours each templ receives a "gm" message summarising treasury + unclaimed member pool totals with a call-to-action to claim.
 - Binding acknowledgements – after a user posts the binding code (`templ <hash>`) in their Telegram group, the bot confirms the bridge is active.
 
-Messages are posted with `parse_mode=HTML` and include contract/member addresses in `<code>` blocks to aid scanning. If no bot token exists the backend skips delivery gracefully. When a templ is registered without a chat id, the backend issues a binding code; invite `@templfunbot` to the group and post the code once to finish the handshake.
+Messages are posted as plain text (no `parse_mode`) with labelled contract/member addresses to aid scanning. If no bot token exists the backend skips delivery gracefully. When a templ is registered without a chat id, the backend issues a binding code; invite `@templfunbot` to the group and post the code once to finish the handshake.
 
 ## Contract watchers
 

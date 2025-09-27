@@ -31,7 +31,7 @@ See inline NatSpec comments and Hardhat tests for state transitions.
 - Background tasks send a daily digest (“gm templ crew!”) with treasury/member-pool totals, poll Telegram for binding codes, and acknowledge successful bindings with a “Telegram bridge active” message.
 - Log all failures but keep the HTTP surface responsive.
 
-The notifier posts HTML (Telegram `parse_mode=HTML`). Links are constructed from `APP_BASE_URL` plus appropriate routes.
+The notifier posts newline-delimited plain text (no Telegram `parse_mode`). Links are constructed from `APP_BASE_URL` plus appropriate routes.
 
 ## 3. Frontend flows
 
@@ -46,7 +46,7 @@ MetaMask/`window.ethereum` supplies the signer. All backend calls attach typed s
 - Bot token lives in `TELEGRAM_BOT_TOKEN` (backend env). Without it, the notifier short-circuits and no messages are sent.
 - Chat ids are plain strings stored in SQLite (`templ_bindings.telegramChatId`). Use negative ids for supergroups.
 - Rebinding requires the current priest wallet to sign the `rebind` typed data; once the new code is observed in Telegram the backend clears the previous binding and stores the replacement chat id.
-- Messages include contract/member addresses in `<code>` blocks, the proposal title/description when present, and navigation links built from `APP_BASE_URL`.
+- Messages include labelled contract/member addresses, the proposal title/description when present, and navigation links built from `APP_BASE_URL`.
 - Failures are logged at `warn` level; the backend never throws based on Telegram API errors.
 
 ## 5. Security
