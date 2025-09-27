@@ -15,6 +15,12 @@ Use this doc to understand the JavaScript helpers under `shared/` that both the 
 - Exposes environment helpers used across packages: `isTemplDebugEnabled`, `isTemplE2EDebug`, `isTemplTestEnv`, `readTemplEnv`.
 - Ensures the backend, frontend, and tests agree on how debug flags behave.
 
+### linkSanitizer.js
+
+- Provides `sanitizeLink(value, opts)` for validating templ home links across the stack.
+- Accepts only whitelisted URI schemes (`https`, `http`, `tg` by default) and strips control characters before rendering.
+- Used by the backend notifier and frontend overview page to prevent unsafe links from reaching Telegram or the UI.
+
 ## Testing
 
 `shared/signing.test.js` validates typed-data outputs. The backend test command (`npm --prefix backend test`) imports it automatically so regressions fail CI.
