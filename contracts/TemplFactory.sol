@@ -3,6 +3,7 @@ pragma solidity ^0.8.23;
 
 import {TEMPL} from "./TEMPL.sol";
 import {TemplErrors} from "./TemplErrors.sol";
+import {SSTORE2} from "./libraries/SSTORE2.sol";
 
 /// @title Factory for deploying templ instances
 /// @notice Deploys templ contracts with shared protocol configuration and optional custom splits.
@@ -38,6 +39,7 @@ contract TemplFactory {
 
     address public immutable protocolFeeRecipient;
     uint256 public immutable protocolPercent;
+    address internal immutable templInitCodePointer;
 
     event TemplCreated(
         address indexed templ,
@@ -64,6 +66,7 @@ contract TemplFactory {
         if (_protocolPercent > TOTAL_PERCENT) revert TemplErrors.InvalidPercentageSplit();
         protocolFeeRecipient = _protocolFeeRecipient;
         protocolPercent = _protocolPercent;
+        templInitCodePointer = SSTORE2.write(type(TEMPL).creationCode);
     }
 
     /// @notice Deploys a templ using default fee splits and quorum settings.
@@ -121,7 +124,7 @@ contract TemplFactory {
         uint256 memberPoolPercent = _resolvePercent(cfg.memberPoolPercent, DEFAULT_MEMBER_POOL_PERCENT);
         _validatePercentSplit(burnPercent, treasuryPercent, memberPoolPercent);
 
-        TEMPL templ = new TEMPL(
+        bytes memory constructorArgs = abi.encode(
             cfg.priest,
             protocolFeeRecipient,
             cfg.token,
@@ -137,7 +140,17 @@ contract TemplFactory {
             cfg.maxMembers,
             cfg.homeLink
         );
-        templAddress = address(templ);
+        bytes memory templInitCode = SSTORE2.read(templInitCodePointer);
+        bytes memory initCode = abi.encodePacked(templInitCode, constructorArgs);
+
+        address deployed;
+        assembly {
+            let dataPtr := add(initCode, 0x20)
+            let dataLen := mload(initCode)
+            deployed := create(0, dataPtr, dataLen)
+        }
+        if (deployed == address(0)) revert TemplErrors.DeploymentFailed();
+        templAddress = deployed;
         emit TemplCreated(
             templAddress,
             msg.sender,
