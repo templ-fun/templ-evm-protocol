@@ -36,6 +36,8 @@ library TemplErrors {
     error ProposalNotPassed();
     /// @notice Thrown when a low-level call in proposal execution fails.
     error ProposalExecutionFailed();
+    /// @notice Thrown when a contract deployment fails.
+    error DeploymentFailed();
     /// @notice Thrown when the recipient address is the zero address.
     error InvalidRecipient();
     /// @notice Thrown when a required amount parameter is zero.
