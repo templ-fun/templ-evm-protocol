@@ -63,7 +63,7 @@ describe("Governance coverage gaps", function () {
       .createProposalDisbandTreasury(await token.getAddress(), VOTING_PERIOD);
     const priestId = (await templ.proposalCount()) - 1n;
     const priestProposal = await templ.proposals(priestId);
-    expect(priestProposal.quorumExempt).to.equal(true);
+    expect(priestProposal.quorumExempt).to.equal(false);
 
     // Successful creation with zero entry fee and updateFeeSplit false exercises the skipped branches
     await templ.connect(member).createProposalSetPaused(false, VOTING_PERIOD);
@@ -202,11 +202,13 @@ describe("Governance coverage gaps", function () {
     const [, priest, voter] = accounts;
 
     await mintToUsers(token, [priest, voter], ENTRY_FEE * 4n);
-    await purchaseAccess(templ, token, [voter]);
 
     await templ
       .connect(priest)
       .createProposalDisbandTreasury(await token.getAddress(), VOTING_PERIOD);
+
+    const proposal = await templ.proposals(0);
+    expect(proposal.quorumExempt).to.equal(true);
 
     await expect(templ.executeProposal(0)).to.be.revertedWithCustomError(
       templ,
@@ -215,6 +217,8 @@ describe("Governance coverage gaps", function () {
 
     await ethers.provider.send("evm_increaseTime", [VOTING_PERIOD + DAY]);
     await ethers.provider.send("evm_mine", []);
+
+    await token.connect(priest).transfer(await templ.getAddress(), ENTRY_FEE);
 
     await templ.executeProposal(0);
   });

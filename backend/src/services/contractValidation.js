@@ -8,6 +8,7 @@ const factoryValidationCache = new Map();
 const TEMPL_CREATED_TOPIC = ethers.id(
   'TemplCreated(address,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,address,bool,uint256,string)'
 );
+const DEFAULT_FACTORY_LOG_CHUNK = 200_000;
 
 export async function ensureContractDeployed({ provider, contractAddress, chainId }) {
   if (!provider) {
@@ -72,17 +73,57 @@ export async function ensureTemplFromFactory({ provider, contractAddress, factor
   }
 
   const templTopic = ethers.zeroPadValue(templAddress, 32);
-  try {
-    const logs = await provider.getLogs({
-      address: factory,
-      topics: [TEMPL_CREATED_TOPIC, templTopic]
-    });
-    if (!logs.length) {
-      throw templError('Templ was not deployed by the trusted factory', 403);
+  const startBlockEnv = process.env.TRUSTED_FACTORY_DEPLOYMENT_BLOCK?.trim();
+  let startBlock = 0;
+  if (startBlockEnv) {
+    const parsed = Number(startBlockEnv);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      throw templError('Invalid TRUSTED_FACTORY_DEPLOYMENT_BLOCK', 400);
     }
+    startBlock = Math.floor(parsed);
+  }
+  const chunkEnv = process.env.TRUSTED_FACTORY_LOG_CHUNK?.trim();
+  let chunkSize = DEFAULT_FACTORY_LOG_CHUNK;
+  if (chunkEnv) {
+    const parsed = Number(chunkEnv);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      throw templError('Invalid TRUSTED_FACTORY_LOG_CHUNK', 400);
+    }
+    chunkSize = Math.floor(parsed);
+  }
+  let latestBlock;
+  try {
+    latestBlock = await provider.getBlockNumber();
   } catch (err) {
     if (err?.statusCode) throw err;
     throw templError('Unable to verify templ factory origin', 400);
   }
-  factoryValidationCache.set(cacheKey, true);
+  if (startBlock > latestBlock) {
+    startBlock = latestBlock;
+  }
+  let fromBlock = startBlock;
+  while (fromBlock <= latestBlock) {
+    const toBlock = Math.min(latestBlock, fromBlock + chunkSize - 1);
+    let logs;
+    try {
+      logs = await provider.getLogs({
+        address: factory,
+        topics: [TEMPL_CREATED_TOPIC, templTopic],
+        fromBlock,
+        toBlock
+      });
+    } catch (err) {
+      if (err?.statusCode) throw err;
+      throw templError('Unable to verify templ factory origin', 400);
+    }
+    if (logs.length) {
+      factoryValidationCache.set(cacheKey, true);
+      return;
+    }
+    if (toBlock == latestBlock) {
+      break;
+    }
+    fromBlock = toBlock + 1;
+  }
+  throw templError('Templ was not deployed by the trusted factory', 403);
 }

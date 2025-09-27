@@ -1,4 +1,5 @@
 import { randomBytes } from 'crypto';
+import { ethers } from 'ethers';
 import { ensureContractDeployed, ensurePriestMatchesOnChain, ensureTemplFromFactory } from './contractValidation.js';
 
 function templError(message, statusCode) {
@@ -13,11 +14,11 @@ function normaliseAddress(value, field) {
   if (!value || typeof value !== 'string') {
     throw templError(`Missing ${field}`, 400);
   }
-  const normalised = value.toLowerCase();
-  if (!normalised.startsWith('0x') || normalised.length !== 42) {
+  const trimmed = value.trim();
+  if (!ethers.isAddress(trimmed)) {
     throw templError(`Invalid ${field}`, 400);
   }
-  return normalised;
+  return trimmed.toLowerCase();
 }
 
 function normaliseChatId(value) {

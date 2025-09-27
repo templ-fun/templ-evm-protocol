@@ -1,3 +1,5 @@
+import { ethers } from 'ethers';
+
 function templError(message, statusCode) {
   return Object.assign(new Error(message), { statusCode });
 }
@@ -6,11 +8,11 @@ function normaliseAddress(value, field) {
   if (!value || typeof value !== 'string') {
     throw templError(`Missing ${field}`, 400);
   }
-  const normalised = value.toLowerCase();
-  if (!normalised.startsWith('0x') || normalised.length !== 42) {
+  const trimmed = value.trim();
+  if (!ethers.isAddress(trimmed)) {
     throw templError(`Invalid ${field}`, 400);
   }
-  return normalised;
+  return trimmed.toLowerCase();
 }
 
 function buildLinks(contract) {

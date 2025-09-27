@@ -159,15 +159,19 @@ describe("Priest dictatorship governance toggle", function () {
   });
 
   it("enforces the voting window for quorum-exempt priest proposals", async function () {
-    await mintToUsers(token, [priest], TOKEN_SUPPLY);
-    await purchaseAccess(templ, token, [priest]);
+    const solo = await deployTempl({ entryFee: ENTRY_FEE });
+    const soloTempl = solo.templ;
+    const soloPriest = solo.priest;
 
-    await templ
-      .connect(priest)
+    await soloTempl
+      .connect(soloPriest)
       .createProposalDisbandTreasury(ethers.ZeroAddress, VOTING_PERIOD, "priest disband", "dict");
 
-    await expect(templ.executeProposal(0)).to.be.revertedWithCustomError(
-      templ,
+    const proposal = await soloTempl.proposals(0);
+    expect(proposal.quorumExempt).to.equal(true);
+
+    await expect(soloTempl.executeProposal(0)).to.be.revertedWithCustomError(
+      soloTempl,
       "VotingNotEnded"
     );
 
@@ -175,9 +179,9 @@ describe("Priest dictatorship governance toggle", function () {
     await ethers.provider.send("evm_mine", []);
 
     const donation = ethers.parseUnits("1", 18);
-    await priest.sendTransaction({ to: await templ.getAddress(), value: donation });
+    await soloPriest.sendTransaction({ to: await soloTempl.getAddress(), value: donation });
 
-    await expect(templ.executeProposal(0)).to.not.be.reverted;
+    await expect(soloTempl.executeProposal(0)).to.not.be.reverted;
   });
 
   it("blocks voting and execution of existing proposals once dictatorship begins", async function () {

@@ -29,6 +29,8 @@ Running the server requires a JSON-RPC endpoint and aligned frontend/server IDs.
 | `APP_BASE_URL` | Base URL used when generating links inside Telegram messages. | unset |
 | `TELEGRAM_BOT_TOKEN` | Bot token used to post templ updates and poll binding codes. Leave unset to disable Telegram delivery. | unset |
 | `TRUSTED_FACTORY_ADDRESS` | Optional factory address; when set, only templs emitted by this factory may register or rebind, and cached records from other factories are skipped on restart. | unset |
+| `TRUSTED_FACTORY_DEPLOYMENT_BLOCK` | Optional block height where the trusted factory was deployed. When set, factory-origin checks start from this block to avoid full-history log scans. | unset |
+| `TRUSTED_FACTORY_LOG_CHUNK` | Optional chunk size (number of blocks) used when paging factory logs. Tune to satisfy RPC provider limits. | `200000` |
 | `REQUIRE_CONTRACT_VERIFY` | When `1` (or `NODE_ENV=production`), enforce contract deployment + priest matching before accepting `/templs` requests. | `0` |
 | `LOG_LEVEL` | Pino log level. | `info` |
 | `RATE_LIMIT_STORE` | `memory` or `redis`; automatically switches to Redis when `REDIS_URL` is provided. | auto |

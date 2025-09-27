@@ -171,7 +171,7 @@ abstract contract TemplGovernance is TemplTreasury {
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
         p.action = Action.DisbandTreasury;
         p.token = _token;
-        if (msg.sender == priest) {
+        if (msg.sender == priest && memberList.length <= 1) {
             p.quorumExempt = true;
         } else if (p.quorumReachedAt != 0) {
             _activateDisbandLock(p);
@@ -294,6 +294,7 @@ abstract contract TemplGovernance is TemplTreasury {
         if (proposal.quorumExempt && block.timestamp < proposal.endTime) {
             revert TemplErrors.VotingNotEnded();
         }
+        bool quorumMaintained = true;
         if (!proposal.quorumExempt) {
             if (proposal.quorumReachedAt == 0) {
                 revert TemplErrors.QuorumNotReached();
@@ -305,16 +306,31 @@ abstract contract TemplGovernance is TemplTreasury {
                 proposal.eligibleVoters != 0 &&
                 proposal.yesVotes * 100 < quorumPercent * proposal.eligibleVoters
             ) {
-                revert TemplErrors.QuorumNotReached();
+                quorumMaintained = false;
             }
         }
         if (proposal.executed) revert TemplErrors.AlreadyExecuted();
 
-        if (proposal.yesVotes <= proposal.noVotes) revert TemplErrors.ProposalNotPassed();
+        address proposerAddr = proposal.proposer;
+
+        if (!quorumMaintained || proposal.yesVotes <= proposal.noVotes) {
+            if (proposal.action != Action.DisbandTreasury) {
+                if (!quorumMaintained) revert TemplErrors.QuorumNotReached();
+                revert TemplErrors.ProposalNotPassed();
+            }
+            _finalizeDisbandFailure(proposal);
+            proposal.executed = true;
+            if (hasActiveProposal[proposerAddr] && activeProposalId[proposerAddr] == _proposalId) {
+                hasActiveProposal[proposerAddr] = false;
+                activeProposalId[proposerAddr] = 0;
+            }
+            emit ProposalExecuted(_proposalId, false, hex"");
+            _removeActiveProposal(_proposalId);
+            return;
+        }
 
         proposal.executed = true;
 
-        address proposerAddr = proposal.proposer;
         if (hasActiveProposal[proposerAddr] && activeProposalId[proposerAddr] == _proposalId) {
             hasActiveProposal[proposerAddr] = false;
             activeProposalId[proposerAddr] = 0;
