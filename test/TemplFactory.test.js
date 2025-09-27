@@ -395,4 +395,54 @@ describe("TemplFactory", function () {
         expect(await templ.treasuryPercent()).to.equal(30);
         expect(await templ.memberPoolPercent()).to.equal(30);
     });
+
+    it("applies defaults for quorum, delay, and burn address when config omits them", async function () {
+        const [, priest, protocolRecipient] = await ethers.getSigners();
+        const token = await deployToken("Defaults2", "DEF2");
+        const Factory = await ethers.getContractFactory("TemplFactory");
+        const factory = await Factory.deploy(protocolRecipient.address, 11);
+        await factory.waitForDeployment();
+
+        const config = {
+            priest: priest.address,
+            token: await token.getAddress(),
+            entryFee: ENTRY_FEE,
+            burnPercent: 30,
+            treasuryPercent: 30,
+            memberPoolPercent: 29,
+            quorumPercent: 0,
+            executionDelaySeconds: 0,
+            burnAddress: ethers.ZeroAddress,
+            priestIsDictator: false,
+            maxMembers: 0,
+            homeLink: "",
+        };
+
+        const templAddress = await factory.createTemplWithConfig.staticCall(config);
+        await factory.createTemplWithConfig(config);
+        const templ = await ethers.getContractAt("TEMPL", templAddress);
+
+        expect(await templ.quorumPercent()).to.equal(33n);
+        expect(await templ.executionDelayAfterQuorum()).to.equal(7n * 24n * 60n * 60n);
+        expect(await templ.burnAddress()).to.equal("0x000000000000000000000000000000000000dEaD");
+    });
+
+    it("reverts with DeploymentFailed when the stored init code is missing", async function () {
+        const [, , protocolRecipient] = await ethers.getSigners();
+        const token = await deployToken("Gas", "GAS");
+        const FactoryHarness = await ethers.getContractFactory(
+            "contracts/mocks/TemplFactoryHarness.sol:TemplFactoryHarness"
+        );
+        const factory = await FactoryHarness.deploy(protocolRecipient.address, 10);
+        await factory.waitForDeployment();
+
+        const pointer = await factory.exposeInitPointer();
+        const originalCode = await ethers.provider.getCode(pointer);
+        await ethers.provider.send("hardhat_setCode", [pointer, "0x"]);
+
+        await expect(factory.createTempl(await token.getAddress(), ENTRY_FEE))
+            .to.be.revertedWithCustomError(factory, "DeploymentFailed");
+
+        await ethers.provider.send("hardhat_setCode", [pointer, originalCode]);
+    });
 });

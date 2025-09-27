@@ -1,5 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { deployTempl } = require("./utils/deploy");
 const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
 
 describe("External reward remainders", function () {
@@ -51,5 +52,36 @@ describe("External reward remainders", function () {
     const totalMembers = await templ.getMemberCount();
     const expected = sevenTokens / totalMembers;
     expect(claimableLate).to.equal(expected);
+  });
+
+  it("allows members to claim ERC20 rewards routed through disband", async function () {
+    const entryFee = ethers.parseUnits("100", 18);
+    const { templ, token, accounts, priest } = await deployTempl({ entryFee, priestIsDictator: true });
+    const [, , member1, member2] = accounts;
+
+    await mintToUsers(token, [member1, member2], entryFee * 3n);
+    await purchaseAccess(templ, token, [member1, member2], entryFee);
+
+    const RewardToken = await ethers.getContractFactory(
+      "contracts/mocks/TestToken.sol:TestToken"
+    );
+    const rewardToken = await RewardToken.deploy("Reward", "RWD", 18);
+    await rewardToken.waitForDeployment();
+
+    const rewardAmount = ethers.parseUnits("12", 18);
+    await rewardToken.mint(priest.address, rewardAmount);
+    await rewardToken.connect(priest).transfer(await templ.getAddress(), rewardAmount);
+
+    await templ.connect(priest).disbandTreasuryDAO(rewardToken.target);
+
+    const claimable = await templ.getClaimableExternalToken(member1.address, rewardToken.target);
+    expect(claimable).to.be.gt(0n);
+
+    const before = await rewardToken.balanceOf(member1.address);
+    await expect(templ.connect(member1).claimExternalToken(rewardToken.target))
+      .to.emit(templ, "ExternalRewardClaimed")
+      .withArgs(rewardToken.target, member1.address, claimable);
+    const after = await rewardToken.balanceOf(member1.address);
+    expect(after - before).to.equal(claimable);
   });
 });

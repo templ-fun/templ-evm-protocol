@@ -53,9 +53,9 @@ describe("executeProposal reverts", function () {
       accounts: highQuorumAccounts,
     } = await deployTempl({ entryFee: ENTRY_FEE, quorumPercent: 60 });
 
-    const members = highQuorumAccounts.slice(2, 7);
+    const members = highQuorumAccounts.slice(2, 8);
 
-    await mintToUsers(highQuorumToken, members, ENTRY_FEE);
+    await mintToUsers(highQuorumToken, members, ENTRY_FEE * 3n);
     await purchaseAccess(highQuorumTempl, highQuorumToken, members);
 
     await highQuorumTempl
@@ -64,10 +64,14 @@ describe("executeProposal reverts", function () {
 
     await highQuorumTempl.connect(members[1]).vote(0, true);
     await highQuorumTempl.connect(members[2]).vote(0, true);
-
-    await highQuorumTempl.connect(members[1]).vote(0, false);
+    await highQuorumTempl.connect(members[3]).vote(0, true);
+    await highQuorumTempl.connect(members[4]).vote(0, true);
 
     const delay = Number(await highQuorumTempl.executionDelayAfterQuorum());
+
+    await highQuorumTempl.connect(members[3]).vote(0, false);
+    await highQuorumTempl.connect(members[2]).vote(0, false);
+
     await ethers.provider.send("evm_increaseTime", [delay + 1]);
     await ethers.provider.send("evm_mine", []);
 

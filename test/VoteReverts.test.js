@@ -40,4 +40,22 @@ describe("Vote reverts", function () {
         await expect(templ.connect(member1).vote(0, true))
             .to.be.revertedWithCustomError(templ, "VotingEnded");
     });
+
+    it("counts first-time yes votes from non-proposers", async function () {
+        const member2 = accounts[3];
+        await mintToUsers(token, [member2], TOKEN_SUPPLY);
+        await purchaseAccess(templ, token, [member2]);
+
+        await templ.connect(member1).createProposalWithdrawTreasury(
+            token.target,
+            member1.address,
+            ethers.parseUnits("10", 18),
+            "Coverage",
+            7 * 24 * 60 * 60
+        );
+
+        await templ.connect(member2).vote(0, true);
+        const proposal = await templ.proposals(0);
+        expect(proposal.yesVotes).to.equal(2n);
+    });
 });
