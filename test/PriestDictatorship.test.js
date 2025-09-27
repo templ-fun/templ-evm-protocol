@@ -107,6 +107,18 @@ describe("Priest dictatorship governance toggle", function () {
     expect(await templ.priestIsDictator()).to.equal(false);
   });
 
+  it("permits the priest to call DAO functions directly under dictatorship", async function () {
+    await templ
+      .connect(member)
+      .createProposalSetDictatorship(true, VOTING_PERIOD, TITLE_ENABLE, DESC_DICTATORSHIP);
+    await advanceBeyondExecutionDelay();
+    await templ.executeProposal(0);
+
+    await expect(
+      templ.connect(priest).setTemplHomeLinkDAO("https://dict-templ")
+    ).to.emit(templ, "TemplHomeLinkUpdated");
+  });
+
   it("blocks new governance proposals while dictatorship is active", async function () {
     await templ
       .connect(member)
@@ -202,6 +214,29 @@ describe("Priest dictatorship governance toggle", function () {
       templ,
       "DictatorshipEnabled"
     );
+
+    await expect(templ.executeProposal(0)).to.be.revertedWithCustomError(
+      templ,
+      "DictatorshipEnabled"
+    );
+  });
+
+  it("blocks executing non-dictatorship proposals while dictatorship is enabled", async function () {
+    const [, , memberA, memberB] = accounts;
+    await mintToUsers(token, [memberA, memberB], TOKEN_SUPPLY);
+    await purchaseAccess(templ, token, [memberA, memberB]);
+
+    await templ
+      .connect(memberA)
+      .createProposalSetPaused(false, VOTING_PERIOD, "Pause", "Pre-dictatorship");
+
+    await templ
+      .connect(memberB)
+      .createProposalSetDictatorship(true, VOTING_PERIOD, TITLE_ENABLE, DESC_DICTATORSHIP);
+    await templ.connect(memberA).vote(1, true);
+    await templ.connect(memberB).vote(1, true);
+    await advanceBeyondExecutionDelay();
+    await templ.executeProposal(1);
 
     await expect(templ.executeProposal(0)).to.be.revertedWithCustomError(
       templ,

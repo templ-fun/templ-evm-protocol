@@ -141,6 +141,7 @@ contract TemplFactory {
             cfg.homeLink
         );
         bytes memory templInitCode = SSTORE2.read(templInitCodePointer);
+        if (templInitCode.length == 0) revert TemplErrors.DeploymentFailed();
         bytes memory initCode = abi.encodePacked(templInitCode, constructorArgs);
 
         address deployed;

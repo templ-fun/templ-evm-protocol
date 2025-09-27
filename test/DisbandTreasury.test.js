@@ -1,4 +1,5 @@
 const { expect } = require("chai");
+const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
 const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
@@ -62,6 +63,20 @@ describe("Disband Treasury", function () {
     await templ.connect(m1).claimMemberPool();
     await templ.connect(m2).claimMemberPool();
     await templ.connect(m3).claimMemberPool();
+  });
+
+  it("executes disband proposals through governance", async function () {
+    const accessToken = await templ.accessToken();
+    await templ
+      .connect(m1)
+      .createProposalDisbandTreasury(accessToken, VOTING_PERIOD);
+    await templ.connect(m2).vote(0, true);
+    await templ.connect(m3).vote(0, true);
+
+    await advanceTimeBeyondVoting();
+    await expect(templ.executeProposal(0))
+      .to.emit(templ, "TreasuryDisbanded")
+      .withArgs(0, accessToken, anyValue, anyValue, anyValue);
   });
 
   it("reverts when called directly (NotDAO)", async function () {

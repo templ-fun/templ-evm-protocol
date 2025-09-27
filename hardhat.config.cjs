@@ -18,7 +18,10 @@ if (process.env.SKIP_MOCKS === "true") {
   );
 }
 
-const usingCoverage = process.env.SOLIDITY_COVERAGE === "true";
+const usingCoverage =
+  process.argv.includes("coverage") ||
+  process.env.SOLIDITY_COVERAGE === "true" ||
+  process.env.SOLIDITY_COVERAGE === "1";
 
 /** @type import("hardhat/config").HardhatUserConfig */
 const config = {

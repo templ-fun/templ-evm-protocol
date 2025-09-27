@@ -13,6 +13,8 @@ describe("Active proposal indexing", function () {
     await mintToUsers(token, members, entryFee * 5n);
     await purchaseAccess(templ, token, members, entryFee);
 
+    await templ.pruneInactiveProposals(0);
+
     for (let i = 0; i < 3; i += 1) {
       await templ
         .connect(members[i])
@@ -34,5 +36,23 @@ describe("Active proposal indexing", function () {
 
     const removedAgain = await templ.pruneInactiveProposals.staticCall(10);
     expect(removedAgain).to.equal(0n);
+  });
+
+  it("stops pruning when the latest proposal is still active", async function () {
+    const votingPeriod = 7 * 24 * 60 * 60;
+    const { templ, token, accounts } = await deployTempl({ executionDelay: 60 });
+    const entryFee = await templ.entryFee();
+    const members = accounts.slice(2, 4);
+
+    await mintToUsers(token, members, entryFee * 2n);
+    await purchaseAccess(templ, token, members, entryFee);
+
+    await templ
+      .connect(members[0])
+      .createProposalSetPaused(false, votingPeriod, "Live", "Still active");
+
+    const attempt = await templ.pruneInactiveProposals.staticCall(5);
+    expect(attempt).to.equal(0n);
+    await templ.pruneInactiveProposals(5);
   });
 });
