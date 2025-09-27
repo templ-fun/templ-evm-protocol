@@ -118,4 +118,59 @@ contract TemplHarness is TEMPL {
         RewardCheckpoint storage cp = rewards.checkpoints[len - 1];
         return (cp.blockNumber, cp.timestamp, cp.cumulative);
     }
+
+    /// @dev Exposes the active proposal removal helper to hit guard branches in tests.
+    function harnessRemoveActiveProposal(uint256 proposalId) external {
+        _removeActiveProposal(proposalId);
+    }
+
+    /// @dev Seeds an external remainder so flush logic can be exercised under controlled scenarios.
+    function harnessSeedExternalRemainder(address token, uint256 remainder, uint256 cumulative) external {
+        ExternalRewardState storage rewards = externalRewards[token];
+        if (!rewards.exists) {
+            rewards.exists = true;
+            externalRewardTokens.push(token);
+        }
+        rewards.rewardRemainder = remainder;
+        rewards.cumulativeRewards = cumulative;
+    }
+
+    /// @dev Flushes external remainders for coverage purposes.
+    function harnessFlushExternalRemainders() external {
+        _flushExternalRemainders();
+    }
+
+    /// @dev Clears the member list for zero-member edge tests.
+    function harnessClearMembers() external {
+        delete memberList;
+    }
+
+    /// @dev Calls the internal disband helper for branch coverage.
+    function harnessDisbandTreasury(address token) external {
+        _disbandTreasury(token, 0);
+    }
+
+    /// @dev Invokes the disband failure finalizer with custom parameters for coverage.
+    function harnessFinalizeDisbandFailure(
+        bool executed,
+        uint256 eligibleVoters,
+        uint256 yesVotes,
+        uint256 noVotes,
+        bool lockActive
+    ) external {
+        Proposal storage proposal = proposals[0];
+        proposal.executed = executed;
+        proposal.eligibleVoters = eligibleVoters;
+        proposal.yesVotes = yesVotes;
+        proposal.noVotes = noVotes;
+        proposal.disbandJoinLock = lockActive;
+        if (lockActive) {
+            if (activeDisbandJoinLocks == 0) {
+                activeDisbandJoinLocks = 1;
+            }
+        } else {
+            activeDisbandJoinLocks = 0;
+        }
+        _finalizeDisbandFailure(proposal);
+    }
 }

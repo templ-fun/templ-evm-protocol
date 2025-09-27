@@ -11,6 +11,7 @@ library SSTORE2 {
 
     /// @notice Stores `_data` and returns the pointer contract address for later retrieval.
     function write(bytes memory _data) internal returns (address pointer) {
+        if (_data.length == 0) revert WriteError();
         bytes memory code = Bytecode.creationCodeFor(abi.encodePacked(hex"00", _data));
         assembly {
             pointer := create(0, add(code, 0x20), mload(code))

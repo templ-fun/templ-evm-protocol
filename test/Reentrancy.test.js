@@ -167,5 +167,28 @@ describe("Reentrancy protection", function () {
         templ.connect(member).claimExternalToken(rewardToken.target)
       ).to.be.revertedWithCustomError(templ, "ReentrancyGuardReentrantCall");
     });
+
+    it("invokes the claimExternal callback when configured", async function () {
+      const ReentrantToken = await ethers.getContractFactory(
+        "contracts/mocks/ReentrantToken.sol:ReentrantToken"
+      );
+      const rewardToken = await ReentrantToken.deploy("Reentrant Reward", "RRW");
+      await rewardToken.waitForDeployment();
+
+      const Target = await ethers.getContractFactory(
+        "contracts/mocks/ClaimExternalTarget.sol:ClaimExternalTarget"
+      );
+      const target = await Target.deploy();
+      await target.waitForDeployment();
+
+      await rewardToken.setTempl(await target.getAddress());
+      await rewardToken.mint((await ethers.getSigners())[0].address, ENTRY_FEE);
+
+      await rewardToken.setCallback(3);
+
+      await expect(rewardToken.transfer((await ethers.getSigners())[1].address, ENTRY_FEE))
+        .to.emit(target, "ExternalClaim")
+        .withArgs(await rewardToken.getAddress(), await rewardToken.getAddress());
+    });
   });
 });
