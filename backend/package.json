@@ -20,7 +20,8 @@
     "express": "^4.20.0",
     "express-rate-limit": "^7.0.0",
     "helmet": "^7.0.0",
-    "pino": "^9.9.0"
+    "pino": "^9.9.0",
+    "better-sqlite3": "^9.6.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250927.0",

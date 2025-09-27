@@ -27,7 +27,7 @@ Reference diagrams live in [`docs/CORE_FLOW_DOCS.MD`](docs/CORE_FLOW_DOCS.MD).
 ## Current Stack
 
 - **Contracts** – Solidity 0.8.23 factory + templ modules (see `contracts/`) mint templ instances with: configurable entry-fee splits (burn/treasury/member/protocol), auto-enrolment of the deploying priest (so the first paid member pool accrues to them), an on-chain home link for off-chain surfaces, and a typed governance router (pause/config/withdraw/disband/priest/cap/dictatorship/home-link). Disband proposals enforce a join lock, and optional member caps auto-pause new joins until governance adjusts the cap and explicitly unpauses. Fee accounting assumes standard ERC-20 transfers; taxed tokens are unsupported.
-- **Backend API + Telegram bot** – Node 22/Express server that runs unchanged on Cloudflare Workers (via the Node compatibility layer). It persists templ metadata in Cloudflare D1, verifies signatures, confirms membership, and streams contract events to a Telegram group via a bot token.
+- **Backend API + Telegram bot** – Node 22/Express service that expects a long-lived runtime (Render, Fly, Railway, bare metal, etc.). It persists templ metadata in Cloudflare D1 (or the in-memory fallback), verifies signatures, confirms membership, and streams contract events to a Telegram group via a bot token. Leader election (backed by D1 when available) makes sure exactly one instance emits notifications at a time.
 - **Frontend control center** – Vite + React single-page app for deploying templs, joining with proof-of-purchase, raising proposals (with on-chain title/description), and casting votes. The landing page pulls templ deployments directly from the configured factory (and merges Telegram metadata from the backend) so every community is one click away. The bundle is completely static, so production builds ship via Cloudflare Pages (edge-cached, zero-idle hosting). Flows are split into dedicated routes:
 - `/templs/create` – deploy + register and optionally bind a Telegram chat id.
 - `/templs/join` – purchase access, then verify membership via the backend.
@@ -42,6 +42,8 @@ Telegram notifications are optional but encouraged. When a templ is registered, 
 
 ```bash
 npm ci                         # install root + subpackage deps
+npm --prefix backend ci        # install backend deps
+npm --prefix frontend ci       # install frontend deps
 npm run compile                # compile contracts
 npm --prefix backend test      # backend tests (includes shared signing tests)
 npm --prefix frontend run dev  # run the SPA against your local backend
@@ -83,8 +85,10 @@ In separate terminals you’ll typically run:
 | `RATE_LIMIT_STORE` | `memory` or `redis`; auto-selects Redis when `REDIS_URL` is set. |
 | `REDIS_URL` | Redis endpoint used for distributed rate limiting (required when `RATE_LIMIT_STORE=redis`). |
 | `REQUIRE_CONTRACT_VERIFY` | Set to `1` in production to enforce on-chain contract + priest validation. |
+| `SQLITE_DB_PATH` | Optional path to a SQLite database file when running outside Cloudflare D1 (e.g. `/var/lib/templ/templ.db`). |
+| `LEADER_TTL_MS` | Optional override (milliseconds) for the leadership lease duration backed by D1/SQLite. Default: `60000`. |
 
-The backend persists templ registrations in Cloudflare D1 (`templ_bindings`) whenever a Worker binding is provided. Local development (or environments without D1) automatically fall back to the in-memory adapter so you can iterate without provisioning infrastructure. Bindings store the templ contract, optional Telegram chat id, last-seen priest, and any outstanding binding code so notifications resume instantly after a restart.
+The backend persists templ registrations in Cloudflare D1 (`templ_bindings`) whenever a D1 binding is configured, or in a local SQLite file when `SQLITE_DB_PATH` is set. Local development (or environments without either store) automatically falls back to the in-memory adapter so you can iterate without provisioning infrastructure. Bindings store the templ contract, optional Telegram chat id, last-seen priest, and any outstanding binding code so notifications resume instantly after a restart. When D1/SQLite is available, it also powers leader election so only one replica emits Telegram notifications at a time.
 
 ### Frontend (`frontend/.env`)
 
@@ -110,26 +114,24 @@ The frontend connects to the user’s browser wallet (MetaMask or any `window.et
 
 Leaving the chat id empty is perfectly fine — the templ remains usable, and you can complete the binding later from the templ overview page. When governance appoints a new priest or the community moves chats, request a new binding code from the overview, sign the EIP-712 rebind payload, and post the snippet in the destination group to re-link the bot.
 
-### Cloudflare deployment & cost profile
+### Deployment profile
 
-The backend is now optimised for Cloudflare’s serverless stack:
+The backend now expects a traditional Node runtime. Run it on your favourite host (Fly, Railway, Render, bare metal, Kubernetes, etc.) and keep a single **active** process connected to your RPC provider. When Cloudflare D1 (or another SQL database) is available, the server uses it for durable bindings and leader election: one replica advertises itself as the leader and emits Telegram notifications, while additional replicas remain on standby.
 
-- **Workers-hosted Express.** `wrangler` deploys the existing Express app (with no code changes) behind the Workers Node compatibility layer, giving us instant global distribution and automatic scaling to meet request bursts.
-- **Cloudflare D1 persistence.** Templ registrations and replay-protection entries live in a D1 database that scales with your usage. Workers bill per-request and D1 bills per query/storage, so low-traffic communities stay comfortably inside the generous free tier while larger deployments only pay for what they consume.
-- **Zero-idle infrastructure.** There are no VMs or containers to babysit. Deployments bundle the API, persistence schema, and background tasks into the Worker runtime, so the platform elastically scales down to zero when idle and up during spikes.
-- **Cloudflare Pages frontend.** The React SPA builds to static assets that Pages serves from every Cloudflare POP with built-in caching and generous free quotas (build minutes + bandwidth). Publishing the frontend alongside the Worker keeps the entire stack on pay-for-what-you-use primitives.
-
-This architecture is inexpensive (no always-on compute) and production-ready: the Cloudflare global network keeps p99 latencies low, and D1’s regional replicas provide durability without introducing another managed service.
+- **Persistent Node host.** The Express server keeps WebSocket/JSON-RPC connections alive to stream on-chain events. Background jobs (proposal deadline checks, Telegram binding polls, daily digests) run inside the same process, so you should treat the service like any other long-lived API.
+- **Cloudflare D1 (optional but recommended).** D1 stores templ bindings, signature replay protection, and the `leader_election` row that coordinates active replicas. If you skip D1, the backend falls back to the in-memory adapter (suitable for local dev or single-instance deployments).
+- **Cloudflare Pages frontend.** The React SPA still builds to static assets that Pages serves from every POP with generous free tiers. Publishing the frontend separately keeps hosting costs near-zero while leaving you free to deploy the backend wherever you prefer.
+- **Redis rate limiting (optional).** Point `RATE_LIMIT_STORE` at Redis when you need shared rate limiting across multiple nodes; otherwise, the in-memory store is sufficient for single-instance deployments.
 
 ### One-command Cloudflare deploys
 
 Use `npm run deploy:cloudflare` to orchestrate a full-stack deploy once you populate `.cloudflare.env` (see `scripts/cloudflare.deploy.example.env`). The script:
 
-- Generates a Wrangler config with your Worker vars, applies the D1 schema, and syncs secrets such as `RPC_URL` + `TELEGRAM_BOT_TOKEN`.
-- Runs the Worker deploy via Wrangler (or skip with `--skip-worker`).
+- Applies the D1 schema so your production database contains the required tables (`templ_bindings`, `used_signatures`, `leader_election`).
+- Requires `--skip-worker`; you should deploy the backend with your preferred Node hosting provider.
 - Builds the SPA with your `VITE_*` overrides and pushes the static bundle to Cloudflare Pages (skip with `--skip-pages`).
 
-By pinning everything to Cloudflare primitives you can update the API or UI independently but still ship both sides through a single command when bootstrapping a new environment.
+After the script completes, take the generated `backend/wrangler.deployment.toml` (for reference) and deploy the backend separately. Populate the same environment variables (`RPC_URL`, `TELEGRAM_BOT_TOKEN`, etc.) on your host, ensure one instance is running, and let the D1-backed leader election prevent duplicate Telegram notifications.
 
 ## Repository layout
 

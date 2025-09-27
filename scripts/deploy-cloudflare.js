@@ -175,6 +175,11 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   loadEnv(args.envFile);
 
+  if (!args.skipWorker) {
+    console.error('Error: templ backend no longer deploys to Cloudflare Workers. Rerun with --skip-worker and deploy the Node service separately.');
+    process.exit(1);
+  }
+
   const workerName = requireEnv('CF_WORKER_NAME', 'Set CF_WORKER_NAME to the Cloudflare Worker name to deploy.');
   const d1Name = requireEnv('CF_D1_DATABASE_NAME', 'Set CF_D1_DATABASE_NAME to your D1 database name.');
   const d1Id = requireEnv('CF_D1_DATABASE_ID', 'Set CF_D1_DATABASE_ID to your D1 database id.');
@@ -264,7 +269,7 @@ async function main() {
     }
   }
   if (!frontendEnv.VITE_BACKEND_URL) {
-    throw new Error('VITE_BACKEND_URL must be set to your Worker URL so the SPA points at the deployed API.');
+    throw new Error('VITE_BACKEND_URL must be set to your production backend URL so the SPA points at the deployed API.');
   }
   if (!frontendEnv.VITE_BACKEND_SERVER_ID) {
     frontendEnv.VITE_BACKEND_SERVER_ID = backendServerId;

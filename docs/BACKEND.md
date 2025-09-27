@@ -1,6 +1,6 @@
 # Backend Service
 
-Use this doc to configure and operate the Node 22 / Express backend that handles the “web2” side of templ. The service now targets Cloudflare Workers by default (via the Node compatibility layer) while still running locally with `npm --prefix backend start`:
+Use this doc to configure and operate the Node 22 / Express backend that handles the “web2” side of templ. The service runs as a long-lived Node process (Render, Fly, Railway, bare metal, etc.); local development still works with `npm --prefix backend start`:
 
 * verifies EIP-712 signatures for templ creation, rebind requests, and membership checks,
 * persists a minimal Telegram chat ↔ contract binding so notifications survive restarts,
@@ -33,18 +33,25 @@ Running the server requires a JSON-RPC endpoint and aligned frontend/server IDs.
 | `LOG_LEVEL` | Pino log level. | `info` |
 | `RATE_LIMIT_STORE` | `memory` or `redis`; automatically switches to Redis when `REDIS_URL` is provided. | auto |
 | `REDIS_URL` | Redis endpoint used for rate limiting when `RATE_LIMIT_STORE=redis`. | unset |
-When deployed via Cloudflare Workers, bind the production D1 database (e.g. `TEMPL_DB`) in `wrangler.toml` and pass it to `createApp`. Local development without a binding automatically uses the in-memory adapter so you can iterate without provisioning D1. Signature replay protection still retains entries for ~6 hours (matching the defaults baked into the adapters).
+| `LEADER_TTL_MS` | Leader election heartbeat window (milliseconds) when using D1/SQLite. Must be ≥ 15000. | `60000` |
+| `SQLITE_DB_PATH` | Optional path to a persistent SQLite database when running outside Cloudflare. Leave unset to use D1 (if bound) or the in-memory store. | unset |
+Bind a Cloudflare D1 database (or any SQLite-compatible store) in production so the service can persist templ metadata, replay protection, and leader election state. Local development without a binding automatically uses the in-memory adapter so you can iterate without provisioning D1. Signature replay protection still retains entries for ~6 hours (matching the defaults baked into the adapters).
 
-> Use `npm run deploy:cloudflare` (see `scripts/cloudflare.deploy.example.env`) to generate a Wrangler config, sync secrets, and deploy the Worker alongside the static frontend in one pass. The script automatically applies the D1 schema before publishing so the Worker can start accepting requests immediately.
+> `npm run deploy:cloudflare` (see `scripts/cloudflare.deploy.example.env`) now focuses on applying the D1 schema and deploying the frontend to Cloudflare Pages. Run it with `--skip-worker` and deploy the backend with your preferred Node host. Make sure the deployed process can reach the same D1 database to participate in leader election.
 
 ### Data model
 
-Cloudflare D1 is the default persistence layer and stores:
+Cloudflare D1 (or SQLite when `SQLITE_DB_PATH` is set) stores:
 
 - `templ_bindings(contract TEXT PRIMARY KEY, telegramChatId TEXT UNIQUE, priest TEXT, bindingCode TEXT)` – durable mapping between templ contracts and their optional Telegram chats plus the last-seen priest address. `bindingCode` stores any outstanding binding snippet so servers can restart without invalidating it. Rows keep `telegramChatId = NULL` until a binding completes so watchers can resume after restarts without leaking chat ids.
 - `used_signatures(signature TEXT PRIMARY KEY, expiresAt INTEGER)` – replay protection for typed requests. Entries expire automatically (6 hour retention) and fall back to the in-memory cache only when D1 is unavailable.
+- `leader_election(id TEXT PRIMARY KEY, owner TEXT, expiresAt INTEGER)` – coordinates which backend instance currently holds the notification lease. Only the owning instance streams Telegram events and runs interval jobs; other replicas stay idle until the lease expires.
 
 Templ home links continue to live on-chain; watchers refresh them (and priest data) from the contract whenever listeners attach so the chain remains the canonical source of truth.
+
+### Leadership & scaling
+
+Only one backend instance should emit Telegram notifications at a time. When D1 is configured the server uses the `leader_election` table to acquire a short-lived lease (`LEADER_TTL_MS`, default 60s). The leader streams templ events, polls Telegram for binding codes, and sends daily digests; standby replicas wake up periodically to refresh the lease and take over if the active process disappears. Without D1 you should run a single instance so notifications are not duplicated.
 
 ## Routes
 

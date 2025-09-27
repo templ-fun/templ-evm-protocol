@@ -16,7 +16,7 @@ After deploying, the UI surfaces a one-time Telegram binding code. Invite `@temp
 
 The app focuses on templ lifecycle flows while Telegram handles coordination through backend-triggered notifications.
 
-Because the build output is static, production runs deploy cleanly to [Cloudflare Pages](https://pages.cloudflare.com/) (edge-cached, zero-idle hosting). Pair Pages with the Workers backend to keep the entire stack inside Cloudflare’s free/usage-based tiers.
+Because the build output is static, production runs deploy cleanly to [Cloudflare Pages](https://pages.cloudflare.com/) (edge-cached, zero-idle hosting). Pair Pages with your Node-hosted backend (Render/Fly/Railway/etc.) so the entire stack stays inexpensive while keeping the UI globally cached.
 
 ## Local development
 
@@ -62,7 +62,7 @@ The app uses `ethers.BrowserProvider` and the injected `window.ethereum`. Connec
   ```bash
   wrangler pages deploy frontend/dist --project-name templ-frontend --branch production
   ```
-- Or reuse the top-level `npm run deploy:cloudflare` helper to deploy the Worker and Pages site in one command (see `scripts/cloudflare.deploy.example.env`).
+- Or reuse the top-level `npm run deploy:cloudflare` helper to apply the database schema and publish the Pages site in one command (see `scripts/cloudflare.deploy.example.env`).
 
 ### Join flow
 

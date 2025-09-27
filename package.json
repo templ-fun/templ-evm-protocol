@@ -4,7 +4,7 @@
   "description": "TEMPL - Smart contracts for DAO-governed token-gated access",
   "type": "module",
   "engines": {
-    "node": "22.18.0"
+    "node": ">=22.18.0"
   },
   "scripts": {
     "compile": "npx hardhat compile",
