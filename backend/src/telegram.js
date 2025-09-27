@@ -14,22 +14,18 @@ import { logger as defaultLogger } from './logger.js';
 
 const TELEGRAM_API_BASE = 'https://api.telegram.org';
 
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+function normaliseInline(value) {
+  return String(value ?? '').replace(/\s+/g, ' ').trim();
 }
 
-function escapeAttribute(value) {
-  return escapeHtml(value).replace(/`/g, '&#96;');
+function normaliseMultiline(value) {
+  return String(value ?? '').replace(/\r\n/g, '\n').trim();
 }
 
 function formatAddress(label, address) {
-  if (!address) return '';
-  return `<b>${escapeHtml(label)}</b> <code>${escapeHtml(String(address).toLowerCase())}</code>`;
+  const normalised = normaliseInline(address);
+  if (!normalised) return '';
+  return `${label} ${normalised.toLowerCase()}`;
 }
 
 function formatTimestamp(seconds) {
@@ -39,36 +35,42 @@ function formatTimestamp(seconds) {
   try {
     const ts = Number(seconds);
     const date = ts > 10_000 ? new Date(ts * 1000) : new Date(ts);
-    return `<b>When:</b> ${escapeHtml(date.toISOString())}`;
+    return `When: ${date.toISOString()}`;
   } catch {
     return '';
   }
-}
-
-function buildLink(baseUrl, path, label) {
-  if (!baseUrl) return '';
-  const base = String(baseUrl).replace(/\/$/, '');
-  const full = `${base}${path}`;
-  return `<a href="${escapeAttribute(full)}">${escapeHtml(label)}</a>`;
 }
 
 function formatAmount(label, value) {
   if (value === undefined || value === null) return '';
   try {
     const asBigInt = BigInt(value);
-    return `<b>${escapeHtml(label)}</b> ${escapeHtml(asBigInt.toString())}`;
+    return `${label} ${asBigInt.toString()}`;
   } catch {
-    return `<b>${escapeHtml(label)}</b> ${escapeHtml(String(value))}`;
+    return `${label} ${normaliseInline(value)}`;
   }
 }
 
-function formatHomeLinkLine(value) {
+function formatDescriptionBlock(description) {
+  const text = normaliseMultiline(description);
+  if (!text) return [];
+  const lines = text.split('\n').map((line) => line.trimEnd());
+  return ['', 'Description:', ...lines];
+}
+
+function formatHomeLinkLines(value) {
   const { href, text } = sanitizeLink(value);
-  if (!text) return '';
+  const trimmedText = normaliseInline(text);
   if (href) {
-    return `<b>Home:</b> <a href="${escapeAttribute(href)}">${escapeHtml(text)}</a>`;
+    if (trimmedText && trimmedText !== href) {
+      return [`Home: ${trimmedText}`, href];
+    }
+    return [`Home: ${href}`];
   }
-  return `<b>Home:</b> ${escapeHtml(text)}`;
+  if (trimmedText) {
+    return [`Home: ${trimmedText}`];
+  }
+  return [];
 }
 
 /**
@@ -80,7 +82,6 @@ async function postTelegramMessage({ botToken, chatId, text, disablePreview = tr
   const body = new URLSearchParams();
   body.set('chat_id', String(chatId));
   body.set('text', text);
-  body.set('parse_mode', 'HTML');
   if (disablePreview) body.set('disable_web_page_preview', 'true');
 
   try {
@@ -106,6 +107,35 @@ function normaliseChatId(value) {
   return trimmed.length ? trimmed : null;
 }
 
+function flattenLines(lines) {
+  const output = [];
+  for (const line of lines) {
+    if (Array.isArray(line)) {
+      output.push(...flattenLines(line));
+      continue;
+    }
+    if (line === null || line === undefined) continue;
+    output.push(String(line));
+  }
+  return output;
+}
+
+function buildLinksBlock(...linkGroups) {
+  const lines = [];
+  for (const group of linkGroups) {
+    if (!group) continue;
+    if (Array.isArray(group)) {
+      for (const entry of group) {
+        if (entry) lines.push(entry);
+      }
+    } else if (group) {
+      lines.push(group);
+    }
+  }
+  if (!lines.length) return [];
+  return ['', ...lines];
+}
+
 /**
  * @param {TelegramNotifierOptions} [opts]
  */
@@ -116,129 +146,150 @@ export function createTelegramNotifier({ botToken, linkBaseUrl, logger = default
   async function send(chatId, lines) {
     const target = normaliseChatId(chatId);
     if (!token || !target) return;
-    const text = lines.filter(Boolean).join('\n');
+    const text = flattenLines(lines).join('\n').trim();
     if (!text) return;
     await postTelegramMessage({ botToken: token, chatId: target, text, logger });
   }
 
   function templLink(path, label) {
     if (!baseUrl) return '';
-    return buildLink(baseUrl, path, label);
+    const base = baseUrl.replace(/\/$/, '');
+    const url = `${base}${path}`;
+    return `${label}: ${url}`;
   }
 
   return {
     isEnabled: Boolean(token),
     async notifyAccessPurchased({ chatId, contractAddress, memberAddress, purchaseId, treasuryBalance, memberPoolBalance, timestamp, homeLink }) {
       await send(chatId, [
-        '<b>New member joined</b>',
+        'New member joined',
         formatAddress('Templ:', contractAddress),
         formatAddress('Member:', memberAddress),
-        purchaseId != null ? `<b>Purchase ID:</b> ${escapeHtml(String(purchaseId))}` : '',
+        purchaseId != null ? `Purchase ID: ${normaliseInline(purchaseId)}` : '',
         formatTimestamp(timestamp),
         formatAmount('Treasury balance:', treasuryBalance),
         formatAmount('Member pool:', memberPoolBalance),
-        templLink(`/templs/join?address=${encodeURIComponent(String(contractAddress || ''))}`, 'Join this templ'),
-        templLink(`/templs/${encodeURIComponent(String(contractAddress || ''))}/claim`, 'Claim member rewards'),
-        formatHomeLinkLine(homeLink)
+        buildLinksBlock(
+          templLink(`/templs/join?address=${encodeURIComponent(String(contractAddress || ''))}`, 'Join this templ'),
+          templLink(`/templs/${encodeURIComponent(String(contractAddress || ''))}/claim`, 'Claim member rewards'),
+          formatHomeLinkLines(homeLink)
+        )
       ]);
     },
     async notifyProposalCreated({ chatId, contractAddress, proposer, proposalId, endTime, title, description, homeLink }) {
-      const titleLine = title ? `<b>${escapeHtml(title)}</b>` : '<b>Proposal created</b>';
-      const descriptionLine = description ? escapeHtml(description) : '';
+      const header = title ? `Proposal: ${normaliseInline(title)}` : 'Proposal created';
       await send(chatId, [
-        titleLine,
+        header,
         formatAddress('Templ:', contractAddress),
         formatAddress('Proposer:', proposer),
-        proposalId != null ? `<b>Proposal ID:</b> ${escapeHtml(String(proposalId))}` : '',
+        proposalId != null ? `Proposal ID: ${normaliseInline(proposalId)}` : '',
         endTime ? formatTimestamp(endTime) : '',
-        descriptionLine,
-        templLink(
-          `/templs/${encodeURIComponent(String(contractAddress || ''))}/proposals/${encodeURIComponent(String(proposalId || ''))}/vote`,
-          'Review & vote'
-        ),
-        formatHomeLinkLine(homeLink)
+        formatDescriptionBlock(description),
+        buildLinksBlock(
+          templLink(
+            `/templs/${encodeURIComponent(String(contractAddress || ''))}/proposals/${encodeURIComponent(String(proposalId || ''))}/vote`,
+            'Review & vote'
+          ),
+          formatHomeLinkLines(homeLink)
+        )
       ]);
     },
     async notifyProposalQuorumReached({ chatId, contractAddress, proposalId, title, description, quorumReachedAt, homeLink }) {
       await send(chatId, [
-        '<b>Quorum reached</b>',
-        title ? `<b>${escapeHtml(title)}</b>` : '',
-        description ? escapeHtml(description) : '',
+        'Quorum reached',
+        title ? `Proposal: ${normaliseInline(title)}` : '',
+        formatDescriptionBlock(description),
         formatTimestamp(quorumReachedAt),
-        templLink(
-          `/templs/${encodeURIComponent(String(contractAddress || ''))}/proposals/${encodeURIComponent(String(proposalId || ''))}/vote`,
-          'Cast or adjust your vote'
-        ),
-        formatHomeLinkLine(homeLink)
+        buildLinksBlock(
+          templLink(
+            `/templs/${encodeURIComponent(String(contractAddress || ''))}/proposals/${encodeURIComponent(String(proposalId || ''))}/vote`,
+            'Cast or adjust your vote'
+          ),
+          formatHomeLinkLines(homeLink)
+        )
       ]);
     },
     async notifyVoteCast({ chatId, contractAddress, voter, proposalId, support, title, homeLink }) {
       const supportLabel = support === true || String(support).toLowerCase() === 'true' ? 'YES' : 'NO';
       await send(chatId, [
-        '<b>Vote recorded</b>',
+        'Vote recorded',
         formatAddress('Templ:', contractAddress),
         formatAddress('Voter:', voter),
-        proposalId != null ? `<b>Proposal ID:</b> ${escapeHtml(String(proposalId))}` : '',
-        title ? `<b>Title:</b> ${escapeHtml(title)}` : '',
-        `<b>Choice:</b> ${escapeHtml(supportLabel)}`,
-        templLink(
-          `/templs/${encodeURIComponent(String(contractAddress || ''))}/proposals/${encodeURIComponent(String(proposalId || ''))}/vote`,
-          'Review proposal'
-        ),
-        formatHomeLinkLine(homeLink)
+        proposalId != null ? `Proposal ID: ${normaliseInline(proposalId)}` : '',
+        title ? `Title: ${normaliseInline(title)}` : '',
+        `Choice: ${supportLabel}`,
+        buildLinksBlock(
+          templLink(
+            `/templs/${encodeURIComponent(String(contractAddress || ''))}/proposals/${encodeURIComponent(String(proposalId || ''))}/vote`,
+            'Review proposal'
+          ),
+          formatHomeLinkLines(homeLink)
+        )
       ]);
     },
     async notifyProposalVotingClosed({ chatId, contractAddress, proposalId, title, description, endedAt, canExecute, homeLink }) {
-      const statusLine = canExecute ? '<b>Status:</b> Ready for execution ✅' : '<b>Status:</b> Not executable ❌';
+      const statusLine = canExecute ? 'Status: Ready for execution ✅' : 'Status: Not executable ❌';
       await send(chatId, [
-        '<b>Voting window ended</b>',
-        title ? `<b>${escapeHtml(title)}</b>` : '',
-        description ? escapeHtml(description) : '',
+        'Voting window ended',
+        title ? `Proposal: ${normaliseInline(title)}` : '',
+        formatDescriptionBlock(description),
         formatTimestamp(endedAt),
         statusLine,
-        templLink(
-          `/templs/${encodeURIComponent(String(contractAddress || ''))}/proposals/${encodeURIComponent(String(proposalId || ''))}/vote`,
-          canExecute ? 'Execute or review results' : 'Review results'
-        ),
-        formatHomeLinkLine(homeLink)
+        buildLinksBlock(
+          templLink(
+            `/templs/${encodeURIComponent(String(contractAddress || ''))}/proposals/${encodeURIComponent(String(proposalId || ''))}/vote`,
+            canExecute ? 'Execute or review results' : 'Review results'
+          ),
+          formatHomeLinkLines(homeLink)
+        )
       ]);
     },
     async notifyPriestChanged({ chatId, contractAddress, oldPriest, newPriest, homeLink }) {
       await send(chatId, [
-        '<b>Priest updated</b>',
+        'Priest updated',
         formatAddress('Templ:', contractAddress),
         formatAddress('Old priest:', oldPriest),
         formatAddress('New priest:', newPriest),
-        templLink(`/templs/${encodeURIComponent(String(contractAddress || ''))}`, 'Templ overview'),
-        formatHomeLinkLine(homeLink)
+        buildLinksBlock(
+          templLink(`/templs/${encodeURIComponent(String(contractAddress || ''))}`, 'Templ overview'),
+          formatHomeLinkLines(homeLink)
+        )
       ]);
     },
     async notifyDailyDigest({ chatId, contractAddress, treasuryBalance, memberPoolBalance, homeLink }) {
       await send(chatId, [
-        '<b>gm templ crew!</b>',
+        'gm templ crew!',
         formatAmount('Treasury balance:', treasuryBalance),
         formatAmount('Member pool (unclaimed):', memberPoolBalance),
-        templLink(`/templs/${encodeURIComponent(String(contractAddress || ''))}/claim`, 'Claim your share'),
-        templLink(`/templs/${encodeURIComponent(String(contractAddress || ''))}`, 'Open templ overview'),
-        formatHomeLinkLine(homeLink)
+        buildLinksBlock(
+          templLink(`/templs/${encodeURIComponent(String(contractAddress || ''))}/claim`, 'Claim your share'),
+          templLink(`/templs/${encodeURIComponent(String(contractAddress || ''))}`, 'Open templ overview'),
+          formatHomeLinkLines(homeLink)
+        )
       ]);
     },
     async notifyTemplHomeLinkUpdated({ chatId, contractAddress, previousLink, newLink }) {
-      const previousLine = previousLink ? formatHomeLinkLine(previousLink).replace('<b>Home:</b>', '<b>Previous:</b>') : '';
-      const newLine = formatHomeLinkLine(newLink).replace('<b>Home:</b>', '<b>New:</b>');
+      const previousLines = formatHomeLinkLines(previousLink).map((line) => line.replace(/^Home:/, 'Previous:'));
+      const newLines = formatHomeLinkLines(newLink).map((line) => line.replace(/^Home:/, 'New:'));
       await send(chatId, [
-        '<b>Templ home link updated</b>',
+        'Templ home link updated',
         formatAddress('Templ:', contractAddress),
-        previousLine,
-        newLine
+        previousLines,
+        newLines,
+        buildLinksBlock(
+          templLink(`/templs/${encodeURIComponent(String(contractAddress || ''))}`, 'Templ overview'),
+          formatHomeLinkLines(newLink)
+        )
       ]);
     },
     async notifyBindingComplete({ chatId, contractAddress, homeLink }) {
       await send(chatId, [
-        '<b>Telegram bridge active</b>',
+        'Telegram bridge active',
         formatAddress('Templ:', contractAddress),
-        formatHomeLinkLine(homeLink),
-        templLink(`/templs/${encodeURIComponent(String(contractAddress || ''))}`, 'Open templ overview')
+        buildLinksBlock(
+          templLink(`/templs/${encodeURIComponent(String(contractAddress || ''))}`, 'Open templ overview'),
+          formatHomeLinkLines(homeLink)
+        )
       ]);
     },
     /**
