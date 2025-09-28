@@ -181,7 +181,7 @@ Cloudflare Pages is an edge-cached static host with an extremely generous free t
 
 ### Automating the Cloudflare deploy (backend + frontend)
 
-To avoid juggling multiple commands, use the bundled `scripts/deploy-cloudflare.js` wrapper. It reads a single env file, applies the D1 schema (so your SQLite/D1 store has the required tables), builds the SPA with the correct `VITE_*` overrides, and publishes to Cloudflare Pages. The backend must be deployed separately on your Node host; the script now enforces `--skip-worker`.
+To avoid juggling multiple commands, use the bundled `scripts/deploy-cloudflare.js` wrapper. It reads a single env file, applies the D1 schema (so your SQLite/D1 store has the required tables), builds the SPA with the correct `VITE_*` overrides, and publishes to Cloudflare Pages. The backend must be deployed separately on your Node host; pass `--skip-worker` to skip the Worker deploy while still preparing the database and Pages artifacts.
 
 1. Copy the template and fill it out with your production details (database ids, secrets, Pages project, etc.). Worker fields remain for backwards compatibility—leave them as placeholders when running with `--skip-worker`:
    ```bash
@@ -192,7 +192,7 @@ To avoid juggling multiple commands, use the bundled `scripts/deploy-cloudflare.
    ```bash
    npm run deploy:cloudflare
    ```
-   - `--skip-worker` is required; backend deployment now happens outside of Cloudflare Workers.
+  - `--skip-worker` omits the Worker deploy. Worker-only env vars (`CF_WORKER_NAME`, `TELEGRAM_BOT_TOKEN`, `RPC_URL`, etc.) are optional in this mode, but Wrangler still needs D1 + Pages settings.
    - `--skip-pages` skips the Pages deploy when you’re adjusting backend configuration only.
 
 ### Telegram binding flow

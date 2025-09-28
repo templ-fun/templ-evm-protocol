@@ -38,7 +38,7 @@ Running the server requires a JSON-RPC endpoint and aligned frontend/server IDs.
 | `SQLITE_DB_PATH` | Optional path to a persistent SQLite database when running outside Cloudflare. Leave unset to use D1 (if bound) or the in-memory store. | unset |
 Bind a Cloudflare D1 database (or any SQLite-compatible store) in production so the service can persist templ metadata, replay protection, and leader election state. The D1 adapter automatically provisions the required tables on boot, so no manual migrations are necessary beyond providing the binding. Local development without a binding automatically uses the in-memory adapter so you can iterate without provisioning D1. Signature replay protection still retains entries for ~6 hours (matching the defaults baked into the adapters).
 
-> `npm run deploy:cloudflare` (see `scripts/cloudflare.deploy.example.env`) now focuses on applying the D1 schema and deploying the frontend to Cloudflare Pages. Run it with `--skip-worker` and deploy the backend with your preferred Node host. Make sure the deployed process can reach the same D1 database to participate in leader election.
+> `npm run deploy:cloudflare` (see `scripts/cloudflare.deploy.example.env`) now focuses on applying the D1 schema and deploying the frontend to Cloudflare Pages. Pass `--skip-worker` when the backend runs outside Cloudflare Workers; Worker-only env vars become optional in that mode. Make sure the deployed process can reach the same D1 database to participate in leader election.
 
 ### Data model
 

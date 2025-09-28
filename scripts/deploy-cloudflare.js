@@ -175,12 +175,10 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   loadEnv(args.envFile);
 
-  if (!args.skipWorker) {
-    console.error('Error: templ backend no longer deploys to Cloudflare Workers. Rerun with --skip-worker and deploy the Node service separately.');
-    process.exit(1);
-  }
-
-  const workerName = requireEnv('CF_WORKER_NAME', 'Set CF_WORKER_NAME to the Cloudflare Worker name to deploy.');
+  const workerNameEnv = trim(process.env.CF_WORKER_NAME);
+  const workerName = args.skipWorker
+    ? workerNameEnv || 'templ-backend-worker'
+    : requireEnv('CF_WORKER_NAME', 'Set CF_WORKER_NAME to the Cloudflare Worker name to deploy.');
   const d1Name = requireEnv('CF_D1_DATABASE_NAME', 'Set CF_D1_DATABASE_NAME to your D1 database name.');
   const d1Id = requireEnv('CF_D1_DATABASE_ID', 'Set CF_D1_DATABASE_ID to your D1 database id.');
   const d1Binding = trim(process.env.CF_D1_BINDING) || 'TEMPL_DB';
@@ -190,9 +188,14 @@ async function main() {
     'TRUSTED_FACTORY_ADDRESS',
     'TRUSTED_FACTORY_ADDRESS must be set so the backend only serves templs from your factory.'
   );
-  const telegramToken = requireEnv('TELEGRAM_BOT_TOKEN', 'Provide TELEGRAM_BOT_TOKEN so the Worker can notify chats.');
-  const rpcUrl = requireEnv('RPC_URL', 'Provide RPC_URL for the Worker to watch on-chain events.');
-  const backendServerId = trim(process.env.BACKEND_SERVER_ID) || workerName;
+  const telegramToken = args.skipWorker
+    ? optionalEnv('TELEGRAM_BOT_TOKEN')
+    : requireEnv('TELEGRAM_BOT_TOKEN', 'Provide TELEGRAM_BOT_TOKEN so the Worker can notify chats.');
+  const rpcUrl = args.skipWorker
+    ? optionalEnv('RPC_URL')
+    : requireEnv('RPC_URL', 'Provide RPC_URL for the Worker to watch on-chain events.');
+  const backendServerId =
+    trim(process.env.BACKEND_SERVER_ID) || (!args.skipWorker ? workerName : 'templ-backend-node');
   const factoryBlock = trim(process.env.TRUSTED_FACTORY_DEPLOYMENT_BLOCK);
   const requireVerify = trim(process.env.REQUIRE_CONTRACT_VERIFY) || '1';
   const cloudflareAccount = requireEnv('CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_ACCOUNT_ID is required for Wrangler API calls.');
