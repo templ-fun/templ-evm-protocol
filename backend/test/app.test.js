@@ -209,12 +209,12 @@ test('register templ persists record and wires contract listeners', async (t) =>
   });
 
   const wallet = Wallet.createRandom();
-  const { contractAddress, response } = await registerTempl(app, wallet, { telegramChatId: 'telegram-chat-1' }, { contractState });
+  const { contractAddress, response } = await registerTempl(app, wallet, { telegramChatId: '-1000000000001' }, { contractState });
 
   assert.equal(response.contract, contractAddress);
   assert.equal(response.priest, wallet.address.toLowerCase());
-  assert.equal(response.telegramChatId, 'telegram-chat-1');
-  assert.equal(response.groupId, 'telegram-chat-1');
+  assert.equal(response.telegramChatId, '-1000000000001');
+  assert.equal(response.groupId, '-1000000000001');
   assert.equal(response.templHomeLink, '');
   assert.equal(response.bindingCode, null);
 
@@ -246,7 +246,7 @@ test('register templ persists record and wires contract listeners', async (t) =>
 
   const bindings = await persistence.listBindings();
   const storedRow = bindings.find((row) => row.contract === contractAddress);
-  assert.equal(storedRow?.telegramChatId, 'telegram-chat-1');
+  assert.equal(storedRow?.telegramChatId, '-1000000000001');
   assert.equal(storedRow?.bindingCode, null);
 });
 
@@ -317,7 +317,7 @@ test('list templs includes registered entries', async (t) => {
   });
 
   const templWallet = Wallet.createRandom();
-  const { contractAddress } = await registerTempl(app, templWallet, { telegramChatId: 'chat-42' }, { contractState });
+  const { contractAddress } = await registerTempl(app, templWallet, { telegramChatId: '-1000000000042' }, { contractState });
 
   const res = await request(app).get('/templs?include=chatId');
   assert.equal(res.status, 403);
@@ -339,7 +339,7 @@ test('templs listing exposes home links but never chat ids', async (t) => {
   });
 
   const templWallet = Wallet.createRandom();
-  const { contractAddress } = await registerTempl(app, templWallet, { telegramChatId: 'chat-77', templHomeLink: 'https://templ.fun/demo' }, { contractState });
+  const { contractAddress } = await registerTempl(app, templWallet, { telegramChatId: '-1000000000077', templHomeLink: 'https://templ.fun/demo' }, { contractState });
 
   const res = await request(app).get('/templs?include=homeLink');
   assert.equal(res.status, 200);
@@ -502,7 +502,7 @@ test('active proposals are backfilled after restart', async (t) => {
   });
 
   const wallet = Wallet.createRandom();
-  const { contractAddress } = await registerTempl(app, wallet, { telegramChatId: 'chat-restore' }, { contractState });
+  const { contractAddress } = await registerTempl(app, wallet, { telegramChatId: '-1000000000099' }, { contractState });
   const entry = handlerRegistry.get(contractAddress);
   assert.ok(entry, 'contract handlers registered');
 
@@ -542,7 +542,7 @@ test('priest can request telegram rebind with signature', async (t) => {
   });
 
   const wallet = Wallet.createRandom();
-  const { contractAddress } = await registerTempl(app, wallet, { telegramChatId: 'chat-old' }, { contractState });
+  const { contractAddress } = await registerTempl(app, wallet, { telegramChatId: '-1000000000101' }, { contractState });
 
   const typed = buildRebindTypedData({ chainId: 1337, contractAddress });
   const signature = await wallet.signTypedData(typed.domain, typed.types, typed.message);
@@ -582,7 +582,7 @@ test('rebind rejects signatures from non-priest wallet', async (t) => {
   });
 
   const priestWallet = Wallet.createRandom();
-  const { contractAddress } = await registerTempl(app, priestWallet, { telegramChatId: 'chat-old' }, { contractState });
+  const { contractAddress } = await registerTempl(app, priestWallet, { telegramChatId: '-1000000000101' }, { contractState });
   const intruder = Wallet.createRandom();
 
   const typed = buildRebindTypedData({ chainId: 1337, contractAddress });
@@ -611,7 +611,7 @@ test('rebind rejects non-priest after restart when cache is missing priest', asy
   });
 
   const priestWallet = Wallet.createRandom();
-  const { contractAddress } = await registerTempl(app, priestWallet, { telegramChatId: 'chat-old' }, { contractState });
+  const { contractAddress } = await registerTempl(app, priestWallet, { telegramChatId: '-1000000000101' }, { contractState });
 
   const cachedRecord = app.locals.templs.get(contractAddress);
   assert.ok(cachedRecord, 'record should exist in cache');

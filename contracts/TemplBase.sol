@@ -48,6 +48,8 @@ abstract contract TemplBase is ReentrancyGuard {
     bool public paused;
     /// @notice Counter for active disband proposals that temporarily block joins.
     uint256 public activeDisbandJoinLocks;
+    uint256[] internal disbandLockIds;
+    mapping(uint256 => uint256) internal disbandLockIndex;
     /// @notice Maximum allowed members when greater than zero (0 = uncapped).
     /// @dev Named in uppercase historically; kept for backwards compatibility with emitted ABI.
     uint256 public MAX_MEMBERS;
@@ -270,6 +272,7 @@ abstract contract TemplBase is ReentrancyGuard {
 
     /// @dev Blocks membership joins while a disband proposal is pending execution.
     modifier whenDisbandUnlocked() {
+        _refreshDisbandLocks();
         if (activeDisbandJoinLocks != 0) revert TemplErrors.DisbandLockActive();
         _;
     }
@@ -385,4 +388,6 @@ abstract contract TemplBase is ReentrancyGuard {
             emit ContractPaused(true);
         }
     }
+
+    function _refreshDisbandLocks() internal virtual {}
 }

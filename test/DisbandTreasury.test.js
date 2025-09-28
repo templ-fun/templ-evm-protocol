@@ -152,6 +152,26 @@ describe("Disband Treasury", function () {
       .to.be.revertedWithCustomError(templ, "DisbandLockActive");
   });
 
+  it("releases the disband lock automatically after the voting window expires", async function () {
+    const newJoiner = accounts[7];
+    const accessToken = await templ.accessToken();
+
+    await mintToUsers(token, [newJoiner], ENTRY_FEE);
+
+    await templ
+      .connect(m1)
+      .createProposalDisbandTreasury(accessToken, VOTING_PERIOD);
+
+    expect(await templ.activeDisbandJoinLocks()).to.equal(1n);
+
+    await ethers.provider.send("evm_increaseTime", [VOTING_PERIOD + 1]);
+    await ethers.provider.send("evm_mine", []);
+
+    await token.connect(newJoiner).approve(await templ.getAddress(), ENTRY_FEE);
+    await expect(templ.connect(newJoiner).purchaseAccess()).to.not.be.reverted;
+    expect(await templ.activeDisbandJoinLocks()).to.equal(0n);
+  });
+
   it("reverts when treasury is empty", async function () {
     const accessToken = await templ.accessToken();
 
