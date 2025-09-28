@@ -831,6 +831,28 @@ export async function createApp(opts) {
     provider,
     trustedFactoryAddress
   });
+  let restorationCompleted = false;
+  restorationPromise
+    .then(() => {
+      restorationCompleted = true;
+    })
+    .catch(() => {
+      restorationCompleted = true;
+    });
+
+  const waitForRestoration = async (req, res, next) => {
+    if (restorationCompleted) {
+      return next();
+    }
+    try {
+      await restorationPromise;
+      restorationCompleted = true;
+      return next();
+    } catch (err) {
+      logger?.warn?.({ err: String(err?.message || err) }, 'Templ cache not ready for request');
+      return res.status(503).json({ error: 'Service warming up, retry shortly' });
+    }
+  };
 
   const leadershipSupported = typeof persistenceAdapter?.acquireLeadership === 'function';
   let isLeader = false;
@@ -949,6 +971,7 @@ export async function createApp(opts) {
     listBindings
   };
 
+  app.use(waitForRestoration);
   app.use(templsRouter(context));
   app.use(joinRouter(context));
 

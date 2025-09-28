@@ -243,25 +243,54 @@ export async function fetchTemplStats({
  *   }
  * }>>}
  */
-export async function loadFactoryTempls({ ethers, provider, factoryAddress }) {
+export async function loadFactoryTempls({
+  ethers,
+  provider,
+  factoryAddress,
+  fromBlock,
+  chunkSize = 20_000
+}) {
   if (!ethers || !provider || !factoryAddress) return [];
   const address = factoryAddress.trim();
   if (!address) return [];
 
   /** @type {import('ethers').Contract} */
   const factory = new ethers.Contract(address, templFactoryArtifact.abi, provider);
-  /** @type {Array<any>} */
-  let events = [];
+  const eventFilter = factory.filters?.TemplCreated ? factory.filters.TemplCreated() : null;
+
+  const normalisedFromBlock = Number.isFinite(fromBlock) && fromBlock >= 0 ? Math.floor(fromBlock) : 0;
+  let latestBlock = normalisedFromBlock;
   try {
-    if (factory.filters?.TemplCreated) {
-      const filter = factory.filters.TemplCreated();
-      events = await factory.queryFilter(filter);
-    } else {
-      events = await factory.queryFilter('TemplCreated');
-    }
+    latestBlock = Number(await provider.getBlockNumber());
   } catch (err) {
-    console.warn('[templ] Failed to query factory templs', err);
-    return [];
+    console.warn('[templ] Failed to read latest block number, falling back to fromBlock', err);
+  }
+  if (!Number.isFinite(latestBlock) || latestBlock < normalisedFromBlock) {
+    latestBlock = normalisedFromBlock;
+  }
+
+  /** @type {Array<any>} */
+  const events = [];
+  let window = Number.isFinite(chunkSize) && chunkSize > 0 ? Math.floor(chunkSize) : 20_000;
+  if (window < 1) window = 1;
+  let start = normalisedFromBlock;
+
+  while (start <= latestBlock) {
+    const end = Math.min(start + window - 1, latestBlock);
+    try {
+      const chunk = eventFilter
+        ? await factory.queryFilter(eventFilter, start, end)
+        : await factory.queryFilter('TemplCreated', start, end);
+      events.push(...chunk);
+      start = end + 1;
+    } catch (err) {
+      if (window <= 1_000) {
+        console.warn('[templ] Failed to query factory templs after chunk retries', err);
+        return [];
+      }
+      window = Math.max(1_000, Math.floor(window / 2));
+      continue;
+    }
   }
 
   /** @type {Map<string, { tokenAddress: string, priest: string, entryFee: bigint }>} */

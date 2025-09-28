@@ -108,7 +108,12 @@ export default function App() {
       const factoryAddress = FACTORY_CONFIG.address;
       let factoryTempls = [];
       if (factoryAddress && readProvider) {
-        factoryTempls = await loadFactoryTempls({ ethers, provider: readProvider, factoryAddress });
+        factoryTempls = await loadFactoryTempls({
+          ethers,
+          provider: readProvider,
+          factoryAddress,
+          fromBlock: FACTORY_CONFIG.deploymentBlock
+        });
       }
 
       let backendTempls = [];

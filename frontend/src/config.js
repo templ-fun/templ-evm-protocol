@@ -44,10 +44,22 @@ export const FACTORY_CONFIG = (() => {
       protocolPercent = parsed;
     }
   }
+  const deploymentBlockRaw = readEnv(
+    'VITE_TEMPL_FACTORY_DEPLOYMENT_BLOCK',
+    readEnv('TEMPL_FACTORY_DEPLOYMENT_BLOCK', '')
+  ).trim();
+  let deploymentBlock = undefined;
+  if (deploymentBlockRaw !== '') {
+    const parsed = Number(deploymentBlockRaw);
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      deploymentBlock = Math.floor(parsed);
+    }
+  }
   return {
     address,
     protocolFeeRecipient: protocolRecipient,
-    protocolPercent
+    protocolPercent,
+    deploymentBlock
   };
 })();
 
