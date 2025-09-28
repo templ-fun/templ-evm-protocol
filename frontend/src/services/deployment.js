@@ -37,6 +37,7 @@ async function deployContract({
   treasuryPercent,
   memberPoolPercent,
   protocolPercent,
+  quorumPercent,
   maxMembers = 0,
   priestIsDictator = false,
   templHomeLink = '',
@@ -54,6 +55,14 @@ async function deployContract({
   const { burn, treasury, member } = validateSplit({ burnPercent, treasuryPercent, memberPoolPercent, protocolPercent });
   const normalizedEntryFee = toBigInt(entryFee ?? 0, 'entry fee');
   const normalizedMaxMembers = toBigInt(maxMembers ?? 0, 'max members');
+  const normalizedQuorumPercent = (() => {
+    const raw = quorumPercent ?? 0;
+    const resolved = Number(raw);
+    if (!Number.isFinite(resolved) || resolved < 0) {
+      throw new Error('Invalid quorum percent');
+    }
+    return resolved;
+  })();
   const factory = new ethers.Contract(factoryAddress, factoryArtifact.abi, signer);
   const config = {
     priest: walletAddress,
@@ -62,6 +71,8 @@ async function deployContract({
     burnPercent: burn,
     treasuryPercent: treasury,
     memberPoolPercent: member,
+    quorumPercent: normalizedQuorumPercent,
+    executionDelaySeconds: 0,
     burnAddress: ethers.ZeroAddress ?? '0x0000000000000000000000000000000000000000',
     priestIsDictator: priestIsDictator === true,
     maxMembers: normalizedMaxMembers,
@@ -150,6 +161,7 @@ export async function deployTempl({
   treasuryPercent,
   memberPoolPercent,
   protocolPercent,
+  quorumPercent,
   maxMembers,
   priestIsDictator,
   backendUrl = BACKEND_URL,
@@ -170,6 +182,7 @@ export async function deployTempl({
     treasuryPercent,
     memberPoolPercent,
     protocolPercent,
+    quorumPercent,
     maxMembers,
     priestIsDictator,
     templHomeLink,

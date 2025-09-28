@@ -7,6 +7,7 @@ import { deployTempl } from '../services/deployment.js';
 import { button, form, layout, surface, text } from '../ui/theme.js';
 
 const DEFAULT_PERCENT = 30;
+const DEFAULT_QUORUM_PERCENT = 33;
 
 export function CreateTemplPage({
   ethers,
@@ -23,6 +24,7 @@ export function CreateTemplPage({
   const [burnPercent, setBurnPercent] = useState(String(DEFAULT_PERCENT));
   const [treasuryPercent, setTreasuryPercent] = useState(String(DEFAULT_PERCENT));
   const [memberPercent, setMemberPercent] = useState(String(DEFAULT_PERCENT));
+  const [quorumPercent, setQuorumPercent] = useState(String(DEFAULT_QUORUM_PERCENT));
   const [protocolPercent, setProtocolPercent] = useState(() => {
     const pct = FACTORY_CONFIG.protocolPercent;
     return pct !== undefined ? String(pct) : '10';
@@ -117,6 +119,7 @@ export function CreateTemplPage({
         treasuryPercent,
         memberPoolPercent: memberPercent,
         protocolPercent,
+        quorumPercent,
         maxMembers,
         priestIsDictator: dictatorship,
         telegramChatId: telegramChatId || undefined,
@@ -223,6 +226,18 @@ export function CreateTemplPage({
             {protocolPercentLocked ? (
               <span className={text.hint}>Locked to factory protocol fee</span>
             ) : null}
+          </label>
+          <label className={form.label}>
+            Quorum %
+            <input
+              type="number"
+              min="1"
+              max="100"
+              className={form.input}
+              value={quorumPercent}
+              onChange={(e) => setQuorumPercent(e.target.value)}
+            />
+            <span className={text.hint}>Percentage of eligible voters required to pass proposals</span>
           </label>
         </div>
         <label className={form.label}>
