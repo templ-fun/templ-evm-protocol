@@ -250,6 +250,33 @@ test('register templ persists record and wires contract listeners', async (t) =>
   assert.equal(storedRow?.bindingCode, null);
 });
 
+test('proposal executed events capture execution success state', async (t) => {
+  const { app, handlerRegistry, contractState } = await makeApp();
+  t.after(async () => {
+    await app.close?.();
+  });
+
+  const wallet = Wallet.createRandom();
+  const { contractAddress } = await registerTempl(app, wallet, undefined, { contractState });
+  const entry = handlerRegistry.get(contractAddress);
+  assert.ok(entry, 'contract handlers registered');
+
+  await entry.handlers.ProposalCreated(1n, wallet.address, 1234n, 'Successful proposal', '');
+  await entry.handlers.ProposalExecuted(1n, true, '0x');
+
+  const record = app.locals.templs.get(contractAddress);
+  assert.ok(record?.proposalsMeta, 'proposal metadata tracked');
+  const successMeta = record.proposalsMeta.get('1');
+  assert.equal(successMeta?.executed, true);
+  assert.equal(successMeta?.passed, true);
+
+  await entry.handlers.ProposalCreated(2n, wallet.address, 1234n, 'Failed proposal', '');
+  await entry.handlers.ProposalExecuted(2n, false, '0x');
+  const failedMeta = record.proposalsMeta.get('2');
+  assert.equal(failedMeta?.executed, true);
+  assert.equal(failedMeta?.passed, false);
+});
+
 test('join endpoint validates membership', async (t) => {
   const { app, contractState } = await makeApp({ hasPurchased: async () => true });
   t.after(async () => {
