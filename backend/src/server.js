@@ -211,22 +211,54 @@ async function fetchBalances(record, logger) {
   const result = { treasuryBalance: null, memberPoolBalance: null };
   const contract = record?.contract;
   if (!contract) return result;
+
+  const toStringSafe = (value) => {
+    if (value === null || value === undefined) return null;
+    try {
+      return value?.toString?.() ?? String(value);
+    } catch {
+      return String(value);
+    }
+  };
+
   try {
-    if (typeof contract.treasuryBalance === 'function') {
-      const value = await contract.treasuryBalance();
-      result.treasuryBalance = value?.toString?.() ?? String(value);
+    if (typeof contract.getTreasuryInfo === 'function') {
+      const info = await contract.getTreasuryInfo();
+      const treasuryValue = info?.treasury ?? info?.[0];
+      const memberValue = info?.memberPool ?? info?.[1];
+      if (treasuryValue !== undefined && treasuryValue !== null) {
+        result.treasuryBalance = toStringSafe(treasuryValue);
+      }
+      if (memberValue !== undefined && memberValue !== null) {
+        result.memberPoolBalance = toStringSafe(memberValue);
+      }
     }
   } catch (err) {
-    logger?.warn?.({ err: String(err?.message || err) }, 'Failed to read treasury balance');
+    logger?.warn?.({ err: String(err?.message || err) }, 'Failed to read treasury info');
   }
-  try {
-    if (typeof contract.memberPoolBalance === 'function') {
-      const value = await contract.memberPoolBalance();
-      result.memberPoolBalance = value?.toString?.() ?? String(value);
+
+  if (result.treasuryBalance === null) {
+    try {
+      if (typeof contract.treasuryBalance === 'function') {
+        const value = await contract.treasuryBalance();
+        result.treasuryBalance = toStringSafe(value);
+      }
+    } catch (err) {
+      logger?.warn?.({ err: String(err?.message || err) }, 'Failed to read treasury balance');
     }
-  } catch (err) {
-    logger?.warn?.({ err: String(err?.message || err) }, 'Failed to read member pool balance');
   }
+
+  if (result.memberPoolBalance === null) {
+    try {
+      if (typeof contract.memberPoolBalance === 'function') {
+        const value = await contract.memberPoolBalance();
+        result.memberPoolBalance = toStringSafe(value);
+      }
+    } catch (err) {
+      logger?.warn?.({ err: String(err?.message || err) }, 'Failed to read member pool balance');
+    }
+  }
+
   return result;
 }
 
