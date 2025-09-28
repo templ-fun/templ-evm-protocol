@@ -1,38 +1,34 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- `contracts/` — Solidity 0.8.23 sources (core `TEMPL.sol`), test-only `contracts/mocks/`. Root `test/` contains Hardhat tests.
-- `backend/` — Express (ESM) API: `src/`, `test/`, `coverage/`. Uses Node ≥ 22.18.
-- `frontend/` — Vite + React app: `src/`, `e2e/`, `dist/`.
-- `shared/` — JS utils shared by frontend/backend/tests (e.g., `signing.js`, environment helpers).
-- `scripts/` — helper scripts (e.g., `deploy.js`, `test-all.sh`). `deployments/` stores network artifacts.
+- `contracts/` holds Solidity sources; Hardhat scripts in `scripts/` emit artifacts to `deployments/`.
+- `backend/src/` runs the Express API, Telegram notifier, and persistence layers.
+- `frontend/src/` is the Vite + React control center; shared utilities live in `shared/` with tests beside code (`test/`, `e2e/`).
 
 ## Build, Test, and Development Commands
-- Install deps: `npm ci`
-- Contracts: `npm run compile` (Hardhat), `npm test` (unit), `npm run coverage`, `npm run slither` (requires `slither` + `solc-select`).
-- Backend: `npm --prefix backend start` (requires `.env`), `npm --prefix backend test`, `npm --prefix backend run coverage`, `npm --prefix backend run lint`.
-- Frontend: `npm --prefix frontend run dev`, `build`, `test`, `run coverage`, `test:e2e`.
-- Local chain + deploy: `npm run node` (Hardhat node), `npm run deploy:local`.
-- Full stack tests: `npm run test:all` (contracts, types, lint, unit, e2e).
+- Install dependencies via `npm ci`, `npm --prefix backend ci`, and `npm --prefix frontend ci`.
+- Compile with `npm run compile`, start `npx hardhat node`, and launch services through `npm --prefix backend start` plus `npm --prefix frontend run dev`.
+- Run targeted checks using `npm test`, `npm --prefix backend test`, `npm --prefix frontend run test`, and Playwright via `npm --prefix frontend run test:e2e`.
 
 ## Coding Style & Naming Conventions
-- JS/TS: ESM modules, 2-space indent, semicolons, camelCase for identifiers. Lint with `eslint` in each package (`eslint.config.js`).
-- React: Co-locate component tests as `*.test.js` under `frontend/src/`.
-- Solidity: PascalCase filenames (`TEMPL.sol`), 4-space indent; keep errors in `TemplErrors.sol`. Set `SKIP_MOCKS=true` to exclude `contracts/mocks/` from builds.
+- Use 2-space indentation, trailing semicolons, and ESM imports enforced by each package’s `eslint.config.js`.
+- React components stay in PascalCase files; hooks and utilities use camelCase and sit with their feature.
+- Solidity contracts follow Hardhat defaults (`PascalCase` types, `camelCase` functions`) and document external/public entry points with NatSpec.
 
-## Testing Guidelines
-- Frameworks: Hardhat (Mocha/Chai) for contracts; Node’s `node --test` + `c8` for backend; Vitest for frontend; Playwright for e2e.
-- Naming: `*.test.js` in `test/` (contracts) and `backend/test/`; e2e in `frontend/e2e/`.
-- Coverage: Codecov enforces 100% for contracts; run `npm run coverage:all` or per-package coverage before PRs.
+## Testing & CI Discipline
+- Always run `npm run test:all` before handoff; CI reruns the same matrix after merge, so local results must stay green.
+- When fixing a bug, first add a failing test that proves the issue, then ship the patch and validate the full suite.
+- Track coverage with `npm --prefix backend run coverage` and `npm --prefix frontend run coverage`; keep specs under each package `test/` directory.
 
-### Agent Notes
-- Telegram alerts are optional but when a chat id is registered the backend announces joins (with treasury/member-pool totals + claim link), proposal creation, quorum, voting closure, priest changes, and pushes a daily treasury/member-pool digest. Prefer improving event decoding over adding polling loops.
+## Documentation Expectations
+- Update docs alongside code so the repo remains the canonical protocol reference—write as though the current codebase is the only version that ever existed.
+- Refresh `README.md`, `docs/*.md`, and in-app copy whenever behavior, configuration, or APIs shift; verify every example still runs.
 
 ## Commit & Pull Request Guidelines
-- Use Conventional Commits: `feat(contracts): ...`, `fix(backend): ...`, `docs: ...`, `chore: ...`, `ci: ...`.
-- PRs: clear description, linked issues, test plan, screenshots for UI changes, CI green, no snapshot updates without justification.
+- Follow Conventional Commits (`fix(frontend): harden loadFactoryTempls block lookup`) with focused scopes and linked issues as needed.
+- List the automated/manual checks you ran, attach UI evidence for visual changes, and call out migrations or deployment steps in the PR body.
 
 ## Security & Configuration Tips
-- Do not commit secrets. Use `.env`; production deploys require `TELEGRAM_BOT_TOKEN` (for alerts), `RPC_URL`, and `PRIVATE_KEY`.
-- Backend/Frontend must share server id: `BACKEND_SERVER_ID` = `VITE_BACKEND_SERVER_ID`.
-- Rate limiting auto-uses Redis when `REDIS_URL` is set; otherwise falls back to memory.
+- Load secrets from `.env` files (`RPC_URL`, `ALLOWED_ORIGINS`, `TELEGRAM_BOT_TOKEN`, D1 credentials`) and never commit them.
+- Reuse signature validation and rate-limit middleware from `backend/src/middleware/`; align schema changes with `createPersistence` helpers.
+- Dry-run releases with `npm run deploy:local`, confirm Telegram binding flows, and rotate codes through priest controls when handing off access.
