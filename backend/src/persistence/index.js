@@ -106,18 +106,18 @@ export async function createD1Persistence({ d1, retentionMs = DEFAULT_SIGNATURE_
     'INSERT INTO used_signatures (signature, expiresAt) VALUES (?1, ?2) ON CONFLICT(signature) DO NOTHING'
   );
   const upsertLeaderStmt = d1.prepare(
-    'INSERT INTO leader_election (id, owner, expiresAt) VALUES ("primary", ?1, ?2) ' +
+    "INSERT INTO leader_election (id, owner, expiresAt) VALUES ('primary', ?1, ?2) " +
       'ON CONFLICT(id) DO UPDATE SET owner = excluded.owner, expiresAt = excluded.expiresAt ' +
       'WHERE leader_election.expiresAt <= ?3'
   );
   const refreshLeaderStmt = d1.prepare(
-    'UPDATE leader_election SET expiresAt = ?2 WHERE id = "primary" AND owner = ?1'
+    "UPDATE leader_election SET expiresAt = ?2 WHERE id = 'primary' AND owner = ?1"
   );
   const releaseLeaderStmt = d1.prepare(
-    'DELETE FROM leader_election WHERE id = "primary" AND owner = ?1'
+    "DELETE FROM leader_election WHERE id = 'primary' AND owner = ?1"
   );
   const readLeaderStmt = d1.prepare(
-    'SELECT owner, expiresAt FROM leader_election WHERE id = "primary"'
+    "SELECT owner, expiresAt FROM leader_election WHERE id = 'primary'"
   );
 
   try {
@@ -303,15 +303,15 @@ async function createSQLitePersistence({ sqlitePath, retentionMs = DEFAULT_SIGNA
     'INSERT INTO used_signatures (signature, expiresAt) VALUES (?, ?) ON CONFLICT(signature) DO NOTHING'
   );
   const upsertLeaderStmt = db.prepare(
-    'INSERT INTO leader_election (id, owner, expiresAt) VALUES ("primary", ?, ?) ' +
+    "INSERT INTO leader_election (id, owner, expiresAt) VALUES ('primary', ?, ?) " +
       'ON CONFLICT(id) DO UPDATE SET owner = excluded.owner, expiresAt = excluded.expiresAt ' +
       'WHERE leader_election.expiresAt <= ?'
   );
   const refreshLeaderStmt = db.prepare(
-    'UPDATE leader_election SET expiresAt = ? WHERE id = "primary" AND owner = ?'
+    "UPDATE leader_election SET expiresAt = ? WHERE id = 'primary' AND owner = ?"
   );
-  const releaseLeaderStmt = db.prepare('DELETE FROM leader_election WHERE id = "primary" AND owner = ?');
-  const readLeaderStmt = db.prepare('SELECT owner, expiresAt FROM leader_election WHERE id = "primary"');
+  const releaseLeaderStmt = db.prepare("DELETE FROM leader_election WHERE id = 'primary' AND owner = ?");
+  const readLeaderStmt = db.prepare("SELECT owner, expiresAt FROM leader_election WHERE id = 'primary'");
 
   const persistBinding = async (contract, record) => {
     const key = contract ? String(contract).toLowerCase() : '';
