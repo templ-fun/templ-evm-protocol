@@ -192,8 +192,13 @@ To avoid juggling multiple commands, use the bundled `scripts/deploy-cloudflare.
    ```bash
    npm run deploy:cloudflare
    ```
-  - `--skip-worker` omits the Worker deploy. Worker-only env vars (`CF_WORKER_NAME`, `TELEGRAM_BOT_TOKEN`, `RPC_URL`, etc.) are optional in this mode, but Wrangler still needs D1 + Pages settings.
-   - `--skip-pages` skips the Pages deploy when you’re adjusting backend configuration only.
+  - `--skip-worker` omits the Worker deploy. Worker-only env vars (`CF_WORKER_NAME`, `APP_BASE_URL`, `TRUSTED_FACTORY_ADDRESS`, `TRUSTED_FACTORY_DEPLOYMENT_BLOCK`, `REQUIRE_CONTRACT_VERIFY`, `TELEGRAM_BOT_TOKEN`, `RPC_URL`, etc.) are optional in this mode, but Wrangler still needs D1 + Pages settings.
+  - `--skip-pages` skips the Pages deploy when you’re adjusting backend configuration only.
+
+3. Production backend variables:
+   - Required/important: `BACKEND_SERVER_ID` (match `VITE_BACKEND_SERVER_ID`), `REQUIRE_CONTRACT_VERIFY=1`, `TRUSTED_FACTORY_ADDRESS`, `TRUSTED_FACTORY_DEPLOYMENT_BLOCK`, `APP_BASE_URL`, `RPC_URL`, and (optionally) `TELEGRAM_BOT_TOKEN`.
+   - Optional: `ALLOWED_ORIGINS`, `LEADER_TTL_MS`, `RATE_LIMIT_STORE=redis` and `REDIS_URL` for distributed rate limiting.
+   - For Worker deployments, the script injects these into `backend/wrangler.deployment.toml`. To provide additional values: use `CLOUDFLARE_BACKEND_VAR_*` for non-secrets (e.g. `CLOUDFLARE_BACKEND_VAR_ALLOWED_ORIGINS`) and `CLOUDFLARE_BACKEND_SECRET_*` for secrets (e.g. `CLOUDFLARE_BACKEND_SECRET_REDIS_URL`). For standalone Node hosts, set `NODE_ENV=production` and export the same variables in your process environment.
 
 ### Telegram binding flow
 
@@ -242,6 +247,7 @@ If the suite reports a binding code, follow the Telegram steps above before re-r
 
 - Deploy `TemplFactory` and `TEMPL` to your target network with finalized parameters.
 - Set `NODE_ENV=production` and `REQUIRE_CONTRACT_VERIFY=1` for the backend so contract ownership is checked on registration.
+- Configure a trusted factory for safety: set `TRUSTED_FACTORY_ADDRESS` and `TRUSTED_FACTORY_DEPLOYMENT_BLOCK` in the backend so only templs from your factory are accepted and log scans remain efficient.
 - Set `APP_BASE_URL` to the deployed frontend URL (used to build deep links in Telegram messages).
 - Provision `TELEGRAM_BOT_TOKEN`, `RPC_URL`, and other secrets via `wrangler secret put` so they are not stored in git.
 - Bind the Cloudflare D1 database (see the Wrangler steps above) and confirm the tables exist before your first deploy.

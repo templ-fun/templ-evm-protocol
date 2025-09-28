@@ -2,6 +2,13 @@
 
 Templ turns any ERC-20 into a gated club with on-chain economics. Holders deploy their own templ, charge newcomers an entry fee, run proposals, and split every tribute between burn, treasury, member rewards, and protocol upkeep. Telegram alerts sourced from on-chain events keep members synced without embedding chat in the app.
 
+## TL;DR
+
+- Deploy a templ from a factory, set the fee split, and start admitting members who pay the entry fee in the access token.
+- One-member/one-vote governance drives pause/config/withdraw/disband/priest/cap/dictatorship/home-link actions.
+- Optional Telegram notifications mirror joins/proposals/votes/quorum and daily digests; no chat secrets touch the chain.
+- Frontend is static (Vite + React); backend is a long-lived Express service; contracts are Solidity 0.8.23.
+
 ## Architecture
 
 ```mermaid
@@ -24,21 +31,27 @@ sequenceDiagram
 
 Reference diagrams live in [`docs/CORE_FLOW_DOCS.MD`](docs/CORE_FLOW_DOCS.MD).
 
-## Current Stack
+## Components
 
-- **Contracts** – Solidity 0.8.23 factory + templ modules (see `contracts/`) mint templ instances with: configurable entry-fee splits (burn/treasury/member/protocol), auto-enrolment of the deploying priest (so the first paid member pool accrues to them), an on-chain home link for off-chain surfaces, and a typed governance router (pause/config/withdraw/disband/priest/cap/dictatorship/home-link). Disband proposals enforce a join lock, and optional member caps auto-pause new joins until governance adjusts the cap and explicitly unpauses. Fee accounting assumes standard ERC-20 transfers; taxed tokens are unsupported.
-- **Backend API + Telegram bot** – Node 22/Express service that expects a long-lived runtime (Render, Fly, Railway, bare metal, etc.). It persists templ metadata in Cloudflare D1 (or the in-memory fallback), verifies signatures, confirms membership, and streams contract events to a Telegram group via a bot token. Leader election (backed by D1 when available) makes sure exactly one instance emits notifications at a time.
-- **Frontend control center** – Vite + React single-page app for deploying templs, joining with proof-of-purchase, raising proposals (with on-chain title/description), and casting votes. The landing page pulls templ deployments directly from the configured factory (and merges Telegram metadata from the backend) so every community is one click away. The bundle is completely static, so production builds ship via Cloudflare Pages (edge-cached, zero-idle hosting). Flows are split into dedicated routes:
-- `/templs/create` – deploy + register and optionally bind a Telegram chat id.
-- `/templs/join` – purchase access, then verify membership via the backend.
-- `/templs/:address` – overview, quick links, and routing to proposal tools.
-- `/templs/:address/proposals/new` – create governance actions.
-- `/templs/:address/proposals/:id/vote` – cast a YES/NO vote.
-- `/templs/:address/claim` – view the member pool balance and claim rewards.
+- **Contracts** – Solidity 0.8.23 factory + templ modules (see `contracts/`). Features: configurable entry-fee splits (burn/treasury/member/protocol), auto-enrolment of the deploying priest (so the first paid member pool accrues to them), an on-chain home link for off-chain surfaces, and a typed governance router (pause/config/withdraw/disband/priest/cap/dictatorship/home-link). Disband proposals enforce a join lock; optional member caps auto-pause new joins until governance adjusts the cap and explicitly unpauses. Fee accounting assumes standard ERC-20 transfers; taxed tokens are unsupported.
+- **Backend API + Telegram bot** – Node 22/Express service that expects a long-lived runtime (Render, Fly, Railway, bare metal, etc.). It persists templ metadata in Cloudflare D1 (or the in-memory fallback), verifies signatures, confirms membership, and streams contract events to a Telegram group via a bot token. Leader election (backed by D1 when available) ensures exactly one instance emits notifications at a time.
+- **Frontend** – Vite + React single-page app for deploying templs, joining with proof-of-purchase, raising proposals (with on-chain title/description), and casting votes. The landing page pulls templ deployments directly from the configured factory (and merges Telegram metadata from the backend) so every community is one click away. The bundle is static; production builds ship via Cloudflare Pages (edge-cached, zero-idle hosting).
+
+Routes served by the SPA:
+
+| Route | Purpose |
+| --- | --- |
+| `/` | Dashboard, wallet connection, and templ directory sourced from the configured factory (enriched with backend Telegram metadata). |
+| `/templs/create` | Deploy a templ and register it (optional Telegram chat id). |
+| `/templs/join` | Purchase access and request backend verification. |
+| `/templs/:address` | Overview with priest info, Telegram chat id, and quick actions. |
+| `/templs/:address/proposals/new` | Create governance actions; stores title/description on-chain. |
+| `/templs/:address/proposals/:id/vote` | YES/NO voting. |
+| `/templs/:address/claim` | Claim member-pool rewards and inspect balances. |
 
 Telegram notifications are optional but encouraged. When a templ is registered, the backend issues a one-time binding code. Invite `@templfunbot` to your group and post the code (e.g. `templ abcd1234`)—the bot confirms the chat and begins posting newline-delimited text messages with deep links back to the frontend (join screen, proposal details, claim page, etc.). Priests can later rotate the chat from the templ overview: request a replacement code, sign the EIP-712 proof, and share the snippet in the new group. Alerts cover new members (with live treasury/member-pool totals), proposal creation, quorum, voting closure, priest changes, templ home-link updates, daily "gm" digests, and a binding acknowledgement when a chat connects. No Telegram secrets are stored on-chain; linking happens entirely through the bot token, binding handshake, and signed priest rebind requests.
 
-## Quick start
+## Quick Start
 
 ```bash
 npm ci                         # install root + subpackage deps
@@ -57,16 +70,20 @@ In separate terminals you’ll typically run:
 2. `npm --prefix backend start` – Express API and Telegram notifier (expects `RPC_URL`).
 3. `npm --prefix frontend run dev` – Vite dev server on http://localhost:5173.
 
+For a step-by-step local walkthrough, see [docs/TEST_LOCALLY.md](docs/TEST_LOCALLY.md).
+
 ## Documentation
 
+Start here for a guided path:
+
+- [`docs/README.md`](docs/README.md) – docs index + learning path.
 - [`docs/TEMPL_TECH_SPEC.MD`](docs/TEMPL_TECH_SPEC.MD) – canonical architecture across contracts, backend, frontend, and Telegram alerts.
-- [`docs/CORE_FLOW_DOCS.MD`](docs/CORE_FLOW_DOCS.MD) – detailed sequence + flow charts for creation, join, governance, and notifications.
-- [`docs/CONTRACTS.md`](docs/CONTRACTS.md) – smart contract modules, fee mechanics, and governance APIs.
-- [`docs/BACKEND.md`](docs/BACKEND.md) – Express service responsibilities, environment, and notifier behavior.
-- [`docs/FRONTEND.md`](docs/FRONTEND.md) – SPA routes, env vars, and lifecycle walkthroughs.
-- [`docs/SHARED.md`](docs/SHARED.md) – cross-package utilities for signatures and environment helpers.
-- [`docs/PERSISTENCE.md`](docs/PERSISTENCE.md) – storage story across contracts, backend, and frontend caches.
-- [`docs/DEPLOYMENT_GUIDE.md`](docs/DEPLOYMENT_GUIDE.md) – end-to-end deployment steps including Telegram binding.
+- [`docs/CORE_FLOW_DOCS.MD`](docs/CORE_FLOW_DOCS.MD) – sequence/flow charts for creation, join, governance, and notifications.
+- [`docs/CONTRACTS.md`](docs/CONTRACTS.md) – smart contracts surface, fee economics, governance.
+- [`docs/BACKEND.md`](docs/BACKEND.md) – API, persistence, Telegram notifier, environment.
+- [`docs/FRONTEND.md`](docs/FRONTEND.md) – routes, env, and local dev notes.
+- [`docs/PERSISTENCE.md`](docs/PERSISTENCE.md) – what’s on-chain vs. D1 vs. ephemeral.
+- [`docs/DEPLOYMENT_GUIDE.md`](docs/DEPLOYMENT_GUIDE.md) – production deploys and Telegram binding.
 - [`docs/TEST_LOCALLY.md`](docs/TEST_LOCALLY.md) – local development recipe for the full stack.
 
 ## Environment & configuration
@@ -126,7 +143,7 @@ The backend now expects a traditional Node runtime. Run it on your favourite hos
 - **Cloudflare Pages frontend.** The React SPA still builds to static assets that Pages serves from every POP with generous free tiers. Publishing the frontend separately keeps hosting costs near-zero while leaving you free to deploy the backend wherever you prefer.
 - **Redis rate limiting (optional).** Point `RATE_LIMIT_STORE` at Redis when you need shared rate limiting across multiple nodes; otherwise, the in-memory store is sufficient for single-instance deployments.
 
-### One-command Cloudflare deploys
+## Cloudflare Deploys (One Command)
 
 Use `npm run deploy:cloudflare` to orchestrate a full-stack deploy once you populate `.cloudflare.env` (see `scripts/cloudflare.deploy.example.env`). The script:
 
@@ -134,13 +151,27 @@ Use `npm run deploy:cloudflare` to orchestrate a full-stack deploy once you popu
 - Deploys the Worker unless you opt into `--skip-worker` (recommended when you host the backend elsewhere).
 - Builds the SPA with your `VITE_*` overrides and pushes the static bundle to Cloudflare Pages (skip with `--skip-pages`).
 
+- Required/important backend variables for production:
+  - `BACKEND_SERVER_ID` – must match the frontend’s `VITE_BACKEND_SERVER_ID`.
+  - `REQUIRE_CONTRACT_VERIFY=1` – enforce on‑chain contract/priest checks for `/templs`.
+  - `TRUSTED_FACTORY_ADDRESS` – restrict registrations to your factory.
+  - `TRUSTED_FACTORY_DEPLOYMENT_BLOCK` – start block for factory log scans.
+  - `APP_BASE_URL` – used for deep links in Telegram notifications.
+  - `RPC_URL` – JSON‑RPC endpoint for reads/subscriptions.
+  - `TELEGRAM_BOT_TOKEN` – enables Telegram delivery (optional; omit to disable).
+  - Optional: `ALLOWED_ORIGINS`, `LEADER_TTL_MS`, `RATE_LIMIT_STORE=redis` and `REDIS_URL` for distributed rate‑limit.
+
+- When deploying the Worker, these are injected into `backend/wrangler.deployment.toml`. To pass additional vars/secrets to the Worker, use:
+  - `CLOUDFLARE_BACKEND_VAR_*` → becomes `[vars]` in Wrangler (e.g. `CLOUDFLARE_BACKEND_VAR_ALLOWED_ORIGINS`).
+  - `CLOUDFLARE_BACKEND_SECRET_*` → stored via `wrangler secret put` (e.g. `CLOUDFLARE_BACKEND_SECRET_REDIS_URL`).
+
 To focus on the database + Pages while skipping the Worker, run:
 
 ```bash
 npm run deploy:cloudflare -- --skip-worker
 ```
 
-In this mode you only need the Cloudflare API credentials, `CF_D1_DATABASE_NAME`, `CF_D1_DATABASE_ID`, `BACKEND_SERVER_ID`, and the frontend build variables. When you are ready to ship the Worker, add `CF_WORKER_NAME`, `APP_BASE_URL`, `TRUSTED_FACTORY_ADDRESS`, `TELEGRAM_BOT_TOKEN`, and `RPC_URL` to the environment (the example file groups these by requirement).
+In this mode you only need the Cloudflare API credentials, `CF_D1_DATABASE_NAME`, `CF_D1_DATABASE_ID`, `BACKEND_SERVER_ID`, and the frontend build variables. When you are ready to ship the Worker, add `CF_WORKER_NAME`, `APP_BASE_URL`, `TRUSTED_FACTORY_ADDRESS`, `TRUSTED_FACTORY_DEPLOYMENT_BLOCK`, `REQUIRE_CONTRACT_VERIFY`, `TELEGRAM_BOT_TOKEN`, and `RPC_URL` to the environment (the example file groups these by requirement). For a standalone Node backend (outside Workers), set `NODE_ENV=production`, `REQUIRE_CONTRACT_VERIFY=1`, `TRUSTED_FACTORY_ADDRESS`, and `TRUSTED_FACTORY_DEPLOYMENT_BLOCK` in your host environment.
 
 After the script completes, take the generated `backend/wrangler.deployment.toml` (for reference) and deploy the backend separately. Populate the same environment variables on your host, ensure one instance is running, and let the D1-backed leader election prevent duplicate Telegram notifications.
 
@@ -152,7 +183,7 @@ npm run test:deploy:skip-worker
 
 The test swaps in a mocked Wrangler binary and ensures `deploy-cloudflare.js --skip-worker --skip-pages` exits cleanly with the minimal variable set.
 
-## Repository layout
+## Repository Layout
 
 - `contracts/` – Solidity sources (`TEMPL.sol`, `TemplFactory.sol`) plus Hardhat tests in `test/`.
 - `backend/` – Express API, Telegram notifier (`src/`), and Node tests in `test/`.
@@ -161,11 +192,17 @@ The test swaps in a mocked Wrangler binary and ensures `deploy-cloudflare.js --s
 - `scripts/` – Deployment/test scripts, wallet generators, CI hooks.
 - `deployments/` – Network artifacts emitted by Hardhat deployments.
 
-## Testing
+## Testing & CI
 
 - `npm test` (root) – Hardhat contract tests.
 - `npm --prefix backend test` – backend + shared unit tests.
 - `npm --prefix frontend run test` – Vitest suite for the SPA.
-- `npm --prefix frontend run test:e2e` – Playwright smoke tests (starts Hardhat, backend, and a preview build). The harness now focuses on deployment/join/vote flows; Telegram messaging is stubbed by leaving `TELEGRAM_BOT_TOKEN` unset.
+- `npm --prefix frontend run test:e2e` – Playwright smoke tests (starts Hardhat, backend, and a preview build). The harness focuses on deployment/join/vote flows; Telegram messaging is stubbed by leaving `TELEGRAM_BOT_TOKEN` unset.
 
-Code coverage targets remain enforced by Codecov for contracts and JS packages. Run `npm run coverage:all` before shipping large changes.
+Run `npm run test:all` to mirror the full CI matrix locally before pushing. Code coverage targets are enforced by Codecov for contracts and JS packages; generate reports with `npm run coverage:all`.
+
+## Production Notes
+
+- Configure `REQUIRE_CONTRACT_VERIFY=1` and `NODE_ENV=production` on the backend to enforce on-chain ownership checks at registration time.
+- Set `APP_BASE_URL` so Telegram deep links resolve to your deployed frontend.
+- Prefer standard ERC-20 access tokens (no transfer taxes) to keep splits exact.
