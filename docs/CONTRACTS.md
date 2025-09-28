@@ -5,7 +5,7 @@ Use this guide to understand the on-chain modules that handle membership, fee sp
 ## What this document covers
 
 - Module layout and how responsibilities split across `TemplBase`, `TemplMembership`, `TemplTreasury`, `TemplGovernance`, `TEMPL`, and `TemplFactory`.
-- Tribute economics for entry fees, reward remainders, and external reward pools.
+- Tribute economics for entry fees, scaled reward accounting, and external reward pools.
 - Governance constraints: proposal lifecycle, quorum, execution, and allowed actions.
 - Deployment hooks and invariants auditors bless.
 
@@ -43,14 +43,14 @@ Entry fees follow a fixed protocol share; each deployment chooses how the remain
 - **Member Pool (`memberPoolPercent`)** - retained on the contract and counted in `memberPoolBalance`; claimable by existing members through `claimMemberPool()`.
 - **Protocol (`protocolPercent`)** - forwarded to the immutable `protocolFeeRecipient`. The percentage is chosen when the factory is deployed (10% in our sample scripts) and applies to every TEMPL created by that factory.
 
-The percentages must sum to 100. When a new member joins, existing members receive `floor(memberPoolShare / (n-1))` tokens each (where `n` is the new member count). Indivisible remainders accumulate in `memberRewardRemainder` and are rolled into the next distribution.
+The percentages must sum to 100. When a new member joins, existing members receive their share based on the cumulative per-member reward tracker (scaled by `1e18`). Any indivisible dust is retained in `memberRewardRemainder` and folded into the next distribution so the pool eventually captures every token.
 
 The zero-member edge case (used only in harnessed tests) routes the would-be member-pool slice into the treasury and mirrors that reroute in `totalToTreasury`/`totalToMemberPool`. Live deployments always start with the priest counted as member zero, so the first paid join streams its pool share exclusively to the priest. If a harness clears the list and a new wallet joins before anyone else exists, that pioneer can later reclaim their entire fee minus burn/protocol as soon as another member arrives because the rerouted balance sits in the treasury waiting to be re-distributed.
 
 ### Member pool mechanics
 
 - Accrual: Each purchase increases `memberPoolBalance` and `cumulativeMemberRewards`; members track a `rewardSnapshot` at their join time and on claim.
-- Claim: `claimMemberPool()` transfers the unclaimed delta and advances the snapshot. Reverts with `NoRewardsToClaim` if zero or `InsufficientPoolBalance` if not enough distributable tokens (excludes remainder).
+- Claim: `claimMemberPool()` transfers the unclaimed delta and advances the snapshot. Reverts with `NoRewardsToClaim` if zero or `InsufficientPoolBalance` if not enough distributable tokens (excludes the tracked dust remainder).
 - Donations: Anyone may donate ETH or ERC-20 to the contract. Governance may move donations and the entry-fee treasury share, but member pool balances are not withdrawable except via disbanding into the pool.
 - Remainders: Any indivisible leftovers from reward calculations accumulate in `memberRewardRemainder` and are rolled into the next distribution (purchase or disband) so the pool eventually captures every token.
 
@@ -85,8 +85,8 @@ sequenceDiagram
   - `updateConfigDAO(address,uint256,bool,uint256,uint256,uint256)` - update the entry fee (must remain >0 and multiple of 10) and, when `_updateFeeSplit` is true, adjust the burn/treasury/member percentages. The protocol split comes from the factory and cannot be changed. Token changes are disabled (`_token` must be `address(0)` or the current token), else `TokenChangeDisabled`.
   - `withdrawTreasuryDAO(address,address,uint256,string)` - withdraw a specific amount of any asset (access token, other ERC-20, or ETH with `address(0)`).
   - `changePriestDAO(address)` - change the priest address via governance; backends persist the new priest and announce it via Telegram notifications.
-  - `disbandTreasuryDAO(address token)` - move the full available balance of `token` into a member-distributable pool. When `token == accessToken`, funds roll into the member pool (`memberPoolBalance`) with per-member integer division and any remainder added to `memberRewardRemainder`. When targeting any other ERC-20 or native ETH (`address(0)`), the amount is recorded in an external rewards pool so members can later claim their share with `claimExternalToken`.
-  Remaining external dust is queued for the current cohort before new members join. Because distribution relies on integer division, nothing is emitted unless the remainder is large enough to pay every existing member at least one token; any leftover micro-units stay in `rewardRemainder` until a later disband or donation makes a clean split possible.
+  - `disbandTreasuryDAO(address token)` - move the full available balance of `token` into a member-distributable pool. When `token == accessToken`, funds roll into the member pool (`memberPoolBalance`) and update the scaled per-member accumulator (`cumulativeMemberRewards`). Dust that cannot be expressed as an integer per member remains in `memberRewardRemainder` until future deposits make a clean split possible. When targeting any other ERC-20 or native ETH (`address(0)`), the amount is recorded in an external rewards pool so members can later claim their share with `claimExternalToken`.
+  External pools follow the same scaled accounting: `cumulativeRewards` tracks the per-member sum in `1e18` precision, and `rewardRemainder` stores the unallocated dust without requiring joins to iterate over every token.
   Creating a disband proposal immediately activates the join lock so newcomers cannot buy in while a disband is pending; the contract now releases the lock automatically once the proposal executes or the voting window elapses (even if the proposal failed or lapsed without execution).
   - `setMaxMembersDAO(uint256 limit)` - set the membership cap. `0` keeps access unlimited; any positive limit pauses new joins once the count is reached. Reverts with `MemberLimitTooLow` when the requested limit is below the current member count. When the cap is hit, `purchaseAccess` auto-pauses the contract and future joins revert with `MemberLimitReached` until governance raises or clears the limit **and** subsequently unpauses the templ with `setPausedDAO(false)`.
   - `setTemplHomeLinkDAO(string newLink)` - update the templ’s canonical off-chain URL; emits `TemplHomeLinkUpdated` so UIs and bots sync immediately.
@@ -147,7 +147,7 @@ Proposals emit `ProposalCreated(id, proposer, endTime, title, description)` and 
 - `getMemberCount()` - number of members; `getVoteWeight(address)` - 1 if member else 0.
 - External reward helpers:
   - `getExternalRewardTokens()` - list of ERC-20/ETH reward tokens that currently have tracked pools (excludes the access token).
-  - `getExternalRewardState(address token)` - returns `(poolBalance, cumulativeRewards, remainder)` for the token’s reward distribution.
+  - `getExternalRewardState(address token)` - returns `(poolBalance, cumulativeRewards, remainder)` for the token’s reward distribution. `cumulativeRewards` is reported as the integer portion of the scaled accumulator so frontends can continue to render whole-token deltas while the contract maintains higher precision internally.
   - `getClaimableExternalToken(address member, address token)` - accrued share for `member` of the external token pool (0 for non-members or when no rewards are pending).
 
 ## State, events, errors

@@ -2,6 +2,8 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
 
+const REWARD_SCALE = ethers.parseUnits("1", 18);
+
 describe("TemplHarness coverage helpers", function () {
   let harness;
   let token;
@@ -97,8 +99,9 @@ describe("TemplHarness coverage helpers", function () {
     const member = priest.address;
     await harness.harnessSetMember(member, 1, 100, true);
     const tokenKey = ethers.ZeroAddress;
-    await harness.harnessResetExternalRewards(tokenKey, 123);
-    expect(await harness.harnessExternalBaseline(tokenKey, member)).to.equal(123);
+    const scaled = 123n * REWARD_SCALE;
+    await harness.harnessResetExternalRewards(tokenKey, scaled);
+    expect(await harness.harnessExternalBaseline(tokenKey, member)).to.equal(scaled);
     const raw = await harness.harnessGetLatestCheckpoint(tokenKey);
     expect(raw[0]).to.equal(0);
     expect(raw[1]).to.equal(0);
@@ -110,7 +113,7 @@ describe("TemplHarness coverage helpers", function () {
     await harness.harnessSetMember(member, 50, 4_000, true);
     const tokenKey = ethers.Wallet.createRandom().address;
     await harness.harnessResetExternalRewards(tokenKey, 0);
-    await harness.harnessPushCheckpoint(tokenKey, 50, 5_000, 10);
+    await harness.harnessPushCheckpoint(tokenKey, 50, 5_000, 10n * REWARD_SCALE);
     expect(await harness.harnessExternalBaseline(tokenKey, member)).to.equal(0);
   });
 
@@ -119,19 +122,19 @@ describe("TemplHarness coverage helpers", function () {
     await harness.harnessSetMember(member, 50, 6_000, true);
     const tokenKey = ethers.Wallet.createRandom().address;
     await harness.harnessResetExternalRewards(tokenKey, 0);
-    await harness.harnessPushCheckpoint(tokenKey, 50, 5_000, 10);
-    expect(await harness.harnessExternalBaseline(tokenKey, member)).to.equal(10);
+    await harness.harnessPushCheckpoint(tokenKey, 50, 5_000, 10n * REWARD_SCALE);
+    expect(await harness.harnessExternalBaseline(tokenKey, member)).to.equal(10n * REWARD_SCALE);
   });
 
   it("updates checkpoint values when new data arrives in the same block", async function () {
     const tokenKey = ethers.Wallet.createRandom().address;
-    await harness.harnessResetExternalRewards(tokenKey, 5);
-    await harness.harnessUpdateCheckpointSameBlock(tokenKey, 42);
+    await harness.harnessResetExternalRewards(tokenKey, 5n * REWARD_SCALE);
+    await harness.harnessUpdateCheckpointSameBlock(tokenKey, 42n * REWARD_SCALE);
     const [, , cumulative] = await harness.harnessGetLatestCheckpoint(tokenKey);
-    expect(cumulative).to.equal(42);
+    expect(cumulative).to.equal(42n * REWARD_SCALE);
   });
 
-  it("flushes seeded external remainders across existing members", async function () {
+  it("exposes a no-op flush helper for coverage", async function () {
     const signers = await ethers.getSigners();
     const [,, , memberA, memberB, memberC] = signers;
     const entryFee = await harness.entryFee();
@@ -139,16 +142,16 @@ describe("TemplHarness coverage helpers", function () {
     await purchaseAccess(harness, token, [memberA, memberB], entryFee);
 
     const tokenKey = ethers.Wallet.createRandom().address;
-    await harness.harnessSeedExternalRemainder(tokenKey, 10, 5);
+    await harness.harnessSeedExternalRemainder(tokenKey, 10n, 5n * REWARD_SCALE);
 
     await harness.harnessFlushExternalRemainders();
 
     const [, cumulative, remainder] = await harness.getExternalRewardState(tokenKey);
-    expect(cumulative).to.equal(8);
-    expect(remainder).to.equal(1);
+    expect(cumulative).to.equal(5n);
+    expect(remainder).to.equal(10n);
 
     const latest = await harness.harnessGetLatestCheckpoint(tokenKey);
-    expect(latest[2]).to.equal(8);
+    expect(latest[2]).to.equal(0);
 
     await purchaseAccess(harness, token, [memberC], entryFee);
   });
@@ -160,7 +163,7 @@ describe("TemplHarness coverage helpers", function () {
   it("returns early when flushing with no members", async function () {
     const tokenKey = ethers.Wallet.createRandom().address;
     await harness.harnessClearMembers();
-    await harness.harnessSeedExternalRemainder(tokenKey, 5, 0);
+    await harness.harnessSeedExternalRemainder(tokenKey, 5n, 0n);
     await harness.harnessFlushExternalRemainders();
     const [, cumulative, remainder] = await harness.getExternalRewardState(tokenKey);
     expect(cumulative).to.equal(0);
@@ -169,11 +172,23 @@ describe("TemplHarness coverage helpers", function () {
 
   it("does not duplicate tokens when seeding remainders repeatedly", async function () {
     const tokenKey = ethers.Wallet.createRandom().address;
-    await harness.harnessSeedExternalRemainder(tokenKey, 3, 1);
-    await harness.harnessSeedExternalRemainder(tokenKey, 7, 2);
+    await harness.harnessSeedExternalRemainder(tokenKey, 3n, 1n * REWARD_SCALE);
+    await harness.harnessSeedExternalRemainder(tokenKey, 7n, 2n * REWARD_SCALE);
     const tokens = await harness.getExternalRewardTokens();
     const occurrences = tokens.filter((addr) => addr === tokenKey);
     expect(occurrences.length).to.equal(1);
+  });
+
+  it("permits joins after registering hundreds of external reward tokens", async function () {
+    const entryFee = await harness.entryFee();
+    const [, , , newMember] = await ethers.getSigners();
+
+    for (let i = 0; i < 400; i += 1) {
+      await harness.harnessSeedExternalRemainder(ethers.Wallet.createRandom().address, 0n, 0n);
+    }
+
+    await mintToUsers(token, [newMember], entryFee);
+    await expect(purchaseAccess(harness, token, [newMember], entryFee)).to.not.be.reverted;
   });
 
   it("permits entry purchases when the member list is empty", async function () {

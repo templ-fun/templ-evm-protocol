@@ -14,6 +14,8 @@ abstract contract TemplBase is ReentrancyGuard {
 
     /// @dev Basis used for fee split math so every percent is represented as an integer.
     uint256 internal constant TOTAL_PERCENT = 100;
+    /// @dev Precision applied to per-share reward accounting to avoid repeated loops when cohorts change.
+    uint256 internal constant REWARD_SCALE = 1e18;
     /// @dev Default quorum percent applied when callers pass zero into constructors.
     uint256 internal constant DEFAULT_QUORUM_PERCENT = 33;
     /// @dev Default post-quorum execution delay used when deployers do not override it.
@@ -70,16 +72,16 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 timestamp;
         /// @notice Block number recorded at the time of the join.
         uint256 block;
-        /// @notice Reward checkpoint captured when the member joined.
+        /// @notice Reward checkpoint captured when the member joined (scaled by REWARD_SCALE).
         uint256 rewardSnapshot;
     }
 
     mapping(address => Member) public members;
     address[] public memberList;
     mapping(address => uint256) public memberPoolClaims;
-    /// @notice Aggregate rewards per member used for on-chain snapshotting.
+    /// @notice Aggregate rewards per member scaled by REWARD_SCALE for on-chain snapshotting.
     uint256 public cumulativeMemberRewards;
-    /// @notice Remainder carried forward when rewards do not divide evenly across members.
+    /// @notice Reward dust retained to preserve exact accounting when rounding per-share payouts.
     uint256 public memberRewardRemainder;
 
     struct RewardCheckpoint {
@@ -87,7 +89,7 @@ abstract contract TemplBase is ReentrancyGuard {
         uint64 blockNumber;
         /// @notice Timestamp at checkpoint creation.
         uint64 timestamp;
-        /// @notice Cumulative rewards per member at that checkpoint.
+        /// @notice Cumulative rewards per member (scaled by REWARD_SCALE) at that checkpoint.
         uint256 cumulative;
     }
 

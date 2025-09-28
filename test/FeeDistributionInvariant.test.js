@@ -3,6 +3,8 @@ const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
 const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
 
+const REWARD_SCALE = ethers.parseUnits("1", 18);
+
 // Invariant: totalBurned + totalToTreasury + totalToMemberPool + totalToProtocol
 //           == entryFee * totalPurchases
 
@@ -40,7 +42,9 @@ describe("Fee Distribution Invariant", function () {
             if (i === 0) {
                 const poolPercent = BigInt(await templ.memberPoolPercent());
                 const pioneerReward = (ENTRY_FEE * poolPercent) / 100n;
-                expect(await templ.cumulativeMemberRewards()).to.equal(pioneerReward);
+                expect(await templ.cumulativeMemberRewards()).to.equal(
+                    pioneerReward * REWARD_SCALE
+                );
             }
         }
 

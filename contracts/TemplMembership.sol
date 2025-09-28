@@ -51,10 +51,6 @@ abstract contract TemplMembership is TemplBase {
             revert TemplErrors.MemberLimitReached();
         }
 
-        if (currentMemberCount > 0) {
-            _flushExternalRemainders();
-        }
-
         uint256 burnAmount = (entryFee * burnPercent) / TOTAL_PERCENT;
         uint256 treasuryAmount = (entryFee * treasuryPercent) / TOTAL_PERCENT;
         uint256 memberPoolAmount = (entryFee * memberPoolPercent) / TOTAL_PERCENT;
@@ -79,9 +75,16 @@ abstract contract TemplMembership is TemplBase {
 
         if (currentMemberCount > 0) {
             uint256 totalRewards = memberPoolAmount + memberRewardRemainder;
-            uint256 rewardPerMember = totalRewards / currentMemberCount;
-            memberRewardRemainder = totalRewards % currentMemberCount;
-            cumulativeMemberRewards += rewardPerMember;
+            uint256 rewardPerShare = (totalRewards * REWARD_SCALE) / currentMemberCount;
+            if (rewardPerShare > 0) {
+                cumulativeMemberRewards += rewardPerShare;
+                uint256 distributedRewards = (rewardPerShare * currentMemberCount) / REWARD_SCALE;
+                memberRewardRemainder = totalRewards - distributedRewards;
+            } else {
+                memberRewardRemainder = totalRewards;
+            }
+        } else {
+            memberRewardRemainder += memberPoolAmount;
         }
 
         joiningMember.rewardSnapshot = cumulativeMemberRewards;
@@ -123,7 +126,10 @@ abstract contract TemplMembership is TemplBase {
 
         uint256 accrued = cumulativeMemberRewards;
         uint256 snapshot = members[member].rewardSnapshot;
-        return accrued > snapshot ? accrued - snapshot : 0;
+        if (accrued <= snapshot) {
+            return 0;
+        }
+        return (accrued - snapshot) / REWARD_SCALE;
     }
 
     /// @notice Lists ERC-20 (or ETH) reward tokens with active external pools.
@@ -142,7 +148,7 @@ abstract contract TemplMembership is TemplBase {
         uint256 remainder
     ) {
         ExternalRewardState storage rewards = externalRewards[token];
-        return (rewards.poolBalance, rewards.cumulativeRewards, rewards.rewardRemainder);
+        return (rewards.poolBalance, rewards.cumulativeRewards / REWARD_SCALE, rewards.rewardRemainder);
     }
 
     /// @notice Computes how much of an external reward token a member can claim.
@@ -166,7 +172,10 @@ abstract contract TemplMembership is TemplBase {
         if (snapshot < baseline) {
             snapshot = baseline;
         }
-        return accrued > snapshot ? accrued - snapshot : 0;
+        if (accrued <= snapshot) {
+            return 0;
+        }
+        return (accrued - snapshot) / REWARD_SCALE;
     }
 
     /// @notice Claims the caller's accrued share of the member pool.
@@ -196,7 +205,8 @@ abstract contract TemplMembership is TemplBase {
         if (claimable == 0) revert TemplErrors.NoRewardsToClaim();
 
         uint256 remaining = rewards.poolBalance;
-        if (remaining < claimable) revert TemplErrors.InsufficientPoolBalance();
+        uint256 distributable = remaining - rewards.rewardRemainder;
+        if (distributable < claimable) revert TemplErrors.InsufficientPoolBalance();
 
         memberExternalRewardSnapshots[msg.sender][token] = rewards.cumulativeRewards;
         memberExternalClaims[msg.sender][token] += claimable;
@@ -353,27 +363,5 @@ abstract contract TemplMembership is TemplBase {
     }
 
     /// @dev Distributes any outstanding external reward remainders to existing members before new joins.
-    function _flushExternalRemainders() internal {
-        uint256 currentMembers = memberList.length;
-        if (currentMembers == 0) {
-            return;
-        }
-        uint256 tokenCount = externalRewardTokens.length;
-        for (uint256 i = 0; i < tokenCount; i++) {
-            address token = externalRewardTokens[i];
-            ExternalRewardState storage rewards = externalRewards[token];
-            uint256 remainder = rewards.rewardRemainder;
-            if (remainder == 0) {
-                continue;
-            }
-            uint256 perMember = remainder / currentMembers;
-            if (perMember == 0) {
-                continue;
-            }
-            uint256 leftover = remainder % currentMembers;
-            rewards.rewardRemainder = leftover;
-            rewards.cumulativeRewards += perMember;
-            _recordExternalCheckpoint(rewards);
-        }
-    }
+    function _flushExternalRemainders() internal {}
 }

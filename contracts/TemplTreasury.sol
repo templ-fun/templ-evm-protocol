@@ -187,10 +187,15 @@ abstract contract TemplTreasury is TemplMembership {
             memberPoolBalance += accessTokenAmount;
 
             uint256 poolTotalRewards = accessTokenAmount + memberRewardRemainder;
-            uint256 poolPerMember = poolTotalRewards / memberCount;
-            uint256 poolRemainder = poolTotalRewards % memberCount;
-            cumulativeMemberRewards += poolPerMember;
+            uint256 poolRewardPerShare = (poolTotalRewards * REWARD_SCALE) / memberCount;
+            uint256 poolDistributed;
+            if (poolRewardPerShare > 0) {
+                cumulativeMemberRewards += poolRewardPerShare;
+                poolDistributed = (poolRewardPerShare * memberCount) / REWARD_SCALE;
+            }
+            uint256 poolRemainder = poolTotalRewards - poolDistributed;
             memberRewardRemainder = poolRemainder;
+            uint256 poolPerMember = memberCount == 0 ? 0 : poolDistributed / memberCount;
 
             emit TreasuryDisbanded(proposalId, token, accessTokenAmount, poolPerMember, poolRemainder);
             return;
@@ -214,13 +219,18 @@ abstract contract TemplTreasury is TemplMembership {
         rewards.poolBalance += amount;
 
         uint256 totalRewards = amount + rewards.rewardRemainder;
-        uint256 perMember = totalRewards / memberCount;
-        uint256 remainder = totalRewards % memberCount;
-        rewards.cumulativeRewards += perMember;
+        uint256 externalRewardPerShare = (totalRewards * REWARD_SCALE) / memberCount;
+        uint256 distributed;
+        if (externalRewardPerShare > 0) {
+            rewards.cumulativeRewards += externalRewardPerShare;
+            distributed = (externalRewardPerShare * memberCount) / REWARD_SCALE;
+        }
+        uint256 remainder = totalRewards - distributed;
         rewards.rewardRemainder = remainder;
 
         _recordExternalCheckpoint(rewards);
 
+        uint256 perMember = memberCount == 0 ? 0 : distributed / memberCount;
         emit TreasuryDisbanded(proposalId, token, amount, perMember, remainder);
     }
 

@@ -124,7 +124,7 @@ contract TemplHarness is TEMPL {
         _removeActiveProposal(proposalId);
     }
 
-    /// @dev Seeds an external remainder so flush logic can be exercised under controlled scenarios.
+    /// @dev Seeds an external remainder using scaled cumulative rewards for coverage scenarios.
     function harnessSeedExternalRemainder(address token, uint256 remainder, uint256 cumulative) external {
         ExternalRewardState storage rewards = externalRewards[token];
         if (!rewards.exists) {
