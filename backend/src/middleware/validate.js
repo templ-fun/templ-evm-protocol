@@ -28,11 +28,15 @@ export function createSignatureStore({ retentionMs = SIGNATURE_RETENTION_MS } = 
      * @returns {boolean} false when the signature was already used.
      */
     consume(signature, timestamp = Date.now()) {
-      prune(timestamp);
-      if (entries.has(signature)) {
+      const key = typeof signature === 'string' ? signature.toLowerCase() : String(signature || '').toLowerCase();
+      if (!key) {
         return false;
       }
-      entries.set(signature, timestamp);
+      prune(timestamp);
+      if (entries.has(key)) {
+        return false;
+      }
+      entries.set(key, timestamp);
       return true;
     },
     prune

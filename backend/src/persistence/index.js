@@ -195,9 +195,11 @@ export async function createD1Persistence({ d1, retentionMs = DEFAULT_SIGNATURE_
   const signatureStore = {
     async consume(signature, timestamp = Date.now()) {
       if (!signature) return false;
+      const key = String(signature).toLowerCase();
+      if (!key) return false;
       await prune(timestamp);
       const expiry = timestamp + retentionMs;
-      const result = await insertSignatureStmt.bind(String(signature), expiry).run();
+      const result = await insertSignatureStmt.bind(key, expiry).run();
       const changes = Number(result?.meta?.changes ?? 0);
       return changes > 0;
     },
@@ -351,9 +353,11 @@ async function createSQLitePersistence({ sqlitePath, retentionMs = DEFAULT_SIGNA
   const signatureStore = {
     async consume(signature, timestamp = Date.now()) {
       if (!signature) return false;
+      const key = String(signature).toLowerCase();
+      if (!key) return false;
       await prune(timestamp);
       const expiry = timestamp + retentionMs;
-      const info = insertSignatureStmt.run(String(signature), expiry);
+      const info = insertSignatureStmt.run(key, expiry);
       return info.changes > 0;
     },
     prune
@@ -460,11 +464,13 @@ export function createMemoryPersistence({ retentionMs = DEFAULT_SIGNATURE_RETENT
   const signatureStore = {
     async consume(signature, timestamp = Date.now()) {
       if (!signature) return false;
+      const key = String(signature).toLowerCase();
+      if (!key) return false;
       prune(timestamp);
-      if (signatures.has(signature)) {
+      if (signatures.has(key)) {
         return false;
       }
-      signatures.set(signature, timestamp + retentionMs);
+      signatures.set(key, timestamp + retentionMs);
       return true;
     },
     prune: (now = Date.now()) => prune(now)
