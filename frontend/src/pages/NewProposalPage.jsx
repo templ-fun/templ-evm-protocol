@@ -570,7 +570,7 @@ export function NewProposalPage({
                   )}
                 </label>
                 <label className={form.label}>
-                  Recipient address
+                  Withdrawal recipient
                   <input
                     type="text"
                     className={form.input}
@@ -612,13 +612,14 @@ export function NewProposalPage({
                   )}
                 </div>
                 <label className={form.label}>
-                  Reason (optional)
+                  Withdrawal reason
                   <textarea
                     className={`${form.textarea} min-h-[80px]`}
                     value={withdrawReason}
                     onChange={(e) => setWithdrawReason(e.target.value)}
                     placeholder="Explain why funds are being moved"
                   />
+                  <span className={text.hint}>Optional context members will see before voting.</span>
                 </label>
               </div>
             </div>
