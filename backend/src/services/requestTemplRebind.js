@@ -32,7 +32,7 @@ async function ensureRecordLoaded(contract, context) {
     priest: persisted.priest ? String(persisted.priest).toLowerCase() : null,
     templHomeLink: '',
     proposalsMeta: new Map(),
-    lastDigestAt: Date.now(),
+    lastDigestAt: 0,
     bindingCode: persisted.bindingCode ? String(persisted.bindingCode) : null,
     contractAddress: contract
   };

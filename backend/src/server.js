@@ -381,8 +381,12 @@ function createContractWatcher({ connectContract, templs, persist, notifier, log
     }
     if (previousRecord && typeof previousRecord.lastDigestAt === 'number') {
       record.lastDigestAt = previousRecord.lastDigestAt;
-    } else if (typeof record.lastDigestAt !== 'number') {
-      record.lastDigestAt = Date.now();
+    } else if (
+      typeof record.lastDigestAt !== 'number' ||
+      !Number.isFinite(record.lastDigestAt) ||
+      record.lastDigestAt < 0
+    ) {
+      record.lastDigestAt = 0;
     }
     if (typeof record.templHomeLink !== 'string') {
       record.templHomeLink = '';
@@ -616,7 +620,7 @@ async function restoreGroupsFromPersistence({ listBindings, templs, watchContrac
         telegramChatId: row?.telegramChatId ? String(row.telegramChatId) : null,
         priest: row?.priest ? String(row.priest).toLowerCase() : null,
         proposalsMeta: new Map(),
-        lastDigestAt: Date.now(),
+        lastDigestAt: 0,
         contractAddress: key,
         templHomeLink: '',
         bindingCode: row?.bindingCode ? String(row.bindingCode) : null
