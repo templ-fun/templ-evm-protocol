@@ -131,10 +131,26 @@ The backend now expects a traditional Node runtime. Run it on your favourite hos
 Use `npm run deploy:cloudflare` to orchestrate a full-stack deploy once you populate `.cloudflare.env` (see `scripts/cloudflare.deploy.example.env`). The script:
 
 - Applies the D1 schema so your production database contains the required tables (`templ_bindings`, `used_signatures`, `leader_election`).
-- Requires `--skip-worker`; you should deploy the backend with your preferred Node hosting provider.
+- Deploys the Worker unless you opt into `--skip-worker` (recommended when you host the backend elsewhere).
 - Builds the SPA with your `VITE_*` overrides and pushes the static bundle to Cloudflare Pages (skip with `--skip-pages`).
 
-After the script completes, take the generated `backend/wrangler.deployment.toml` (for reference) and deploy the backend separately. Populate the same environment variables (`RPC_URL`, `TELEGRAM_BOT_TOKEN`, etc.) on your host, ensure one instance is running, and let the D1-backed leader election prevent duplicate Telegram notifications.
+To focus on the database + Pages while skipping the Worker, run:
+
+```bash
+npm run deploy:cloudflare -- --skip-worker
+```
+
+In this mode you only need the Cloudflare API credentials, `CF_D1_DATABASE_NAME`, `CF_D1_DATABASE_ID`, `BACKEND_SERVER_ID`, and the frontend build variables. When you are ready to ship the Worker, add `CF_WORKER_NAME`, `APP_BASE_URL`, `TRUSTED_FACTORY_ADDRESS`, `TELEGRAM_BOT_TOKEN`, and `RPC_URL` to the environment (the example file groups these by requirement).
+
+After the script completes, take the generated `backend/wrangler.deployment.toml` (for reference) and deploy the backend separately. Populate the same environment variables on your host, ensure one instance is running, and let the D1-backed leader election prevent duplicate Telegram notifications.
+
+You can run a smoke test for the skip-worker path locally via:
+
+```bash
+npm run test:deploy:skip-worker
+```
+
+The test swaps in a mocked Wrangler binary and ensures `deploy-cloudflare.js --skip-worker --skip-pages` exits cleanly with the minimal variable set.
 
 ## Repository layout
 
