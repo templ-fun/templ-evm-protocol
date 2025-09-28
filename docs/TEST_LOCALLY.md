@@ -106,6 +106,20 @@ Commonly used accounts (private keys are from Hardhat defaults—never use them 
   Each message links back to the relevant frontend route so members can take action quickly and is formatted with Telegram Markdown V2 for consistent bold headers, code spans, and deep links. Posting the one-time binding code also yields an immediate “Telegram bridge active” acknowledgement.
 - `/templs/:address/claim` lets connected wallets see the raw member pool balance and call `claimMemberPool()`.
 
+## 8) Run the automated checks
+
+Once you can click through the flows, run the full validation pass before opening a PR:
+
+```bash
+npm run test:all
+```
+
+The helper script clears Vite caches, runs unit/integration coverage, and now installs the
+Playwright Chromium binary automatically (unless `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` is set)
+via `npm --prefix frontend exec playwright install --with-deps chromium`. If you trigger the
+frontend E2E tests manually (`npm --prefix frontend run test:e2e`), run the same Playwright
+install command once per machine so the browser executable is present.
+
 ## Troubleshooting
 
 - **CORS / origin errors** – ensure `ALLOWED_ORIGINS` in `backend/.env` matches the frontend origin.

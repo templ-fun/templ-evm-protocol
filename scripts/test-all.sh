@@ -62,6 +62,12 @@ runp \
 
 phase "Phase 4: frontend e2e"
 rm -rf frontend/.vite-cache
+if [ "${PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD:-}" != "1" ]; then
+  echo "[test:all] ensuring Playwright Chromium browser is installed"
+  npm --prefix frontend exec -- playwright install --with-deps chromium
+  echo "[test:all] ensuring Playwright system dependencies are present"
+  npm --prefix frontend exec -- playwright install-deps chromium
+fi
 npm --prefix frontend run test:e2e
 
 echo "[test:all] Completed in $(( $(date +%s) - START_TS ))s"
