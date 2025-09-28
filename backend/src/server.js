@@ -41,6 +41,7 @@ const TEMPL_EVENT_ABI = [
   'event PriestChanged(address indexed oldPriest,address indexed newPriest)',
   'event ProposalExecuted(uint256 indexed proposalId,bool success,bytes returnData)',
   'event TemplHomeLinkUpdated(string previousLink,string newLink)',
+  'function priest() view returns (address)',
   'function getActiveProposals() view returns (uint256[])',
   'function treasuryBalance() view returns (uint256)',
   'function memberPoolBalance() view returns (uint256)',
@@ -552,6 +553,29 @@ function createContractWatcher({ connectContract, templs, persist, notifier, log
     contract.on('PriestChanged', handlePriestChanged);
     contract.on('ProposalExecuted', handleProposalExecuted);
     contract.on('TemplHomeLinkUpdated', handleTemplHomeLinkUpdated);
+
+    // Opportunistically refresh priest/home link from chain so cached metadata is accurate on boot
+    try {
+      if (typeof contract.templHomeLink === 'function') {
+        const link = await contract.templHomeLink();
+        if (typeof link === 'string' && link !== (record.templHomeLink || '')) {
+          record.templHomeLink = link;
+        }
+      }
+      if (typeof contract.priest === 'function') {
+        const onchainPriest = await contract.priest();
+        if (onchainPriest) {
+          const nextPriest = String(onchainPriest).toLowerCase();
+          if (nextPriest && nextPriest !== (record.priest || '')) {
+            record.priest = nextPriest;
+          }
+        }
+      }
+      templs.set(key, record);
+      await persist(key, record);
+    } catch (err) {
+      logger?.warn?.({ err: String(err?.message || err), contract: key }, 'Failed to refresh priest/home link on attach');
+    }
 
     listenerRegistry.set(key, {
       contract,
