@@ -180,5 +180,6 @@ flowchart LR
 
 - `templ_bindings` keeps the templ contract ↔ optional Telegram chat mapping plus the last-seen priest address so notifications resume after restarts (NULL chat ids indicate pending bindings). When persisted in D1/SQLite the mapping survives backend restarts without extra infrastructure.
 - `used_signatures` records typed-request signatures for ~6 hours. The backend prefers D1 and only falls back to the in-memory cache when the database binding is unavailable.
+- `leader_election` tracks which backend instance currently holds leadership (identified by `owner` and guarded by an `expiresAt` TTL). Multi-instance deployments refresh this row to ensure only one server keeps contract watchers and background tasks running; single-instance or in-memory setups effectively auto-elect themselves.
 
 These flows should serve as the canonical reference for the Telegram-based architecture.
