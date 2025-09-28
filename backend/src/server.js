@@ -518,12 +518,12 @@ function createContractWatcher({ connectContract, templs, persist, notifier, log
       });
     });
 
-    const handleProposalExecuted = wrapListener('Contract listener error', async (proposalId) => {
+    const handleProposalExecuted = wrapListener('Contract listener error', async (proposalId, success) => {
       const proposalKey = toProposalKey(proposalId);
       const meta = ensureProposalMeta(record, proposalKey);
       if (meta) {
         meta.executed = true;
-        meta.passed = false;
+        meta.passed = Boolean(success);
       }
     });
 
