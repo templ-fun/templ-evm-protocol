@@ -222,6 +222,8 @@ export async function fetchTemplStats({
  * @param {typeof import('ethers')} params.ethers
  * @param {import('ethers').Provider | import('ethers').Signer | null | undefined} params.provider
  * @param {string | null | undefined} params.factoryAddress
+ * @param {number | null | undefined} [params.fromBlock]
+ * @param {number | null | undefined} [params.chunkSize]
  * @returns {Promise<Array<{
  *   contract: string,
  *   priest: string,
@@ -260,10 +262,20 @@ export async function loadFactoryTempls({
 
   const normalisedFromBlock = Number.isFinite(fromBlock) && fromBlock >= 0 ? Math.floor(fromBlock) : 0;
   let latestBlock = normalisedFromBlock;
-  try {
-    latestBlock = Number(await provider.getBlockNumber());
-  } catch (err) {
-    console.warn('[templ] Failed to read latest block number, falling back to fromBlock', err);
+  /** @type {import('ethers').Provider | null} */
+  let blockProvider = null;
+  if (provider && typeof provider === 'object' && 'getBlockNumber' in provider && typeof provider.getBlockNumber === 'function') {
+    blockProvider = /** @type {import('ethers').Provider} */ (provider);
+  } else if (provider && typeof provider === 'object' && 'provider' in provider && provider.provider && typeof provider.provider.getBlockNumber === 'function') {
+    blockProvider = provider.provider;
+  }
+
+  if (blockProvider) {
+    try {
+      latestBlock = Number(await blockProvider.getBlockNumber());
+    } catch (err) {
+      console.warn('[templ] Failed to read latest block number, falling back to fromBlock', err);
+    }
   }
   if (!Number.isFinite(latestBlock) || latestBlock < normalisedFromBlock) {
     latestBlock = normalisedFromBlock;
