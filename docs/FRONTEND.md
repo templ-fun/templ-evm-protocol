@@ -36,6 +36,7 @@ By default the SPA expects the backend at `http://localhost:3001`. Override with
 | `VITE_TEMPL_FACTORY_ADDRESS` | Optional override for the templ factory used during deploy. | unset |
 | `VITE_TEMPL_FACTORY_PROTOCOL_RECIPIENT` | Optional override for the protocol fee recipient shown in the UI. | unset |
 | `VITE_TEMPL_FACTORY_PROTOCOL_PERCENT` | Optional override for the protocol fee percent shown in the UI. | unset |
+| `VITE_TEMPL_FACTORY_DEPLOYMENT_BLOCK` | Optional block height that seeds the factory log scan when listing templs on the landing page. | unset |
 | `VITE_RPC_URL` | Optional read provider used to enumerate templs on the landing page (falls back to the active wallet provider). | unset |
 | `VITE_E2E_DEBUG` | Enables additional UI affordances when set to `1` (used by Playwright). | `0` |
 

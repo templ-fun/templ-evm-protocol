@@ -169,8 +169,10 @@ Cloudflare Pages is an edge-cached static host with an extremely generous free t
    VITE_BACKEND_URL=https://api.templ.example \
    VITE_BACKEND_SERVER_ID=templ-prod \
    VITE_TEMPL_FACTORY_ADDRESS=0x... \
+   VITE_TEMPL_FACTORY_DEPLOYMENT_BLOCK=12345678 \
    npm --prefix frontend run build
    ```
+   Replace `12345678` with the block height where your trusted factory was deployed so the landing page can page through logs without scanning the entire chain.
 3. Deploy to Pages:
    ```bash
    wrangler pages deploy frontend/dist --project-name templ-frontend --branch production

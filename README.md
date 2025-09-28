@@ -84,6 +84,8 @@ In separate terminals you’ll typically run:
 | `LOG_LEVEL` | Pino log level (`info` by default). |
 | `RATE_LIMIT_STORE` | `memory` or `redis`; auto-selects Redis when `REDIS_URL` is set. |
 | `REDIS_URL` | Redis endpoint used for distributed rate limiting (required when `RATE_LIMIT_STORE=redis`). |
+| `TRUSTED_FACTORY_ADDRESS` | Optional factory address; when set, only templs emitted by this factory may register or rebind, and cached records from other factories are skipped on restart. |
+| `TRUSTED_FACTORY_DEPLOYMENT_BLOCK` | Optional block height used when verifying templ origin from the trusted factory. Provide the factory’s deployment block to avoid wide RPC log scans. |
 | `REQUIRE_CONTRACT_VERIFY` | Set to `1` in production to enforce on-chain contract + priest validation. |
 | `SQLITE_DB_PATH` | Optional path to a SQLite database file when running outside Cloudflare D1 (e.g. `/var/lib/templ/templ.db`). |
 | `LEADER_TTL_MS` | Optional override (milliseconds) for the leadership lease duration backed by D1/SQLite. Default: `60000`. |
@@ -97,6 +99,7 @@ The backend persists templ registrations in Cloudflare D1 (`templ_bindings`) whe
 | `VITE_BACKEND_URL` | API base URL; defaults to `http://localhost:3001`. |
 | `VITE_BACKEND_SERVER_ID` | Must equal the backend’s `BACKEND_SERVER_ID` so signatures align. |
 | `VITE_TEMPL_FACTORY_*` | Optional overrides for the default factory address (`address`), protocol recipient (`protocolRecipient`), and protocol percent (`protocolPercent`). |
+| `VITE_TEMPL_FACTORY_DEPLOYMENT_BLOCK` | Optional block height hint so the landing page can enumerate templs without scanning the entire chain. |
 | `VITE_RPC_URL` | Optional read-only RPC endpoint used to list templs from the factory on the landing page (falls back to the connected wallet provider). |
 
 The frontend connects to the user’s browser wallet (MetaMask or any `window.ethereum` provider) and reuses Hardhat accounts during local development.
