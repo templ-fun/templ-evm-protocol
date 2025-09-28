@@ -75,6 +75,8 @@ sequenceDiagram
 
 `purchaseAccess` executes only when the templ is unpaused, no disband lock is active, and the membership cap has spare capacity. Attempts during an active disband (custom error `DisbandLockActive`) or when the cap is reached (`MemberLimitReached`) revert on-chain; frontend helpers surface these messages so members know to wait for governance to resolve the lock or raise the cap.
 
+Expired disband proposals no longer require a manual prune—`purchaseAccess` automatically refreshes disband locks and releases those whose voting window has lapsed, so membership resumes as soon as a failed or abandoned disband times out.
+
 ## 3. Telegram notifications
 
 Whenever watchers detect events and the templ has a `telegramChatId`, the backend posts formatted messages. In addition to join/proposal/vote updates, the notifier announces quorum, flags when a voting window closes (including whether execution is possible), and emits a daily treasury/member-pool digest. No Telegram messages are sent if the bot token or chat id is missing.

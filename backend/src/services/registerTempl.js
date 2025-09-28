@@ -26,7 +26,13 @@ function normaliseAddress(value, field) {
 function normaliseChatId(value) {
   if (value === null || value === undefined) return null;
   const trimmed = String(value).trim();
-  return trimmed.length ? trimmed : null;
+  if (!trimmed.length) {
+    return null;
+  }
+  if (!/^(-?[1-9]\d*)$/.test(trimmed)) {
+    throw templError('Invalid telegramChatId', 400);
+  }
+  return trimmed;
 }
 
 export async function registerTempl(body, context) {

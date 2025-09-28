@@ -607,6 +607,11 @@ abstract contract TemplGovernance is TemplTreasury {
         if (!proposal.disbandJoinLock) {
             proposal.disbandJoinLock = true;
             activeDisbandJoinLocks += 1;
+            uint256 proposalId = proposal.id;
+            if (disbandLockIndex[proposalId] == 0) {
+                disbandLockIds.push(proposalId);
+                disbandLockIndex[proposalId] = disbandLockIds.length;
+            }
         }
     }
 
@@ -615,6 +620,19 @@ abstract contract TemplGovernance is TemplTreasury {
             proposal.disbandJoinLock = false;
             if (activeDisbandJoinLocks != 0) {
                 activeDisbandJoinLocks -= 1;
+            }
+            uint256 proposalId = proposal.id;
+            uint256 indexPlusOne = disbandLockIndex[proposalId];
+            if (indexPlusOne != 0) {
+                uint256 index = indexPlusOne - 1;
+                uint256 lastIndex = disbandLockIds.length - 1;
+                if (index != lastIndex) {
+                    uint256 movedId = disbandLockIds[lastIndex];
+                    disbandLockIds[index] = movedId;
+                    disbandLockIndex[movedId] = index + 1;
+                }
+                disbandLockIds.pop();
+                disbandLockIndex[proposalId] = 0;
             }
         }
     }
@@ -664,5 +682,27 @@ abstract contract TemplGovernance is TemplTreasury {
     /// @dev Helper that determines if a proposal is still active based on time and execution status.
     function _isActiveProposal(Proposal storage proposal, uint256 currentTime) internal view returns (bool) {
         return currentTime < proposal.endTime && !proposal.executed;
+    }
+
+    function _refreshDisbandLocks() internal override {
+        if (activeDisbandJoinLocks == 0) {
+            return;
+        }
+        uint256 len = disbandLockIds.length;
+        if (len == 0) {
+            return;
+        }
+        uint256 currentTime = block.timestamp;
+        for (uint256 i = len; i > 0; i--) {
+            uint256 proposalId = disbandLockIds[i - 1];
+            Proposal storage proposal = proposals[proposalId];
+            if (!proposal.disbandJoinLock) {
+                _releaseDisbandLock(proposal);
+                continue;
+            }
+            if (currentTime >= proposal.endTime && !proposal.executed) {
+                _finalizeDisbandFailure(proposal);
+            }
+        }
     }
 }

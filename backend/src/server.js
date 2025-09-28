@@ -698,7 +698,6 @@ function createBackgroundTasks({ templs, notifier, logger, persist }) {
         record.lastDigestAt = now;
       } catch (err) {
         logger?.warn?.({ err: String(err?.message || err), contract: contractAddress }, 'Failed to send daily digest');
-        record.lastDigestAt = now;
       }
     }
   }

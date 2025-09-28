@@ -23,6 +23,51 @@ test('registerTempl rejects malformed addresses', async () => {
   );
 });
 
+test('registerTempl rejects invalid telegram chat ids', async () => {
+  const templs = new Map();
+  const context = {
+    templs,
+    persist: async () => {},
+    watchContract: async () => {},
+    logger: { info: () => {}, warn: () => {}, error: () => {} }
+  };
+
+  await assert.rejects(
+    () => registerTempl(
+      {
+        contractAddress: '0x1111111111111111111111111111111111111111',
+        priestAddress: '0x2222222222222222222222222222222222222222',
+        telegramChatId: 'group-1234'
+      },
+      context
+    ),
+    (err) => expectStatus(err, 400)
+  );
+});
+
+test('registerTempl accepts numeric telegram chat ids', async () => {
+  const templs = new Map();
+  const context = {
+    templs,
+    persist: async () => {},
+    watchContract: async () => {},
+    logger: { info: () => {}, warn: () => {}, error: () => {} }
+  };
+
+  await registerTempl(
+    {
+      contractAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      priestAddress: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      telegramChatId: '-1001234567890'
+    },
+    context
+  );
+
+  assert.equal(templs.size, 1);
+  const record = templs.get('0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+  assert.equal(record.telegramChatId, '-1001234567890');
+});
+
 test('joinTempl rejects malformed addresses', async () => {
   await assert.rejects(
     () => joinTempl({ contractAddress: '0x123', memberAddress: '0x123' }, { ...noopContext, hasPurchased: async () => true }),
