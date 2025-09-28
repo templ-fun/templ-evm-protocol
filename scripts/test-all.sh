@@ -33,7 +33,8 @@ runp \
   "npm test" \
   "npm run slither:ci" \
   "npm --prefix backend run typecheck" \
-  "npm --prefix frontend run typecheck"
+  "npm --prefix frontend run typecheck" \
+  "node test/deploy-cloudflare-skip-worker.test.mjs"
 
 phase "Phase 2: backend test + lint in parallel"
 runp \

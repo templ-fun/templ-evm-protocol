@@ -175,26 +175,17 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   loadEnv(args.envFile);
 
-  if (!args.skipWorker) {
+  const skipWorker = Boolean(args.skipWorker);
+  if (!skipWorker) {
     console.error('Error: templ backend no longer deploys to Cloudflare Workers. Rerun with --skip-worker and deploy the Node service separately.');
     process.exit(1);
   }
 
-  const workerName = requireEnv('CF_WORKER_NAME', 'Set CF_WORKER_NAME to the Cloudflare Worker name to deploy.');
   const d1Name = requireEnv('CF_D1_DATABASE_NAME', 'Set CF_D1_DATABASE_NAME to your D1 database name.');
   const d1Id = requireEnv('CF_D1_DATABASE_ID', 'Set CF_D1_DATABASE_ID to your D1 database id.');
   const d1Binding = trim(process.env.CF_D1_BINDING) || 'TEMPL_DB';
-  const compatibilityDate = trim(process.env.CF_COMPATIBILITY_DATE) || new Date().toISOString().slice(0, 10);
-  const appBaseUrl = requireEnv('APP_BASE_URL', 'APP_BASE_URL must point to the frontend domain used in Telegram deep links.');
-  const trustedFactory = requireEnv(
-    'TRUSTED_FACTORY_ADDRESS',
-    'TRUSTED_FACTORY_ADDRESS must be set so the backend only serves templs from your factory.'
-  );
-  const telegramToken = requireEnv('TELEGRAM_BOT_TOKEN', 'Provide TELEGRAM_BOT_TOKEN so the Worker can notify chats.');
-  const rpcUrl = requireEnv('RPC_URL', 'Provide RPC_URL for the Worker to watch on-chain events.');
-  const backendServerId = trim(process.env.BACKEND_SERVER_ID) || workerName;
-  const factoryBlock = trim(process.env.TRUSTED_FACTORY_DEPLOYMENT_BLOCK);
-  const requireVerify = trim(process.env.REQUIRE_CONTRACT_VERIFY) || '1';
+  let backendServerId = trim(process.env.BACKEND_SERVER_ID) || null;
+
   const cloudflareAccount = requireEnv('CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_ACCOUNT_ID is required for Wrangler API calls.');
   const cloudflareToken = requireEnv('CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_API_TOKEN is required for Wrangler API calls.');
   const pagesProject = args.skipPages
@@ -209,35 +200,62 @@ async function main() {
   const backendDir = path.join(repoRoot, 'backend');
   const generatedWranglerPath = path.join(backendDir, 'wrangler.deployment.toml');
 
-  const baseVars = {
-    APP_BASE_URL: appBaseUrl,
-    BACKEND_SERVER_ID: backendServerId,
-    TRUSTED_FACTORY_ADDRESS: trustedFactory,
-    REQUIRE_CONTRACT_VERIFY: requireVerify,
-    NODE_ENV: 'production'
-  };
-  if (factoryBlock) {
-    baseVars.TRUSTED_FACTORY_DEPLOYMENT_BLOCK = factoryBlock;
-  }
-  const extraVars = collectPrefixedEnv('CLOUDFLARE_BACKEND_VAR_');
-  Object.assign(baseVars, extraVars);
+  let workerName = null;
+  let wroteWorkerConfig = false;
 
-  console.log('> Generating Worker wrangler config');
-  await writeWorkerConfig({
-    name: workerName,
-    compatibilityDate,
-    d1Binding,
-    d1Name,
-    d1Id,
-    vars: baseVars,
-    configPath: generatedWranglerPath
-  });
+  if (!skipWorker) {
+    workerName = requireEnv('CF_WORKER_NAME', 'Set CF_WORKER_NAME to the Cloudflare Worker name to deploy.');
+    const compatibilityDate = trim(process.env.CF_COMPATIBILITY_DATE) || new Date().toISOString().slice(0, 10);
+    const appBaseUrl = requireEnv('APP_BASE_URL', 'APP_BASE_URL must point to the frontend domain used in Telegram deep links.');
+    const trustedFactory = requireEnv(
+      'TRUSTED_FACTORY_ADDRESS',
+      'TRUSTED_FACTORY_ADDRESS must be set so the backend only serves templs from your factory.'
+    );
+    const factoryBlock = trim(process.env.TRUSTED_FACTORY_DEPLOYMENT_BLOCK);
+    const requireVerify = trim(process.env.REQUIRE_CONTRACT_VERIFY) || '1';
+    if (!backendServerId) {
+      backendServerId = workerName;
+    }
+
+    const baseVars = {
+      APP_BASE_URL: appBaseUrl,
+      BACKEND_SERVER_ID: backendServerId,
+      TRUSTED_FACTORY_ADDRESS: trustedFactory,
+      REQUIRE_CONTRACT_VERIFY: requireVerify,
+      NODE_ENV: 'production'
+    };
+    if (factoryBlock) {
+      baseVars.TRUSTED_FACTORY_DEPLOYMENT_BLOCK = factoryBlock;
+    }
+    const extraVars = collectPrefixedEnv('CLOUDFLARE_BACKEND_VAR_');
+    Object.assign(baseVars, extraVars);
+
+    console.log('> Generating Worker wrangler config');
+    await writeWorkerConfig({
+      name: workerName,
+      compatibilityDate,
+      d1Binding,
+      d1Name,
+      d1Id,
+      vars: baseVars,
+      configPath: generatedWranglerPath
+    });
+    wroteWorkerConfig = true;
+  } else if (!backendServerId) {
+    backendServerId = requireEnv(
+      'BACKEND_SERVER_ID',
+      'Set BACKEND_SERVER_ID to match the identifier your production Node backend exposes when skipping Worker deployment.'
+    );
+  }
 
   const schemaPath = path.join(backendDir, 'src', 'persistence', 'schema.sql');
   console.log('> Applying D1 schema');
   await runWrangler(['d1', 'execute', d1Name, '--database-id', d1Id, '--file', schemaPath]);
 
-  if (!args.skipWorker) {
+  if (!skipWorker) {
+    const telegramToken = requireEnv('TELEGRAM_BOT_TOKEN', 'Provide TELEGRAM_BOT_TOKEN so the Worker can notify chats.');
+    const rpcUrl = requireEnv('RPC_URL', 'Provide RPC_URL for the Worker to watch on-chain events.');
+
     console.log('> Syncing Worker secrets');
     await putSecret('TELEGRAM_BOT_TOKEN', telegramToken, generatedWranglerPath);
     await putSecret('RPC_URL', rpcUrl, generatedWranglerPath);
@@ -290,13 +308,17 @@ async function main() {
   }
 
   console.log('\nDeployment complete!');
-  if (!args.skipWorker) {
+  if (!skipWorker) {
     console.log(`  • Worker name: ${workerName}`);
+  } else {
+    console.log('  • Worker deployment skipped (--skip-worker); deploy the Node backend separately.');
   }
   if (!args.skipPages) {
     console.log(`  • Pages project: ${pagesProject} (branch ${pagesBranch})`);
   }
-  console.log('  • Update the generated backend/wrangler.deployment.toml if you need to re-run Wrangler manually.');
+  if (wroteWorkerConfig) {
+    console.log('  • Update the generated backend/wrangler.deployment.toml if you need to re-run Wrangler manually.');
+  }
   console.log('');
 }
 

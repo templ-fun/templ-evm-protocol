@@ -125,13 +125,13 @@ The backend now expects a traditional Node runtime. Run it on your favourite hos
 
 ### One-command Cloudflare deploys
 
-Use `npm run deploy:cloudflare` to orchestrate a full-stack deploy once you populate `.cloudflare.env` (see `scripts/cloudflare.deploy.example.env`). The script:
+Use `npm run deploy:cloudflare -- --skip-worker [--skip-pages]` to orchestrate a full-stack deploy once you populate `.cloudflare.env` (see `scripts/cloudflare.deploy.example.env`). Only the Cloudflare API credentials, D1 identifiers, `BACKEND_SERVER_ID`, and the frontend `VITE_*` values you rely on are required when skipping the Worker; keep Worker-specific keys (`CF_WORKER_NAME`, `TELEGRAM_BOT_TOKEN`, `RPC_URL`, etc.) unset unless you plan to re-enable that path. The script:
 
 - Applies the D1 schema so your production database contains the required tables (`templ_bindings`, `used_signatures`, `leader_election`).
 - Requires `--skip-worker`; you should deploy the backend with your preferred Node hosting provider.
 - Builds the SPA with your `VITE_*` overrides and pushes the static bundle to Cloudflare Pages (skip with `--skip-pages`).
 
-After the script completes, take the generated `backend/wrangler.deployment.toml` (for reference) and deploy the backend separately. Populate the same environment variables (`RPC_URL`, `TELEGRAM_BOT_TOKEN`, etc.) on your host, ensure one instance is running, and let the D1-backed leader election prevent duplicate Telegram notifications.
+After the script completes, deploy the backend separately on your Node host using the same environment variables and let the D1-backed leader election prevent duplicate Telegram notifications. A smoke test (`node test/deploy-cloudflare-skip-worker.test.mjs`) exercises a stub Wrangler binary to ensure `npm run deploy:cloudflare -- --skip-worker --skip-pages` exits cleanly with the minimal variable set.
 
 ## Repository layout
 
