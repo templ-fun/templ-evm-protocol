@@ -29,7 +29,8 @@ Example `/join` response:
     "templHomeLink": "https://example.com"
   },
   "links": {
-    "overview": "https://app.templ.fun/templs/0xabc…",
+    "templ": "https://app.templ.fun/templs/0xabc…",
+    "proposals": "https://app.templ.fun/templs/0xabc…/proposals",
     "vote": "https://app.templ.fun/templs/0xabc…/proposals",
     "join": "https://app.templ.fun/templs/join?address=0xabc…",
     "claim": "https://app.templ.fun/templs/0xabc…/claim"
@@ -64,7 +65,6 @@ Running the server requires a JSON-RPC endpoint and aligned frontend/server IDs.
 | `REDIS_URL` | Redis endpoint used for rate limiting when `RATE_LIMIT_STORE=redis`. | unset |
 | `LEADER_TTL_MS` | Leader election heartbeat window (milliseconds) when using D1/SQLite. Must be ≥ 15000. | `60000` |
 | `SQLITE_DB_PATH` | Optional path to a persistent SQLite database when running outside Cloudflare. Leave unset to use D1 (if bound) or the in-memory store. | unset |
-| `TRUSTED_FACTORY_DEPLOYMENT_BLOCK` | Suggested start block for trusted-factory log scans to avoid provider range limits. | unset |
 Bind a Cloudflare D1 database (or any SQLite-compatible store) in production so the service can persist templ metadata, replay protection, and leader election state. The D1 adapter automatically provisions the required tables on boot, so no manual migrations are necessary beyond providing the binding. Local development without a binding automatically uses the in-memory adapter so you can iterate without provisioning D1. Signature replay protection still retains entries for ~6 hours (matching the defaults baked into the adapters).
 
 > `npm run deploy:cloudflare` (see `scripts/cloudflare.deploy.example.env`) now focuses on applying the D1 schema and deploying the frontend to Cloudflare Pages. Pass `--skip-worker` when the backend runs outside Cloudflare Workers; Worker-only env vars become optional in that mode. Make sure the deployed process can reach the same D1 database to participate in leader election.
