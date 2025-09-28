@@ -14,7 +14,8 @@ const ERC20_METADATA_ABI = [
  *   entryFee?: bigint | string,
  *   entryFeeRaw?: string,
  *   tokenSymbol?: string,
- *   templHomeLink?: string
+ *   templHomeLink?: string,
+ *   protocolPercent?: number
  * }} TemplMeta
  */
 
@@ -39,6 +40,10 @@ const ERC20_METADATA_ABI = [
  * @property {string} totalProtocolFees
  * @property {string} templHomeLink
  * @property {{ overview: string, homeLink?: string }} links
+ * @property {number} protocolPercent
+ * @property {number} burnPercent
+ * @property {number} treasuryPercent
+ * @property {number} memberPoolPercent
  */
 
 const toBigInt = (value, fallback = 0n) => {
@@ -138,11 +143,33 @@ export async function fetchTemplStats({
   let memberPoolBalance = 0n;
   let totalTreasuryReceived = 0n;
   let totalProtocolFees = 0n;
+  let burnPercent = 0;
+  let treasuryPercent = 0;
+  let memberPoolPercent = 0;
+  let protocolPercent = metaInfo?.protocolPercent !== undefined && metaInfo.protocolPercent !== null
+    ? Number(metaInfo.protocolPercent)
+    : 0;
 
   if (config) {
-    const [cfgToken, fee, , purchases, treasuryBal, poolBal] = config;
+    const [cfgToken, fee, , purchases, treasuryBal, poolBal, burnPct, treasuryPct, memberPct, protocolPct] = config;
     if (typeof cfgToken === 'string' && cfgToken) {
       tokenAddress = cfgToken.toLowerCase();
+    }
+    if (burnPct !== undefined && burnPct !== null) {
+      const parsed = Number(burnPct);
+      if (Number.isFinite(parsed)) burnPercent = parsed;
+    }
+    if (treasuryPct !== undefined && treasuryPct !== null) {
+      const parsed = Number(treasuryPct);
+      if (Number.isFinite(parsed)) treasuryPercent = parsed;
+    }
+    if (memberPct !== undefined && memberPct !== null) {
+      const parsed = Number(memberPct);
+      if (Number.isFinite(parsed)) memberPoolPercent = parsed;
+    }
+    if (protocolPct !== undefined && protocolPct !== null) {
+      const parsed = Number(protocolPct);
+      if (Number.isFinite(parsed)) protocolPercent = parsed;
     }
     if (fee !== undefined && fee !== null) {
       entryFeeRaw = typeof fee === 'bigint' ? fee : BigInt(fee);
@@ -209,6 +236,10 @@ export async function fetchTemplStats({
     totalTreasuryReceived: totalTreasuryReceived.toString(),
     totalProtocolFees: totalProtocolFees.toString(),
     templHomeLink: normalizedHomeLink || metaInfo.templHomeLink || '',
+    protocolPercent: Number.isFinite(protocolPercent) ? protocolPercent : 0,
+    burnPercent,
+    treasuryPercent,
+    memberPoolPercent,
     links: {
       overview: `/templs/${normalizedAddress.toLowerCase()}`,
       homeLink: normalizedHomeLink || undefined

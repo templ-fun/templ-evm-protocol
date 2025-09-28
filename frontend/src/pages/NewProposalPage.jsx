@@ -69,6 +69,10 @@ function parsePercent(value, label) {
 // eslint-disable-next-line react-refresh/only-export-components
 export function buildActionConfig(kind, params, helpers = {}) {
   const ethersLib = helpers?.ethers;
+  const protocolPercentRaw = helpers?.protocolPercent;
+  const resolvedProtocolPercent = Number.isFinite(Number(protocolPercentRaw))
+    ? Number(protocolPercentRaw)
+    : null;
   switch (kind) {
     case 'pause':
       return { action: 'setPaused', params: { paused: true } };
@@ -124,9 +128,14 @@ export function buildActionConfig(kind, params, helpers = {}) {
         const burn = parsePercent(params.burnPercent, 'burn percent');
         const treasury = parsePercent(params.treasuryPercent, 'treasury percent');
         const member = parsePercent(params.memberPercent, 'member pool percent');
+        const protocolCut = resolvedProtocolPercent ?? 0;
+        const targetSplit = 100 - protocolCut;
+        if (targetSplit < 0) {
+          throw new Error('Protocol percent exceeds 100');
+        }
         const total = burn + treasury + member;
-        if (total !== 100) {
-          throw new Error(`Fee split must add up to 100 (received ${total})`);
+        if (total !== targetSplit) {
+          throw new Error(`Fee split must add up to ${targetSplit} (received ${total})`);
         }
         nextParams.updateFeeSplit = true;
         nextParams.newBurnPercent = burn;
@@ -175,6 +184,7 @@ export function NewProposalPage({
   const [updateTreasuryPercent, setUpdateTreasuryPercent] = useState('');
   const [updateMemberPercent, setUpdateMemberPercent] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [protocolPercent, setProtocolPercent] = useState(null);
   const [treasurySnapshot, setTreasurySnapshot] = useState({
     tokenAddress: '',
     tokenSymbol: '',
@@ -196,6 +206,20 @@ export function NewProposalPage({
   const requiresWithdrawal = useMemo(() => proposalType === 'withdrawTreasury', [proposalType]);
   const requiresDisband = useMemo(() => proposalType === 'disbandTreasury', [proposalType]);
   const requiresConfigUpdate = useMemo(() => proposalType === 'updateConfig', [proposalType]);
+  const protocolPercentNumber = useMemo(() => {
+    if (protocolPercent === null || protocolPercent === undefined) {
+      return null;
+    }
+    const parsed = Number(protocolPercent);
+    return Number.isFinite(parsed) ? parsed : null;
+  }, [protocolPercent]);
+  const feeSplitTarget = useMemo(() => {
+    if (protocolPercentNumber === null) {
+      return 100;
+    }
+    const value = 100 - protocolPercentNumber;
+    return value < 0 ? 0 : value;
+  }, [protocolPercentNumber]);
 
   const availableTreasuryBalance = useMemo(() => {
     try {
@@ -330,6 +354,7 @@ export function NewProposalPage({
           treasuryBalanceFormatted: stats.treasuryBalanceFormatted || '0'
         });
         setWithdrawToken((prev) => prev || stats.tokenAddress || '');
+        setProtocolPercent(Number.isFinite(Number(stats.protocolPercent)) ? Number(stats.protocolPercent) : null);
       } catch (err) {
         console.warn('[templ] Failed to load templ treasury snapshot', err);
       }
@@ -369,7 +394,7 @@ export function NewProposalPage({
         burnPercent: updateBurnPercent,
         treasuryPercent: updateTreasuryPercent,
         memberPercent: updateMemberPercent
-      }, { ethers });
+      }, { ethers, protocolPercent: protocolPercentNumber });
       const votingPeriodValue = Number(votingPeriod || '0');
       const result = await proposeVote({
         ethers,
@@ -655,6 +680,12 @@ export function NewProposalPage({
                   />
                 </label>
               </div>
+            )}
+            {updateFeeSplit && (
+              <p className={text.hint}>
+                Burn + treasury + member pool must total {feeSplitTarget}%
+                {protocolPercentNumber !== null ? ` (protocol keeps ${protocolPercentNumber}%)` : ''}.
+              </p>
             )}
           </div>
         )}

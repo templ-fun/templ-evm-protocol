@@ -129,7 +129,7 @@ You can deploy from the CLI or via the frontend. The CLI is convenient for scrip
    ```bash
    npm --prefix backend start
    ```
-  By default the backend uses the in-memory persistence adapter so you can iterate quickly without provisioning infrastructure. Set `SQLITE_DB_PATH` if you want the data to survive restarts, or (optionally) wire up a Cloudflare D1 database via Wrangler for parity with production.
+  By default the backend uses the in-memory persistence adapter so you can iterate quickly without provisioning infrastructure. Set `SQLITE_DB_PATH` if you want the data to survive restarts, or (optionally) wire up a Cloudflare D1 database via Wrangler for parity with production. When a D1 binding is present the server bootstraps the schema automatically, so no manual migrations are required.
    > The backend only recognises templs that call the `/templs` registration endpoint and (when `TRUSTED_FACTORY_ADDRESS` is set) were emitted by the trusted factory. The CLI deploy script can auto-register (see step 6 above) or run `scripts/register-templ.js`. Until registration completes, the frontend will not list the templ and membership verification requests will return 404.
 
 ### Deploying the backend to production

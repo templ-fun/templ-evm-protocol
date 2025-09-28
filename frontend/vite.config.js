@@ -8,6 +8,15 @@ export default defineConfig({
   },
   // Use a project-local cache directory to avoid EACCES in sandboxed envs
   cacheDir: '.vite-cache',
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          ethers: ['ethers']
+        }
+      }
+    }
+  },
   test: {
     exclude: ['node_modules', 'e2e/**']
   }

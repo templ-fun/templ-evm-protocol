@@ -1,16 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { ethers } from 'ethers';
 import { useAppLocation } from './hooks/useAppLocation.js';
-import { HomePage } from './pages/HomePage.jsx';
-import { CreateTemplPage } from './pages/CreateTemplPage.jsx';
-import { JoinTemplPage } from './pages/JoinTemplPage.jsx';
-import { NewProposalPage } from './pages/NewProposalPage.jsx';
-import { VoteProposalPage } from './pages/VoteProposalPage.jsx';
-import { TemplOverviewPage } from './pages/TemplOverviewPage.jsx';
-import { ClaimRewardsPage } from './pages/ClaimRewardsPage.jsx';
 import { BACKEND_URL, FACTORY_CONFIG, RPC_URL } from './config.js';
 import { fetchTemplStats, loadFactoryTempls } from './services/templs.js';
 import { button, layout } from './ui/theme.js';
+
+const HomePage = lazy(() => import('./pages/HomePage.jsx').then((mod) => ({ default: mod.HomePage })));
+const CreateTemplPage = lazy(() => import('./pages/CreateTemplPage.jsx').then((mod) => ({ default: mod.CreateTemplPage })));
+const JoinTemplPage = lazy(() => import('./pages/JoinTemplPage.jsx').then((mod) => ({ default: mod.JoinTemplPage })));
+const NewProposalPage = lazy(() => import('./pages/NewProposalPage.jsx').then((mod) => ({ default: mod.NewProposalPage })));
+const VoteProposalPage = lazy(() => import('./pages/VoteProposalPage.jsx').then((mod) => ({ default: mod.VoteProposalPage })));
+const TemplOverviewPage = lazy(() => import('./pages/TemplOverviewPage.jsx').then((mod) => ({ default: mod.TemplOverviewPage })));
+const ClaimRewardsPage = lazy(() => import('./pages/ClaimRewardsPage.jsx').then((mod) => ({ default: mod.ClaimRewardsPage })));
 
 export default function App() {
   const { path, query, navigate } = useAppLocation();
@@ -337,7 +338,9 @@ export default function App() {
         <button type="button" className={button.nav} onClick={() => navigate('/templs/join')}>Join</button>
       </nav>
       <main className={layout.main}>
-        {renderRoute()}
+        <Suspense fallback={<div className="p-6 text-sm text-slate-500">Loading…</div>}>
+          {renderRoute()}
+        </Suspense>
       </main>
       <footer className={layout.statusBar}>
         {statusMessages.length === 0 ? (

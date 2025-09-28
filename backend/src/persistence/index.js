@@ -77,6 +77,12 @@ export async function createD1Persistence({ d1, retentionMs = DEFAULT_SIGNATURE_
   await d1.exec(
     'CREATE TABLE IF NOT EXISTS used_signatures (signature TEXT PRIMARY KEY, expiresAt INTEGER NOT NULL)'
   );
+  await d1.exec(
+    'CREATE TABLE IF NOT EXISTS leader_election (id TEXT PRIMARY KEY, owner TEXT NOT NULL, expiresAt INTEGER NOT NULL)'
+  );
+  await d1.exec(
+    'CREATE INDEX IF NOT EXISTS idx_leader_election_expires ON leader_election(expiresAt)'
+  );
 
   const insertBinding = d1.prepare(
     'INSERT INTO templ_bindings (contract, telegramChatId, priest, bindingCode) VALUES (?1, ?2, ?3, ?4) ' +
