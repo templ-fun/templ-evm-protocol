@@ -47,5 +47,14 @@ coverage/
 frontend/coverage/
 backend/coverage/
 frontend/.vitest-cache/
+frontend/.vite-cache/
+frontend/npm-cache/
 frontend/pw-dist/
 frontend/pw-results/
+
+# Root coverage artifact
+coverage.json
+
+# Local logs
+backend-test.log
+backend.test.log

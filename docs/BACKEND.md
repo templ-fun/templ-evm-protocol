@@ -9,6 +9,35 @@ Use this doc to configure and operate the Node 22 / Express backend that handles
 
 All messaging happens through Telegram bots.
 
+## API Endpoints
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/templs` | List known templs. Optional `?include=homelink` adds `templHomeLink` to each row. Chat ids are never returned. |
+| `POST` | `/templs` | Register a templ. Requires typed signature from the priest. Body fields: `contractAddress`, `priestAddress`, optional `telegramChatId`, optional `templHomeLink`, plus `chainId/nonce/issuedAt/expiry/signature`. Returns `{ contract, priest, templHomeLink, telegramChatId?, bindingCode? }`. |
+| `POST` | `/templs/rebind` | Request a new binding code to rotate Telegram chats. Requires typed signature from the current priest. Returns `{ contract, bindingCode, telegramChatId?, priest }`. |
+| `POST` | `/join` | Verify membership. Requires typed signature from the member. Body fields: `contractAddress`, `memberAddress`, plus `chainId/nonce/issuedAt/expiry/signature`. Returns `{ member:{hasAccess}, templ:{...}, links:{...} }`. |
+
+Example `/join` response:
+
+```json
+{
+  "member": { "hasAccess": true },
+  "templ": {
+    "contract": "0xabc…",
+    "priest": "0xdef…",
+    "templHomeLink": "https://example.com"
+  },
+  "links": {
+    "templ": "https://app.templ.fun/templs/0xabc…",
+    "proposals": "https://app.templ.fun/templs/0xabc…/proposals",
+    "vote": "https://app.templ.fun/templs/0xabc…/proposals",
+    "join": "https://app.templ.fun/templs/join?address=0xabc…",
+    "claim": "https://app.templ.fun/templs/0xabc…/claim"
+  }
+}
+```
+
 ## Installation
 
 ```bash
@@ -117,21 +146,7 @@ The response includes the new `bindingCode`; once the bot sees that code inside 
 
 Verifies a member has purchased access and returns templ metadata plus convenience links.
 
-Request body mirrors the frontend’s join payload (`buildJoinTypedData`). The backend calls `hasAccess(member)` on the contract. On success the response includes templ metadata (including the Telegram chat id when one exists) and convenience URLs:
-
-```json
-{
-  "member": { "address": "0x123…", "hasAccess": true },
-  "templ": { "contract": "0xabc…", "telegramChatId": "-100123456", "templHomeLink": "https://t.me/templ-group", "priest": "0xdef…" },
-  "links": {
-    "templ": "https://app.templ.fun/templs/0xabc…",
-    "proposals": "https://app.templ.fun/templs/0xabc…/proposals",
-    "vote": "https://app.templ.fun/templs/0xabc…/proposals",
-    "join": "https://app.templ.fun/templs/join?address=0xabc…",
-    "claim": "https://app.templ.fun/templs/0xabc…/claim"
-  }
-}
-```
+Request body mirrors the frontend’s join payload (`buildJoinTypedData`). The backend calls `hasAccess(member)` on the contract and responds with templ metadata (and convenience links) on success.
 
 ## Telegram notifications
 
@@ -176,3 +191,11 @@ Coverage uses `c8`; run `npm --prefix backend run coverage` for LCOV reports.
 3. Configure `APP_BASE_URL` so Telegram links point to your deployed frontend.
 4. Provide `TELEGRAM_BOT_TOKEN` and confirm the bot is present in each group you care about. (Leaving it unset disables notifications.)
 5. Consider supplying `REDIS_URL` if you run multiple backend replicas and need distributed rate limiting.
+### Cloudflare Worker variables (using deploy helper)
+
+The `scripts/deploy-cloudflare.js` helper injects backend env vars into a Wrangler config for the Worker. Besides first‑class vars (`BACKEND_SERVER_ID`, `APP_BASE_URL`, `TRUSTED_FACTORY_ADDRESS`, `TRUSTED_FACTORY_DEPLOYMENT_BLOCK`, `REQUIRE_CONTRACT_VERIFY`, etc.), you can pass additional values via prefixes:
+
+- `CLOUDFLARE_BACKEND_VAR_*` → becomes a plain `[vars]` entry (e.g. `CLOUDFLARE_BACKEND_VAR_ALLOWED_ORIGINS`).
+- `CLOUDFLARE_BACKEND_SECRET_*` → put into Wrangler secrets (e.g. `CLOUDFLARE_BACKEND_SECRET_REDIS_URL`).
+
+When hosting the backend outside Cloudflare Workers, set `NODE_ENV=production` and export the same variables in your process manager (systemd, Docker, etc.).

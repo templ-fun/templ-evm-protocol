@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Provide sensible defaults for required env vars so CI/dev runs do not fail
+export BACKEND_SERVER_ID="${BACKEND_SERVER_ID:=templ-dev}"
+
 phase() { echo; echo "[test:all] === $* ==="; }
 
 runp() {

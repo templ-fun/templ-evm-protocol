@@ -9,6 +9,16 @@ Use this guide to understand the on-chain modules that handle membership, fee sp
 - Governance constraints: proposal lifecycle, quorum, execution, and allowed actions.
 - Deployment hooks and invariants auditors bless.
 
+## At a glance
+
+- Creation: `TemplFactory.createTempl` / `createTemplWithConfig` (sets splits, priest, optional cap/home link).
+- Membership: `purchaseAccess`, `claimMemberPool`, `hasAccess`, `getMemberCount`.
+- Governance: create/vote/execute typed proposals; post‑quorum delay; optional dictatorship mode.
+- Treasury: `withdrawTreasuryDAO`, `disbandTreasuryDAO`, donations supported.
+- Caps & Pausing: `setMaxMembersDAO`, `setPausedDAO`; disband locks auto‑pause joins until resolved.
+- Views: `getConfig`, `getTreasuryInfo`, `getProposal*`, `getExternalReward*`.
+- Events/Errors: emitted for all lifecycle actions; see the lists below and `contracts/TemplErrors.sol`.
+
 ## Overview
 
 Solidity 0.8.23. Core contract lives in `contracts/TEMPL.sol` with shared errors in `contracts/TemplErrors.sol`. See `README.md#architecture` for the high-level system view; this document reflects the exact on-chain behavior and interfaces.
