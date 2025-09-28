@@ -59,7 +59,7 @@ export async function registerTempl(body, context) {
       telegramChatId: null,
       priest,
       proposalsMeta: new Map(),
-      lastDigestAt: Date.now(),
+      lastDigestAt: 0,
       templHomeLink: '',
       bindingCode: persisted?.bindingCode ?? null
     };
@@ -71,7 +71,9 @@ export async function registerTempl(body, context) {
     }
   }
   if (!existing.proposalsMeta) existing.proposalsMeta = new Map();
-  if (typeof existing.lastDigestAt !== 'number') existing.lastDigestAt = Date.now();
+  if (typeof existing.lastDigestAt !== 'number' || !Number.isFinite(existing.lastDigestAt) || existing.lastDigestAt < 0) {
+    existing.lastDigestAt = 0;
+  }
   existing.priest = priest;
   existing.telegramChatId = telegramChatId ?? existing.telegramChatId ?? null;
   existing.contractAddress = contract;

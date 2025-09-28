@@ -36,3 +36,52 @@ test('requestTemplRebind rejects malformed addresses', async () => {
     (err) => expectStatus(err, 400)
   );
 });
+
+test('registerTempl seeds lastDigestAt to zero for new templs', async () => {
+  const templs = new Map();
+  const context = {
+    templs,
+    persist: async () => {},
+    watchContract: async () => {},
+    logger: { info: () => {}, warn: () => {}, error: () => {} }
+  };
+
+  await registerTempl(
+    {
+      contractAddress: '0x1111111111111111111111111111111111111111',
+      priestAddress: '0x2222222222222222222222222222222222222222'
+    },
+    context
+  );
+
+  const record = templs.get('0x1111111111111111111111111111111111111111');
+  assert(record, 'templ record should be stored');
+  assert.equal(record.lastDigestAt, 0);
+});
+
+test('requestTemplRebind restores templs with zeroed lastDigestAt by default', async () => {
+  const templs = new Map();
+  const contract = '0x3333333333333333333333333333333333333333';
+  const priest = '0x4444444444444444444444444444444444444444';
+  const context = {
+    templs,
+    findBinding: async (addr) => {
+      if (addr !== contract) return null;
+      return { contract, priest, telegramChatId: null, bindingCode: null };
+    },
+    persist: async () => {},
+    logger: { info: () => {}, warn: () => {}, error: () => {} }
+  };
+
+  await requestTemplRebind(
+    {
+      contractAddress: contract,
+      priestAddress: priest
+    },
+    context
+  );
+
+  const record = templs.get(contract);
+  assert(record, 'templ record should be cached during rebind');
+  assert.equal(record.lastDigestAt, 0);
+});
