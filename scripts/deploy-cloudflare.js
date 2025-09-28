@@ -242,8 +242,14 @@ async function main() {
     if (optionalFactory) {
       baseVars.TRUSTED_FACTORY_ADDRESS = optionalFactory;
     }
-    if (requireVerifyEnv) {
-      baseVars.REQUIRE_CONTRACT_VERIFY = requireVerifyEnv;
+    // Default to enforcing contract verification unless explicitly disabled
+    baseVars.REQUIRE_CONTRACT_VERIFY = requireVerifyEnv || '1';
+    // Proactive warnings to avoid production footguns when skipping Worker deploy
+    if (!optionalFactory) {
+      console.warn('[warn] TRUSTED_FACTORY_ADDRESS is not set. The backend may register templs from any factory unless your runtime sets it.');
+    }
+    if (!factoryBlock) {
+      console.warn('[warn] TRUSTED_FACTORY_DEPLOYMENT_BLOCK is not set. Factory log scans may be slow or hit provider limits; set a start block.');
     }
   }
   if (factoryBlock) {
@@ -307,6 +313,22 @@ async function main() {
   }
   if (!frontendEnv.VITE_BACKEND_SERVER_ID) {
     frontendEnv.VITE_BACKEND_SERVER_ID = backendServerId;
+  }
+  // Avoid frontend traps: force factory discovery config for production builds
+  if (!args.skipPages) {
+    if (!frontendEnv.VITE_TEMPL_FACTORY_ADDRESS) {
+      throw new Error('VITE_TEMPL_FACTORY_ADDRESS must be set so the frontend can enumerate templs from your trusted factory.');
+    }
+    if (!frontendEnv.VITE_TEMPL_FACTORY_DEPLOYMENT_BLOCK) {
+      throw new Error('VITE_TEMPL_FACTORY_DEPLOYMENT_BLOCK must be set to the block height the factory was deployed to keep log scans within provider limits.');
+    }
+  } else {
+    if (!frontendEnv.VITE_TEMPL_FACTORY_ADDRESS) {
+      console.warn('[warn] VITE_TEMPL_FACTORY_ADDRESS is not set (Pages deploy skipped). Ensure your frontend build sets it.');
+    }
+    if (!frontendEnv.VITE_TEMPL_FACTORY_DEPLOYMENT_BLOCK) {
+      console.warn('[warn] VITE_TEMPL_FACTORY_DEPLOYMENT_BLOCK is not set (Pages deploy skipped). Set it for fast, reliable log scans.');
+    }
   }
 
   if (!args.skipPages) {

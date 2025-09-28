@@ -247,6 +247,7 @@ If the suite reports a binding code, follow the Telegram steps above before re-r
 
 - Deploy `TemplFactory` and `TEMPL` to your target network with finalized parameters.
 - Set `NODE_ENV=production` and `REQUIRE_CONTRACT_VERIFY=1` for the backend so contract ownership is checked on registration.
+- Configure a trusted factory for safety: set `TRUSTED_FACTORY_ADDRESS` and `TRUSTED_FACTORY_DEPLOYMENT_BLOCK` in the backend so only templs from your factory are accepted and log scans remain efficient.
 - Set `APP_BASE_URL` to the deployed frontend URL (used to build deep links in Telegram messages).
 - Provision `TELEGRAM_BOT_TOKEN`, `RPC_URL`, and other secrets via `wrangler secret put` so they are not stored in git.
 - Bind the Cloudflare D1 database (see the Wrangler steps above) and confirm the tables exist before your first deploy.
