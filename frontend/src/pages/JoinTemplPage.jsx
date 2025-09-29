@@ -29,6 +29,14 @@ export function JoinTemplPage({
     }
   }, [query]);
 
+  useEffect(() => {
+    if (templAddress) return;
+    if (!Array.isArray(knownTempls) || knownTempls.length !== 1) return;
+    const [onlyTempl] = knownTempls;
+    if (!onlyTempl?.contract) return;
+    setTemplAddress(onlyTempl.contract);
+  }, [templAddress, knownTempls]);
+
   const hasWallet = useMemo(() => Boolean(walletAddress), [walletAddress]);
 
   const templRecord = useMemo(() => {
@@ -82,6 +90,12 @@ export function JoinTemplPage({
     const suffix = entryInfo.tokenSymbol ? ` ${entryInfo.tokenSymbol}` : '';
     return `${entryInfo.balanceFormatted}${suffix}`;
   }, [entryInfo]);
+
+  const templSelectValue = useMemo(() => {
+    if (!templAddress) return '';
+    const lower = templAddress.toLowerCase();
+    return knownTempls.some((item) => item.contract === lower) ? lower : '';
+  }, [templAddress, knownTempls]);
 
   const refreshEntryInfo = useCallback(async () => {
     if (!ethers || !templAddress) {
@@ -214,6 +228,32 @@ export function JoinTemplPage({
             placeholder="0x…"
           />
         </label>
+        {knownTempls.length > 0 ? (
+          <div className="space-y-2">
+            <label className={form.label}>
+              Or pick a discovered templ
+              <select
+                className={form.input}
+                value={templSelectValue}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  if (!value) return;
+                  setTemplAddress(value);
+                }}
+              >
+                <option value="">Select a templ…</option>
+                {knownTempls.map((templ) => (
+                  <option key={templ.contract} value={templ.contract}>
+                    {templ.tokenSymbol ? `${templ.tokenSymbol} · ${templ.contract}` : templ.contract}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className={text.hint}>
+              Selecting a templ auto-fills the address and loads the current entry requirements for you.
+            </p>
+          </div>
+        ) : null}
         <div className={layout.cardActions}>
           <button
             type="button"

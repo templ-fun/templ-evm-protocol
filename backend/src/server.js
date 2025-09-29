@@ -41,6 +41,14 @@ const TEMPL_EVENT_ABI = [
   'event PriestChanged(address indexed oldPriest,address indexed newPriest)',
   'event ProposalExecuted(uint256 indexed proposalId,bool success,bytes returnData)',
   'event TemplHomeLinkUpdated(string previousLink,string newLink)',
+  'event MemberPoolClaimed(address indexed member,uint256 amount,uint256 timestamp)',
+  'event ExternalRewardClaimed(address indexed token,address indexed member,uint256 amount)',
+  'event ContractPaused(bool isPaused)',
+  'event ConfigUpdated(address indexed token,uint256 entryFee,uint256 burnPercent,uint256 treasuryPercent,uint256 memberPoolPercent,uint256 protocolPercent)',
+  'event TreasuryAction(uint256 indexed proposalId,address indexed token,address indexed recipient,uint256 amount,string description)',
+  'event TreasuryDisbanded(uint256 indexed proposalId,address indexed token,uint256 amount,uint256 perMember,uint256 remainder)',
+  'event DictatorshipModeChanged(bool enabled)',
+  'event MaxMembersUpdated(uint256 maxMembers)',
   'function priest() view returns (address)',
   'function getActiveProposals() view returns (uint256[])',
   'function treasuryBalance() view returns (uint256)',
@@ -345,6 +353,14 @@ function createContractWatcher({ connectContract, templs, persist, notifier, log
     try { contract.off('PriestChanged', handlers.handlePriestChanged); } catch (err) { void err; }
     try { contract.off('ProposalExecuted', handlers.handleProposalExecuted); } catch (err) { void err; }
     try { contract.off('TemplHomeLinkUpdated', handlers.handleTemplHomeLinkUpdated); } catch (err) { void err; }
+    try { contract.off('MemberPoolClaimed', handlers.handleMemberPoolClaimed); } catch (err) { void err; }
+    try { contract.off('ExternalRewardClaimed', handlers.handleExternalRewardClaimed); } catch (err) { void err; }
+    try { contract.off('ContractPaused', handlers.handleContractPaused); } catch (err) { void err; }
+    try { contract.off('ConfigUpdated', handlers.handleConfigUpdated); } catch (err) { void err; }
+    try { contract.off('TreasuryAction', handlers.handleTreasuryAction); } catch (err) { void err; }
+    try { contract.off('TreasuryDisbanded', handlers.handleTreasuryDisbanded); } catch (err) { void err; }
+    try { contract.off('DictatorshipModeChanged', handlers.handleDictatorshipModeChanged); } catch (err) { void err; }
+    try { contract.off('MaxMembersUpdated', handlers.handleMaxMembersUpdated); } catch (err) { void err; }
     listenerRegistry.delete(key);
   };
 
@@ -523,12 +539,24 @@ function createContractWatcher({ connectContract, templs, persist, notifier, log
       });
     });
 
-    const handleProposalExecuted = wrapListener('Contract listener error', async (proposalId, success) => {
+    const handleProposalExecuted = wrapListener('Contract listener error', async (proposalId, success, returnData) => {
       const proposalKey = toProposalKey(proposalId);
       const meta = ensureProposalMeta(record, proposalKey);
       if (meta) {
         meta.executed = true;
         meta.passed = Boolean(success);
+      }
+      if (record.telegramChatId && notifier?.notifyProposalExecuted) {
+        await notifier.notifyProposalExecuted({
+          chatId: record.telegramChatId,
+          contractAddress: key,
+          proposalId: proposalId?.toString?.() ?? String(proposalId),
+          success: Boolean(success),
+          returnData: returnData?.toString?.() ?? returnData,
+          title: meta?.title ?? '',
+          description: meta?.description ?? '',
+          homeLink: record.templHomeLink || ''
+        });
       }
     });
 
@@ -547,12 +575,146 @@ function createContractWatcher({ connectContract, templs, persist, notifier, log
       }
     });
 
+    const handleMemberPoolClaimed = wrapListener('Contract listener error', async (member, amount, timestamp) => {
+      if (!record.telegramChatId || !notifier?.notifyMemberPoolClaimed) return;
+      await notifier.notifyMemberPoolClaimed({
+        chatId: record.telegramChatId,
+        contractAddress: key,
+        member,
+        amount: amount?.toString?.() ?? amount,
+        timestamp: timestamp?.toString?.() ?? timestamp,
+        homeLink: record.templHomeLink || ''
+      });
+    });
+
+    const handleExternalRewardClaimed = wrapListener('Contract listener error', async (token, member, amount) => {
+      if (!record.telegramChatId || !notifier?.notifyExternalRewardClaimed) return;
+      await notifier.notifyExternalRewardClaimed({
+        chatId: record.telegramChatId,
+        contractAddress: key,
+        token,
+        member,
+        amount: amount?.toString?.() ?? amount,
+        homeLink: record.templHomeLink || ''
+      });
+    });
+
+    const handleContractPaused = wrapListener('Contract listener error', async (isPaused) => {
+      record.isPaused = Boolean(isPaused);
+      templs.set(key, record);
+      await persist?.(key, record);
+      if (!record.telegramChatId || !notifier?.notifyContractPaused) return;
+      await notifier.notifyContractPaused({
+        chatId: record.telegramChatId,
+        contractAddress: key,
+        paused: Boolean(isPaused),
+        homeLink: record.templHomeLink || ''
+      });
+    });
+
+    const handleConfigUpdated = wrapListener('Contract listener error', async (
+      token,
+      entryFee,
+      burnPercentValue,
+      treasuryPercentValue,
+      memberPoolPercentValue,
+      protocolPercentValue
+    ) => {
+      record.config = {
+        token: token ?? record.config?.token ?? '',
+        entryFee: entryFee?.toString?.() ?? entryFee,
+        burnPercent: burnPercentValue,
+        treasuryPercent: treasuryPercentValue,
+        memberPoolPercent: memberPoolPercentValue,
+        protocolPercent: protocolPercentValue
+      };
+      templs.set(key, record);
+      await persist?.(key, record);
+      if (!record.telegramChatId || !notifier?.notifyConfigUpdated) return;
+      await notifier.notifyConfigUpdated({
+        chatId: record.telegramChatId,
+        contractAddress: key,
+        token,
+        entryFee: entryFee?.toString?.() ?? entryFee,
+        burnPercent: burnPercentValue,
+        treasuryPercent: treasuryPercentValue,
+        memberPoolPercent: memberPoolPercentValue,
+        protocolPercent: protocolPercentValue,
+        homeLink: record.templHomeLink || ''
+      });
+    });
+
+    const handleTreasuryAction = wrapListener('Contract listener error', async (proposalId, token, recipient, amount, description) => {
+      if (!record.telegramChatId || !notifier?.notifyTreasuryAction) return;
+      await notifier.notifyTreasuryAction({
+        chatId: record.telegramChatId,
+        contractAddress: key,
+        proposalId: proposalId?.toString?.() ?? proposalId,
+        token,
+        recipient,
+        amount: amount?.toString?.() ?? amount,
+        description,
+        homeLink: record.templHomeLink || ''
+      });
+    });
+
+    const handleTreasuryDisbanded = wrapListener(
+      'Contract listener error',
+      async (proposalId, token, amount, perMember, remainder) => {
+        if (!record.telegramChatId || !notifier?.notifyTreasuryDisbanded) return;
+        await notifier.notifyTreasuryDisbanded({
+          chatId: record.telegramChatId,
+          contractAddress: key,
+          proposalId: proposalId?.toString?.() ?? proposalId,
+          token,
+          amount: amount?.toString?.() ?? amount,
+          perMember: perMember?.toString?.() ?? perMember,
+          remainder: remainder?.toString?.() ?? remainder,
+          homeLink: record.templHomeLink || ''
+        });
+      }
+    );
+
+    const handleDictatorshipModeChanged = wrapListener('Contract listener error', async (enabled) => {
+      record.dictatorshipEnabled = Boolean(enabled);
+      templs.set(key, record);
+      await persist?.(key, record);
+      if (!record.telegramChatId || !notifier?.notifyDictatorshipModeChanged) return;
+      await notifier.notifyDictatorshipModeChanged({
+        chatId: record.telegramChatId,
+        contractAddress: key,
+        enabled: Boolean(enabled),
+        homeLink: record.templHomeLink || ''
+      });
+    });
+
+    const handleMaxMembersUpdated = wrapListener('Contract listener error', async (maxMembers) => {
+      record.maxMembers = maxMembers?.toString?.() ?? maxMembers;
+      templs.set(key, record);
+      await persist?.(key, record);
+      if (!record.telegramChatId || !notifier?.notifyMaxMembersUpdated) return;
+      await notifier.notifyMaxMembersUpdated({
+        chatId: record.telegramChatId,
+        contractAddress: key,
+        maxMembers: record.maxMembers,
+        homeLink: record.templHomeLink || ''
+      });
+    });
+
     contract.on('AccessPurchased', handleAccessPurchased);
     contract.on('ProposalCreated', handleProposal);
     contract.on('VoteCast', handleVote);
     contract.on('PriestChanged', handlePriestChanged);
     contract.on('ProposalExecuted', handleProposalExecuted);
     contract.on('TemplHomeLinkUpdated', handleTemplHomeLinkUpdated);
+    contract.on('MemberPoolClaimed', handleMemberPoolClaimed);
+    contract.on('ExternalRewardClaimed', handleExternalRewardClaimed);
+    contract.on('ContractPaused', handleContractPaused);
+    contract.on('ConfigUpdated', handleConfigUpdated);
+    contract.on('TreasuryAction', handleTreasuryAction);
+    contract.on('TreasuryDisbanded', handleTreasuryDisbanded);
+    contract.on('DictatorshipModeChanged', handleDictatorshipModeChanged);
+    contract.on('MaxMembersUpdated', handleMaxMembersUpdated);
 
     // Opportunistically refresh priest/home link from chain so cached metadata is accurate on boot
     try {
@@ -586,7 +748,15 @@ function createContractWatcher({ connectContract, templs, persist, notifier, log
         handleVote,
         handlePriestChanged,
         handleProposalExecuted,
-        handleTemplHomeLinkUpdated
+        handleTemplHomeLinkUpdated,
+        handleMemberPoolClaimed,
+        handleExternalRewardClaimed,
+        handleContractPaused,
+        handleConfigUpdated,
+        handleTreasuryAction,
+        handleTreasuryDisbanded,
+        handleDictatorshipModeChanged,
+        handleMaxMembersUpdated
       }
     });
     await backfillActiveProposals({ contract, record, contractAddress: key });

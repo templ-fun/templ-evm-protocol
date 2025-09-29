@@ -22,6 +22,15 @@ function createTestNotifier(notifications) {
     notifyDailyDigest: async (payload) => notifications.push({ type: 'digest', payload }),
     notifyTemplHomeLinkUpdated: async (payload) => notifications.push({ type: 'homeLink', payload }),
     notifyBindingComplete: async (payload) => notifications.push({ type: 'binding', payload }),
+    notifyProposalExecuted: async (payload) => notifications.push({ type: 'proposalExecuted', payload }),
+    notifyMemberPoolClaimed: async (payload) => notifications.push({ type: 'memberClaimed', payload }),
+    notifyExternalRewardClaimed: async (payload) => notifications.push({ type: 'externalClaimed', payload }),
+    notifyContractPaused: async (payload) => notifications.push({ type: 'paused', payload }),
+    notifyConfigUpdated: async (payload) => notifications.push({ type: 'config', payload }),
+    notifyTreasuryAction: async (payload) => notifications.push({ type: 'treasuryAction', payload }),
+    notifyTreasuryDisbanded: async (payload) => notifications.push({ type: 'treasuryDisbanded', payload }),
+    notifyDictatorshipModeChanged: async (payload) => notifications.push({ type: 'dictatorship', payload }),
+    notifyMaxMembersUpdated: async (payload) => notifications.push({ type: 'maxMembers', payload }),
     fetchUpdates: async () => ({ updates: [], nextOffset: 0 })
   };
 }
@@ -225,17 +234,60 @@ test('register templ persists record and wires contract listeners', async (t) =>
   assert.equal(typeof handlers.ProposalCreated, 'function');
   assert.equal(typeof handlers.VoteCast, 'function');
   assert.equal(typeof handlers.PriestChanged, 'function');
+  assert.equal(typeof handlers.ProposalExecuted, 'function');
+  assert.equal(typeof handlers.TemplHomeLinkUpdated, 'function');
+  assert.equal(typeof handlers.MemberPoolClaimed, 'function');
+  assert.equal(typeof handlers.ExternalRewardClaimed, 'function');
+  assert.equal(typeof handlers.ContractPaused, 'function');
+  assert.equal(typeof handlers.ConfigUpdated, 'function');
+  assert.equal(typeof handlers.TreasuryAction, 'function');
+  assert.equal(typeof handlers.TreasuryDisbanded, 'function');
+  assert.equal(typeof handlers.DictatorshipModeChanged, 'function');
+  assert.equal(typeof handlers.MaxMembersUpdated, 'function');
 
   await handlers.AccessPurchased(wallet.address, 0n, 0n, 0n, 0n, 0n, 1n, 0n, 2n);
+  assert.equal(notifications.at(-1)?.type, 'access');
   await handlers.ProposalCreated(1n, wallet.address, 1234n, 'Proposal title', 'Proposal description');
+  assert.equal(notifications.at(-1)?.type, 'proposal');
   await handlers.VoteCast(1n, wallet.address, true, 5678n);
+  assert.equal(notifications.at(-1)?.type, 'vote');
   await handlers.PriestChanged(wallet.address, wallet.address);
+  assert.equal(notifications.at(-1)?.type, 'priest');
+  await handlers.MemberPoolClaimed(wallet.address, 10n, 123n);
+  assert.equal(notifications.at(-1)?.type, 'memberClaimed');
+  await handlers.ExternalRewardClaimed(wallet.address, wallet.address, 20n);
+  assert.equal(notifications.at(-1)?.type, 'externalClaimed');
+  await handlers.ContractPaused(true);
+  assert.equal(notifications.at(-1)?.type, 'paused');
+  await handlers.ConfigUpdated('0xToken', 1n, 10, 20, 30, 40);
+  assert.equal(notifications.at(-1)?.type, 'config');
+  await handlers.TreasuryAction(1n, '0xToken', wallet.address, 5n, 'Distribution');
+  assert.equal(notifications.at(-1)?.type, 'treasuryAction');
+  await handlers.TreasuryDisbanded(1n, '0xToken', 100n, 2n, 0n);
+  assert.equal(notifications.at(-1)?.type, 'treasuryDisbanded');
+  await handlers.DictatorshipModeChanged(true);
+  assert.equal(notifications.at(-1)?.type, 'dictatorship');
+  await handlers.MaxMembersUpdated(42n);
+  assert.equal(notifications.at(-1)?.type, 'maxMembers');
 
-  assert.equal(notifications.length, 4);
-  assert.equal(notifications[0].type, 'access');
-  assert.equal(notifications[1].type, 'proposal');
-  assert.equal(notifications[2].type, 'vote');
-  assert.equal(notifications[3].type, 'priest');
+  const expectedTypes = [
+    'access',
+    'proposal',
+    'vote',
+    'priest',
+    'memberClaimed',
+    'externalClaimed',
+    'paused',
+    'config',
+    'treasuryAction',
+    'treasuryDisbanded',
+    'dictatorship',
+    'maxMembers'
+  ];
+  assert.equal(notifications.length, expectedTypes.length);
+  expectedTypes.forEach((type, index) => {
+    assert.equal(notifications[index].type, type);
+  });
   assert.equal(notifications[1].payload.title, 'Proposal title');
   assert.equal(notifications[1].payload.description, 'Proposal description');
   assert.equal(notifications[2].payload.title, 'Proposal title');
@@ -251,7 +303,7 @@ test('register templ persists record and wires contract listeners', async (t) =>
 });
 
 test('proposal executed events capture execution success state', async (t) => {
-  const { app, handlerRegistry, contractState } = await makeApp();
+  const { app, handlerRegistry, contractState, notifications } = await makeApp();
   t.after(async () => {
     await app.close?.();
   });
@@ -263,6 +315,8 @@ test('proposal executed events capture execution success state', async (t) => {
 
   await entry.handlers.ProposalCreated(1n, wallet.address, 1234n, 'Successful proposal', '');
   await entry.handlers.ProposalExecuted(1n, true, '0x');
+  assert.equal(notifications.at(-1)?.type, 'proposalExecuted');
+  notifications.length = 0;
 
   const record = app.locals.templs.get(contractAddress);
   assert.ok(record?.proposalsMeta, 'proposal metadata tracked');
@@ -272,6 +326,7 @@ test('proposal executed events capture execution success state', async (t) => {
 
   await entry.handlers.ProposalCreated(2n, wallet.address, 1234n, 'Failed proposal', '');
   await entry.handlers.ProposalExecuted(2n, false, '0x');
+  assert.equal(notifications.at(-1)?.type, 'proposalExecuted');
   const failedMeta = record.proposalsMeta.get('2');
   assert.equal(failedMeta?.executed, true);
   assert.equal(failedMeta?.passed, false);

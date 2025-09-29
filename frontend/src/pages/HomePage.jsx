@@ -103,14 +103,35 @@ export function HomePage({ walletAddress, onConnectWallet, onNavigate, templs, l
                           {burnedUnit ? <span className="text-xs text-slate-500">{burnedUnit}</span> : null}
                         </div>
                       </td>
-                      <td className={`${table.cell} whitespace-nowrap`}> 
+                      <td className={`${table.cell} whitespace-nowrap`}>
                         <div className="flex flex-col gap-2 text-sm">
                           <button
                             type="button"
                             className={button.base}
                             onClick={() => onNavigate(templ.links?.overview || `/templs/${templ.contract}`)}
                           >
-                            View
+                            Overview
+                          </button>
+                          <button
+                            type="button"
+                            className={button.base}
+                            onClick={() => onNavigate(`/templs/join?address=${templ.contract}`)}
+                          >
+                            Join
+                          </button>
+                          <button
+                            type="button"
+                            className={button.base}
+                            onClick={() => onNavigate(`/templs/${templ.contract}/claim`)}
+                          >
+                            Claim
+                          </button>
+                          <button
+                            type="button"
+                            className={button.base}
+                            onClick={() => onNavigate(`/templs/${templ.contract}/proposals/new`)}
+                          >
+                            New proposal
                           </button>
                           {sanitizedHomeLink.href ? (
                             <a
