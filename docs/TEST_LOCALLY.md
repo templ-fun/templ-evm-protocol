@@ -20,7 +20,9 @@ Use this doc to spin up the full templ stack—Hardhat chain, Express backend, a
    cp backend/.env.test backend/.env          # then tweak values in the next step
    cp frontend/.env.example frontend/.env.local 2>/dev/null || true
    ```
-   The frontend ships sensible defaults, so creating `frontend/.env.local` is optional unless you want to override URLs later.
+   The backend sample already sets `BACKEND_SERVER_ID=templ-dev` and `APP_BASE_URL=http://localhost:5173` so the next section's values
+   line up without edits. The frontend ships sensible defaults, so creating `frontend/.env.local` is optional unless you want to
+   override URLs later.
 
 ## 1) Start a local Hardhat chain
 

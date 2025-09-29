@@ -47,7 +47,7 @@ export const test = base.extend({
       }
       await use({ priest, member });
     } else {
-      // Use accounts that are different from backend's BOT_PRIVATE_KEY (which uses #0)
+      // Use deterministic Hardhat accounts that stay clear of the default deployer (#0)
       const accounts = [
         '0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6', // Priest (Account #3)
         '0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a', // Member (Account #4)
