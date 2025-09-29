@@ -314,18 +314,68 @@ export async function fetchMemberPoolStats({
     throw new Error('fetchMemberPoolStats requires signer and templ configuration');
   }
   const contract = new ethers.Contract(templAddress, templArtifact.abi, signer);
-  const poolBalance = await contract.memberPoolBalance();
+  const [poolBalance, accessToken] = await Promise.all([
+    contract.memberPoolBalance(),
+    contract.accessToken().catch(() => '')
+  ]);
   let memberClaimed = 0n;
+  let claimable = 0n;
   if (memberAddress) {
     try {
       memberClaimed = await contract.memberPoolClaims(memberAddress);
     } catch {
       memberClaimed = 0n;
     }
+    try {
+      claimable = await contract.getClaimablePoolAmount(memberAddress);
+    } catch {
+      claimable = 0n;
+    }
   }
+  let tokenAddress = '';
+  let tokenSymbol = '';
+  let tokenDecimals = 18;
+  if (accessToken) {
+    try {
+      tokenAddress = ethers.getAddress?.(accessToken) ?? accessToken;
+    } catch {
+      tokenAddress = accessToken;
+    }
+  }
+  if (tokenAddress) {
+    try {
+      const metadataProvider = signer.provider ?? signer;
+      const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, metadataProvider);
+      const [rawSymbol, rawDecimals] = await Promise.all([
+        tokenContract.symbol().catch(() => ''),
+        tokenContract.decimals().catch(() => 18)
+      ]);
+      if (typeof rawSymbol === 'string' && rawSymbol.trim().length) {
+        tokenSymbol = rawSymbol.trim();
+      }
+      const parsedDecimals = Number(rawDecimals);
+      if (Number.isFinite(parsedDecimals) && parsedDecimals >= 0 && parsedDecimals <= 36) {
+        tokenDecimals = parsedDecimals;
+      }
+    } catch {}
+  }
+
+  const poolBalanceBigInt = poolBalance ?? 0n;
+  const poolBalanceFormatted = formatTokenAmount(ethers, poolBalanceBigInt, tokenDecimals);
+  const memberClaimedBigInt = memberClaimed ?? 0n;
+  const memberClaimedFormatted = formatTokenAmount(ethers, memberClaimedBigInt, tokenDecimals);
+  const claimableFormatted = formatTokenAmount(ethers, claimable ?? 0n, tokenDecimals);
+
   return {
     poolBalance: poolBalance?.toString?.() ?? String(poolBalance),
-    memberClaimed: memberClaimed?.toString?.() ?? String(memberClaimed)
+    poolBalanceFormatted,
+    memberClaimed: memberClaimed?.toString?.() ?? String(memberClaimed),
+    memberClaimedFormatted,
+    claimable: claimable?.toString?.() ?? String(claimable),
+    claimableFormatted,
+    tokenAddress,
+    tokenSymbol,
+    tokenDecimals
   };
 }
 

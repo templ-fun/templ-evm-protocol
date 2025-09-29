@@ -85,6 +85,18 @@ function formatAmount(label, value) {
   }
 }
 
+function formatPercent(label, value) {
+  if (value === undefined || value === null) return '';
+  const num = Number(value);
+  if (!Number.isFinite(num)) return `${formatBold(label)} ${escapeMarkdown(String(value))}`;
+  return `${formatBold(label)} ${escapeMarkdown(`${Math.trunc(num)}%`)}`;
+}
+
+function formatBooleanStatus(label, state, trueLabel, falseLabel) {
+  const message = state ? trueLabel : falseLabel;
+  return `${formatBold(label)} ${escapeMarkdown(message)}`;
+}
+
 function formatDescriptionBlock(description) {
   const text = normaliseMultiline(description);
   if (!text) return [];
@@ -298,11 +310,13 @@ export function createTelegramNotifier({ botToken, linkBaseUrl, logger = default
     async notifyDailyDigest({ chatId, contractAddress, treasuryBalance, memberPoolBalance, homeLink }) {
       await send(chatId, [
         formatBold('gm templ crew!'),
+        escapeMarkdown('Odle treasury check-in: top up the vault and claim your share.'),
         formatAmount('Treasury balance:', treasuryBalance),
         formatAmount('Member pool (unclaimed):', memberPoolBalance),
         buildLinksBlock(
           templLink(`/templs/${encodeURIComponent(String(contractAddress || ''))}/claim`, 'Claim your share'),
           templLink(`/templs/${encodeURIComponent(String(contractAddress || ''))}`, 'Open templ overview'),
+          templLink(`/templs/${encodeURIComponent(String(contractAddress || ''))}/proposals/new`, 'Propose a treasury move'),
           formatHomeLinkLines(homeLink)
         )
       ]);
@@ -327,6 +341,145 @@ export function createTelegramNotifier({ botToken, linkBaseUrl, logger = default
         formatAddress('Templ:', contractAddress),
         buildLinksBlock(
           templLink(`/templs/${encodeURIComponent(String(contractAddress || ''))}`, 'Open templ overview'),
+          formatHomeLinkLines(homeLink)
+        )
+      ]);
+    },
+    async notifyProposalExecuted({ chatId, contractAddress, proposalId, success, returnData, title, description, homeLink }) {
+      const statusLine = success
+        ? formatBooleanStatus('Status:', true, 'Execution succeeded ✅', 'Execution failed ❌')
+        : formatBooleanStatus('Status:', false, 'Execution succeeded ✅', 'Execution failed ❌');
+      await send(chatId, [
+        formatBold('Proposal executed'),
+        title ? `${formatBold('Proposal:')} ${escapeMarkdown(normaliseInline(title))}` : '',
+        formatAddress('Templ:', contractAddress),
+        proposalId != null ? `${formatBold('Proposal ID:')} ${escapeMarkdown(normaliseInline(proposalId))}` : '',
+        statusLine,
+        returnData ? `${formatBold('Return data:')} ${formatCode(String(returnData))}` : '',
+        formatDescriptionBlock(description),
+        buildLinksBlock(
+          templLink(`/templs/${encodeURIComponent(String(contractAddress || ''))}`, 'Templ overview'),
+          templLink(
+            `/templs/${encodeURIComponent(String(contractAddress || ''))}/proposals/${encodeURIComponent(String(proposalId || ''))}/vote`,
+            'Review outcome'
+          ),
+          formatHomeLinkLines(homeLink)
+        )
+      ]);
+    },
+    async notifyMemberPoolClaimed({ chatId, contractAddress, member, amount, timestamp, homeLink }) {
+      await send(chatId, [
+        formatBold('Member rewards claimed'),
+        formatAddress('Templ:', contractAddress),
+        formatAddress('Member:', member),
+        formatAmount('Amount:', amount),
+        formatTimestamp(timestamp),
+        buildLinksBlock(
+          templLink(`/templs/${encodeURIComponent(String(contractAddress || ''))}/claim`, 'Claim your rewards'),
+          templLink(`/templs/${encodeURIComponent(String(contractAddress || ''))}`, 'Templ overview'),
+          formatHomeLinkLines(homeLink)
+        )
+      ]);
+    },
+    async notifyExternalRewardClaimed({ chatId, contractAddress, member, token, amount, homeLink }) {
+      await send(chatId, [
+        formatBold('External reward claimed'),
+        formatAddress('Templ:', contractAddress),
+        formatAddress('Member:', member),
+        token ? `${formatBold('Token:')} ${formatCode(String(token))}` : '',
+        formatAmount('Amount:', amount),
+        buildLinksBlock(
+          templLink(`/templs/${encodeURIComponent(String(contractAddress || ''))}/claim`, 'Claim rewards'),
+          templLink(`/templs/${encodeURIComponent(String(contractAddress || ''))}`, 'Templ overview'),
+          formatHomeLinkLines(homeLink)
+        )
+      ]);
+    },
+    async notifyContractPaused({ chatId, contractAddress, paused, homeLink }) {
+      await send(chatId, [
+        paused ? formatBold('Templ paused ⏸️') : formatBold('Templ resumed ▶️'),
+        formatAddress('Templ:', contractAddress),
+        buildLinksBlock(
+          templLink(`/templs/${encodeURIComponent(String(contractAddress || ''))}`, 'Templ overview'),
+          formatHomeLinkLines(homeLink)
+        )
+      ]);
+    },
+    async notifyConfigUpdated({
+      chatId,
+      contractAddress,
+      token,
+      entryFee,
+      burnPercent,
+      treasuryPercent,
+      memberPoolPercent,
+      protocolPercent,
+      homeLink
+    }) {
+      await send(chatId, [
+        formatBold('Templ configuration updated'),
+        formatAddress('Templ:', contractAddress),
+        token ? `${formatBold('Access token:')} ${formatCode(String(token))}` : '',
+        formatAmount('Entry fee:', entryFee),
+        formatPercent('Burn split:', burnPercent),
+        formatPercent('Treasury split:', treasuryPercent),
+        formatPercent('Member pool split:', memberPoolPercent),
+        formatPercent('Protocol split:', protocolPercent),
+        buildLinksBlock(
+          templLink(`/templs/${encodeURIComponent(String(contractAddress || ''))}`, 'Templ overview'),
+          formatHomeLinkLines(homeLink)
+        )
+      ]);
+    },
+    async notifyTreasuryAction({ chatId, contractAddress, proposalId, token, recipient, amount, description, homeLink }) {
+      await send(chatId, [
+        formatBold('Treasury action executed'),
+        formatAddress('Templ:', contractAddress),
+        proposalId != null ? `${formatBold('Proposal ID:')} ${escapeMarkdown(normaliseInline(proposalId))}` : '',
+        token ? `${formatBold('Token:')} ${formatCode(String(token))}` : '',
+        recipient ? `${formatBold('Recipient:')} ${formatCode(String(recipient))}` : '',
+        formatAmount('Amount:', amount),
+        description ? `${formatBold('Details:')} ${escapeMarkdown(normaliseInline(description))}` : '',
+        buildLinksBlock(
+          templLink(`/templs/${encodeURIComponent(String(contractAddress || ''))}`, 'Templ overview'),
+          formatHomeLinkLines(homeLink)
+        )
+      ]);
+    },
+    async notifyTreasuryDisbanded({ chatId, contractAddress, proposalId, token, amount, perMember, remainder, homeLink }) {
+      await send(chatId, [
+        formatBold('Treasury disbanded'),
+        formatAddress('Templ:', contractAddress),
+        proposalId != null ? `${formatBold('Proposal ID:')} ${escapeMarkdown(normaliseInline(proposalId))}` : '',
+        token ? `${formatBold('Token:')} ${formatCode(String(token))}` : '',
+        formatAmount('Total distributed:', amount),
+        formatAmount('Per member:', perMember),
+        formatAmount('Remainder:', remainder),
+        buildLinksBlock(
+          templLink(`/templs/${encodeURIComponent(String(contractAddress || ''))}`, 'Review distribution'),
+          formatHomeLinkLines(homeLink)
+        )
+      ]);
+    },
+    async notifyDictatorshipModeChanged({ chatId, contractAddress, enabled, homeLink }) {
+      await send(chatId, [
+        enabled ? formatBold('Dictatorship enabled ⚠️') : formatBold('Dictatorship disabled ✅'),
+        formatAddress('Templ:', contractAddress),
+        buildLinksBlock(
+          templLink(`/templs/${encodeURIComponent(String(contractAddress || ''))}`, 'Templ overview'),
+          formatHomeLinkLines(homeLink)
+        )
+      ]);
+    },
+    async notifyMaxMembersUpdated({ chatId, contractAddress, maxMembers, homeLink }) {
+      await send(chatId, [
+        formatBold('Max members updated'),
+        formatAddress('Templ:', contractAddress),
+        maxMembers != null
+          ? `${formatBold('New limit:')} ${escapeMarkdown(normaliseInline(maxMembers === '0' ? 'Unlimited' : maxMembers))}`
+          : '',
+        buildLinksBlock(
+          templLink(`/templs/${encodeURIComponent(String(contractAddress || ''))}/join`, 'Invite members'),
           formatHomeLinkLines(homeLink)
         )
       ]);
