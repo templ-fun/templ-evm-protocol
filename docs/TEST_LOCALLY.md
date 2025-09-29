@@ -1,12 +1,26 @@
 # Test Locally (Fast Path)
 
-Use this doc to spin up the full templ stack—Hardhat chain, Express backend, and React frontend—so you can deploy a templ, verify membership, and run proposals without relying on external services.
+Use this doc to spin up the full templ stack—Hardhat chain, Express backend, and React frontend—so you can deploy a templ, verify membership, and run proposals without relying on external services. Treat it as your first-day checklist: install once, copy the provided `.env` templates, and you’ll have everything running in a few minutes.
 
-## Prerequisites
+## Before you start
 
-- Node.js ≥ 22.18.0
-- `npm ci` already executed at the repo root
-- One terminal per process (or a multiplexer such as tmux)
+1. **Check your toolchain.**
+   ```bash
+   node --version  # should be >= 22.18.0
+   npm --version   # should be >= 10
+   ```
+2. **Install dependencies once.** Run these from the repository root so Hardhat, the backend, and the frontend all share a consistent lockfile:
+   ```bash
+   npm ci
+   npm --prefix backend ci
+   npm --prefix frontend ci
+   ```
+3. **Copy the example env files (optional but handy).**
+   ```bash
+   cp backend/.env.test backend/.env          # then tweak values in the next step
+   cp frontend/.env.example frontend/.env.local 2>/dev/null || true
+   ```
+   The frontend ships sensible defaults, so creating `frontend/.env.local` is optional unless you want to override URLs later.
 
 ## 1) Start a local Hardhat chain
 
@@ -20,7 +34,7 @@ Hardhat exposes JSON-RPC on `http://127.0.0.1:8545` and pre-funds 20 determinist
 
 ## 2) Configure & start the backend
 
-Create `backend/.env`:
+Create or update `backend/.env`:
 
 ```env
 RPC_URL=http://127.0.0.1:8545
@@ -119,6 +133,57 @@ Playwright Chromium binary automatically (unless `PLAYWRIGHT_SKIP_BROWSER_DOWNLO
 via `npm --prefix frontend exec playwright install --with-deps chromium`. If you trigger the
 frontend E2E tests manually (`npm --prefix frontend run test:e2e`), run the same Playwright
 install command once per machine so the browser executable is present.
+
+## 9) Point your local stack at a deployed factory
+
+Once you deploy a factory to a persistent network (Base, Base Sepolia, etc.), you can continue iterating locally against those contracts instead of Hardhat:
+
+1. Update `backend/.env`:
+   ```env
+   RPC_URL=https://base-mainnet.infura.io/v3/<key>
+   TRUSTED_FACTORY_ADDRESS=0x...        # factory you deployed in production
+   TRUSTED_FACTORY_DEPLOYMENT_BLOCK=12345678
+   ```
+   Leave `BACKEND_SERVER_ID`, `APP_BASE_URL`, and other values as they were for local development. Restart the backend so it reconnects to the live RPC.
+2. Update your frontend overrides (either via `frontend/.env.local` or the shell):
+   ```bash
+   export VITE_BACKEND_URL=http://localhost:3001
+   export VITE_BACKEND_SERVER_ID=templ-dev
+   export VITE_TEMPL_FACTORY_ADDRESS=0x...            # same as TRUSTED_FACTORY_ADDRESS
+   export VITE_TEMPL_FACTORY_DEPLOYMENT_BLOCK=12345678
+   npm --prefix frontend run dev
+   ```
+   If you prefer file-based overrides, set the same keys in `frontend/.env.local`. The landing page will now read templs from your live factory while your local backend keeps handling membership checks and Telegram bindings.
+3. Keep the Hardhat node around when you need throwaway contracts for testing; switch wallets/networks in MetaMask when you want to interact with the live deployment.
+
+### Register templs minted outside your factory
+
+If you need to monitor or debug a templ that was deployed from a different `TemplFactory` (for example, a partner project that
+already has contracts on Base), you can still bring it into your local backend.
+
+1. Temporarily relax the factory guard so the backend accepts templs from other sources. Edit `backend/.env` and either clear
+   `TRUSTED_FACTORY_ADDRESS` or set it to the factory that produced the templ you want to inspect. Restart the backend so the new
+   value takes effect.
+2. Export the values required by the registration helper and run it with the priest wallet for the templ you want to adopt:
+   ```bash
+   export BACKEND_URL=http://localhost:3001
+   export TEMPL_ADDRESS=0xExistingTempl
+   export PRIVATE_KEY=0xPriestPrivateKey
+   # Optional: seed metadata that is already live
+   export TELEGRAM_CHAT_ID=-1001234567890
+   export TEMPL_HOME_LINK="https://example.com"
+   npx hardhat run scripts/register-templ.js --network base
+   ```
+   The script signs the standard registration payload and POSTs it to the backend. You’ll either receive the existing Telegram
+   chat id or a fresh binding code.
+3. Reinstate your usual `TRUSTED_FACTORY_ADDRESS` once the templ shows up in `/templs` responses so future registrations continue
+   to come from your factory.
+
+## Where to go next
+
+- Follow [docs/DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) to promote the stack to a real environment (deploy the factory, publish the frontend, and run the backend with durable storage + Telegram binding).
+- After the first production deploy, repeat the “Point your local stack” steps above with the production addresses so you can debug locally against live data without redeploying contracts.
+- Re-run `npm run test:all` before pushing changes—CI mirrors the same workflow.
 
 ## Troubleshooting
 

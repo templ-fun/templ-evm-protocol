@@ -88,6 +88,7 @@ You can deploy from the CLI or via the frontend. The CLI is convenient for scrip
      npx hardhat run scripts/register-templ.js --network base
      ```
      The backend responds with either a binding code (invite @templfunbot and send `templ <code>`) or the stored chat id if you pre-populated one. Registration is required before the frontend can list the templ or membership verification will succeed.
+   - **Adopting templs from other factories.** If the templ originated from a different factory, temporarily clear `TRUSTED_FACTORY_ADDRESS` (or point it at the source factory), restart the backend, and run the same helper with that templ’s priest key. Once the templ appears in `/templs`, restore your production factory guard so future registrations remain scoped to your deployments.
 
 7. (Optional) Verify the factory once you deploy to a public network:
    ```bash
@@ -198,6 +199,30 @@ To avoid juggling multiple commands, use the bundled `scripts/deploy-cloudflare.
 3. Production backend variables:
    - Required/important: `BACKEND_SERVER_ID` (match `VITE_BACKEND_SERVER_ID`), `REQUIRE_CONTRACT_VERIFY=1`, `TRUSTED_FACTORY_ADDRESS`, `TRUSTED_FACTORY_DEPLOYMENT_BLOCK`, `APP_BASE_URL`, `RPC_URL`, and (optionally) `TELEGRAM_BOT_TOKEN`.
    - Optional: `ALLOWED_ORIGINS`, `LEADER_TTL_MS`, `RATE_LIMIT_STORE=redis` and `REDIS_URL` for distributed rate limiting.
+
+### Keep iterating locally after you deploy
+
+Deploying to Base (or another persistent network) doesn’t mean you have to abandon your local workflow. Point your dev stack at the live contracts and backend so you can repro issues without redeploying:
+
+1. **Reuse the backend config.** Copy the production factory address into `backend/.env` on your laptop:
+   ```env
+   RPC_URL=https://base-mainnet.infura.io/v3/<key>
+   TRUSTED_FACTORY_ADDRESS=0x...            # factory you deployed above
+   TRUSTED_FACTORY_DEPLOYMENT_BLOCK=12345678
+   ```
+   Keep `BACKEND_SERVER_ID` aligned with the frontend and restart `npm --prefix backend start`. The local backend will now read on-chain state from the live RPC while still serving endpoints from your machine.
+2. **Point the frontend at the same backend + factory.** Either export the values in your shell or create `frontend/.env.local`:
+   ```bash
+   VITE_BACKEND_URL=http://localhost:3001
+   VITE_BACKEND_SERVER_ID=templ-dev
+   VITE_TEMPL_FACTORY_ADDRESS=0x...
+   VITE_TEMPL_FACTORY_DEPLOYMENT_BLOCK=12345678
+   npm --prefix frontend run dev
+   ```
+   The dev server now lists templs emitted by the deployed factory and proxies requests to your local backend (which in turn speaks to the live chain and Telegram bot).
+3. **Switch wallets when necessary.** Use MetaMask’s network selector to jump between Hardhat (throwaway testing) and your deployed network. The same frontend build handles both.
+
+When you’re ready to promote the backend to a hosted environment, continue with the Cloudflare deployment steps above or adapt them to your infrastructure of choice.
    - For Worker deployments, the script injects these into `backend/wrangler.deployment.toml`. To provide additional values: use `CLOUDFLARE_BACKEND_VAR_*` for non-secrets (e.g. `CLOUDFLARE_BACKEND_VAR_ALLOWED_ORIGINS`) and `CLOUDFLARE_BACKEND_SECRET_*` for secrets (e.g. `CLOUDFLARE_BACKEND_SECRET_REDIS_URL`). For standalone Node hosts, set `NODE_ENV=production` and export the same variables in your process environment.
 
 ### Telegram binding flow
