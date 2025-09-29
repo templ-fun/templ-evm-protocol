@@ -156,6 +156,29 @@ Once you deploy a factory to a persistent network (Base, Base Sepolia, etc.), yo
    If you prefer file-based overrides, set the same keys in `frontend/.env.local`. The landing page will now read templs from your live factory while your local backend keeps handling membership checks and Telegram bindings.
 3. Keep the Hardhat node around when you need throwaway contracts for testing; switch wallets/networks in MetaMask when you want to interact with the live deployment.
 
+### Register templs minted outside your factory
+
+If you need to monitor or debug a templ that was deployed from a different `TemplFactory` (for example, a partner project that
+already has contracts on Base), you can still bring it into your local backend.
+
+1. Temporarily relax the factory guard so the backend accepts templs from other sources. Edit `backend/.env` and either clear
+   `TRUSTED_FACTORY_ADDRESS` or set it to the factory that produced the templ you want to inspect. Restart the backend so the new
+   value takes effect.
+2. Export the values required by the registration helper and run it with the priest wallet for the templ you want to adopt:
+   ```bash
+   export BACKEND_URL=http://localhost:3001
+   export TEMPL_ADDRESS=0xExistingTempl
+   export PRIVATE_KEY=0xPriestPrivateKey
+   # Optional: seed metadata that is already live
+   export TELEGRAM_CHAT_ID=-1001234567890
+   export TEMPL_HOME_LINK="https://example.com"
+   npx hardhat run scripts/register-templ.js --network base
+   ```
+   The script signs the standard registration payload and POSTs it to the backend. You’ll either receive the existing Telegram
+   chat id or a fresh binding code.
+3. Reinstate your usual `TRUSTED_FACTORY_ADDRESS` once the templ shows up in `/templs` responses so future registrations continue
+   to come from your factory.
+
 ## Where to go next
 
 - Follow [docs/DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) to promote the stack to a real environment (deploy the factory, publish the frontend, and run the backend with durable storage + Telegram binding).
