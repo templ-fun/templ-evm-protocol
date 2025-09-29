@@ -191,10 +191,12 @@ To avoid juggling multiple commands, use the bundled `scripts/deploy-cloudflare.
    ```
 2. Run the deploy:
    ```bash
-   npm run deploy:cloudflare
-   ```
+  npm run deploy:cloudflare
+  ```
   - `--skip-worker` omits the Worker deploy. Worker-only env vars (`CF_WORKER_NAME`, `APP_BASE_URL`, `TRUSTED_FACTORY_ADDRESS`, `TRUSTED_FACTORY_DEPLOYMENT_BLOCK`, `REQUIRE_CONTRACT_VERIFY`, `TELEGRAM_BOT_TOKEN`, `RPC_URL`, etc.) are optional in this mode, but Wrangler still needs D1 + Pages settings.
   - `--skip-pages` skips the Pages deploy when you’re adjusting backend configuration only.
+  - Set `WRANGLER_BIN=./scripts/__mocks__/wrangler-success.js` (or any custom path) to point the helper at a specific Wrangler binary during smoke tests.
+  - Prefix additional frontend overrides with `FRONTEND_BUILD_VAR_` (for example `FRONTEND_BUILD_VAR_VITE_RPC_URL`) when you need to feed extra env into `npm --prefix frontend run build` without editing the base env file.
 
 3. Production backend variables:
    - Required/important: `BACKEND_SERVER_ID` (match `VITE_BACKEND_SERVER_ID`), `REQUIRE_CONTRACT_VERIFY=1`, `TRUSTED_FACTORY_ADDRESS`, `TRUSTED_FACTORY_DEPLOYMENT_BLOCK`, `APP_BASE_URL`, `RPC_URL`, and (optionally) `TELEGRAM_BOT_TOKEN`.

@@ -16,3 +16,9 @@ Two documentation discrepancies were identified during the audit and have now be
 
 - `docs/PERSISTENCE.md` now documents the `leader_election` table and explains how the backend coordinates leadership when multiple replicas share the same persistence binding.
 - `docs/CORE_FLOW_DOCS.MD` calls out the leader-election table in its data persistence summary so operators know when leadership comes into play.
+
+## 2025-02-28 review
+
+- Added `docs/PRODUCTION_CHECKLIST.md` to distill the mandatory tests, configuration flags, and post-deploy smoke checks that map directly to `scripts/test-all.sh`, `backend/src/server.js`, and `frontend/src/config.js`.
+- Updated `docs/README.md` to link the new checklist so contributors can find it from the docs index.
+- Expanded `docs/DEPLOYMENT_GUIDE.md` with `WRANGLER_BIN` and `FRONTEND_BUILD_VAR_*` guidance, matching the helper’s options in `scripts/deploy-cloudflare.js` so operators know how to override Wrangler binaries and inject extra build env vars.
