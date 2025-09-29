@@ -5,6 +5,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {TemplBase} from "./TemplBase.sol";
 import {TemplErrors} from "./TemplErrors.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 /// @title templ membership module
 /// @notice Handles joins, reward accounting, and member-facing views.
@@ -45,7 +46,7 @@ abstract contract TemplMembership is TemplBase {
         Member storage joiningMember = members[msg.sender];
         if (joiningMember.purchased) revert TemplErrors.AlreadyPurchased();
 
-        uint256 currentMemberCount = memberList.length;
+        uint256 currentMemberCount = memberCount;
 
         if (MAX_MEMBERS > 0 && currentMemberCount >= MAX_MEMBERS) {
             revert TemplErrors.MemberLimitReached();
@@ -55,18 +56,10 @@ abstract contract TemplMembership is TemplBase {
             _flushExternalRemainders();
         }
 
-        uint256 burnAmount = (entryFee * burnPercent) / TOTAL_PERCENT;
-        uint256 treasuryAmount = (entryFee * treasuryPercent) / TOTAL_PERCENT;
-        uint256 memberPoolAmount = (entryFee * memberPoolPercent) / TOTAL_PERCENT;
-        uint256 protocolAmount = (entryFee * protocolPercent) / TOTAL_PERCENT;
-
-        uint256 distributed = burnAmount + treasuryAmount + memberPoolAmount + protocolAmount;
-        if (distributed < entryFee) {
-            uint256 remainder = entryFee - distributed;
-            treasuryAmount += remainder;
-            distributed += remainder;
-        }
-
+        uint256 burnAmount = Math.mulDiv(entryFee, burnPercent, TOTAL_PERCENT);
+        uint256 memberPoolAmount = Math.mulDiv(entryFee, memberPoolPercent, TOTAL_PERCENT);
+        uint256 protocolAmount = Math.mulDiv(entryFee, protocolPercent, TOTAL_PERCENT);
+        uint256 treasuryAmount = entryFee - burnAmount - memberPoolAmount - protocolAmount;
         uint256 toContract = treasuryAmount + memberPoolAmount;
 
         if (IERC20(accessToken).balanceOf(msg.sender) < entryFee) revert TemplErrors.InsufficientBalance();
@@ -74,8 +67,7 @@ abstract contract TemplMembership is TemplBase {
         joiningMember.purchased = true;
         joiningMember.timestamp = block.timestamp;
         joiningMember.block = block.number;
-        memberList.push(msg.sender);
-        totalPurchases++;
+        memberCount = currentMemberCount + 1;
 
         if (currentMemberCount > 0) {
             uint256 totalRewards = memberPoolAmount + memberRewardRemainder;
@@ -88,16 +80,13 @@ abstract contract TemplMembership is TemplBase {
 
         treasuryBalance += treasuryAmount;
         memberPoolBalance += memberPoolAmount;
-        totalBurned += burnAmount;
-        totalToTreasury += treasuryAmount;
-        totalToMemberPool += memberPoolAmount;
-        totalToProtocol += protocolAmount;
-
         IERC20 accessTokenContract = IERC20(accessToken);
         // NOTE: Fee-on-transfer tokens are unsupported; transfer-based fees break internal accounting.
         accessTokenContract.safeTransferFrom(msg.sender, burnAddress, burnAmount);
         accessTokenContract.safeTransferFrom(msg.sender, address(this), toContract);
         accessTokenContract.safeTransferFrom(msg.sender, protocolFeeRecipient, protocolAmount);
+
+        uint256 purchaseId = currentMemberCount == 0 ? 0 : currentMemberCount - 1;
 
         emit AccessPurchased(
             msg.sender,
@@ -108,7 +97,7 @@ abstract contract TemplMembership is TemplBase {
             protocolAmount,
             block.timestamp,
             block.number,
-            totalPurchases - 1
+            purchaseId
         );
 
         _autoPauseIfLimitReached();
@@ -232,24 +221,18 @@ abstract contract TemplMembership is TemplBase {
     }
 
     /// @notice Exposes treasury balances, member pool totals, and protocol receipts.
-    function getTreasuryInfo() external view returns (
-        uint256 treasury,
-        uint256 memberPool,
-        uint256 totalReceived,
-        uint256 totalBurnedAmount,
-        uint256 totalProtocolFees,
-        address protocolAddress
-    ) {
+    function getTreasuryInfo()
+        external
+        view
+        returns (
+            uint256 treasury,
+            uint256 memberPool,
+            address protocolAddress
+        )
+    {
         uint256 current = IERC20(accessToken).balanceOf(address(this));
         uint256 available = current > memberPoolBalance ? current - memberPoolBalance : 0;
-        return (
-            available,
-            memberPoolBalance,
-            totalToTreasury,
-            totalBurned,
-            totalToProtocol,
-            protocolFeeRecipient
-        );
+        return (available, memberPoolBalance, protocolFeeRecipient);
     }
 
     /// @notice Returns high level configuration and aggregate balances for the templ.
@@ -271,7 +254,7 @@ abstract contract TemplMembership is TemplBase {
             accessToken,
             entryFee,
             paused,
-            totalPurchases,
+            totalPurchases(),
             available,
             memberPoolBalance,
             burnPercent,
@@ -283,7 +266,15 @@ abstract contract TemplMembership is TemplBase {
 
     /// @notice Returns the number of active members.
     function getMemberCount() external view returns (uint256) {
-        return memberList.length;
+        return memberCount;
+    }
+
+    /// @notice Historical counter for total successful joins (mirrors member count without storing extra state).
+    function totalPurchases() public view returns (uint256) {
+        if (memberCount == 0) {
+            return 0;
+        }
+        return memberCount - 1;
     }
 
     /// @notice Exposes a voter's current vote weight (1 per active member).
@@ -354,7 +345,7 @@ abstract contract TemplMembership is TemplBase {
 
     /// @dev Distributes any outstanding external reward remainders to existing members before new joins.
     function _flushExternalRemainders() internal {
-        uint256 currentMembers = memberList.length;
+        uint256 currentMembers = memberCount;
         if (currentMembers == 0) {
             return;
         }

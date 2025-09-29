@@ -99,26 +99,32 @@ describe("updateConfigDAO", function () {
         expect(await templ.memberPoolPercent()).to.equal(NEW_MEMBER);
         expect(await templ.protocolPercent()).to.equal(10);
 
-        const beforeBurned = await templ.totalBurned();
-        const beforeTreasury = await templ.totalToTreasury();
-        const beforeMember = await templ.totalToMemberPool();
-        const beforeProtocol = await templ.totalToProtocol();
+        const burnAddress = await templ.burnAddress();
+        const protocolRecipient = await templ.protocolFeeRecipient();
 
-        await purchaseAccess(templ, token, [secondMember]);
+        const burnBalanceBefore = await token.balanceOf(burnAddress);
+        const treasuryBefore = await templ.treasuryBalance();
+        const memberPoolBefore = await templ.memberPoolBalance();
+        const protocolBalanceBefore = await token.balanceOf(protocolRecipient);
+
+        const templAddress = await templ.getAddress();
+        await token.connect(secondMember).approve(templAddress, ENTRY_FEE);
+        const purchaseTx = await templ.connect(secondMember).purchaseAccess();
+        await purchaseTx.wait();
 
         const burnAmount = (ENTRY_FEE * BigInt(NEW_BURN)) / 100n;
         const treasuryAmount = (ENTRY_FEE * BigInt(NEW_TREASURY)) / 100n;
         const memberPoolAmount = (ENTRY_FEE * BigInt(NEW_MEMBER)) / 100n;
         const protocolAmount = (ENTRY_FEE * 10n) / 100n;
 
-        const afterBurned = await templ.totalBurned();
-        const afterTreasury = await templ.totalToTreasury();
-        const afterMember = await templ.totalToMemberPool();
-        const afterProtocol = await templ.totalToProtocol();
+        const burnBalanceAfter = await token.balanceOf(burnAddress);
+        const treasuryAfter = await templ.treasuryBalance();
+        const memberPoolAfter = await templ.memberPoolBalance();
+        const protocolBalanceAfter = await token.balanceOf(protocolRecipient);
 
-        expect(afterBurned - beforeBurned).to.equal(burnAmount);
-        expect(afterMember - beforeMember).to.equal(memberPoolAmount);
-        expect(afterProtocol - beforeProtocol).to.equal(protocolAmount);
-        expect(afterTreasury - beforeTreasury).to.be.gte(treasuryAmount);
+        expect(burnBalanceAfter - burnBalanceBefore).to.equal(burnAmount);
+        expect(memberPoolAfter - memberPoolBefore).to.equal(memberPoolAmount);
+        expect(protocolBalanceAfter - protocolBalanceBefore).to.equal(protocolAmount);
+        expect(treasuryAfter - treasuryBefore).to.equal(treasuryAmount);
     });
 });

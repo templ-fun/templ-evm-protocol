@@ -173,8 +173,8 @@ abstract contract TemplTreasury is TemplMembership {
 
     /// @dev Routes treasury balances into member or external pools so members can claim them evenly.
     function _disbandTreasury(address token, uint256 proposalId) internal {
-        uint256 memberCount = memberList.length;
-        if (memberCount == 0) revert TemplErrors.NoMembers();
+        uint256 activeMembers = memberCount;
+        if (activeMembers == 0) revert TemplErrors.NoMembers();
 
         if (token == accessToken) {
             uint256 accessTokenBalance = IERC20(accessToken).balanceOf(address(this));
@@ -187,8 +187,8 @@ abstract contract TemplTreasury is TemplMembership {
             memberPoolBalance += accessTokenAmount;
 
             uint256 poolTotalRewards = accessTokenAmount + memberRewardRemainder;
-            uint256 poolPerMember = poolTotalRewards / memberCount;
-            uint256 poolRemainder = poolTotalRewards % memberCount;
+            uint256 poolPerMember = poolTotalRewards / activeMembers;
+            uint256 poolRemainder = poolTotalRewards % activeMembers;
             cumulativeMemberRewards += poolPerMember;
             memberRewardRemainder = poolRemainder;
 
@@ -214,8 +214,8 @@ abstract contract TemplTreasury is TemplMembership {
         rewards.poolBalance += amount;
 
         uint256 totalRewards = amount + rewards.rewardRemainder;
-        uint256 perMember = totalRewards / memberCount;
-        uint256 remainder = totalRewards % memberCount;
+        uint256 perMember = totalRewards / activeMembers;
+        uint256 remainder = totalRewards % activeMembers;
         rewards.cumulativeRewards += perMember;
         rewards.rewardRemainder = remainder;
 

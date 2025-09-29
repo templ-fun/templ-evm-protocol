@@ -121,16 +121,16 @@ export async function fetchTemplStats({
   let homeLink = '';
   let memberCount = 0n;
   let priestAddress = metaInfo.priest || '';
-  let totalBurned = 0n;
+  let totalPurchasesValue = null;
 
   try {
-    [config, treasuryInfo, homeLink, memberCount, priestAddress, totalBurned] = await Promise.all([
+    [config, treasuryInfo, homeLink, memberCount, priestAddress, totalPurchasesValue] = await Promise.all([
       templ.getConfig().catch(() => null),
       templ.getTreasuryInfo().catch(() => null),
       templ.templHomeLink().catch(() => ''),
       templ.getMemberCount?.().catch(() => 0n),
       templ.priest?.().catch(() => metaInfo.priest || ''),
-      templ.totalBurned().catch(() => 0n)
+      templ.totalPurchases?.().catch(() => null)
     ]);
   } catch (err) {
     console.warn('[templ] Failed to load templ summary', templAddress, err);
@@ -139,10 +139,14 @@ export async function fetchTemplStats({
   let tokenAddress = metaInfo.tokenAddress || '';
   let entryFeeRaw = metaInfo.entryFee !== undefined ? toBigInt(metaInfo.entryFee) : toBigInt(metaInfo.entryFeeRaw);
   let totalPurchases = 0n;
+  if (totalPurchasesValue !== undefined && totalPurchasesValue !== null) {
+    totalPurchases = toBigInt(totalPurchasesValue, 0n);
+  }
   let treasuryAvailable = 0n;
   let memberPoolBalance = 0n;
   let totalTreasuryReceived = 0n;
   let totalProtocolFees = 0n;
+  let totalBurned = 0n;
   let burnPercent = 0;
   let treasuryPercent = 0;
   let memberPoolPercent = 0;
@@ -186,26 +190,37 @@ export async function fetchTemplStats({
   }
 
   if (treasuryInfo) {
-    const [treasuryBal, memberPoolBal, totalReceived, burnedValue, protocolFees] = treasuryInfo;
+    const treasuryBal = treasuryInfo?.treasury ?? treasuryInfo?.[0];
+    const memberPoolBal = treasuryInfo?.memberPool ?? treasuryInfo?.[1];
     if (treasuryBal !== undefined && treasuryBal !== null) {
       treasuryAvailable = typeof treasuryBal === 'bigint' ? treasuryBal : BigInt(treasuryBal);
     }
     if (memberPoolBal !== undefined && memberPoolBal !== null) {
       memberPoolBalance = typeof memberPoolBal === 'bigint' ? memberPoolBal : BigInt(memberPoolBal);
     }
-    if (totalReceived !== undefined && totalReceived !== null) {
-      totalTreasuryReceived = typeof totalReceived === 'bigint' ? totalReceived : BigInt(totalReceived);
-    }
-    if (burnedValue !== undefined && burnedValue !== null) {
-      totalBurned = typeof burnedValue === 'bigint' ? burnedValue : BigInt(burnedValue);
-    }
-    if (protocolFees !== undefined && protocolFees !== null) {
-      totalProtocolFees = typeof protocolFees === 'bigint' ? protocolFees : BigInt(protocolFees);
-    }
   }
 
   if (!tokenAddress && metaInfo.tokenAddress) {
     tokenAddress = metaInfo.tokenAddress;
+  }
+
+  let purchasesFromEvents = 0n;
+  if (templ.filters?.AccessPurchased && typeof templ.queryFilter === 'function') {
+    try {
+      const events = await templ.queryFilter(templ.filters.AccessPurchased(), 0, 'latest');
+      purchasesFromEvents = BigInt(events.length);
+      for (const evt of events) {
+        const args = evt?.args ?? {};
+        totalBurned += toBigInt(args.burnedAmount, 0n);
+        totalTreasuryReceived += toBigInt(args.treasuryAmount, 0n);
+        totalProtocolFees += toBigInt(args.protocolAmount, 0n);
+      }
+      if (totalPurchases === 0n && purchasesFromEvents > 0n) {
+        totalPurchases = purchasesFromEvents;
+      }
+    } catch (err) {
+      console.warn('[templ] Failed to aggregate AccessPurchased events', templAddress, err);
+    }
   }
 
   const { symbol: tokenSymbol, decimals: tokenDecimals } = await fetchTokenMetadata({ ethers, provider, tokenAddress });

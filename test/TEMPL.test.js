@@ -217,31 +217,42 @@ describe("TEMPL Contract with DAO Governance", function () {
 
     describe("Access Purchase with 30/30/30/10 Split", function () {
         it("Should correctly split payments: 30% burn, 30% treasury, 30% pool, 10% protocol", async function () {
-            
-            const priestBalanceBefore = await token.balanceOf(priest.address);
-            const deadBalanceBefore = await token.balanceOf("0x000000000000000000000000000000000000dEaD");
-            
-            await purchaseAccess(templ, token, [user1]);
-            
+            const burnAddress = await templ.burnAddress();
+            const protocolRecipient = await templ.protocolFeeRecipient();
+
+            const priestBalanceBefore = await token.balanceOf(protocolRecipient);
+            const deadBalanceBefore = await token.balanceOf(burnAddress);
+
+            const templAddress = await templ.getAddress();
+            await token.connect(user1).approve(templAddress, ENTRY_FEE);
+            const tx = await templ.connect(user1).purchaseAccess();
+            const receipt = await tx.wait();
+
+            const accessPurchased = receipt.logs
+                .map((log) => {
+                    try {
+                        return templ.interface.parseLog(log);
+                    } catch (_) {
+                        return null;
+                    }
+                })
+                .find((log) => log && log.name === "AccessPurchased");
+
+            expect(accessPurchased, "AccessPurchased event").to.not.equal(undefined);
+            const { burnedAmount, treasuryAmount, memberPoolAmount, protocolAmount } = accessPurchased.args;
+
             const thirtyPercent = (ENTRY_FEE * 30n) / 100n;
             const tenPercent = (ENTRY_FEE * 10n) / 100n;
-            
-            // Check balances
+
+            expect(burnedAmount).to.equal(thirtyPercent);
+            expect(treasuryAmount).to.equal(thirtyPercent);
+            expect(memberPoolAmount).to.equal(thirtyPercent);
+            expect(protocolAmount).to.equal(tenPercent);
+
             expect(await templ.treasuryBalance()).to.equal(thirtyPercent);
             expect(await templ.memberPoolBalance()).to.equal(thirtyPercent);
-            
-            // Check priest received 10%
-            expect(await token.balanceOf(priest.address)).to.equal(priestBalanceBefore + tenPercent);
-            
-            // Check burn address received 30%
-            expect(await token.balanceOf("0x000000000000000000000000000000000000dEaD"))
-                .to.equal(deadBalanceBefore + thirtyPercent);
-            
-            // Check totals
-            expect(await templ.totalBurned()).to.equal(thirtyPercent);
-            expect(await templ.totalToTreasury()).to.equal(thirtyPercent);
-            expect(await templ.totalToMemberPool()).to.equal(thirtyPercent);
-            expect(await templ.totalToProtocol()).to.equal(tenPercent);
+            expect(await token.balanceOf(protocolRecipient)).to.equal(priestBalanceBefore + tenPercent);
+            expect(await token.balanceOf(burnAddress)).to.equal(deadBalanceBefore + thirtyPercent);
         });
 
         it("Should mark user as having purchased", async function () {
@@ -1056,17 +1067,13 @@ describe("TEMPL Contract with DAO Governance", function () {
             expect(await templ.getClaimablePoolAmount(user2.address)).to.equal(0);
         });
 
-        it("Should track total values correctly", async function () {
+        it("Should expose treasury info totals", async function () {
             const info = await templ.getTreasuryInfo();
             const thirtyPercent = (ENTRY_FEE * 30n) / 100n;
-            const tenPercent = (ENTRY_FEE * 10n) / 100n;
-            
+
             expect(info.treasury).to.equal(thirtyPercent);
             expect(info.memberPool).to.equal(thirtyPercent);
-            expect(info.totalReceived).to.equal(thirtyPercent);
-            expect(info.totalBurnedAmount).to.equal(thirtyPercent);
-            expect(info.totalProtocolFees).to.equal(tenPercent);
-            expect(info.protocolAddress).to.equal(priest.address);
+            expect(info.protocolAddress).to.equal(await templ.protocolFeeRecipient());
         });
     });
 

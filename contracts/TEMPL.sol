@@ -65,7 +65,7 @@ contract TEMPL is TemplGovernance {
         priestMember.timestamp = block.timestamp;
         priestMember.block = block.number;
         priestMember.rewardSnapshot = cumulativeMemberRewards;
-        memberList.push(_priest);
+        memberCount = 1;
         if (_maxMembers != 0) {
             _setMaxMembers(_maxMembers);
         }

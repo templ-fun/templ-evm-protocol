@@ -140,9 +140,9 @@ contract TemplHarness is TEMPL {
         _flushExternalRemainders();
     }
 
-    /// @dev Clears the member list for zero-member edge tests.
+    /// @dev Clears the member count for zero-member edge tests.
     function harnessClearMembers() external {
-        delete memberList;
+        memberCount = 0;
     }
 
     /// @dev Calls the internal disband helper for branch coverage.

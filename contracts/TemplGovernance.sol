@@ -102,7 +102,7 @@ abstract contract TemplGovernance is TemplTreasury {
         string calldata _description
     ) external returns (uint256) {
         if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
-        if (_newMaxMembers > 0 && _newMaxMembers < memberList.length) {
+        if (_newMaxMembers > 0 && _newMaxMembers < memberCount) {
             revert TemplErrors.MemberLimitTooLow();
         }
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
@@ -269,7 +269,7 @@ abstract contract TemplGovernance is TemplTreasury {
             ) {
                 proposal.quorumReachedAt = block.timestamp;
                 proposal.quorumSnapshotBlock = block.number;
-                proposal.postQuorumEligibleVoters = memberList.length;
+                proposal.postQuorumEligibleVoters = memberCount;
                 proposal.endTime = block.timestamp + executionDelayAfterQuorum;
                 if (proposal.action == Action.DisbandTreasury) {
                     _activateDisbandLock(proposal);
@@ -548,7 +548,7 @@ abstract contract TemplGovernance is TemplTreasury {
         proposal.voteChoice[msg.sender] = true;
         proposal.yesVotes = 1;
         proposal.noVotes = 0;
-        proposal.eligibleVoters = memberList.length;
+        proposal.eligibleVoters = memberCount;
         proposal.quorumReachedAt = 0;
         proposal.quorumExempt = false;
         if (

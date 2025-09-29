@@ -45,7 +45,7 @@ Entry fees follow a fixed protocol share; each deployment chooses how the remain
 
 The percentages must sum to 100. When a new member joins, existing members receive `floor(memberPoolShare / (n-1))` tokens each (where `n` is the new member count). Indivisible remainders accumulate in `memberRewardRemainder` and are rolled into the next distribution.
 
-The zero-member edge case (used only in harnessed tests) routes the would-be member-pool slice into the treasury and mirrors that reroute in `totalToTreasury`/`totalToMemberPool`. Live deployments always start with the priest counted as member zero, so the first paid join streams its pool share exclusively to the priest. If a harness clears the list and a new wallet joins before anyone else exists, that pioneer can later reclaim their entire fee minus burn/protocol as soon as another member arrives because the rerouted balance sits in the treasury waiting to be re-distributed.
+The zero-member edge case (reachable only in harnessed tests) simply parks the would-be member-pool slice in `memberPoolBalance` with no immediate reward accrual. Live deployments always start with the priest counted as member zero, so the first paid join streams its pool share exclusively to the priest. If a harness clears the list and a new wallet joins before anyone else exists, that pioneer can later reclaim their entire fee minus burn/protocol as soon as another member arrives because the balance sits in the pool awaiting the next pro-rata update.
 
 ### Member pool mechanics
 
@@ -127,7 +127,7 @@ Proposals emit `ProposalCreated(id, proposer, endTime, title, description)` and 
 
 ## User-facing functions and views
 
-- `purchaseAccess()` - one-time purchase; applies the templ’s configured burn/treasury/member percentages (plus the factory-defined protocol split) via `safeTransferFrom`. Requires balance ≥ entry fee and contract not paused. Fee-on-transfer/taxed tokens are unsupported because they desync treasury accounting. When no members exist the would-be member-pool slice is folded into the treasury to avoid stranding funds; otherwise the current cohort (starting with the auto-enrolled priest) accrues the pioneer allocation.
+- `purchaseAccess()` - one-time purchase; applies the templ’s configured burn/treasury/member percentages (plus the factory-defined protocol split) via `safeTransferFrom`. Requires balance ≥ entry fee and contract not paused. Fee-on-transfer/taxed tokens are unsupported because they desync treasury accounting. If no members are active (possible only in harnesses) the would-be member-pool slice is parked in the pool and carried forward until a second member arrives; otherwise the current cohort (starting with the auto-enrolled priest) accrues the pioneer allocation.
   When the membership cap is full (`MAX_MEMBERS` reached) the call reverts with `MemberLimitReached`, preventing late entrants from sneaking in during temporary manual unpauses.
 - `vote(uint256 proposalId, bool support)` - cast or change a vote until eligible; emits `VoteCast`.
 - `executeProposal(uint256 proposalId)` - performs the allowlisted action; emits `ProposalExecuted` and action-specific events.
@@ -140,9 +140,8 @@ Proposals emit `ProposalCreated(id, proposer, endTime, title, description)` and 
 - `hasVoted(uint256 id, address voter)` - returns `(voted, support)`.
 - `hasAccess(address user)` - returns membership status.
 - `getPurchaseDetails(address user)` - returns `(purchased, timestamp, blockNum)`.
-- `getTreasuryInfo()` - returns `(treasury, memberPool, totalReceived, totalBurnedAmount, totalProtocolFees, protocolAddress)` where
-  - `treasury` is the UI-facing available access-token balance: `currentBalance(accessToken) - memberPoolBalance` (includes donations), and
-  - `totalReceived` tracks only entry-fee allocations.
+- `getTreasuryInfo()` - returns `(treasury, memberPool, protocolFeeRecipient)` where `treasury` is the UI-facing available access-token balance (`currentBalance(accessToken) - memberPoolBalance`, including donations). Historical fee splits (burn/treasury/member/protocol) are derived from `AccessPurchased` event logs off-chain.
+- `totalPurchases()` - view helper exposing the number of successful joins, derived from the current member count (excludes the auto-enrolled priest).
 - `getConfig()` - returns `(token, fee, isPaused, purchases, treasury, pool, burnPercent, treasuryPercent, memberPoolPercent, protocolPercent)`.
 - `getMemberCount()` - number of members; `getVoteWeight(address)` - 1 if member else 0.
 - External reward helpers:
@@ -153,7 +152,7 @@ Proposals emit `ProposalCreated(id, proposer, endTime, title, description)` and 
 ## State, events, errors
 
 - Key immutables: `protocolFeeRecipient`, `accessToken`, `burnAddress`. Priest is changeable via governance.
-- Key variables: `entryFee` (≥10 and multiple of 10), `paused`, `MAX_MEMBERS` (0 = unlimited; when a non-zero cap is reached the contract auto-pauses new joins until governance raises or clears the limit and then unpauses), `treasuryBalance` (tracks fee-sourced tokens only), `memberPoolBalance`, `priestIsDictator`, counters (`totalBurned`, `totalToTreasury`, `totalToMemberPool`, `totalToProtocol`).
+- Key variables: `entryFee` (≥10 and multiple of 10), `paused`, `MAX_MEMBERS` (0 = unlimited; when a non-zero cap is reached the contract auto-pauses new joins until governance raises or clears the limit and then unpauses), `treasuryBalance` (tracks fee-sourced tokens only), `memberPoolBalance`, `priestIsDictator`, `cumulativeMemberRewards`, and lightweight membership metadata (`memberCount`, per-member snapshots). Fee-flow totals are now derived from `AccessPurchased` events off-chain instead of being persisted in storage.
 - Governance constants: `quorumPercent` and `executionDelayAfterQuorum` are set during deployment (factory defaults 33% and 7 days, but overridable during templ creation) and remain immutable afterwards.
 - External reward claims:
   - `claimExternalToken(address token)` - transfers the caller’s accrued share of the specified external token (ERC-20 or `address(0)` for ETH). Reverts with `NoRewardsToClaim` if nothing is available. Emitted `ExternalRewardClaimed` mirrors successful withdrawals.

@@ -71,16 +71,43 @@ describe("TemplFactory", function () {
         expect(await templ.templHomeLink()).to.equal(homeLink);
 
         await mintToUsers(token, [member], ENTRY_FEE * 10n);
-        await purchaseAccess(templ, token, [member]);
+
+        const templContractAddress = await templ.getAddress();
+        await token.connect(member).approve(templContractAddress, ENTRY_FEE);
+
+        const burnAddress = await templ.burnAddress();
+        const protocolRecipientAddress = await templ.protocolFeeRecipient();
+        const burnBalanceBefore = await token.balanceOf(burnAddress);
+        const protocolBalanceBefore = await token.balanceOf(protocolRecipientAddress);
+
+        const purchaseTx = await templ.connect(member).purchaseAccess();
+        const purchaseReceipt = await purchaseTx.wait();
+        const accessPurchased = purchaseReceipt.logs
+            .map((log) => {
+                try {
+                    return templ.interface.parseLog(log);
+                } catch (_) {
+                    return null;
+                }
+            })
+            .find((log) => log && log.name === "AccessPurchased");
+
+        expect(accessPurchased, "AccessPurchased event").to.not.equal(undefined);
 
         const burnAmount = (ENTRY_FEE * BigInt(burnPercent)) / 100n;
         const memberPoolAmount = (ENTRY_FEE * BigInt(memberPoolPercent)) / 100n;
         const protocolAmount = (ENTRY_FEE * BigInt(protocolPercent)) / 100n;
+        const treasuryAmount = ENTRY_FEE - burnAmount - memberPoolAmount - protocolAmount;
 
-        expect(await templ.totalBurned()).to.equal(burnAmount);
-        expect(await templ.totalToMemberPool()).to.equal(memberPoolAmount);
-        expect(await templ.totalToProtocol()).to.equal(protocolAmount);
-        expect(await templ.totalToTreasury()).to.be.gte((ENTRY_FEE * BigInt(treasuryPercent)) / 100n);
+        expect(accessPurchased.args.burnedAmount).to.equal(burnAmount);
+        expect(accessPurchased.args.memberPoolAmount).to.equal(memberPoolAmount);
+        expect(accessPurchased.args.protocolAmount).to.equal(protocolAmount);
+        expect(accessPurchased.args.treasuryAmount).to.equal(treasuryAmount);
+
+        expect(await templ.memberPoolBalance()).to.equal(memberPoolAmount);
+        expect(await templ.treasuryBalance()).to.equal(treasuryAmount);
+        expect(await token.balanceOf(burnAddress)).to.equal(burnBalanceBefore + burnAmount);
+        expect(await token.balanceOf(protocolRecipientAddress)).to.equal(protocolBalanceBefore + protocolAmount);
     });
 
     it("enables priest dictatorship when requested in config", async function () {

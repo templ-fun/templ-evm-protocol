@@ -75,7 +75,7 @@ abstract contract TemplBase is ReentrancyGuard {
     }
 
     mapping(address => Member) public members;
-    address[] public memberList;
+    uint256 public memberCount;
     mapping(address => uint256) public memberPoolClaims;
     /// @notice Aggregate rewards per member used for on-chain snapshotting.
     uint256 public cumulativeMemberRewards;
@@ -147,12 +147,6 @@ abstract contract TemplBase is ReentrancyGuard {
         SetHomeLink,
         Undefined
     }
-
-    uint256 public totalPurchases;
-    uint256 public totalBurned;
-    uint256 public totalToTreasury;
-    uint256 public totalToMemberPool;
-    uint256 public totalToProtocol;
 
     event AccessPurchased(
         address indexed purchaser,
@@ -361,7 +355,7 @@ abstract contract TemplBase is ReentrancyGuard {
 
     /// @dev Sets or clears the membership cap and auto-pauses if the new cap is already met.
     function _setMaxMembers(uint256 newMaxMembers) internal {
-        uint256 currentMembers = memberList.length;
+        uint256 currentMembers = memberCount;
         if (newMaxMembers > 0 && newMaxMembers < currentMembers) {
             revert TemplErrors.MemberLimitTooLow();
         }
@@ -383,7 +377,7 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @dev Pauses the templ when a membership cap is set and already reached.
     function _autoPauseIfLimitReached() internal {
         uint256 limit = MAX_MEMBERS;
-        if (limit > 0 && memberList.length >= limit && !paused) {
+        if (limit > 0 && memberCount >= limit && !paused) {
             paused = true;
             emit ContractPaused(true);
         }
