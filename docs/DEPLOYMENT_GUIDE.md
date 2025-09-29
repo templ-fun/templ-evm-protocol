@@ -88,6 +88,7 @@ You can deploy from the CLI or via the frontend. The CLI is convenient for scrip
      npx hardhat run scripts/register-templ.js --network base
      ```
      The backend responds with either a binding code (invite @templfunbot and send `templ <code>`) or the stored chat id if you pre-populated one. Registration is required before the frontend can list the templ or membership verification will succeed.
+   - **Adopting templs from other factories.** If the templ originated from a different factory, temporarily clear `TRUSTED_FACTORY_ADDRESS` (or point it at the source factory), restart the backend, and run the same helper with that templ’s priest key. Once the templ appears in `/templs`, restore your production factory guard so future registrations remain scoped to your deployments.
 
 7. (Optional) Verify the factory once you deploy to a public network:
    ```bash
