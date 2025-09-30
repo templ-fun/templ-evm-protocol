@@ -1,63 +1,47 @@
 # Templ Technical Spec
 
-Use this spec to connect the canonical architecture: paid memberships, enforced fee splits, governance modules, and Telegram notifications that mirror on-chain activity.
+This spec connects the core architecture: fee-gated memberships on chain, typed governance, and Telegram notifications that mirror contract activity.
 
 ## 1. Contracts
 
-- `TemplFactory` deploys templ instances with configurable fee splits and protocol tithes.
-- `TEMPL` instances manage:
-- entry fees (`purchaseAccess`) with fixed protocol tithe and configurable burn/treasury/member slices,
-- auto-enrolment of the deploying priest as member zero so the first paid tribute accrues to them, plus a zero-member fallback that folds the pioneer pool slice into the treasury (letting the pioneer reclaim their fee minus burn/protocol when the second wallet joins),
-  - optional member caps (`MAX_MEMBERS`) that auto-pause joins when the cap is reached; additional join attempts revert with `MemberLimitReached` until governance raises or clears the limit **and** manually resumes via `setPausedDAO(false)`,
-  - an on-chain `templHomeLink` string surfaced across UI, backend, and Telegram,
-- one member = one vote proposals covering pause/unpause, priest changes, fee config updates, treasury withdrawals/disbands, membership caps, dictatorship toggles, and home-link changes. Disband proposals keep joins open so governance cannot accidentally brick new entrants; fairness is preserved through reward snapshots rather than temporary locks.
-- external reward enumeration is capped at 256 tokens to keep join gas bounded; anyone can call `cleanupExternalRewardToken` once a token’s pool is fully settled to free the slot for future distributions.
-
-See inline NatSpec comments and Hardhat tests for state transitions.
+- **Factory.** `TemplFactory` deploys templ instances and locks the protocol rake shared by every templ it mints.
+- **Entry fees.** `TEMPL` contracts accept ERC-20 fees via `purchaseAccess`, split tribute across burn/treasury/member/protocol slices, and auto-enrol the deploying priest so the pioneer pool accrues to them.
+- **Caps and pauses.** Optional `MAX_MEMBERS` enforces an upper bound; hitting the cap pauses new joins with `MemberLimitReached` until governance raises or clears the limit and resumes the contract.
+- **Governance scope.** One-wallet-one-vote proposals manage pause/unpause, fee config, treasury withdrawals/disbands, priest rotation, dictatorship toggles, and the on-chain `templHomeLink` string. Disbanding keeps joins open so communities cannot brick new entrants mid-vote.
+- **Quorum escape hatch.** A priest-authored `disbandTreasury` proposal skips quorum so an inactive templ that can no longer meet the threshold still has a deterministic path to dissolve and distribute funds via the priest.
+- **External rewards.** Up to 256 reward tokens can be tracked at once. `cleanupExternalRewardToken(token)` frees a slot after distributions settle to keep gas predictable.
+- **NatSpec + tests.** Hardhat tests and inline comments document state transitions and edge cases.
 
 ## 2. Backend responsibilities
 
-- Validate templ registrations (`POST /templs`) with EIP-712 signatures and optional Telegram chat ids.
-- Issue new Telegram binding codes (`POST /templs/rebind`) after verifying the signed priest owns the contract.
-- Confirm membership via `hasAccess` (`POST /join`).
-- Store templ ↔ Telegram chat bindings in Cloudflare D1 (with an in-memory fallback for local development) so notifications survive restarts; priest/home-link data is refreshed from chain when watchers attach.
-- Subscribe to templ events via `ethers.Contract` and forward them to Telegram:
-  - `AccessPurchased` → “New member” message with join + claim links and live treasury/member-pool totals.
-  - `ProposalCreated` → “Proposal created” with link to `/proposals/:id/vote`, including the on-chain title & description supplied at creation time.
-  - `VoteCast` → “Vote recorded” summary, echoing the proposal title when available.
-  - `ProposalQuorumReached` (derived from snapshots) → one-off “Quorum reached” nudge so undecided members can participate before the window closes.
-  - `ProposalVotingClosed` (time-based) → post-quorum notification explaining whether the proposal is executable.
-  - `PriestChanged` → “Priest updated” alert.
-  - `TemplHomeLinkUpdated` → broadcasts the new canonical URL so members share the latest link.
-- Background tasks send a daily digest (“gm templ crew!”) with treasury/member-pool totals, poll Telegram for binding codes, and acknowledge successful bindings with a “Telegram bridge active” message.
-- Log all failures but keep the HTTP surface responsive.
-
-The notifier posts MarkdownV2-formatted messages (`parse_mode=MarkdownV2`) so alerts can mix bold sections and deep links back to the app.
+- Validate templ registrations (`POST /templs`) and rebinds with EIP-712 signatures.
+- Confirm membership via `hasAccess` on chain (`POST /join`).
+- Persist templ ↔ Telegram chat bindings in Cloudflare D1 (or SQLite/in-memory) so notifications survive restarts while keeping the registry templ-scoped only (contract + optional chat).
+- Subscribe to templ events with `ethers.Contract` and emit Telegram MarkdownV2 messages for joins, proposals, quorum, voting closure, priest changes, home-link updates, daily digests, and binding acknowledgements.
+- Run background jobs for proposal deadlines, digests, and Telegram binding polls while keeping HTTP responses fast.
 
 ## 3. Frontend flows
 
-- **Deploy** (`/templs/create`): gather config, call factory, register with backend, optionally bind Telegram chat id.
-- **Join** (`/templs/join`): purchase (if needed), verify membership, display templ metadata + backend-provided deep links.
-- **Governance**: create proposals via curated form, vote with YES/NO toggle, track results through Telegram or direct contract reads.
-
-MetaMask/`window.ethereum` supplies the signer. All backend calls attach typed signatures with shared builders from `shared/signing.js`.
+- **Deploy** (`/templs/create`): collect config, call the factory, sign the registration payload, and post to the backend (optional Telegram chat id).
+- **Join** (`/templs/join`): approve + purchase access when needed, then sign a `join` payload for backend verification.
+- **Governance** (`/templs/:address/...`): create proposals with on-chain title/description, cast YES/NO votes, execute outcomes, and manage Telegram bindings.
+- Shared signing helpers in `shared/` build the typed data used across frontend and backend.
 
 ## 4. Telegram integration
 
-- Bot token lives in `TELEGRAM_BOT_TOKEN` (backend env). Without it, the notifier short-circuits and no messages are sent.
-- Chat ids are plain strings stored in the persistence layer (`templ_bindings.telegramChatId`) and replicated to every backend instance (D1/SQLite). Use negative ids for supergroups.
-- Rebinding requires the current priest wallet to sign the `rebind` typed data; once the new code is observed in Telegram the backend clears the previous binding and stores the replacement chat id.
-- Messages are rendered with Telegram Markdown V2: headings are bolded, contract/member addresses sit in `<code>` spans, and navigation links derived from `APP_BASE_URL` are escaped before sending.
-- Failures are logged at `warn` level; the backend never throws based on Telegram API errors.
+- `TELEGRAM_BOT_TOKEN` enables delivery; leaving it unset disables notifications without impacting contract flows.
+- Chat ids live in persistence (`templ_bindings.telegramChatId`). Supergroups use negative ids as returned by the Telegram API.
+- Rebinds require the current priest to sign typed data; the backend issues a fresh code and revokes the previous binding as soon as the new chat posts `templ <code>`.
+- MarkdownV2 formatting keeps alerts readable (bold headings, inline code for addresses, deep links sourced from `APP_BASE_URL`). Failures are logged but never crash the service.
 
 ## 5. Security
 
-- All state-changing endpoints demand typed signatures (with nonce/issued/expiry) and record them to block replays.
-- Production mode (`NODE_ENV=production` or `REQUIRE_CONTRACT_VERIFY=1`) ensures the signed priest actually controls the templ contract and that chain ids match the configured provider.
-- Telegram is additive; it never gatekeeps on-chain operations. Never embed secrets in chat ids.
+- Every state-changing endpoint requires typed signatures with nonce/issued/expiry checks; signatures are recorded to prevent replays.
+- Production mode (`NODE_ENV=production` or `REQUIRE_CONTRACT_VERIFY=1`) ensures the signer actually controls the templ and that chain ids match the configured provider.
+- Telegram is additive: it never gates on-chain operations and never stores secrets on chain.
 
-## 6. Testing
+## 6. Testing hooks
 
-- Hardhat test suite covers contract invariants and governance.
-- Backend `node:test` suite validates templ registration, membership checks, and watcher wiring.
-- Frontend Vitest suite focuses on services; Playwright smoke tests cover the create/join/vote flow with Telegram disabled.
+- Hardhat covers contract invariants and governance transitions.
+- Backend `node:test` suite verifies registration, membership checks, watchers, and persistence adapters.
+- Frontend Vitest focuses on services; Playwright smoke tests cover deploy/join/vote flows with Telegram disabled by default.
