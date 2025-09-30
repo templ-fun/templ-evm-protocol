@@ -26,6 +26,12 @@ abstract contract TemplTreasury is TemplBase {
     }
 
     /// @notice Governance action that updates the entry fee and/or fee split configuration.
+    /// @param _token Optional replacement access token (must equal the existing token or zero to leave unchanged).
+    /// @param _entryFee Optional new entry fee (0 keeps the current value).
+    /// @param _updateFeeSplit Whether to apply the provided percentage overrides.
+    /// @param _burnPercent New burn allocation in basis points when `_updateFeeSplit` is true.
+    /// @param _treasuryPercent New treasury allocation in basis points when `_updateFeeSplit` is true.
+    /// @param _memberPoolPercent New member pool allocation in basis points when `_updateFeeSplit` is true.
     function updateConfigDAO(
         address _token,
         uint256 _entryFee,
@@ -38,31 +44,37 @@ abstract contract TemplTreasury is TemplBase {
     }
 
     /// @notice Governance action that toggles the paused state.
+    /// @param _paused Desired paused state to apply.
     function setPausedDAO(bool _paused) external onlyDAO {
         _setPaused(_paused);
     }
 
     /// @notice Governance action that adjusts the membership cap.
+    /// @param _maxMembers New membership cap (0 removes the cap).
     function setMaxMembersDAO(uint256 _maxMembers) external onlyDAO {
         _setMaxMembers(_maxMembers);
     }
 
     /// @notice Governance action that moves treasury balances into the member or external reward pools.
+    /// @param token Asset to disband (`address(0)` for ETH).
     function disbandTreasuryDAO(address token) external onlyDAO {
         _disbandTreasury(token, 0);
     }
 
     /// @notice Governance action that appoints a new priest.
+    /// @param newPriest Address of the incoming priest.
     function changePriestDAO(address newPriest) external onlyDAO {
         _changePriest(newPriest);
     }
 
     /// @notice Governance action that enables or disables dictatorship mode.
+    /// @param enabled Target dictatorship state.
     function setDictatorshipDAO(bool enabled) external onlyDAO {
         _updateDictatorship(enabled);
     }
 
     /// @notice Governance action that updates the templ home link shared across surfaces.
+    /// @param newLink Canonical URL to persist.
     function setTemplHomeLinkDAO(string calldata newLink) external onlyDAO {
         _setTemplHomeLink(newLink);
     }

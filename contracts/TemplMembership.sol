@@ -76,6 +76,7 @@ abstract contract TemplMembership is TemplBase {
 
     /// @notice Returns the member pool allocation pending for a given wallet.
     /// @param member Wallet to inspect.
+    /// @return amount Claimable balance denominated in the access token.
     function getClaimablePoolAmount(address member) public view returns (uint256) {
         if (!members[member].purchased) {
             return 0;
@@ -87,7 +88,8 @@ abstract contract TemplMembership is TemplBase {
     }
 
     /// @notice Lists ERC-20 (or ETH) reward tokens with active external pools.
-    function getExternalRewardTokens() external view returns (address[] memory) {
+    /// @return tokens Array of reward token addresses currently tracked.
+    function getExternalRewardTokens() external view returns (address[] memory tokens) {
         return externalRewardTokens;
     }
 
@@ -108,7 +110,8 @@ abstract contract TemplMembership is TemplBase {
     /// @notice Computes how much of an external reward token a member can claim.
     /// @param member Wallet to inspect.
     /// @param token ERC-20 token address or address(0) for ETH.
-    function getClaimableExternalToken(address member, address token) public view returns (uint256) {
+    /// @return amount Claimable balance of the external reward for the member.
+    function getClaimableExternalToken(address member, address token) public view returns (uint256 amount) {
         if (!members[member].purchased) {
             return 0;
         }
@@ -159,7 +162,6 @@ abstract contract TemplMembership is TemplBase {
         if (remaining < claimable) revert TemplErrors.InsufficientPoolBalance();
 
         memberExternalRewardSnapshots[msg.sender][token] = rewards.cumulativeRewards;
-        memberExternalClaims[msg.sender][token] += claimable;
         rewards.poolBalance = remaining - claimable;
 
         if (token == address(0)) {
@@ -192,6 +194,9 @@ abstract contract TemplMembership is TemplBase {
     }
 
     /// @notice Exposes treasury balances, member pool totals, and protocol receipts.
+    /// @return treasury Access-token balance currently available for governance-controlled withdrawals.
+    /// @return memberPool Access-token balance locked for member pool claims.
+    /// @return protocolAddress Wallet that receives protocol fee splits during purchases.
     function getTreasuryInfo()
         external
         view
@@ -207,6 +212,16 @@ abstract contract TemplMembership is TemplBase {
     }
 
     /// @notice Returns high level configuration and aggregate balances for the templ.
+    /// @return token Address of the access token required for membership.
+    /// @return fee Current entry fee denominated in the access token.
+    /// @return isPaused Whether membership joins are paused.
+    /// @return purchases Historical count of successful joins (excluding the auto-enrolled priest).
+    /// @return treasury Treasury balance currently available to governance.
+    /// @return pool Aggregate member pool balance reserved for claims.
+    /// @return burnPercentOut Burn allocation expressed in basis points.
+    /// @return treasuryPercentOut Treasury allocation expressed in basis points.
+    /// @return memberPoolPercentOut Member pool allocation expressed in basis points.
+    /// @return protocolPercentOut Protocol allocation expressed in basis points.
     function getConfig() external view returns (
         address token,
         uint256 fee,
@@ -236,11 +251,13 @@ abstract contract TemplMembership is TemplBase {
     }
 
     /// @notice Returns the number of active members.
+    /// @return count Number of wallets with active membership (includes the auto-enrolled priest).
     function getMemberCount() external view returns (uint256) {
         return memberCount;
     }
 
     /// @notice Historical counter for total successful joins (mirrors member count without storing extra state).
+    /// @return purchases Number of completed joins excluding the auto-enrolled priest.
     function totalPurchases() public view returns (uint256) {
         if (memberCount == 0) {
             return 0;
@@ -249,7 +266,9 @@ abstract contract TemplMembership is TemplBase {
     }
 
     /// @notice Exposes a voter's current vote weight (1 per active member).
-    function getVoteWeight(address voter) external view returns (uint256) {
+    /// @param voter Address to inspect for voting rights.
+    /// @return weight Voting weight (1 when the wallet is a member, 0 otherwise).
+    function getVoteWeight(address voter) external view returns (uint256 weight) {
         if (!members[voter].purchased) {
             return 0;
         }

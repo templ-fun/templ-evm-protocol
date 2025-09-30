@@ -72,6 +72,7 @@ abstract contract TemplGovernance is TemplBase {
     /// @param _votingPeriod Optional custom voting duration (seconds).
     /// @param _title On-chain title for the proposal.
     /// @param _description On-chain description for the proposal.
+    /// @return proposalId Newly created proposal identifier.
     function createProposalUpdateConfig(
         uint256 _newEntryFee,
         uint256 _newBurnPercent,
@@ -105,6 +106,7 @@ abstract contract TemplGovernance is TemplBase {
     /// @param _votingPeriod Optional custom voting duration (seconds).
     /// @param _title On-chain title for the proposal.
     /// @param _description On-chain description for the proposal.
+    /// @return proposalId Newly created proposal identifier.
     function createProposalSetMaxMembers(
         uint256 _newMaxMembers,
         uint256 _votingPeriod,
@@ -126,6 +128,7 @@ abstract contract TemplGovernance is TemplBase {
     /// @param _votingPeriod Optional custom voting duration (seconds).
     /// @param _title On-chain title for the proposal.
     /// @param _description On-chain description for the proposal.
+    /// @return proposalId Newly created proposal identifier.
     function createProposalSetHomeLink(
         string calldata _newLink,
         uint256 _votingPeriod,
@@ -147,6 +150,7 @@ abstract contract TemplGovernance is TemplBase {
     /// @param _votingPeriod Optional custom voting duration (seconds).
     /// @param _title On-chain title for the proposal.
     /// @param _description On-chain description for the proposal.
+    /// @return proposalId Newly created proposal identifier.
     function createProposalWithdrawTreasury(
         address _token,
         address _recipient,
@@ -171,6 +175,7 @@ abstract contract TemplGovernance is TemplBase {
     /// @param _votingPeriod Optional custom voting duration (seconds).
     /// @param _title On-chain title for the proposal.
     /// @param _description On-chain description for the proposal.
+    /// @return proposalId Newly created proposal identifier.
     function createProposalDisbandTreasury(
         address _token,
         uint256 _votingPeriod,
@@ -193,6 +198,7 @@ abstract contract TemplGovernance is TemplBase {
     /// @param _votingPeriod Optional custom voting duration (seconds).
     /// @param _title On-chain title for the proposal.
     /// @param _description On-chain description for the proposal.
+    /// @return proposalId Newly created proposal identifier.
     function createProposalChangePriest(
         address _newPriest,
         uint256 _votingPeriod,
@@ -212,6 +218,7 @@ abstract contract TemplGovernance is TemplBase {
     /// @param _votingPeriod Optional custom voting duration (seconds).
     /// @param _title On-chain title for the proposal.
     /// @param _description On-chain description for the proposal.
+    /// @return proposalId Newly created proposal identifier.
     function createProposalSetDictatorship(
         bool _enable,
         uint256 _votingPeriod,

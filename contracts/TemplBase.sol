@@ -233,9 +233,6 @@ abstract contract TemplBase is ReentrancyGuard {
     address[] internal externalRewardTokens;
     /// @notice Member snapshots for each external reward token.
     mapping(address => mapping(address => uint256)) internal memberExternalRewardSnapshots;
-    /// @notice Cumulative amounts each member has claimed per external reward token.
-    mapping(address => mapping(address => uint256)) internal memberExternalClaims;
-
     /// @dev Restricts a function so only wallets that successfully purchased access may call it.
     modifier onlyMember() {
         if (!members[msg.sender].purchased) revert TemplErrors.NotMember();
