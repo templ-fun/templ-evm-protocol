@@ -10,7 +10,8 @@ This guide walks through the production deployment of templ on Cloudflare. The b
   - **Account** → **Cloudflare Pages**: Edit
   - **Account** → **Workers Scripts**: Edit
   - **Account** → **D1**: Edit
-- `wrangler` CLI v3.83.0+ installed locally or available through `npx`.
+- `wrangler` CLI v3.83.0+ accessible via `npx` (run `npx wrangler --version` to confirm).
+- Authenticated Cloudflare session (`npx wrangler login`) for the account that owns the target resources.
 - Telegram bot token generated with [@BotFather](https://t.me/botfather) and the production Telegram group that will receive notifications.
 - Local checkout of this repository with dependencies installed:
 
@@ -69,8 +70,8 @@ This guide walks through the production deployment of templ on Cloudflare. The b
 1. **Create the D1 database** and record its name and id:
 
    ```bash
-   wrangler d1 create templ-backend
-   wrangler d1 info templ-backend
+   npx wrangler d1 create templ-backend
+   npx wrangler d1 info templ-backend
    ```
 
    The info command prints `database_id`, which the deployment script references.
@@ -90,7 +91,7 @@ This guide walks through the production deployment of templ on Cloudflare. The b
 
 2. Update `.cloudflare.env` with:
    - `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` (scoped token described in section 1).
-   - `CF_D1_DATABASE_NAME` and `CF_D1_DATABASE_ID` from `wrangler d1 info`.
+   - `CF_D1_DATABASE_NAME` and `CF_D1_DATABASE_ID` from `npx wrangler d1 info`.
    - `CF_WORKER_NAME`, `APP_BASE_URL`, `TRUSTED_FACTORY_ADDRESS`, `TELEGRAM_BOT_TOKEN`, `RPC_URL`, and any additional backend vars (`CLOUDFLARE_BACKEND_VAR_*`).
    - Frontend build overrides (`VITE_*`) that match the production configuration, including the trusted factory address, deployment block, and backend URL.
    - Pages project name and branch.
@@ -107,10 +108,10 @@ This guide walks through the production deployment of templ on Cloudflare. The b
    Use `npm run deploy:cloudflare -- --env-file path/to/env` when the env file lives outside the repo root.
 2. The script performs the following actions:
    - Loads `.cloudflare.env` and validates required variables.
-   - Applies the SQL schema to the D1 database via `wrangler d1 execute`.
+   - Applies the SQL schema to the D1 database via `npx wrangler d1 execute`.
    - Generates `backend/wrangler.deployment.toml` with the configured bindings and variables.
    - Syncs Worker secrets (`TELEGRAM_BOT_TOKEN`, `RPC_URL`, and any `CLOUDFLARE_BACKEND_SECRET_*` values).
-   - Deploys the Worker (`wrangler deploy`) so the API is globally available.
+   - Deploys the Worker (`npx wrangler deploy`) so the API is globally available.
    - Builds the Vite frontend with the supplied `VITE_*` overrides and uploads the static assets to Cloudflare Pages.
 3. On success, copy the Worker and Pages URLs printed at the end of the run. Update DNS aliases to point to these origins if you have not already.
 
