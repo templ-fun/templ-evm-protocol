@@ -8,16 +8,16 @@ import {SSTORE2} from "./libraries/SSTORE2.sol";
 /// @title Factory for deploying templ instances
 /// @notice Deploys templ contracts with shared protocol configuration and optional custom splits.
 contract TemplFactory {
-    uint256 internal constant TOTAL_PERCENT = 100;
+    uint256 internal constant TOTAL_PERCENT = 10_000;
     // NOTE: The default burn/treasury/member percentages deliberately assume a
     // factory-level protocol share of 10%. Factories deployed with a different
     // `protocolPercent` should either adjust these constants prior to
     // deployment or call `createTemplWithConfig` with explicit splits so the
-    // totals continue to sum to 100.
-    uint256 internal constant DEFAULT_BURN_PERCENT = 30;
-    uint256 internal constant DEFAULT_TREASURY_PERCENT = 30;
-    uint256 internal constant DEFAULT_MEMBER_POOL_PERCENT = 30;
-    uint256 internal constant DEFAULT_QUORUM_PERCENT = 33;
+    // totals continue to sum to 100% (10_000 basis points).
+    uint256 internal constant DEFAULT_BURN_PERCENT = 3_000;
+    uint256 internal constant DEFAULT_TREASURY_PERCENT = 3_000;
+    uint256 internal constant DEFAULT_MEMBER_POOL_PERCENT = 3_000;
+    uint256 internal constant DEFAULT_QUORUM_PERCENT = 3_300;
     uint256 internal constant DEFAULT_EXECUTION_DELAY = 7 days;
     address internal constant DEFAULT_BURN_ADDRESS = 0x000000000000000000000000000000000000dEaD;
     int256 internal constant USE_DEFAULT_PERCENT = -1;

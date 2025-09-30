@@ -3,12 +3,10 @@ const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
 const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
 
-// Invariant: totalBurned + totalToTreasury + totalToMemberPool + totalToProtocol
-//           == entryFee * totalPurchases
-
 describe("Fee Distribution Invariant", function () {
     const ENTRY_FEE = ethers.parseUnits("100", 18);
     const TOKEN_SUPPLY = ethers.parseUnits("10000", 18);
+    const BPS_DENOMINATOR = 10_000n;
 
     let templ;
     let token;
@@ -24,28 +22,47 @@ describe("Fee Distribution Invariant", function () {
     });
 
     it("tracks fees correctly across varying member counts", async function () {
+        let cumulativeBurn = 0n;
+        let cumulativeTreasury = 0n;
+        let cumulativeMemberPool = 0n;
+        let cumulativeProtocol = 0n;
+        const templAddress = await templ.getAddress();
+
         for (let i = 0; i < members.length; i++) {
             const member = members[i];
-            await purchaseAccess(templ, token, [member]);
+            await token.connect(member).approve(templAddress, ENTRY_FEE);
 
-            const burned = await templ.totalBurned();
-            const treasury = await templ.totalToTreasury();
-            const pool = await templ.totalToMemberPool();
-            const protocol = await templ.totalToProtocol();
-            const total = burned + treasury + pool + protocol;
-            const expected = ENTRY_FEE * (await templ.totalPurchases());
+            const tx = await templ.connect(member).purchaseAccess();
+            const receipt = await tx.wait();
 
+            const accessPurchased = receipt.logs
+                .map((log) => {
+                    try {
+                        return templ.interface.parseLog(log);
+                    } catch (_) {
+                        return null;
+                    }
+                })
+                .find((log) => log && log.name === "AccessPurchased");
+
+            expect(accessPurchased, "AccessPurchased event").to.not.equal(undefined);
+
+            cumulativeBurn += accessPurchased.args.burnedAmount;
+            cumulativeTreasury += accessPurchased.args.treasuryAmount;
+            cumulativeMemberPool += accessPurchased.args.memberPoolAmount;
+            cumulativeProtocol += accessPurchased.args.protocolAmount;
+
+            const expected = ENTRY_FEE * BigInt(i + 1);
+            const total = cumulativeBurn + cumulativeTreasury + cumulativeMemberPool + cumulativeProtocol;
             expect(total).to.equal(expected);
 
             if (i === 0) {
                 const poolPercent = BigInt(await templ.memberPoolPercent());
-                const pioneerReward = (ENTRY_FEE * poolPercent) / 100n;
+                const pioneerReward = (ENTRY_FEE * poolPercent) / BPS_DENOMINATOR;
                 expect(await templ.cumulativeMemberRewards()).to.equal(pioneerReward);
             }
         }
 
-        // large member count reached
         expect(await templ.totalPurchases()).to.equal(BigInt(members.length));
     });
 });
-

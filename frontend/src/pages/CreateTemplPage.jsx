@@ -130,7 +130,7 @@ export function CreateTemplPage({
           return;
         }
         if (!cancelled) {
-          setProtocolPercent(String(resolved));
+          setProtocolPercent(String(resolved / 100));
           setProtocolPercentLocked(true);
         }
       } catch (err) {

@@ -5,6 +5,11 @@ const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
 
 describe("Reentrancy protection", function () {
   const ENTRY_FEE = ethers.parseUnits("100", 18);
+  const BURN_BPS = 3000;
+  const TREASURY_BPS = 3000;
+  const MEMBER_BPS = 3000;
+  const PROTOCOL_BPS = 1000;
+  const QUORUM_BPS = 3300;
 
   describe("purchaseAccess", function () {
     let accounts;
@@ -27,11 +32,11 @@ describe("Reentrancy protection", function () {
         priest.address,
         await token.getAddress(),
         ENTRY_FEE,
-        30,
-        30,
-        30,
-        10,
-        33,
+        BURN_BPS,
+        TREASURY_BPS,
+        MEMBER_BPS,
+        PROTOCOL_BPS,
+        QUORUM_BPS,
         7 * 24 * 60 * 60,
         "0x000000000000000000000000000000000000dEaD",
         false,
@@ -90,11 +95,11 @@ describe("Reentrancy protection", function () {
         priest.address,
         await token.getAddress(),
         ENTRY_FEE,
-        30,
-        30,
-        30,
-        10,
-        33,
+        BURN_BPS,
+        TREASURY_BPS,
+        MEMBER_BPS,
+        PROTOCOL_BPS,
+        QUORUM_BPS,
         7 * 24 * 60 * 60,
         "0x000000000000000000000000000000000000dEaD",
         false,

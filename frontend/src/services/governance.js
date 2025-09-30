@@ -321,7 +321,7 @@ export async function fetchGovernanceParameters({
       defaultVotingPeriod: toNumber(defaultVotingPeriod, 7 * 24 * 60 * 60),
       minVotingPeriod: toNumber(minVotingPeriod, 7 * 24 * 60 * 60),
       maxVotingPeriod: toNumber(maxVotingPeriod, 30 * 24 * 60 * 60),
-      quorumPercent: toNumber(quorumPercent, 0),
+      quorumPercent: toNumber(quorumPercent, 0) / 100,
       executionDelay: toNumber(executionDelay, 0)
     };
   } catch (err) {

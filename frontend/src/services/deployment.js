@@ -13,15 +13,20 @@ function toBigInt(value, label) {
 }
 
 function validateSplit({ burnPercent, treasuryPercent, memberPoolPercent, protocolPercent }) {
-  const burn = Number(burnPercent ?? 30);
-  const treasury = Number(treasuryPercent ?? 30);
-  const member = Number(memberPoolPercent ?? 30);
-  const protocol = Number(protocolPercent ?? 10);
-  const total = burn + treasury + member + protocol;
+  const burnPercentValue = Number(burnPercent ?? 30);
+  const treasuryPercentValue = Number(treasuryPercent ?? 30);
+  const memberPercentValue = Number(memberPoolPercent ?? 30);
+  const protocolPercentValue = Number(protocolPercent ?? 10);
+  const total = burnPercentValue + treasuryPercentValue + memberPercentValue + protocolPercentValue;
   if (total !== 100) {
     throw new Error(`Fee split must equal 100 (received ${total})`);
   }
-  return { burn, treasury, member, protocol };
+  const toBps = (value) => Math.round(value * 100);
+  return {
+    burn: toBps(burnPercentValue),
+    treasury: toBps(treasuryPercentValue),
+    member: toBps(memberPercentValue)
+  };
 }
 
 async function deployContract({
@@ -61,7 +66,7 @@ async function deployContract({
     if (!Number.isFinite(resolved) || resolved < 0) {
       throw new Error('Invalid quorum percent');
     }
-    return resolved;
+    return Math.round(resolved * 100);
   })();
   const factory = new ethers.Contract(factoryAddress, factoryArtifact.abi, signer);
   const config = {

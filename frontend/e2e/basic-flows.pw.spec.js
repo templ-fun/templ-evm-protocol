@@ -15,7 +15,7 @@ test.describe('Templ core workflows', () => {
     const protocolRecipient = await wallets.priest.getAddress();
     const factoryDeployer = await provider.getSigner(1);
     const factoryFactory = new ethers.ContractFactory(TemplFactory.abi, TemplFactory.bytecode, factoryDeployer);
-    const templFactory = await factoryFactory.deploy(protocolRecipient, 10);
+    const templFactory = await factoryFactory.deploy(protocolRecipient, 1000);
     await templFactory.waitForDeployment();
     const templFactoryAddress = await templFactory.getAddress();
 

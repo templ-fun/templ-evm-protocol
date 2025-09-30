@@ -1,38 +1,48 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import {TemplTreasury} from "./TemplTreasury.sol";
+import {TemplBase} from "./TemplBase.sol";
 import {TemplErrors} from "./TemplErrors.sol";
 
 /// @title templ governance module
 /// @notice Adds proposal creation, voting, and execution flows on top of treasury + membership logic.
-abstract contract TemplGovernance is TemplTreasury {
-    /// @notice Pass-through constructor hooking the governance layer into the treasury module.
-    constructor(
-        address _protocolFeeRecipient,
-        address _accessToken,
+abstract contract TemplGovernance is TemplBase {
+    /// @notice Hook executed when governance-set pause proposals execute.
+    function _governanceSetPaused(bool _paused) internal virtual;
+
+    /// @notice Hook executed when governance updates templ configuration.
+    function _governanceUpdateConfig(
+        address _token,
+        uint256 _entryFee,
+        bool _updateFeeSplit,
         uint256 _burnPercent,
         uint256 _treasuryPercent,
-        uint256 _memberPoolPercent,
-        uint256 _protocolPercent,
-        uint256 _quorumPercent,
-        uint256 _executionDelay,
-        address _burnAddress,
-        bool _priestIsDictator,
-        string memory _homeLink
-    ) TemplTreasury(
-        _protocolFeeRecipient,
-        _accessToken,
-        _burnPercent,
-        _treasuryPercent,
-        _memberPoolPercent,
-        _protocolPercent,
-        _quorumPercent,
-        _executionDelay,
-        _burnAddress,
-        _priestIsDictator,
-        _homeLink
-    ) {}
+        uint256 _memberPoolPercent
+    ) internal virtual;
+
+    /// @notice Hook executed when governance withdraws treasury balances.
+    function _governanceWithdrawTreasury(
+        address token,
+        address recipient,
+        uint256 amount,
+        string memory reason,
+        uint256 proposalId
+    ) internal virtual;
+
+    /// @notice Hook executed when governance disbands treasury holdings.
+    function _governanceDisbandTreasury(address token, uint256 proposalId) internal virtual;
+
+    /// @notice Hook executed when governance appoints a new priest.
+    function _governanceChangePriest(address newPriest) internal virtual;
+
+    /// @notice Hook executed when governance toggles dictatorship mode.
+    function _governanceSetDictatorship(bool enabled) internal virtual;
+
+    /// @notice Hook executed when governance adjusts the member cap.
+    function _governanceSetMaxMembers(uint256 newMaxMembers) internal virtual;
+
+    /// @notice Hook executed when governance updates the templ home link.
+    function _governanceSetHomeLink(string memory newLink) internal virtual;
 
     /// @notice Opens a proposal to pause or unpause the templ.
     /// @param _paused Desired paused state.
@@ -62,6 +72,7 @@ abstract contract TemplGovernance is TemplTreasury {
     /// @param _votingPeriod Optional custom voting duration (seconds).
     /// @param _title On-chain title for the proposal.
     /// @param _description On-chain description for the proposal.
+    /// @return proposalId Newly created proposal identifier.
     function createProposalUpdateConfig(
         uint256 _newEntryFee,
         uint256 _newBurnPercent,
@@ -95,6 +106,7 @@ abstract contract TemplGovernance is TemplTreasury {
     /// @param _votingPeriod Optional custom voting duration (seconds).
     /// @param _title On-chain title for the proposal.
     /// @param _description On-chain description for the proposal.
+    /// @return proposalId Newly created proposal identifier.
     function createProposalSetMaxMembers(
         uint256 _newMaxMembers,
         uint256 _votingPeriod,
@@ -102,7 +114,7 @@ abstract contract TemplGovernance is TemplTreasury {
         string calldata _description
     ) external returns (uint256) {
         if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
-        if (_newMaxMembers > 0 && _newMaxMembers < memberList.length) {
+        if (_newMaxMembers > 0 && _newMaxMembers < memberCount) {
             revert TemplErrors.MemberLimitTooLow();
         }
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
@@ -116,6 +128,7 @@ abstract contract TemplGovernance is TemplTreasury {
     /// @param _votingPeriod Optional custom voting duration (seconds).
     /// @param _title On-chain title for the proposal.
     /// @param _description On-chain description for the proposal.
+    /// @return proposalId Newly created proposal identifier.
     function createProposalSetHomeLink(
         string calldata _newLink,
         uint256 _votingPeriod,
@@ -137,6 +150,7 @@ abstract contract TemplGovernance is TemplTreasury {
     /// @param _votingPeriod Optional custom voting duration (seconds).
     /// @param _title On-chain title for the proposal.
     /// @param _description On-chain description for the proposal.
+    /// @return proposalId Newly created proposal identifier.
     function createProposalWithdrawTreasury(
         address _token,
         address _recipient,
@@ -161,6 +175,7 @@ abstract contract TemplGovernance is TemplTreasury {
     /// @param _votingPeriod Optional custom voting duration (seconds).
     /// @param _title On-chain title for the proposal.
     /// @param _description On-chain description for the proposal.
+    /// @return proposalId Newly created proposal identifier.
     function createProposalDisbandTreasury(
         address _token,
         uint256 _votingPeriod,
@@ -183,6 +198,7 @@ abstract contract TemplGovernance is TemplTreasury {
     /// @param _votingPeriod Optional custom voting duration (seconds).
     /// @param _title On-chain title for the proposal.
     /// @param _description On-chain description for the proposal.
+    /// @return proposalId Newly created proposal identifier.
     function createProposalChangePriest(
         address _newPriest,
         uint256 _votingPeriod,
@@ -202,6 +218,7 @@ abstract contract TemplGovernance is TemplTreasury {
     /// @param _votingPeriod Optional custom voting duration (seconds).
     /// @param _title On-chain title for the proposal.
     /// @param _description On-chain description for the proposal.
+    /// @return proposalId Newly created proposal identifier.
     function createProposalSetDictatorship(
         bool _enable,
         uint256 _votingPeriod,
@@ -265,11 +282,11 @@ abstract contract TemplGovernance is TemplTreasury {
         if (!proposal.quorumExempt && proposal.quorumReachedAt == 0) {
             if (
                 proposal.eligibleVoters != 0 &&
-                proposal.yesVotes * 100 >= quorumPercent * proposal.eligibleVoters
+                proposal.yesVotes * TOTAL_PERCENT >= quorumPercent * proposal.eligibleVoters
             ) {
                 proposal.quorumReachedAt = block.timestamp;
                 proposal.quorumSnapshotBlock = block.number;
-                proposal.postQuorumEligibleVoters = memberList.length;
+                proposal.postQuorumEligibleVoters = memberCount;
                 proposal.endTime = block.timestamp + executionDelayAfterQuorum;
                 if (proposal.action == Action.DisbandTreasury) {
                     _activateDisbandLock(proposal);
@@ -302,7 +319,7 @@ abstract contract TemplGovernance is TemplTreasury {
             }
             if (
                 proposal.eligibleVoters != 0 &&
-                proposal.yesVotes * 100 < quorumPercent * proposal.eligibleVoters
+                proposal.yesVotes * TOTAL_PERCENT < quorumPercent * proposal.eligibleVoters
             ) {
                 revert TemplErrors.QuorumNotReached();
             }
@@ -320,9 +337,9 @@ abstract contract TemplGovernance is TemplTreasury {
         }
 
         if (proposal.action == Action.SetPaused) {
-            _setPaused(proposal.paused);
+            _governanceSetPaused(proposal.paused);
         } else if (proposal.action == Action.UpdateConfig) {
-            _updateConfig(
+            _governanceUpdateConfig(
                 proposal.token,
                 proposal.newEntryFee,
                 proposal.updateFeeSplit,
@@ -331,18 +348,24 @@ abstract contract TemplGovernance is TemplTreasury {
                 proposal.newMemberPoolPercent
             );
         } else if (proposal.action == Action.WithdrawTreasury) {
-            _withdrawTreasury(proposal.token, proposal.recipient, proposal.amount, proposal.reason, _proposalId);
+            _governanceWithdrawTreasury(
+                proposal.token,
+                proposal.recipient,
+                proposal.amount,
+                proposal.reason,
+                _proposalId
+            );
         } else if (proposal.action == Action.DisbandTreasury) {
-            _disbandTreasury(proposal.token, _proposalId);
+            _governanceDisbandTreasury(proposal.token, _proposalId);
             _releaseDisbandLock(proposal);
         } else if (proposal.action == Action.ChangePriest) {
-            _changePriest(proposal.recipient);
+            _governanceChangePriest(proposal.recipient);
         } else if (proposal.action == Action.SetDictatorship) {
-            _updateDictatorship(proposal.setDictatorship);
+            _governanceSetDictatorship(proposal.setDictatorship);
         } else if (proposal.action == Action.SetMaxMembers) {
-            _setMaxMembers(proposal.newMaxMembers);
+            _governanceSetMaxMembers(proposal.newMaxMembers);
         } else if (proposal.action == Action.SetHomeLink) {
-            _setTemplHomeLink(proposal.newHomeLink);
+            _governanceSetHomeLink(proposal.newHomeLink);
         } else {
             revert TemplErrors.InvalidCallData();
         }
@@ -377,7 +400,7 @@ abstract contract TemplGovernance is TemplTreasury {
             passed = block.timestamp >= proposal.endTime && proposal.yesVotes > proposal.noVotes;
         } else if (proposal.quorumReachedAt != 0) {
             bool quorumMaintained = proposal.eligibleVoters == 0 ||
-                proposal.yesVotes * 100 >= quorumPercent * proposal.eligibleVoters;
+                proposal.yesVotes * TOTAL_PERCENT >= quorumPercent * proposal.eligibleVoters;
             passed = (block.timestamp >= (proposal.quorumReachedAt + executionDelayAfterQuorum)) &&
                 quorumMaintained &&
                 (proposal.yesVotes > proposal.noVotes);
@@ -548,12 +571,12 @@ abstract contract TemplGovernance is TemplTreasury {
         proposal.voteChoice[msg.sender] = true;
         proposal.yesVotes = 1;
         proposal.noVotes = 0;
-        proposal.eligibleVoters = memberList.length;
+        proposal.eligibleVoters = memberCount;
         proposal.quorumReachedAt = 0;
         proposal.quorumExempt = false;
         if (
             proposal.eligibleVoters != 0 &&
-            proposal.yesVotes * 100 >= quorumPercent * proposal.eligibleVoters
+            proposal.yesVotes * TOTAL_PERCENT >= quorumPercent * proposal.eligibleVoters
         ) {
             proposal.quorumReachedAt = block.timestamp;
             proposal.quorumSnapshotBlock = block.number;
@@ -639,7 +662,7 @@ abstract contract TemplGovernance is TemplTreasury {
 
     function _finalizeDisbandFailure(Proposal storage proposal) internal {
         bool quorumMaintained = proposal.eligibleVoters == 0 ||
-            proposal.yesVotes * 100 >= quorumPercent * proposal.eligibleVoters;
+            proposal.yesVotes * TOTAL_PERCENT >= quorumPercent * proposal.eligibleVoters;
         if (!proposal.executed || !quorumMaintained || proposal.yesVotes <= proposal.noVotes) {
             _releaseDisbandLock(proposal);
         }
@@ -684,7 +707,7 @@ abstract contract TemplGovernance is TemplTreasury {
         return currentTime < proposal.endTime && !proposal.executed;
     }
 
-    function _refreshDisbandLocks() internal override {
+    function _refreshDisbandLocks() internal virtual override {
         if (activeDisbandJoinLocks == 0) {
             return;
         }

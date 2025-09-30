@@ -8,26 +8,63 @@ const DEFAULT_TREASURY_PERCENT = 30;
 const DEFAULT_MEMBER_POOL_PERCENT = 30;
 const USE_DEFAULT_PERCENT = -1;
 
-function readSplitPercent(label, primaryEnv, fallbackEnv, defaultValue) {
-  const raw = primaryEnv ?? fallbackEnv;
-  if (raw === undefined || raw.trim() === '') {
-    return { configValue: defaultValue, resolvedPercent: defaultValue, usedDefault: true };
+function readSplitPercent(label, percentEnv, bpsEnv, defaultPercent) {
+  const trimmedPercent = percentEnv?.trim?.();
+  if (trimmedPercent && trimmedPercent !== '') {
+    const parsed = Number(trimmedPercent);
+    if (!Number.isFinite(parsed)) {
+      throw new Error(`${label} must be a valid number`);
+    }
+    if (parsed === USE_DEFAULT_PERCENT) {
+      return {
+        configValue: USE_DEFAULT_PERCENT,
+        resolvedPercent: defaultPercent,
+        resolvedBps: defaultPercent * 100,
+        usedDefault: true
+      };
+    }
+    if (parsed < 0 || parsed > 100) {
+      throw new Error(`${label} must be between 0 and 100`);
+    }
+    return {
+      configValue: Math.round(parsed * 100),
+      resolvedPercent: parsed,
+      resolvedBps: Math.round(parsed * 100),
+      usedDefault: false
+    };
   }
 
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed)) {
-    throw new Error(`${label} must be a valid number`);
+  const trimmedBps = bpsEnv?.trim?.();
+  if (trimmedBps && trimmedBps !== '') {
+    const parsedBps = Number(trimmedBps);
+    if (!Number.isFinite(parsedBps)) {
+      throw new Error(`${label} (basis points) must be a valid number`);
+    }
+    if (parsedBps === USE_DEFAULT_PERCENT) {
+      return {
+        configValue: USE_DEFAULT_PERCENT,
+        resolvedPercent: defaultPercent,
+        resolvedBps: defaultPercent * 100,
+        usedDefault: true
+      };
+    }
+    if (parsedBps < 0 || parsedBps > 10_000) {
+      throw new Error(`${label} basis points must be between 0 and 10_000`);
+    }
+    return {
+      configValue: parsedBps,
+      resolvedPercent: parsedBps / 100,
+      resolvedBps: parsedBps,
+      usedDefault: false
+    };
   }
 
-  if (parsed === USE_DEFAULT_PERCENT) {
-    return { configValue: USE_DEFAULT_PERCENT, resolvedPercent: defaultValue, usedDefault: true };
-  }
-
-  if (parsed < 0) {
-    throw new Error(`${label} cannot be negative (use -1 to fall back to the factory default)`);
-  }
-
-  return { configValue: parsed, resolvedPercent: parsed, usedDefault: false };
+  return {
+    configValue: defaultPercent * 100,
+    resolvedPercent: defaultPercent,
+    resolvedBps: defaultPercent * 100,
+    usedDefault: true
+  };
 }
 
 async function waitForContractCode(address, provider, attempts = 20, delayMs = 3000) {
@@ -103,7 +140,7 @@ async function main() {
   const treasuryPercent = readSplitPercent('TREASURY_PERCENT', process.env.TREASURY_PERCENT, process.env.TREASURY_BP, DEFAULT_TREASURY_PERCENT);
   const memberPoolPercent = readSplitPercent('MEMBER_POOL_PERCENT', process.env.MEMBER_POOL_PERCENT, process.env.MEMBER_POOL_BP, DEFAULT_MEMBER_POOL_PERCENT);
   const rawProtocolPercent = process.env.PROTOCOL_PERCENT ?? process.env.PROTOCOL_BP ?? '10';
-  let PROTOCOL_PERCENT = Number(rawProtocolPercent);
+  let protocolPercentPercent = Number(rawProtocolPercent);
   const QUORUM_PERCENT = process.env.QUORUM_PERCENT !== undefined ? Number(process.env.QUORUM_PERCENT) : undefined;
   const EXECUTION_DELAY_SECONDS = process.env.EXECUTION_DELAY_SECONDS !== undefined ? Number(process.env.EXECUTION_DELAY_SECONDS) : undefined;
   const BURN_ADDRESS = (process.env.BURN_ADDRESS || '').trim();
@@ -123,10 +160,10 @@ async function main() {
     throw new Error("ENTRY_FEE not set in environment");
   }
   if (!FACTORY_ADDRESS_ENV) {
-    if (!Number.isFinite(PROTOCOL_PERCENT)) {
+    if (!Number.isFinite(protocolPercentPercent)) {
       throw new Error('PROTOCOL_PERCENT must be a valid number');
     }
-    if (PROTOCOL_PERCENT < 0 || PROTOCOL_PERCENT > 100) {
+    if (protocolPercentPercent < 0 || protocolPercentPercent > 100) {
       throw new Error('PROTOCOL_PERCENT must be between 0 and 100');
     }
   }
@@ -135,30 +172,31 @@ async function main() {
   if (FACTORY_ADDRESS_ENV) {
     try {
       const existingFactory = await hre.ethers.getContractAt('TemplFactory', FACTORY_ADDRESS_ENV);
-      const onChainPercent = Number(await existingFactory.protocolPercent());
-      if (!Number.isFinite(onChainPercent)) {
+      const onChainPercentBps = Number(await existingFactory.protocolPercent());
+      if (!Number.isFinite(onChainPercentBps)) {
         throw new Error('Factory protocol percent is not a finite number');
       }
-      if (Number.isFinite(PROTOCOL_PERCENT) && PROTOCOL_PERCENT !== onChainPercent) {
+      const onChainPercent = onChainPercentBps / 100;
+      if (Number.isFinite(protocolPercentPercent) && protocolPercentPercent !== onChainPercent) {
         console.warn(
-          `[warn] Ignoring PROTOCOL_PERCENT=${PROTOCOL_PERCENT} from environment; factory ${FACTORY_ADDRESS_ENV} enforces ${onChainPercent}.`
+          `[warn] Ignoring PROTOCOL_PERCENT=${protocolPercentPercent} from environment; factory ${FACTORY_ADDRESS_ENV} enforces ${onChainPercent}.`
         );
       }
-      PROTOCOL_PERCENT = onChainPercent;
+      protocolPercentPercent = onChainPercent;
       protocolPercentSource = 'factory';
     } catch (err) {
       throw new Error(`Failed to read protocol percent from factory ${FACTORY_ADDRESS_ENV}: ${err?.message || err}`);
     }
   }
 
-  if (!Number.isFinite(PROTOCOL_PERCENT)) {
+  if (!Number.isFinite(protocolPercentPercent)) {
     throw new Error('Resolved protocol percent is not a valid number');
   }
-  if (PROTOCOL_PERCENT < 0 || PROTOCOL_PERCENT > 100) {
+  if (protocolPercentPercent < 0 || protocolPercentPercent > 100) {
     throw new Error('Resolved protocol percent must be between 0 and 100');
   }
 
-  const totalSplit = burnPercent.resolvedPercent + treasuryPercent.resolvedPercent + memberPoolPercent.resolvedPercent + PROTOCOL_PERCENT;
+  const totalSplit = burnPercent.resolvedPercent + treasuryPercent.resolvedPercent + memberPoolPercent.resolvedPercent + protocolPercentPercent;
   if (totalSplit !== 100) {
     throw new Error(`Fee split must sum to 100 percent; received ${totalSplit}`);
   }
@@ -173,6 +211,9 @@ async function main() {
   }
   const DEFAULT_BURN_ADDRESS = '0x000000000000000000000000000000000000dead';
   const effectiveBurnAddress = BURN_ADDRESS || DEFAULT_BURN_ADDRESS;
+
+  const protocolPercentBps = Math.round(protocolPercentPercent * 100);
+  const quorumPercentBps = QUORUM_PERCENT !== undefined ? Math.round(QUORUM_PERCENT * 100) : 0;
 
   const entryFee = BigInt(ENTRY_FEE);
   if (entryFee < 10n) {
@@ -205,19 +246,19 @@ async function main() {
     describeSplit(burnPercent),
     describeSplit(treasuryPercent),
     describeSplit(memberPoolPercent),
-    PROTOCOL_PERCENT
+    protocolPercentPercent
   );
 
   const burnAmount = (entryFee * BigInt(burnPercent.resolvedPercent)) / 100n;
   const treasuryAmount = (entryFee * BigInt(treasuryPercent.resolvedPercent)) / 100n;
   const memberPoolAmount = (entryFee * BigInt(memberPoolPercent.resolvedPercent)) / 100n;
-  const protocolAmount = (entryFee * BigInt(PROTOCOL_PERCENT)) / 100n;
+  const protocolAmount = (entryFee * BigInt(protocolPercentPercent)) / 100n;
   console.log("\nEntry Fee:", entryFee.toString());
   console.log("Fee Split:");
   console.log(`  - ${burnPercent.resolvedPercent}% Burn:`, burnAmount.toString());
   console.log(`  - ${treasuryPercent.resolvedPercent}% DAO Treasury:`, treasuryAmount.toString());
   console.log(`  - ${memberPoolPercent.resolvedPercent}% Member Pool:`, memberPoolAmount.toString());
-  console.log(`  - ${PROTOCOL_PERCENT}% Protocol Fee:`, protocolAmount.toString());
+  console.log(`  - ${protocolPercentPercent}% Protocol Fee:`, protocolAmount.toString());
   
   console.log("\nDeploying from:", deployer.address);
   const balance = await hre.ethers.provider.getBalance(deployer.address);
@@ -232,7 +273,7 @@ async function main() {
   console.log("Priest Dictatorship:", PRIEST_IS_DICTATOR ? 'enabled' : 'disabled');
   console.log(
     `Protocol Percent (${protocolPercentSource === 'factory' ? 'factory' : 'env'}):`,
-    PROTOCOL_PERCENT
+    protocolPercentPercent
   );
   
   if (network.chainId === 8453n) {
@@ -245,7 +286,7 @@ async function main() {
   if (!factoryAddress) {
     console.log("\nDeploying TemplFactory...");
     const Factory = await hre.ethers.getContractFactory("TemplFactory");
-    const factory = await Factory.deploy(PROTOCOL_FEE_RECIPIENT, PROTOCOL_PERCENT);
+    const factory = await Factory.deploy(PROTOCOL_FEE_RECIPIENT, protocolPercentBps);
     await factory.waitForDeployment();
     factoryAddress = await factory.getAddress();
     console.log("Factory deployed at:", factoryAddress);
@@ -268,7 +309,7 @@ async function main() {
     burnPercent: burnPercent.configValue,
     treasuryPercent: treasuryPercent.configValue,
     memberPoolPercent: memberPoolPercent.configValue,
-    quorumPercent: QUORUM_PERCENT ?? 0,
+    quorumPercent: quorumPercentBps,
     executionDelaySeconds: EXECUTION_DELAY_SECONDS ?? 0,
     burnAddress: BURN_ADDRESS || hre.ethers.ZeroAddress,
     priestIsDictator: PRIEST_IS_DICTATOR,
@@ -341,6 +382,10 @@ async function main() {
   
   const config = await contract.getConfig();
   const treasuryInfo = await contract.getTreasuryInfo();
+
+  const treasuryAvailable = treasuryInfo?.treasury ?? treasuryInfo?.[0];
+  const memberPoolBalance = treasuryInfo?.memberPool ?? treasuryInfo?.[1];
+  const protocolRecipient = treasuryInfo?.protocolAddress ?? treasuryInfo?.[2];
   
   console.log("\n📋 Contract Configuration:");
   console.log("- Token:", config[0]);
@@ -351,12 +396,15 @@ async function main() {
   console.log("- Member Pool Balance:", config[5].toString());
   
   console.log("\n💰 Treasury Information:");
-  console.log("- Treasury Balance:", treasuryInfo[0].toString());
-  console.log("- Member Pool Balance:", treasuryInfo[1].toString());
-  console.log("- Total to Treasury:", treasuryInfo[2].toString());
-  console.log("- Total Burned:", treasuryInfo[3].toString());
-  console.log("- Total to Protocol:", treasuryInfo[4].toString());
-  console.log("- Protocol Fee Recipient:", treasuryInfo[5]);
+  if (treasuryAvailable !== undefined) {
+    console.log("- Treasury Balance:", treasuryAvailable.toString());
+  }
+  if (memberPoolBalance !== undefined) {
+    console.log("- Member Pool Balance:", memberPoolBalance.toString());
+  }
+  if (protocolRecipient) {
+    console.log("- Protocol Fee Recipient:", protocolRecipient);
+  }
   
   // Save deployment info
   const deploymentInfo = {
@@ -370,7 +418,7 @@ async function main() {
     burnPercent: burnPercent.resolvedPercent,
     treasuryPercent: treasuryPercent.resolvedPercent,
     memberPoolPercent: memberPoolPercent.resolvedPercent,
-    protocolPercent: PROTOCOL_PERCENT,
+    protocolPercent: protocolPercentBps,
     quorumPercent: QUORUM_PERCENT ?? 33,
     executionDelaySeconds: EXECUTION_DELAY_SECONDS ?? 7 * 24 * 60 * 60,
     burnAddress: effectiveBurnAddress,
@@ -400,7 +448,7 @@ async function main() {
     console.log("\nVerification note:");
     console.log("TemplFactory deployed => use factory logs to verify downstream TEMPL instances on Basescan.");
     console.log("You can verify the factory itself with:");
-    console.log(`npx hardhat verify --network base ${factoryAddress} ${PROTOCOL_FEE_RECIPIENT} ${PROTOCOL_PERCENT}`);
+    console.log(`npx hardhat verify --network base ${factoryAddress} ${PROTOCOL_FEE_RECIPIENT} ${protocolPercentBps}`);
   }
   
   console.log("\n========================================");

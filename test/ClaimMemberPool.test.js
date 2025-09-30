@@ -7,6 +7,7 @@ describe("ClaimMemberPool access control", function () {
   let token;
   let accounts;
   const ENTRY_FEE = ethers.parseUnits("100", 18);
+  const BPS_DENOMINATOR = 10_000n;
 
   beforeEach(async function () {
     ({ templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE }));
@@ -37,7 +38,7 @@ describe("ClaimMemberPool access control", function () {
     await templ.connect(memberB).purchaseAccess();
 
     const memberPoolPercent = BigInt(await templ.memberPoolPercent());
-    const totalRewards = (ENTRY_FEE * memberPoolPercent) / 100n;
+    const totalRewards = (ENTRY_FEE * memberPoolPercent) / BPS_DENOMINATOR;
     const expectedShare = totalRewards / 2n;
     const before = await token.balanceOf(memberA.address);
     await templ.connect(memberA).claimMemberPool();

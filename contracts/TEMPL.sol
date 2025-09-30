@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
+import {TemplBase} from "./TemplBase.sol";
+import {TemplMembership} from "./TemplMembership.sol";
+import {TemplTreasury} from "./TemplTreasury.sol";
 import {TemplGovernance} from "./TemplGovernance.sol";
 import {TemplErrors} from "./TemplErrors.sol";
 
 /// @title templ.fun core templ implementation
 /// @notice Wires governance, treasury, and membership modules for a single templ instance.
-contract TEMPL is TemplGovernance {
+contract TEMPL is TemplBase, TemplMembership, TemplTreasury, TemplGovernance {
     /// @notice Initializes a new templ with the provided configuration and priest.
     /// @param _priest Wallet that oversees configuration changes until governance replaces it.
     /// @param _protocolFeeRecipient Address that receives the protocol share of every entry fee.
@@ -37,19 +40,21 @@ contract TEMPL is TemplGovernance {
         bool _priestIsDictator,
         uint256 _maxMembers,
         string memory _homeLink
-    ) TemplGovernance(
-        _protocolFeeRecipient,
-        _token,
-        _burnPercent,
-        _treasuryPercent,
-        _memberPoolPercent,
-        _protocolPercent,
-        _quorumPercent,
-        _executionDelay,
-        _burnAddress,
-        _priestIsDictator,
-        _homeLink
-    ) {
+    )
+        TemplBase(
+            _protocolFeeRecipient,
+            _token,
+            _burnPercent,
+            _treasuryPercent,
+            _memberPoolPercent,
+            _protocolPercent,
+            _quorumPercent,
+            _executionDelay,
+            _burnAddress,
+            _priestIsDictator,
+            _homeLink
+        )
+    {
         if (_priest == address(0)) revert TemplErrors.InvalidRecipient();
         if (_entryFee == 0) {
             revert TemplErrors.AmountZero();
@@ -65,7 +70,7 @@ contract TEMPL is TemplGovernance {
         priestMember.timestamp = block.timestamp;
         priestMember.block = block.number;
         priestMember.rewardSnapshot = cumulativeMemberRewards;
-        memberList.push(_priest);
+        memberCount = 1;
         if (_maxMembers != 0) {
             _setMaxMembers(_maxMembers);
         }
@@ -73,4 +78,65 @@ contract TEMPL is TemplGovernance {
 
     /// @notice Accepts ETH so proposals can later disburse it as external rewards.
     receive() external payable {}
+
+    /// @inheritdoc TemplGovernance
+    function _governanceSetPaused(bool _paused) internal override {
+        _setPaused(_paused);
+    }
+
+    /// @inheritdoc TemplGovernance
+    function _governanceUpdateConfig(
+        address _token,
+        uint256 _entryFee,
+        bool _updateFeeSplit,
+        uint256 _burnPercent,
+        uint256 _treasuryPercent,
+        uint256 _memberPoolPercent
+    ) internal override {
+        _updateConfig(_token, _entryFee, _updateFeeSplit, _burnPercent, _treasuryPercent, _memberPoolPercent);
+    }
+
+    /// @inheritdoc TemplGovernance
+    function _governanceWithdrawTreasury(
+        address token,
+        address recipient,
+        uint256 amount,
+        string memory reason,
+        uint256 proposalId
+    ) internal override {
+        _withdrawTreasury(token, recipient, amount, reason, proposalId);
+    }
+
+    /// @inheritdoc TemplGovernance
+    function _governanceDisbandTreasury(address token, uint256 proposalId) internal override {
+        _disbandTreasury(token, proposalId);
+    }
+
+    /// @inheritdoc TemplGovernance
+    function _governanceChangePriest(address newPriest) internal override {
+        _changePriest(newPriest);
+    }
+
+    /// @inheritdoc TemplGovernance
+    function _governanceSetDictatorship(bool enabled) internal override {
+        _updateDictatorship(enabled);
+    }
+
+    /// @inheritdoc TemplGovernance
+    function _governanceSetMaxMembers(uint256 newMaxMembers) internal override {
+        _setMaxMembers(newMaxMembers);
+    }
+
+    /// @inheritdoc TemplGovernance
+    function _governanceSetHomeLink(string memory newLink) internal override {
+        _setTemplHomeLink(newLink);
+    }
+
+    /// @inheritdoc TemplBase
+    function _refreshDisbandLocks()
+        internal
+        override(TemplBase, TemplGovernance)
+    {
+        TemplGovernance._refreshDisbandLocks();
+    }
 }

@@ -3,40 +3,13 @@ pragma solidity ^0.8.23;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {TemplMembership} from "./TemplMembership.sol";
+import {TemplBase} from "./TemplBase.sol";
 import {TemplErrors} from "./TemplErrors.sol";
 
 /// @title templ treasury module
 /// @notice Adds treasury controls, fee configuration, and external reward management.
-abstract contract TemplTreasury is TemplMembership {
+abstract contract TemplTreasury is TemplBase {
     using SafeERC20 for IERC20;
-
-    /// @notice Pass-through constructor wiring the treasury layer into the membership module.
-    constructor(
-        address _protocolFeeRecipient,
-        address _accessToken,
-        uint256 _burnPercent,
-        uint256 _treasuryPercent,
-        uint256 _memberPoolPercent,
-        uint256 _protocolPercent,
-        uint256 _quorumPercent,
-        uint256 _executionDelay,
-        address _burnAddress,
-        bool _priestIsDictator,
-        string memory _homeLink
-    ) TemplMembership(
-        _protocolFeeRecipient,
-        _accessToken,
-        _burnPercent,
-        _treasuryPercent,
-        _memberPoolPercent,
-        _protocolPercent,
-        _quorumPercent,
-        _executionDelay,
-        _burnAddress,
-        _priestIsDictator,
-        _homeLink
-    ) {}
 
     /// @notice Governance action that transfers available treasury or external funds to a recipient.
     /// @param token Token to withdraw (`address(0)` for ETH, access token, or arbitrary ERC-20).
@@ -53,6 +26,12 @@ abstract contract TemplTreasury is TemplMembership {
     }
 
     /// @notice Governance action that updates the entry fee and/or fee split configuration.
+    /// @param _token Optional replacement access token (must equal the existing token or zero to leave unchanged).
+    /// @param _entryFee Optional new entry fee (0 keeps the current value).
+    /// @param _updateFeeSplit Whether to apply the provided percentage overrides.
+    /// @param _burnPercent New burn allocation in basis points when `_updateFeeSplit` is true.
+    /// @param _treasuryPercent New treasury allocation in basis points when `_updateFeeSplit` is true.
+    /// @param _memberPoolPercent New member pool allocation in basis points when `_updateFeeSplit` is true.
     function updateConfigDAO(
         address _token,
         uint256 _entryFee,
@@ -65,31 +44,37 @@ abstract contract TemplTreasury is TemplMembership {
     }
 
     /// @notice Governance action that toggles the paused state.
+    /// @param _paused Desired paused state to apply.
     function setPausedDAO(bool _paused) external onlyDAO {
         _setPaused(_paused);
     }
 
     /// @notice Governance action that adjusts the membership cap.
+    /// @param _maxMembers New membership cap (0 removes the cap).
     function setMaxMembersDAO(uint256 _maxMembers) external onlyDAO {
         _setMaxMembers(_maxMembers);
     }
 
     /// @notice Governance action that moves treasury balances into the member or external reward pools.
+    /// @param token Asset to disband (`address(0)` for ETH).
     function disbandTreasuryDAO(address token) external onlyDAO {
         _disbandTreasury(token, 0);
     }
 
     /// @notice Governance action that appoints a new priest.
+    /// @param newPriest Address of the incoming priest.
     function changePriestDAO(address newPriest) external onlyDAO {
         _changePriest(newPriest);
     }
 
     /// @notice Governance action that enables or disables dictatorship mode.
+    /// @param enabled Target dictatorship state.
     function setDictatorshipDAO(bool enabled) external onlyDAO {
         _updateDictatorship(enabled);
     }
 
     /// @notice Governance action that updates the templ home link shared across surfaces.
+    /// @param newLink Canonical URL to persist.
     function setTemplHomeLinkDAO(string calldata newLink) external onlyDAO {
         _setTemplHomeLink(newLink);
     }
@@ -173,8 +158,8 @@ abstract contract TemplTreasury is TemplMembership {
 
     /// @dev Routes treasury balances into member or external pools so members can claim them evenly.
     function _disbandTreasury(address token, uint256 proposalId) internal {
-        uint256 memberCount = memberList.length;
-        if (memberCount == 0) revert TemplErrors.NoMembers();
+        uint256 activeMembers = memberCount;
+        if (activeMembers == 0) revert TemplErrors.NoMembers();
 
         if (token == accessToken) {
             uint256 accessTokenBalance = IERC20(accessToken).balanceOf(address(this));
@@ -187,8 +172,8 @@ abstract contract TemplTreasury is TemplMembership {
             memberPoolBalance += accessTokenAmount;
 
             uint256 poolTotalRewards = accessTokenAmount + memberRewardRemainder;
-            uint256 poolPerMember = poolTotalRewards / memberCount;
-            uint256 poolRemainder = poolTotalRewards % memberCount;
+            uint256 poolPerMember = poolTotalRewards / activeMembers;
+            uint256 poolRemainder = poolTotalRewards % activeMembers;
             cumulativeMemberRewards += poolPerMember;
             memberRewardRemainder = poolRemainder;
 
@@ -214,8 +199,8 @@ abstract contract TemplTreasury is TemplMembership {
         rewards.poolBalance += amount;
 
         uint256 totalRewards = amount + rewards.rewardRemainder;
-        uint256 perMember = totalRewards / memberCount;
-        uint256 remainder = totalRewards % memberCount;
+        uint256 perMember = totalRewards / activeMembers;
+        uint256 remainder = totalRewards % activeMembers;
         rewards.cumulativeRewards += perMember;
         rewards.rewardRemainder = remainder;
 

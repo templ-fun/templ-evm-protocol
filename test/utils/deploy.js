@@ -3,11 +3,11 @@ const { ethers } = require("hardhat");
 
 async function deployTempl({
   entryFee = ethers.parseUnits("100", 18),
-  burnPercent = 30,
-  treasuryPercent = 30,
-  memberPoolPercent = 30,
-  protocolPercent = 10,
-  quorumPercent = 33,
+  burnPercent = 3000,
+  treasuryPercent = 3000,
+  memberPoolPercent = 3000,
+  protocolPercent = 1000,
+  quorumPercent = 3300,
   executionDelay = 7 * 24 * 60 * 60,
   burnAddress = "0x000000000000000000000000000000000000dEaD",
   protocolFeeRecipient,

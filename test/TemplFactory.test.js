@@ -4,6 +4,8 @@ const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
 
 describe("TemplFactory", function () {
     const ENTRY_FEE = ethers.parseUnits("100", 18);
+    const BPS_DENOMINATOR = 10_000n;
+    const pct = (value) => value * 100;
 
     async function deployToken(name = "Test", symbol = "TEST") {
         const Token = await ethers.getContractFactory("contracts/mocks/TestToken.sol:TestToken");
@@ -14,7 +16,7 @@ describe("TemplFactory", function () {
 
   it("reverts when protocol recipient is the zero address", async function () {
     const Factory = await ethers.getContractFactory("TemplFactory");
-    await expect(Factory.deploy(ethers.ZeroAddress, 10)).to.be.revertedWithCustomError(
+    await expect(Factory.deploy(ethers.ZeroAddress, 1_000)).to.be.revertedWithCustomError(
       Factory,
       "InvalidRecipient"
     );
@@ -25,14 +27,14 @@ describe("TemplFactory", function () {
     const token = await deployToken();
 
         const Factory = await ethers.getContractFactory("TemplFactory");
-        const protocolPercent = 12;
+        const protocolPercent = pct(12);
         const factory = await Factory.deploy(protocolRecipient.address, protocolPercent);
         await factory.waitForDeployment();
 
-        const burnPercent = 28;
-        const treasuryPercent = 40;
-        const memberPoolPercent = 20;
-        const quorumPercent = 40;
+        const burnPercent = pct(28);
+        const treasuryPercent = pct(40);
+        const memberPoolPercent = pct(20);
+        const quorumPercent = pct(40);
         const executionDelaySeconds = 5 * 24 * 60 * 60;
         const customBurnAddress = "0x00000000000000000000000000000000000000AA";
 
@@ -60,27 +62,54 @@ describe("TemplFactory", function () {
 
         expect(await templ.priest()).to.equal(priest.address);
         expect(await templ.protocolFeeRecipient()).to.equal(protocolRecipient.address);
-        expect(await templ.protocolPercent()).to.equal(protocolPercent);
-        expect(await templ.burnPercent()).to.equal(burnPercent);
-        expect(await templ.treasuryPercent()).to.equal(treasuryPercent);
-        expect(await templ.memberPoolPercent()).to.equal(memberPoolPercent);
-        expect(await templ.quorumPercent()).to.equal(quorumPercent);
+        expect(await templ.protocolPercent()).to.equal(BigInt(protocolPercent));
+        expect(await templ.burnPercent()).to.equal(BigInt(burnPercent));
+        expect(await templ.treasuryPercent()).to.equal(BigInt(treasuryPercent));
+        expect(await templ.memberPoolPercent()).to.equal(BigInt(memberPoolPercent));
+        expect(await templ.quorumPercent()).to.equal(BigInt(quorumPercent));
         expect(await templ.executionDelayAfterQuorum()).to.equal(executionDelaySeconds);
         expect(await templ.burnAddress()).to.equal(customBurnAddress);
         expect(await templ.MAX_MEMBERS()).to.equal(0n);
         expect(await templ.templHomeLink()).to.equal(homeLink);
 
         await mintToUsers(token, [member], ENTRY_FEE * 10n);
-        await purchaseAccess(templ, token, [member]);
 
-        const burnAmount = (ENTRY_FEE * BigInt(burnPercent)) / 100n;
-        const memberPoolAmount = (ENTRY_FEE * BigInt(memberPoolPercent)) / 100n;
-        const protocolAmount = (ENTRY_FEE * BigInt(protocolPercent)) / 100n;
+        const templContractAddress = await templ.getAddress();
+        await token.connect(member).approve(templContractAddress, ENTRY_FEE);
 
-        expect(await templ.totalBurned()).to.equal(burnAmount);
-        expect(await templ.totalToMemberPool()).to.equal(memberPoolAmount);
-        expect(await templ.totalToProtocol()).to.equal(protocolAmount);
-        expect(await templ.totalToTreasury()).to.be.gte((ENTRY_FEE * BigInt(treasuryPercent)) / 100n);
+        const burnAddress = await templ.burnAddress();
+        const protocolRecipientAddress = await templ.protocolFeeRecipient();
+        const burnBalanceBefore = await token.balanceOf(burnAddress);
+        const protocolBalanceBefore = await token.balanceOf(protocolRecipientAddress);
+
+        const purchaseTx = await templ.connect(member).purchaseAccess();
+        const purchaseReceipt = await purchaseTx.wait();
+        const accessPurchased = purchaseReceipt.logs
+            .map((log) => {
+                try {
+                    return templ.interface.parseLog(log);
+                } catch (_) {
+                    return null;
+                }
+            })
+            .find((log) => log && log.name === "AccessPurchased");
+
+        expect(accessPurchased, "AccessPurchased event").to.not.equal(undefined);
+
+        const burnAmount = (ENTRY_FEE * BigInt(burnPercent)) / BPS_DENOMINATOR;
+        const memberPoolAmount = (ENTRY_FEE * BigInt(memberPoolPercent)) / BPS_DENOMINATOR;
+        const protocolAmount = (ENTRY_FEE * BigInt(protocolPercent)) / BPS_DENOMINATOR;
+        const treasuryAmount = ENTRY_FEE - burnAmount - memberPoolAmount - protocolAmount;
+
+        expect(accessPurchased.args.burnedAmount).to.equal(burnAmount);
+        expect(accessPurchased.args.memberPoolAmount).to.equal(memberPoolAmount);
+        expect(accessPurchased.args.protocolAmount).to.equal(protocolAmount);
+        expect(accessPurchased.args.treasuryAmount).to.equal(treasuryAmount);
+
+        expect(await templ.memberPoolBalance()).to.equal(memberPoolAmount);
+        expect(await templ.treasuryBalance()).to.equal(treasuryAmount);
+        expect(await token.balanceOf(burnAddress)).to.equal(burnBalanceBefore + burnAmount);
+        expect(await token.balanceOf(protocolRecipientAddress)).to.equal(protocolBalanceBefore + protocolAmount);
     });
 
     it("enables priest dictatorship when requested in config", async function () {
@@ -88,7 +117,7 @@ describe("TemplFactory", function () {
         const token = await deployToken("Dict", "DICT");
 
         const Factory = await ethers.getContractFactory("TemplFactory");
-        const protocolPercent = 10;
+        const protocolPercent = pct(10);
         const factory = await Factory.deploy(protocolRecipient.address, protocolPercent);
         await factory.waitForDeployment();
 
@@ -96,10 +125,10 @@ describe("TemplFactory", function () {
             priest: priest.address,
             token: await token.getAddress(),
             entryFee: ENTRY_FEE,
-            burnPercent: 30,
-            treasuryPercent: 30,
-            memberPoolPercent: 30,
-            quorumPercent: 33,
+            burnPercent: pct(30),
+            treasuryPercent: pct(30),
+            memberPoolPercent: pct(30),
+            quorumPercent: pct(33),
             executionDelaySeconds: 7 * 24 * 60 * 60,
             burnAddress: ethers.ZeroAddress,
             priestIsDictator: true,
@@ -135,17 +164,17 @@ describe("TemplFactory", function () {
         const token = await deployToken("Limit", "LIM");
 
         const Factory = await ethers.getContractFactory("TemplFactory");
-        const factory = await Factory.deploy(protocolRecipient.address, 12);
+        const factory = await Factory.deploy(protocolRecipient.address, pct(12));
         await factory.waitForDeployment();
 
         const config = {
             priest: priest.address,
             token: await token.getAddress(),
             entryFee: ENTRY_FEE,
-            burnPercent: 30,
-            treasuryPercent: 30,
-            memberPoolPercent: 28,
-            quorumPercent: 33,
+            burnPercent: pct(30),
+            treasuryPercent: pct(30),
+            memberPoolPercent: pct(28),
+            quorumPercent: pct(33),
             executionDelaySeconds: 7 * 24 * 60 * 60,
             burnAddress: ethers.ZeroAddress,
             priestIsDictator: false,
@@ -178,7 +207,7 @@ describe("TemplFactory", function () {
         const [deployer, , protocolRecipient] = await ethers.getSigners();
         const token = await deployToken("Bad", "BAD");
         const Factory = await ethers.getContractFactory("TemplFactory");
-        const factory = await Factory.deploy(protocolRecipient.address, 15);
+        const factory = await Factory.deploy(protocolRecipient.address, pct(15));
         await factory.waitForDeployment();
 
         await expect(
@@ -186,10 +215,10 @@ describe("TemplFactory", function () {
                 priest: protocolRecipient.address,
                 token: await token.getAddress(),
                 entryFee: ENTRY_FEE,
-                burnPercent: 40,
-                treasuryPercent: 40,
-                memberPoolPercent: 10,
-                quorumPercent: 33,
+                burnPercent: pct(40),
+                treasuryPercent: pct(40),
+                memberPoolPercent: pct(10),
+                quorumPercent: pct(33),
                 executionDelaySeconds: 7 * 24 * 60 * 60,
             burnAddress: ethers.ZeroAddress,
             priestIsDictator: false,
@@ -203,7 +232,7 @@ describe("TemplFactory", function () {
         const [, priest, protocolRecipient] = await ethers.getSigners();
         const token = await deployToken("Zero", "ZERO");
         const Factory = await ethers.getContractFactory("TemplFactory");
-        const protocolPercent = 10;
+        const protocolPercent = pct(10);
         const factory = await Factory.deploy(protocolRecipient.address, protocolPercent);
         await factory.waitForDeployment();
 
@@ -212,9 +241,9 @@ describe("TemplFactory", function () {
             token: await token.getAddress(),
             entryFee: ENTRY_FEE,
             burnPercent: 0,
-            treasuryPercent: 70,
-            memberPoolPercent: 20,
-            quorumPercent: 33,
+            treasuryPercent: pct(70),
+            memberPoolPercent: pct(20),
+            quorumPercent: pct(33),
             executionDelaySeconds: 7 * 24 * 60 * 60,
             burnAddress: ethers.ZeroAddress,
             priestIsDictator: false,
@@ -228,16 +257,16 @@ describe("TemplFactory", function () {
         const templ = await ethers.getContractAt("TEMPL", templAddress);
 
         expect(await templ.burnPercent()).to.equal(0);
-        expect(await templ.treasuryPercent()).to.equal(70);
-        expect(await templ.memberPoolPercent()).to.equal(20);
-        expect(await templ.protocolPercent()).to.equal(protocolPercent);
+        expect(await templ.treasuryPercent()).to.equal(BigInt(pct(70)));
+        expect(await templ.memberPoolPercent()).to.equal(BigInt(pct(20)));
+        expect(await templ.protocolPercent()).to.equal(BigInt(protocolPercent));
     });
 
     it("reverts when negative percentages other than the sentinel are provided", async function () {
         const [, priest, protocolRecipient] = await ethers.getSigners();
         const token = await deployToken("Neg", "NEG");
         const Factory = await ethers.getContractFactory("TemplFactory");
-        const factory = await Factory.deploy(protocolRecipient.address, 10);
+        const factory = await Factory.deploy(protocolRecipient.address, pct(10));
         await factory.waitForDeployment();
 
         await expect(
@@ -248,7 +277,7 @@ describe("TemplFactory", function () {
                 burnPercent: -2,
                 treasuryPercent: -1,
                 memberPoolPercent: -1,
-                quorumPercent: 33,
+                quorumPercent: pct(33),
                 executionDelaySeconds: 7 * 24 * 60 * 60,
                 burnAddress: ethers.ZeroAddress,
                 priestIsDictator: false,
@@ -262,7 +291,7 @@ describe("TemplFactory", function () {
         const [deployer, , protocolRecipient] = await ethers.getSigners();
         const token = await deployToken("Defaults", "DEF");
         const Factory = await ethers.getContractFactory("TemplFactory");
-        const factory = await Factory.deploy(protocolRecipient.address, 10);
+        const factory = await Factory.deploy(protocolRecipient.address, pct(10));
         await factory.waitForDeployment();
 
         const templAddress = await factory.createTempl.staticCall(await token.getAddress(), ENTRY_FEE);
@@ -272,27 +301,27 @@ describe("TemplFactory", function () {
         const templ = await ethers.getContractAt("TEMPL", templAddress);
 
         expect(await templ.priest()).to.equal(deployer.address);
-        expect(await templ.burnPercent()).to.equal(30);
-        expect(await templ.treasuryPercent()).to.equal(30);
-        expect(await templ.memberPoolPercent()).to.equal(30);
-        expect(await templ.protocolPercent()).to.equal(10);
-        expect(await templ.quorumPercent()).to.equal(33);
+        expect(await templ.burnPercent()).to.equal(BigInt(pct(30)));
+        expect(await templ.treasuryPercent()).to.equal(BigInt(pct(30)));
+        expect(await templ.memberPoolPercent()).to.equal(BigInt(pct(30)));
+        expect(await templ.protocolPercent()).to.equal(BigInt(pct(10)));
+        expect(await templ.quorumPercent()).to.equal(BigInt(pct(33)));
         expect(await templ.executionDelayAfterQuorum()).to.equal(7 * 24 * 60 * 60);
         expect(await templ.burnAddress()).to.equal("0x000000000000000000000000000000000000dEaD");
     });
 
     it("reverts when deployed with zero protocol recipient", async function () {
         const Factory = await ethers.getContractFactory("TemplFactory");
-        await expect(Factory.deploy(ethers.ZeroAddress, 10)).to.be.revertedWithCustomError(
-            Factory,
-            "InvalidRecipient"
-        );
+    await expect(Factory.deploy(ethers.ZeroAddress, pct(10))).to.be.revertedWithCustomError(
+        Factory,
+        "InvalidRecipient"
+    );
     });
 
     it("reverts when protocol percent exceeds total", async function () {
         const [, , protocolRecipient] = await ethers.getSigners();
         const Factory = await ethers.getContractFactory("TemplFactory");
-        await expect(Factory.deploy(protocolRecipient.address, 101)).to.be.revertedWithCustomError(
+        await expect(Factory.deploy(protocolRecipient.address, 10_001)).to.be.revertedWithCustomError(
             Factory,
             "InvalidPercentageSplit"
         );
@@ -301,7 +330,7 @@ describe("TemplFactory", function () {
     it("reverts when creating templ with missing token", async function () {
         const [, , protocolRecipient] = await ethers.getSigners();
         const Factory = await ethers.getContractFactory("TemplFactory");
-        const factory = await Factory.deploy(protocolRecipient.address, 10);
+        const factory = await Factory.deploy(protocolRecipient.address, pct(10));
         await factory.waitForDeployment();
 
         await expect(factory.createTempl(ethers.ZeroAddress, ENTRY_FEE)).to.be.revertedWithCustomError(
@@ -314,7 +343,7 @@ describe("TemplFactory", function () {
         const [, , protocolRecipient] = await ethers.getSigners();
         const token = await deployToken("LowFee", "LOW");
         const Factory = await ethers.getContractFactory("TemplFactory");
-        const factory = await Factory.deploy(protocolRecipient.address, 10);
+        const factory = await Factory.deploy(protocolRecipient.address, pct(10));
         await factory.waitForDeployment();
 
         await expect(factory.createTempl(await token.getAddress(), 9)).to.be.revertedWithCustomError(
@@ -327,7 +356,7 @@ describe("TemplFactory", function () {
         const [, , protocolRecipient] = await ethers.getSigners();
         const token = await deployToken("Modulo", "MOD");
         const Factory = await ethers.getContractFactory("TemplFactory");
-        const factory = await Factory.deploy(protocolRecipient.address, 10);
+        const factory = await Factory.deploy(protocolRecipient.address, pct(10));
         await factory.waitForDeployment();
 
         await expect(
@@ -339,7 +368,7 @@ describe("TemplFactory", function () {
         const [, , protocolRecipient] = await ethers.getSigners();
         const token = await deployToken("Quorum", "QRM");
         const Factory = await ethers.getContractFactory("TemplFactory");
-        const factory = await Factory.deploy(protocolRecipient.address, 10);
+        const factory = await Factory.deploy(protocolRecipient.address, pct(10));
         await factory.waitForDeployment();
 
         await expect(
@@ -347,10 +376,10 @@ describe("TemplFactory", function () {
                 priest: protocolRecipient.address,
                 token: await token.getAddress(),
                 entryFee: ENTRY_FEE,
-                burnPercent: 30,
-                treasuryPercent: 30,
-                memberPoolPercent: 30,
-                quorumPercent: 101,
+                burnPercent: pct(30),
+                treasuryPercent: pct(30),
+                memberPoolPercent: pct(30),
+                quorumPercent: pct(101),
                 executionDelaySeconds: 7 * 24 * 60 * 60,
                 burnAddress: ethers.ZeroAddress,
                 priestIsDictator: false,
@@ -364,7 +393,7 @@ describe("TemplFactory", function () {
         const [deployer, , protocolRecipient] = await ethers.getSigners();
         const token = await deployToken("Patched", "PTC");
         const Factory = await ethers.getContractFactory("TemplFactory");
-        const factory = await Factory.deploy(protocolRecipient.address, 10);
+        const factory = await Factory.deploy(protocolRecipient.address, pct(10));
         await factory.waitForDeployment();
 
         const config = {
@@ -388,28 +417,28 @@ describe("TemplFactory", function () {
         const templ = await ethers.getContractAt("TEMPL", templAddress);
 
         expect(await templ.priest()).to.equal(deployer.address);
-        expect(await templ.quorumPercent()).to.equal(33);
+        expect(await templ.quorumPercent()).to.equal(BigInt(pct(33)));
         expect(await templ.executionDelayAfterQuorum()).to.equal(7 * 24 * 60 * 60);
         expect(await templ.burnAddress()).to.equal("0x000000000000000000000000000000000000dEaD");
-        expect(await templ.burnPercent()).to.equal(30);
-        expect(await templ.treasuryPercent()).to.equal(30);
-        expect(await templ.memberPoolPercent()).to.equal(30);
+        expect(await templ.burnPercent()).to.equal(BigInt(pct(30)));
+        expect(await templ.treasuryPercent()).to.equal(BigInt(pct(30)));
+        expect(await templ.memberPoolPercent()).to.equal(BigInt(pct(30)));
     });
 
     it("applies defaults for quorum, delay, and burn address when config omits them", async function () {
         const [, priest, protocolRecipient] = await ethers.getSigners();
         const token = await deployToken("Defaults2", "DEF2");
         const Factory = await ethers.getContractFactory("TemplFactory");
-        const factory = await Factory.deploy(protocolRecipient.address, 11);
+        const factory = await Factory.deploy(protocolRecipient.address, pct(11));
         await factory.waitForDeployment();
 
         const config = {
             priest: priest.address,
             token: await token.getAddress(),
             entryFee: ENTRY_FEE,
-            burnPercent: 30,
-            treasuryPercent: 30,
-            memberPoolPercent: 29,
+            burnPercent: pct(30),
+            treasuryPercent: pct(30),
+            memberPoolPercent: pct(29),
             quorumPercent: 0,
             executionDelaySeconds: 0,
             burnAddress: ethers.ZeroAddress,
@@ -422,7 +451,7 @@ describe("TemplFactory", function () {
         await factory.createTemplWithConfig(config);
         const templ = await ethers.getContractAt("TEMPL", templAddress);
 
-        expect(await templ.quorumPercent()).to.equal(33n);
+        expect(await templ.quorumPercent()).to.equal(BigInt(pct(33)));
         expect(await templ.executionDelayAfterQuorum()).to.equal(7n * 24n * 60n * 60n);
         expect(await templ.burnAddress()).to.equal("0x000000000000000000000000000000000000dEaD");
     });
@@ -433,13 +462,19 @@ describe("TemplFactory", function () {
         const FactoryHarness = await ethers.getContractFactory(
             "contracts/mocks/TemplFactoryHarness.sol:TemplFactoryHarness"
         );
-        const factory = await FactoryHarness.deploy(protocolRecipient.address, 10);
+        const factory = await FactoryHarness.deploy(protocolRecipient.address, pct(10));
         await factory.waitForDeployment();
 
         const pointer = await factory.exposeInitPointer();
         const originalCode = await ethers.provider.getCode(pointer);
         await ethers.provider.send("hardhat_setCode", [pointer, "0x"]);
 
+        await expect(factory.createTempl(await token.getAddress(), ENTRY_FEE))
+            .to.be.revertedWithCustomError(factory, "DeploymentFailed");
+
+        // Restore pointer with creation code that immediately reverts to hit the post-create check
+        const revertInit = "0xfe";
+        await ethers.provider.send("hardhat_setCode", [pointer, revertInit]);
         await expect(factory.createTempl(await token.getAddress(), ENTRY_FEE))
             .to.be.revertedWithCustomError(factory, "DeploymentFailed");
 

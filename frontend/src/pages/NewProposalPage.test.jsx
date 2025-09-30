@@ -42,8 +42,8 @@ describe('buildActionConfig', () => {
     expect(result.action).toBe('updateConfig');
     expect(result.params.newEntryFee).toBe(250000000000000000n);
     expect(result.params.updateFeeSplit).toBe(true);
-    expect(result.params.newBurnPercent).toBe(40);
-    expect(result.params.newTreasuryPercent).toBe(30);
-    expect(result.params.newMemberPoolPercent).toBe(30);
+    expect(result.params.newBurnPercent).toBe(4000);
+    expect(result.params.newTreasuryPercent).toBe(3000);
+    expect(result.params.newMemberPoolPercent).toBe(3000);
   });
 });

@@ -355,7 +355,7 @@ describe("Membership coverage extras", function () {
     const proposalId = await templ.proposalCount();
     await templ
       .connect(memberA)
-      .createProposalUpdateConfig(newEntryFee, 31, 31, 28, true, VOTING_PERIOD);
+      .createProposalUpdateConfig(newEntryFee, 3100, 3100, 2800, true, VOTING_PERIOD);
     await templ.connect(memberA).vote(proposalId, true);
     await ethers.provider.send("evm_increaseTime", [VOTING_PERIOD + DAY]);
     await ethers.provider.send("evm_mine", []);

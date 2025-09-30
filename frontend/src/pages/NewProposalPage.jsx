@@ -137,10 +137,11 @@ export function buildActionConfig(kind, params, helpers = {}) {
         if (total !== targetSplit) {
           throw new Error(`Fee split must add up to ${targetSplit} (received ${total})`);
         }
+        const toBps = (value) => value * 100;
         nextParams.updateFeeSplit = true;
-        nextParams.newBurnPercent = burn;
-        nextParams.newTreasuryPercent = treasury;
-        nextParams.newMemberPoolPercent = member;
+        nextParams.newBurnPercent = toBps(burn);
+        nextParams.newTreasuryPercent = toBps(treasury);
+        nextParams.newMemberPoolPercent = toBps(member);
       }
       if (!('newEntryFee' in nextParams) && !shouldUpdateSplit) {
         throw new Error('Provide at least one config change');

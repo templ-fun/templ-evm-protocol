@@ -82,7 +82,7 @@ describe("Governance coverage gaps", function () {
 
     await templ
       .connect(thirdMember)
-      .createProposalUpdateConfig(0, 20, 20, 50, true, VOTING_PERIOD);
+      .createProposalUpdateConfig(0, 2000, 2000, 5000, true, VOTING_PERIOD);
 
     await templ
       .connect(fourthMember)

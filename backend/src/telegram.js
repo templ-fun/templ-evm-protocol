@@ -89,7 +89,9 @@ function formatPercent(label, value) {
   if (value === undefined || value === null) return '';
   const num = Number(value);
   if (!Number.isFinite(num)) return `${formatBold(label)} ${escapeMarkdown(String(value))}`;
-  return `${formatBold(label)} ${escapeMarkdown(`${Math.trunc(num)}%`)}`;
+  const percent = num / 100;
+  const formatted = Number.isInteger(percent) ? `${percent}` : percent.toFixed(2);
+  return `${formatBold(label)} ${escapeMarkdown(`${formatted}%`)}`;
 }
 
 function formatBooleanStatus(label, state, trueLabel, falseLabel) {
