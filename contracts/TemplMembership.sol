@@ -13,7 +13,7 @@ abstract contract TemplMembership is TemplBase {
     using SafeERC20 for IERC20;
 
     /// @notice Purchase templ membership using the configured access token.
-    function purchaseAccess() external whenNotPaused whenDisbandUnlocked notSelf nonReentrant {
+    function purchaseAccess() external whenNotPaused notSelf nonReentrant {
         Member storage joiningMember = members[msg.sender];
         if (joiningMember.purchased) revert TemplErrors.AlreadyPurchased();
 

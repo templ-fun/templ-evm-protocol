@@ -73,9 +73,7 @@ sequenceDiagram
     B-->>F: { member:{hasAccess:true}, templ:{...}, links:{...} }
 ```
 
-`purchaseAccess` executes only when the templ is unpaused, no disband lock is active, and the membership cap has spare capacity. Attempts during an active disband (custom error `DisbandLockActive`) or when the cap is reached (`MemberLimitReached`) revert on-chain; frontend helpers surface these messages so members know to wait for governance to resolve the lock or raise the cap.
-
-Expired disband proposals clear without manual intervention—`purchaseAccess` automatically refreshes disband locks and releases those whose voting window has lapsed, so membership resumes as soon as a failed or abandoned disband times out.
+`purchaseAccess` executes whenever the templ is unpaused and under the member cap. Disband proposals no longer gate the join flow; governance keeps the community open unless it explicitly pauses the contract or enforces a hard cap. Frontend helpers still surface `MemberLimitReached` so members know when governance must expand the cohort.
 
 ## 3. Telegram notifications
 

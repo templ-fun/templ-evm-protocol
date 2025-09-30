@@ -189,7 +189,6 @@ abstract contract TemplGovernance is TemplBase {
         if (msg.sender == priest) {
             p.quorumExempt = true;
         }
-        _activateDisbandLock(p);
         return id;
     }
 
@@ -288,9 +287,6 @@ abstract contract TemplGovernance is TemplBase {
                 proposal.quorumSnapshotBlock = block.number;
                 proposal.postQuorumEligibleVoters = memberCount;
                 proposal.endTime = block.timestamp + executionDelayAfterQuorum;
-                if (proposal.action == Action.DisbandTreasury) {
-                    _activateDisbandLock(proposal);
-                }
             }
         }
 
@@ -357,7 +353,6 @@ abstract contract TemplGovernance is TemplBase {
             );
         } else if (proposal.action == Action.DisbandTreasury) {
             _governanceDisbandTreasury(proposal.token, _proposalId);
-            _releaseDisbandLock(proposal);
         } else if (proposal.action == Action.ChangePriest) {
             _governanceChangePriest(proposal.recipient);
         } else if (proposal.action == Action.SetDictatorship) {
@@ -607,14 +602,6 @@ abstract contract TemplGovernance is TemplBase {
             if (_isActiveProposal(proposal, currentTime)) {
                 break;
             }
-            if (
-                proposal.action == Action.DisbandTreasury &&
-                proposal.disbandJoinLock &&
-                !proposal.executed &&
-                currentTime >= proposal.endTime
-            ) {
-                _finalizeDisbandFailure(proposal);
-            }
             _removeActiveProposal(proposalId);
             removed++;
             len = activeProposalIds.length;
@@ -624,48 +611,6 @@ abstract contract TemplGovernance is TemplBase {
     function _addActiveProposal(uint256 proposalId) internal {
         activeProposalIds.push(proposalId);
         activeProposalIndex[proposalId] = activeProposalIds.length;
-    }
-
-    function _activateDisbandLock(Proposal storage proposal) internal {
-        if (!proposal.disbandJoinLock) {
-            proposal.disbandJoinLock = true;
-            activeDisbandJoinLocks += 1;
-            uint256 proposalId = proposal.id;
-            if (disbandLockIndex[proposalId] == 0) {
-                disbandLockIds.push(proposalId);
-                disbandLockIndex[proposalId] = disbandLockIds.length;
-            }
-        }
-    }
-
-    function _releaseDisbandLock(Proposal storage proposal) internal {
-        if (proposal.disbandJoinLock) {
-            proposal.disbandJoinLock = false;
-            if (activeDisbandJoinLocks != 0) {
-                activeDisbandJoinLocks -= 1;
-            }
-            uint256 proposalId = proposal.id;
-            uint256 indexPlusOne = disbandLockIndex[proposalId];
-            if (indexPlusOne != 0) {
-                uint256 index = indexPlusOne - 1;
-                uint256 lastIndex = disbandLockIds.length - 1;
-                if (index != lastIndex) {
-                    uint256 movedId = disbandLockIds[lastIndex];
-                    disbandLockIds[index] = movedId;
-                    disbandLockIndex[movedId] = index + 1;
-                }
-                disbandLockIds.pop();
-                disbandLockIndex[proposalId] = 0;
-            }
-        }
-    }
-
-    function _finalizeDisbandFailure(Proposal storage proposal) internal {
-        bool quorumMaintained = proposal.eligibleVoters == 0 ||
-            proposal.yesVotes * TOTAL_PERCENT >= quorumPercent * proposal.eligibleVoters;
-        if (!proposal.executed || !quorumMaintained || proposal.yesVotes <= proposal.noVotes) {
-            _releaseDisbandLock(proposal);
-        }
     }
 
     function _removeActiveProposal(uint256 proposalId) internal {
@@ -707,25 +652,4 @@ abstract contract TemplGovernance is TemplBase {
         return currentTime < proposal.endTime && !proposal.executed;
     }
 
-    function _refreshDisbandLocks() internal virtual override {
-        if (activeDisbandJoinLocks == 0) {
-            return;
-        }
-        uint256 len = disbandLockIds.length;
-        if (len == 0) {
-            return;
-        }
-        uint256 currentTime = block.timestamp;
-        for (uint256 i = len; i > 0; i--) {
-            uint256 proposalId = disbandLockIds[i - 1];
-            Proposal storage proposal = proposals[proposalId];
-            if (!proposal.disbandJoinLock) {
-                _releaseDisbandLock(proposal);
-                continue;
-            }
-            if (currentTime >= proposal.endTime && !proposal.executed) {
-                _finalizeDisbandFailure(proposal);
-            }
-        }
-    }
 }

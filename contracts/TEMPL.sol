@@ -132,11 +132,4 @@ contract TEMPL is TemplBase, TemplMembership, TemplTreasury, TemplGovernance {
         _setTemplHomeLink(newLink);
     }
 
-    /// @inheritdoc TemplBase
-    function _refreshDisbandLocks()
-        internal
-        override(TemplBase, TemplGovernance)
-    {
-        TemplGovernance._refreshDisbandLocks();
-    }
 }

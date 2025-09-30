@@ -10,7 +10,8 @@ Use this spec to connect the canonical architecture: paid memberships, enforced 
 - auto-enrolment of the deploying priest as member zero so the first paid tribute accrues to them, plus a zero-member fallback that folds the pioneer pool slice into the treasury (letting the pioneer reclaim their fee minus burn/protocol when the second wallet joins),
   - optional member caps (`MAX_MEMBERS`) that auto-pause joins when the cap is reached; additional join attempts revert with `MemberLimitReached` until governance raises or clears the limit **and** manually resumes via `setPausedDAO(false)`,
   - an on-chain `templHomeLink` string surfaced across UI, backend, and Telegram,
-- one member = one vote proposals covering pause/unpause, priest changes, fee config updates, treasury withdrawals/disbands, membership caps, dictatorship toggles, and home-link changes. Disband proposals immediately toggle a join lock so newcomers cannot front-run the exit vote; the lock unwinds automatically when the proposal executes or when its voting window expires.
+- one member = one vote proposals covering pause/unpause, priest changes, fee config updates, treasury withdrawals/disbands, membership caps, dictatorship toggles, and home-link changes. Disband proposals keep joins open so governance cannot accidentally brick new entrants; fairness is preserved through reward snapshots rather than temporary locks.
+- external reward enumeration is capped at 256 tokens to keep join gas bounded; anyone can call `cleanupExternalRewardToken` once a token’s pool is fully settled to free the slot for future distributions.
 
 See inline NatSpec comments and Hardhat tests for state transitions.
 
@@ -60,4 +61,3 @@ MetaMask/`window.ethereum` supplies the signer. All backend calls attach typed s
 - Hardhat test suite covers contract invariants and governance.
 - Backend `node:test` suite validates templ registration, membership checks, and watcher wiring.
 - Frontend Vitest suite focuses on services; Playwright smoke tests cover the create/join/vote flow with Telegram disabled.
-
