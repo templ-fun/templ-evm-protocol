@@ -8,6 +8,7 @@ This spec connects the core architecture: fee-gated memberships on chain, typed 
 - **Entry fees.** `TEMPL` contracts accept ERC-20 fees via `purchaseAccess`, split tribute across burn/treasury/member/protocol slices, and auto-enrol the deploying priest so the pioneer pool accrues to them.
 - **Caps and pauses.** Optional `MAX_MEMBERS` enforces an upper bound; hitting the cap pauses new joins with `MemberLimitReached` until governance raises or clears the limit and resumes the contract.
 - **Governance scope.** One-wallet-one-vote proposals manage pause/unpause, fee config, treasury withdrawals/disbands, priest rotation, dictatorship toggles, and the on-chain `templHomeLink` string. Disbanding keeps joins open so communities cannot brick new entrants mid-vote.
+- **Quorum escape hatch.** A priest-authored `disbandTreasury` proposal skips quorum so an inactive templ that can no longer meet the threshold still has a deterministic path to dissolve and distribute funds via the priest.
 - **External rewards.** Up to 256 reward tokens can be tracked at once. `cleanupExternalRewardToken(token)` frees a slot after distributions settle to keep gas predictable.
 - **NatSpec + tests.** Hardhat tests and inline comments document state transitions and edge cases.
 

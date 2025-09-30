@@ -153,6 +153,9 @@ async function main() {
   if (!TOKEN_ADDRESS) {
     throw new Error("TOKEN_ADDRESS not set in environment");
   }
+  console.warn(
+    '[warn] Confirm TOKEN_ADDRESS is a standard ERC-20 without transfer taxes or hooks; templ fee splits assume exact transfer amounts.'
+  );
   if (!PROTOCOL_FEE_RECIPIENT) {
     throw new Error("PROTOCOL_FEE_RECIPIENT not set in environment");
   }
