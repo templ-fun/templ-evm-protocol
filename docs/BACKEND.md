@@ -1,13 +1,14 @@
 # Backend Service
 
-Use this doc to configure and operate the Node 22 / Express backend that handles the “web2” side of templ. The service runs as a long-lived Node process (Render, Fly, Railway, bare metal, etc.); local development runs with `npm --prefix backend start`:
+This guide covers the Node 22 + Express app in `backend/`. Run it as a long-lived process locally or on a host such as Fly, Render, Railway, or bare metal.
 
-* verifies EIP-712 signatures for templ creation, rebind requests, and membership checks,
-* persists a minimal Telegram chat ↔ contract binding so notifications survive restarts,
-* confirms membership by asking the contract’s `hasAccess` function (no local member lists are stored), and
-* streams contract events into Telegram groups when configured.
+**Core duties**
+- Verify EIP-712 signatures for templ registration, rebind requests, and membership checks.
+- Persist templ ↔ Telegram bindings so alerts survive restarts (no wallet-to-chat mapping is stored).
+- Confirm membership directly against the chain instead of keeping local member lists.
+- Stream templ events into Telegram with MarkdownV2 notifications.
 
-All messaging happens through Telegram bots.
+Start the service in development with `npm --prefix backend start`.
 
 ## API Endpoints
 

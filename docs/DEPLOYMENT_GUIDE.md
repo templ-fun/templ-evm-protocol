@@ -52,6 +52,8 @@ You can deploy from the CLI or via the frontend. The CLI is convenient for scrip
   export FACTORY_ADDRESS=0x...          # optional: reuse an existing factory; leave unset to deploy a new one
   ```
 
+   > **Warning:** templ fee accounting assumes `TOKEN_ADDRESS` implements a vanilla ERC-20 transfer without taxes or hooks. Deploying against taxed tokens (or custom implementations that skim transfers) will corrupt treasury and member-pool balances.
+
    > For remote deployments, confirm `PRIVATE_KEY` remains exported in your shell so Hardhat can access the deployer signer.
 
    Optional configuration knobs:

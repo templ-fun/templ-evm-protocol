@@ -103,7 +103,7 @@ sequenceDiagram
 - After quorum: a new snapshot is recorded (`postQuorumEligibleVoters` + `quorumSnapshotBlock`). Members who joined before that quorum transaction retain voting rights; later joiners are rejected with `JoinedAfterProposal`. Because Ethereum timestamps are per block, joins mined in the same block that reached quorum remain eligible. When quorum is later lost (YES votes drop below the threshold), execution reverts with `QuorumNotReached` until quorum support is restored.
 - Execution requires a simple majority (`yesVotes > noVotes`) and:
   - if quorum is required: quorum must have been reached and maintained, and the contract’s configured `executionDelayAfterQuorum` must have elapsed (default 7 days; customisable via the factory); otherwise it reverts with `QuorumNotReached` or `ExecutionDelayActive`.
-  - priest exception: `createProposalDisbandTreasury(...)` proposed by `priest` is quorum-exempt and respects only its `endTime`.
+  - priest exception: `createProposalDisbandTreasury(...)` proposed by `priest` is quorum-exempt and respects only its `endTime`. This leniency is intentional so an inactive templ that can no longer reach quorum still has a deterministic path to wind down via the priest.
 
 ### Proposal types (create functions)
 
