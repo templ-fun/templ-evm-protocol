@@ -39,6 +39,38 @@ describe("TEMPL Contract with DAO Governance", function () {
             expect(await templ.memberPoolBalance()).to.equal(0);
         });
 
+        it("normalizes integer percentage inputs during direct deployment", async function () {
+            const Token = await ethers.getContractFactory("contracts/mocks/TestToken.sol:TestToken");
+            const percentToken = await Token.deploy("Percent", "PERC", 18);
+            const customBurnAddress = "0x00000000000000000000000000000000000000CC";
+            const TemplFactory = await ethers.getContractFactory("TEMPL");
+            const templDirect = await TemplFactory.deploy(
+                priest.address,
+                priest.address,
+                await percentToken.getAddress(),
+                ENTRY_FEE,
+                30,
+                40,
+                20,
+                10,
+                35,
+                12_345,
+                customBurnAddress,
+                false,
+                0,
+                "https://templ.direct"
+            );
+            await templDirect.waitForDeployment();
+
+            expect(await templDirect.burnPercent()).to.equal(3_000n);
+            expect(await templDirect.treasuryPercent()).to.equal(4_000n);
+            expect(await templDirect.memberPoolPercent()).to.equal(2_000n);
+            expect(await templDirect.protocolPercent()).to.equal(1_000n);
+            expect(await templDirect.quorumPercent()).to.equal(3_500n);
+            expect(await templDirect.executionDelayAfterQuorum()).to.equal(12_345);
+            expect(await templDirect.burnAddress()).to.equal(customBurnAddress.toLowerCase());
+        });
+
         it("Should revert when entry fee not divisible by 10", async function () {
             const invalidFee = ENTRY_FEE + 5n;
             const TEMPL = await ethers.getContractFactory("TEMPL");

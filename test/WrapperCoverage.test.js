@@ -176,4 +176,26 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
     await templ.daoSetHomeLink(link);
     expect(await templ.templHomeLink()).to.equal(link);
   });
+
+  it("permits dictator priests to call DAO functions directly", async function () {
+    const { accounts, token, templ } = await deployHarness();
+    const [, priest, member, newPriest] = accounts;
+
+    await templ.daoSetDictatorship(true);
+
+    await expect(templ.connect(priest).setPausedDAO(true)).to.not.be.reverted;
+    await expect(templ.connect(priest).setPausedDAO(false)).to.not.be.reverted;
+
+    await expect(templ.connect(priest).setMaxMembersDAO(5)).to.not.be.reverted;
+    await expect(templ.connect(priest).setTemplHomeLinkDAO("https://dictator.templ"))
+      .to.emit(templ, "TemplHomeLinkUpdated");
+
+    await token.mint(member.address, ENTRY_FEE);
+    await token.connect(member).approve(templ.target, ENTRY_FEE);
+    await templ.connect(member).purchaseAccess();
+
+    await expect(templ.connect(priest).disbandTreasuryDAO(token.target)).to.not.be.reverted;
+
+    await expect(templ.connect(priest).changePriestDAO(newPriest.address)).to.not.be.reverted;
+  });
 });
