@@ -265,8 +265,9 @@ test.describe('Extended governance flows', () => {
   test('priest rotation, dictatorship, treasury, and disband flows succeed', async ({ page, provider, wallets }) => {
     const candidatePriest = ethers.Wallet.createRandom().connect(provider);
     const latecomerWallet = ethers.Wallet.createRandom().connect(provider);
+    const postDisbandWallet = ethers.Wallet.createRandom().connect(provider);
     const funder = await provider.getSigner(0);
-    for (const wallet of [candidatePriest, latecomerWallet]) {
+    for (const wallet of [candidatePriest, latecomerWallet, postDisbandWallet]) {
       await funder.sendTransaction({ to: await wallet.getAddress(), value: ethers.parseEther('10') });
     }
 
@@ -276,13 +277,15 @@ test.describe('Extended governance flows', () => {
       wallets,
       extraWallets: [
         { key: 'candidatePriest', wallet: candidatePriest },
-        { key: 'latecomer', wallet: latecomerWallet }
+        { key: 'latecomer', wallet: latecomerWallet },
+        { key: 'postDisband', wallet: postDisbandWallet }
       ]
     });
 
     const tokenAddress = await token.getAddress();
     const candidateAddress = await candidatePriest.getAddress();
     const latecomerAddress = await latecomerWallet.getAddress();
+    const postDisbandAddress = await postDisbandWallet.getAddress();
     const memberAddress = await wallets.member.getAddress();
 
     await walletBridge.switchAccount('member');
@@ -414,7 +417,9 @@ test.describe('Extended governance flows', () => {
     await expect(page.getByText('0.0 TEST', { exact: true })).toBeVisible();
     await approveEntryFeeWithRetry(page);
     await page.getByRole('button', { name: 'Purchase Access' }).click();
-    await expect(page.getByText(/Purchase failed: Access token transfer failed/i)).toBeVisible();
+    await expect(page.getByText(/Purchasing access/)).toBeVisible();
+    await expect(page.getByText(/Access purchase complete/)).toBeVisible();
+    await expect(await templReadOnly.hasAccess(latecomerAddress)).toBe(true);
 
     await walletBridge.switchAccount('candidatePriest');
     await page.goto(`/templs/${templAddress}/proposals/${disbandProposalId}/vote`);
@@ -423,15 +428,18 @@ test.describe('Extended governance flows', () => {
     await executeProposal({ provider, templContract: templForCandidate, proposalId: disbandProposalId });
     await expect(await templReadOnly.treasuryBalance()).toBe(0n);
 
-    await walletBridge.switchAccount('latecomer');
+    await walletBridge.switchAccount('postDisband');
     await page.goto(`/templs/join?address=${templAddress}`);
+    await approveEntryFeeWithRetry(page);
     await page.getByRole('button', { name: 'Purchase Access' }).click();
     await expect(page.getByText(/Purchasing access/)).toBeVisible();
     await expect(page.getByText(/Access purchase complete/)).toBeVisible();
 
     const latecomerTempl = new ethers.Contract(templAddress, templArtifact.abi, latecomerWallet);
     await expect(await latecomerTempl.hasAccess(latecomerAddress)).toBe(true);
+    const postDisbandTempl = new ethers.Contract(templAddress, templArtifact.abi, postDisbandWallet);
+    await expect(await postDisbandTempl.hasAccess(postDisbandAddress)).toBe(true);
     const finalMemberCount = await templReadOnly.getMemberCount();
-    await expect(Number(finalMemberCount)).toBeGreaterThan(3);
+    await expect(Number(finalMemberCount)).toBeGreaterThan(4);
   });
 });
