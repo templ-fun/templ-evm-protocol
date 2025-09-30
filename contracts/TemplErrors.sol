@@ -80,6 +80,8 @@ library TemplErrors {
     error DictatorshipEnabled();
     /// @notice Thrown when attempting to toggle dictatorship to its current state.
     error DictatorshipUnchanged();
-    /// @notice Thrown when membership joins are locked during an active disband execution window.
-    error DisbandLockActive();
+    /// @notice Thrown when the external reward registry has reached its capacity.
+    error ExternalRewardLimitReached();
+    /// @notice Thrown when attempting to clear an external reward token that still holds value.
+    error ExternalRewardsNotSettled();
 }

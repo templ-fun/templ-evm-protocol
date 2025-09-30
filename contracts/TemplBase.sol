@@ -20,6 +20,8 @@ abstract contract TemplBase is ReentrancyGuard {
     uint256 internal constant DEFAULT_EXECUTION_DELAY = 7 days;
     /// @dev Default burn address used when deployers do not provide a custom sink.
     address internal constant DEFAULT_BURN_ADDRESS = 0x000000000000000000000000000000000000dEaD;
+    /// @dev Caps the number of external reward tokens tracked to keep join gas bounded.
+    uint256 internal constant MAX_EXTERNAL_REWARD_TOKENS = 256;
 
     /// @notice Percent of the entry fee that is burned on every purchase.
     uint256 public burnPercent;
@@ -46,10 +48,6 @@ abstract contract TemplBase is ReentrancyGuard {
     uint256 public memberPoolBalance;
     /// @notice Whether joins and other restricted flows are paused.
     bool public paused;
-    /// @notice Counter for active disband proposals that temporarily block joins.
-    uint256 public activeDisbandJoinLocks;
-    uint256[] internal disbandLockIds;
-    mapping(uint256 => uint256) internal disbandLockIndex;
     /// @notice Maximum allowed members when greater than zero (0 = uncapped).
     /// @dev Named in uppercase historically; kept for backwards compatibility with emitted ABI.
     uint256 public MAX_MEMBERS;
@@ -123,7 +121,6 @@ abstract contract TemplBase is ReentrancyGuard {
         bool updateFeeSplit;
         uint256 preQuorumSnapshotBlock;
         bool setDictatorship;
-        bool disbandJoinLock;
     }
 
     uint256 public proposalCount;
@@ -231,6 +228,8 @@ abstract contract TemplBase is ReentrancyGuard {
     mapping(address => ExternalRewardState) internal externalRewards;
     /// @notice List of external reward tokens for enumeration in UIs.
     address[] internal externalRewardTokens;
+    /// @notice Tracks index positions for external reward tokens (index + 1).
+    mapping(address => uint256) internal externalRewardTokenIndex;
     /// @notice Member snapshots for each external reward token.
     mapping(address => mapping(address => uint256)) internal memberExternalRewardSnapshots;
     /// @dev Restricts a function so only wallets that successfully purchased access may call it.
@@ -258,13 +257,6 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @dev Ensures joins and other gated actions only execute when the templ is unpaused.
     modifier whenNotPaused() {
         if (paused) revert TemplErrors.ContractPausedError();
-        _;
-    }
-
-    /// @dev Blocks membership joins while a disband proposal is pending execution.
-    modifier whenDisbandUnlocked() {
-        _refreshDisbandLocks();
-        if (activeDisbandJoinLocks != 0) revert TemplErrors.DisbandLockActive();
         _;
     }
 
@@ -423,5 +415,21 @@ abstract contract TemplBase is ReentrancyGuard {
         }
     }
 
-    function _refreshDisbandLocks() internal virtual {}
+    /// @dev Removes a token from the external rewards enumeration list.
+    function _removeExternalToken(address token) internal {
+        uint256 indexPlusOne = externalRewardTokenIndex[token];
+        if (indexPlusOne == 0) {
+            return;
+        }
+        uint256 index = indexPlusOne - 1;
+        uint256 lastIndex = externalRewardTokens.length - 1;
+        if (index != lastIndex) {
+            address movedToken = externalRewardTokens[lastIndex];
+            externalRewardTokens[index] = movedToken;
+            externalRewardTokenIndex[movedToken] = index + 1;
+        }
+        externalRewardTokens.pop();
+        externalRewardTokenIndex[token] = 0;
+    }
+
 }

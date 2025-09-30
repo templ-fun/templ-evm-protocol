@@ -120,7 +120,7 @@ describe("Disband Treasury", function () {
     expect(await templ.treasuryBalance()).to.equal(0n);
   });
 
-  it("activates the disband lock immediately for priest quorum-exempt proposals", async function () {
+  it("allows joins while a priest disband proposal is pending", async function () {
     const joiner = accounts[5];
     const accessToken = await templ.accessToken();
 
@@ -128,14 +128,12 @@ describe("Disband Treasury", function () {
 
     await templ.connect(priest).createProposalDisbandTreasury(accessToken, VOTING_PERIOD);
 
-    expect(await templ.activeDisbandJoinLocks()).to.equal(1n);
-
     await token.connect(joiner).approve(await templ.getAddress(), ENTRY_FEE);
-    await expect(templ.connect(joiner).purchaseAccess())
-      .to.be.revertedWithCustomError(templ, "DisbandLockActive");
+    await expect(templ.connect(joiner).purchaseAccess()).to.not.be.reverted;
+    expect(await templ.hasAccess(joiner.address)).to.equal(true);
   });
 
-  it("activates the disband lock immediately for member proposals", async function () {
+  it("allows joins while a member disband proposal is pending, even after quorum", async function () {
     const lateJoiner = accounts[6];
     const accessToken = await templ.accessToken();
 
@@ -144,32 +142,11 @@ describe("Disband Treasury", function () {
     await templ
       .connect(m1)
       .createProposalDisbandTreasury(accessToken, VOTING_PERIOD);
-
-    expect(await templ.activeDisbandJoinLocks()).to.equal(1n);
+    await templ.connect(m2).vote(0, true);
 
     await token.connect(lateJoiner).approve(await templ.getAddress(), ENTRY_FEE);
-    await expect(templ.connect(lateJoiner).purchaseAccess())
-      .to.be.revertedWithCustomError(templ, "DisbandLockActive");
-  });
-
-  it("releases the disband lock automatically after the voting window expires", async function () {
-    const newJoiner = accounts[7];
-    const accessToken = await templ.accessToken();
-
-    await mintToUsers(token, [newJoiner], ENTRY_FEE);
-
-    await templ
-      .connect(m1)
-      .createProposalDisbandTreasury(accessToken, VOTING_PERIOD);
-
-    expect(await templ.activeDisbandJoinLocks()).to.equal(1n);
-
-    await ethers.provider.send("evm_increaseTime", [VOTING_PERIOD + 1]);
-    await ethers.provider.send("evm_mine", []);
-
-    await token.connect(newJoiner).approve(await templ.getAddress(), ENTRY_FEE);
-    await expect(templ.connect(newJoiner).purchaseAccess()).to.not.be.reverted;
-    expect(await templ.activeDisbandJoinLocks()).to.equal(0n);
+    await expect(templ.connect(lateJoiner).purchaseAccess()).to.not.be.reverted;
+    expect(await templ.hasAccess(lateJoiner.address)).to.equal(true);
   });
 
   it("reverts when treasury is empty", async function () {
@@ -193,7 +170,7 @@ describe("Disband Treasury", function () {
       .to.be.revertedWithCustomError(templ, "NoTreasuryFunds");
   });
 
-  it("releases disband lock after execution reverts", async function () {
+  it("allows joins after a disband proposal execution fails", async function () {
     const accessToken = await templ.accessToken();
     const extraMember = accounts[5];
     const lateJoiner = accounts[6];
@@ -216,94 +193,52 @@ describe("Disband Treasury", function () {
     await templ.connect(m1).vote(1, true);
     await templ.connect(m2).vote(1, true);
 
-    expect(await templ.activeDisbandJoinLocks()).to.equal(1n);
-
     await advanceTimeBeyondVoting();
     await expect(templ.executeProposal(1))
       .to.be.revertedWithCustomError(templ, "NoTreasuryFunds");
 
-    expect(await templ.activeDisbandJoinLocks()).to.equal(1n);
-
-    await templ.pruneInactiveProposals(1);
-
-    expect(await templ.activeDisbandJoinLocks()).to.equal(0n);
-
     await token.connect(lateJoiner).approve(await templ.getAddress(), ENTRY_FEE);
-    await templ.connect(lateJoiner).purchaseAccess();
+    await expect(templ.connect(lateJoiner).purchaseAccess()).to.not.be.reverted;
     expect(await templ.hasAccess(lateJoiner.address)).to.equal(true);
   });
 
-  it("prevents new joins once a disband proposal reaches quorum", async function () {
+  it("allows joins after executing a disband proposal", async function () {
     const accessToken = await templ.accessToken();
     const extraMember = accounts[5];
     const lateJoiner = accounts[6];
-    const templAddress = await templ.getAddress();
 
     await mintToUsers(token, [extraMember, lateJoiner], TOKEN_SUPPLY);
 
-    await token.connect(extraMember).approve(templAddress, ENTRY_FEE);
+    await token.connect(extraMember).approve(await templ.getAddress(), ENTRY_FEE);
     await templ.connect(extraMember).purchaseAccess();
 
     await templ
       .connect(m1)
       .createProposalDisbandTreasury(accessToken, VOTING_PERIOD);
     await templ.connect(m2).vote(0, true);
-
-    expect(await templ.activeDisbandJoinLocks()).to.equal(1n);
-
-    await token.connect(lateJoiner).approve(templAddress, ENTRY_FEE);
-    await expect(templ.connect(lateJoiner).purchaseAccess())
-      .to.be.revertedWithCustomError(templ, "DisbandLockActive");
-  });
-
-  it("reopens membership after executing a disband proposal", async function () {
-    const accessToken = await templ.accessToken();
-    const extraMember = accounts[5];
-    const lateJoiner = accounts[6];
-    const templAddress = await templ.getAddress();
-
-    await mintToUsers(token, [extraMember, lateJoiner], TOKEN_SUPPLY);
-
-    await token.connect(extraMember).approve(templAddress, ENTRY_FEE);
-    await templ.connect(extraMember).purchaseAccess();
-
-    await templ
-      .connect(m1)
-      .createProposalDisbandTreasury(accessToken, VOTING_PERIOD);
-    await templ.connect(m2).vote(0, true);
-
-    await token.connect(lateJoiner).approve(templAddress, ENTRY_FEE);
-    await expect(templ.connect(lateJoiner).purchaseAccess())
-      .to.be.revertedWithCustomError(templ, "DisbandLockActive");
 
     await advanceTimeBeyondVoting();
     await templ.executeProposal(0);
 
-    expect(await templ.activeDisbandJoinLocks()).to.equal(0n);
-
-    await templ.connect(lateJoiner).purchaseAccess();
+    await token.connect(lateJoiner).approve(await templ.getAddress(), ENTRY_FEE);
+    await expect(templ.connect(lateJoiner).purchaseAccess()).to.not.be.reverted;
     expect(await templ.hasAccess(lateJoiner.address)).to.equal(true);
   });
 
-  it("unlocks membership after a disband proposal fails", async function () {
+  it("allows joins after a disband proposal fails", async function () {
     const accessToken = await templ.accessToken();
     const extraMember = accounts[5];
     const lateJoiner = accounts[6];
-    const templAddress = await templ.getAddress();
 
     await mintToUsers(token, [extraMember, lateJoiner], TOKEN_SUPPLY);
 
-    await token.connect(extraMember).approve(templAddress, ENTRY_FEE);
+    await token.connect(extraMember).approve(await templ.getAddress(), ENTRY_FEE);
     await templ.connect(extraMember).purchaseAccess();
 
     await templ
       .connect(m1)
       .createProposalDisbandTreasury(accessToken, VOTING_PERIOD);
     await templ.connect(m2).vote(0, true);
-
-    await token.connect(lateJoiner).approve(templAddress, ENTRY_FEE);
-    await expect(templ.connect(lateJoiner).purchaseAccess())
-      .to.be.revertedWithCustomError(templ, "DisbandLockActive");
 
     await templ.connect(m3).vote(0, false);
     await templ.connect(extraMember).vote(0, false);
@@ -312,12 +247,77 @@ describe("Disband Treasury", function () {
     await expect(templ.executeProposal(0))
       .to.be.revertedWithCustomError(templ, "ProposalNotPassed");
 
-    await templ.pruneInactiveProposals(1);
-
-    expect(await templ.activeDisbandJoinLocks()).to.equal(0n);
-
-    await templ.connect(lateJoiner).purchaseAccess();
+    await token.connect(lateJoiner).approve(await templ.getAddress(), ENTRY_FEE);
+    await expect(templ.connect(lateJoiner).purchaseAccess()).to.not.be.reverted;
     expect(await templ.hasAccess(lateJoiner.address)).to.equal(true);
+  });
+
+  it("cleans up empty external reward tokens to free registry slots", async function () {
+    const OtherToken = await ethers.getContractFactory("TestToken");
+    const otherToken = await OtherToken.deploy("Loot", "LOOT", 18);
+    const donation = ethers.parseUnits("8", 18);
+
+    await otherToken.mint(owner.address, donation);
+    await otherToken.transfer(await templ.getAddress(), donation);
+
+    await templ
+      .connect(m1)
+      .createProposalDisbandTreasury(otherToken.target, VOTING_PERIOD);
+    await templ.connect(m2).vote(0, true);
+    await templ.connect(m3).vote(0, true);
+    await advanceTimeBeyondVoting();
+    await templ.executeProposal(0);
+
+    const tokensBefore = await templ.getExternalRewardTokens();
+    expect(tokensBefore).to.include(otherToken.target);
+
+    await templ.connect(m1).claimExternalToken(otherToken.target);
+    await templ.connect(m2).claimExternalToken(otherToken.target);
+    await templ.connect(m3).claimExternalToken(otherToken.target);
+    await templ.connect(priest).claimExternalToken(otherToken.target);
+
+    const stateAfterClaims = await templ.getExternalRewardState(otherToken.target);
+    expect(stateAfterClaims.poolBalance).to.equal(0n);
+    expect(stateAfterClaims.remainder).to.equal(0n);
+
+    await templ.cleanupExternalRewardToken(otherToken.target);
+
+    const tokensAfterCleanup = await templ.getExternalRewardTokens();
+    expect(tokensAfterCleanup).to.not.include(otherToken.target);
+
+    await otherToken.mint(owner.address, donation);
+    await otherToken.transfer(await templ.getAddress(), donation);
+
+    await templ
+      .connect(m1)
+      .createProposalDisbandTreasury(otherToken.target, VOTING_PERIOD);
+    await templ.connect(m2).vote(1, true);
+    await templ.connect(m3).vote(1, true);
+    await advanceTimeBeyondVoting();
+    await templ.executeProposal(1);
+
+    const tokensFinal = await templ.getExternalRewardTokens();
+    expect(tokensFinal).to.include(otherToken.target);
+  });
+
+  it("reverts cleanup while external rewards remain unsettled", async function () {
+    const OtherToken = await ethers.getContractFactory("TestToken");
+    const otherToken = await OtherToken.deploy("Loot", "LOOT", 18);
+    const donation = ethers.parseUnits("8", 18);
+
+    await otherToken.mint(owner.address, donation);
+    await otherToken.transfer(await templ.getAddress(), donation);
+
+    await templ
+      .connect(m1)
+      .createProposalDisbandTreasury(otherToken.target, VOTING_PERIOD);
+    await templ.connect(m2).vote(0, true);
+    await templ.connect(m3).vote(0, true);
+    await advanceTimeBeyondVoting();
+    await templ.executeProposal(0);
+
+    await expect(templ.cleanupExternalRewardToken(otherToken.target))
+      .to.be.revertedWithCustomError(templ, "ExternalRewardsNotSettled");
   });
 
   it("returns zero external rewards for non-members and unknown tokens", async function () {

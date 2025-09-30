@@ -213,8 +213,28 @@ abstract contract TemplTreasury is TemplBase {
     function _registerExternalToken(address token) internal {
         ExternalRewardState storage rewards = externalRewards[token];
         if (!rewards.exists) {
+            if (externalRewardTokens.length >= MAX_EXTERNAL_REWARD_TOKENS) {
+                revert TemplErrors.ExternalRewardLimitReached();
+            }
             rewards.exists = true;
             externalRewardTokens.push(token);
+            externalRewardTokenIndex[token] = externalRewardTokens.length;
         }
+    }
+
+    /// @notice Removes an empty external reward token so future disbands can reuse the slot.
+    /// @param token Asset to remove from the enumeration set.
+    function cleanupExternalRewardToken(address token) external {
+        if (token == accessToken) revert TemplErrors.InvalidCallData();
+        ExternalRewardState storage rewards = externalRewards[token];
+        if (!rewards.exists) revert TemplErrors.InvalidCallData();
+        if (rewards.poolBalance != 0 || rewards.rewardRemainder != 0) {
+            revert TemplErrors.ExternalRewardsNotSettled();
+        }
+
+        rewards.poolBalance = 0;
+        rewards.rewardRemainder = 0;
+        rewards.exists = false;
+        _removeExternalToken(token);
     }
 }
