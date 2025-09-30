@@ -2,27 +2,27 @@
 
 Derived from the latest review conversation with Luiz (OpenZeppelin) and Marcus (templ):
 
-1. **Improve percent math precision**
-   - Use `Math.mulDiv` to minimise rounding drift and ensure exact accounting (burn, treasury, member pool, protocol, treasury disbandments).
-   - Adopt a basis-points denominator (`TOTAL_PERCENT = 10_000`) so governance inputs and fee splits support two decimal places while remaining deterministic on chain.
+1. **Percent math precision**
+   - `Math.mulDiv` minimises rounding drift and keeps accounting exact across burn, treasury, member pool, protocol, and treasury disbandments.
+   - A basis-points denominator (`TOTAL_PERCENT = 10_000`) lets governance inputs and fee splits support two decimal places while remaining deterministic on chain.
 
-2. **Trim on-chain storage to the essentials**
-   - Remove book-keeping fields that can be reconstructed off-chain (e.g. cumulative fee totals, purchase counters).
-   - Compute or emit data needed for analytics via events so frontends index them instead of reading storage slots.
-   - Prefer keeping member-level snapshots only where required for correctness (claim baselines), otherwise derive totals lazily.
+2. **Trimmed on-chain storage**
+   - Book-keeping fields that can be reconstructed off-chain (e.g. cumulative fee totals, purchase counters) are omitted.
+   - Data needed for analytics emits through events so frontends index them instead of reading storage slots.
+   - Member-level snapshots exist only where required for correctness (claim baselines); other totals derive lazily.
 
-3. **Refine reward accounting**
-   - Keep per-member reward snapshots minimal, basing claims on global cumulative counters captured at join-time.
-   - Ensure distributions (member pool, external rewards) rely on consistent global snapshots rather than per-user tallies to reduce state churn and rounding "dust".
+3. **Reward accounting**
+   - Per-member reward snapshots stay minimal, basing claims on global cumulative counters captured at join time.
+   - Distributions (member pool, external rewards) rely on consistent global snapshots rather than per-user tallies to reduce state churn and rounding "dust".
 
-4. **Flatten module inheritance**
-   - Restructure the contract hierarchy so `TEMPL` composes independent modules (`TemplMembership`, `TemplTreasury`, `TemplGovernance`, etc.) directly instead of chaining `A -> B -> C` inheritance.
-   - Move shared helpers into libraries or base contracts with single inheritance to simplify the storage layout and auditing.
+4. **Flattened module inheritance**
+   - The contract hierarchy composes independent modules (`TemplMembership`, `TemplTreasury`, `TemplGovernance`, etc.) directly instead of chaining `A -> B -> C` inheritance.
+   - Shared helpers live in libraries or base contracts with single inheritance to simplify the storage layout and auditing.
 
-5. **Avoid storage-heavy member lists**
-   - Drop `memberList` arrays in favour of lightweight counters/mappings since iteration is never required on-chain.
-   - Update membership limit, quorum, and distribution logic to use the new counters.
+5. **Lean membership tracking**
+   - `memberList` arrays are replaced with lightweight counters/mappings since iteration is never required on-chain.
+   - Membership limit, quorum, and distribution logic use the new counters.
 
 6. **General cleanup**
-   - Remove repeated logic, centralise configuration validation, and keep codepaths focused on core on-chain responsibilities.
-   - Update docs/tests/frontends to reflect the slimmed-down state surface.
+   - Repeated logic is removed, configuration validation is centralised, and codepaths stay focused on core on-chain responsibilities.
+   - Docs/tests/frontends reflect the slimmed-down state surface.

@@ -52,7 +52,7 @@ You can deploy from the CLI or via the frontend. The CLI is convenient for scrip
   export FACTORY_ADDRESS=0x...          # optional: reuse an existing factory; leave unset to deploy a new one
   ```
 
-   > For remote deployments, confirm `PRIVATE_KEY` is still exported in your shell so Hardhat can access the deployer signer.
+   > For remote deployments, confirm `PRIVATE_KEY` remains exported in your shell so Hardhat can access the deployer signer.
 
    Optional configuration knobs:
    ```bash
@@ -182,7 +182,7 @@ Cloudflare Pages is an edge-cached static host with an extremely generous free t
 
 ### Automating the Cloudflare deploy (backend + frontend)
 
-To avoid juggling multiple commands, use the bundled `scripts/deploy-cloudflare.js` wrapper. It reads a single env file, applies the D1 schema (so your SQLite/D1 store has the required tables), builds the SPA with the correct `VITE_*` overrides, and publishes to Cloudflare Pages. The backend must be deployed separately on your Node host; pass `--skip-worker` to skip the Worker deploy while still preparing the database and Pages artifacts.
+To avoid juggling multiple commands, use the bundled `scripts/deploy-cloudflare.js` wrapper. It reads a single env file, applies the D1 schema (so your SQLite/D1 store has the required tables), builds the SPA with the correct `VITE_*` overrides, and publishes to Cloudflare Pages. The backend must be deployed separately on your Node host; pass `--skip-worker` to skip the Worker deploy while preparing the database and Pages artifacts.
 
 1. Copy the template and fill it out with your production details (database ids, secrets, Pages project, etc.). Worker fields remain for backwards compatibility—leave them as placeholders when running with `--skip-worker`:
    ```bash
@@ -193,7 +193,7 @@ To avoid juggling multiple commands, use the bundled `scripts/deploy-cloudflare.
    ```bash
    npm run deploy:cloudflare
    ```
-  - `--skip-worker` omits the Worker deploy. Worker-only env vars (`CF_WORKER_NAME`, `APP_BASE_URL`, `TRUSTED_FACTORY_ADDRESS`, `TRUSTED_FACTORY_DEPLOYMENT_BLOCK`, `REQUIRE_CONTRACT_VERIFY`, `TELEGRAM_BOT_TOKEN`, `RPC_URL`, etc.) are optional in this mode, but Wrangler still needs D1 + Pages settings.
+  - `--skip-worker` omits the Worker deploy. Worker-only env vars (`CF_WORKER_NAME`, `APP_BASE_URL`, `TRUSTED_FACTORY_ADDRESS`, `TRUSTED_FACTORY_DEPLOYMENT_BLOCK`, `REQUIRE_CONTRACT_VERIFY`, `TELEGRAM_BOT_TOKEN`, `RPC_URL`, etc.) are optional in this mode, but Wrangler needs D1 + Pages settings.
   - `--skip-pages` skips the Pages deploy when you’re adjusting backend configuration only.
 
 3. Production backend variables:
@@ -210,7 +210,7 @@ Deploying to Base (or another persistent network) doesn’t mean you have to aba
    TRUSTED_FACTORY_ADDRESS=0x...            # factory you deployed above
    TRUSTED_FACTORY_DEPLOYMENT_BLOCK=12345678
    ```
-   Keep `BACKEND_SERVER_ID` aligned with the frontend and restart `npm --prefix backend start`. The local backend will now read on-chain state from the live RPC while still serving endpoints from your machine.
+   Keep `BACKEND_SERVER_ID` aligned with the frontend and restart `npm --prefix backend start`. The local backend reads on-chain state from the live RPC while serving endpoints from your machine.
 2. **Point the frontend at the same backend + factory.** Either export the values in your shell or create `frontend/.env.local`:
    ```bash
    VITE_BACKEND_URL=http://localhost:3001
@@ -219,7 +219,7 @@ Deploying to Base (or another persistent network) doesn’t mean you have to aba
    VITE_TEMPL_FACTORY_DEPLOYMENT_BLOCK=12345678
    npm --prefix frontend run dev
    ```
-   The dev server now lists templs emitted by the deployed factory and proxies requests to your local backend (which in turn speaks to the live chain and Telegram bot).
+   The dev server lists templs emitted by the deployed factory and proxies requests to your local backend (which in turn speaks to the live chain and Telegram bot).
 3. **Switch wallets when necessary.** Use MetaMask’s network selector to jump between Hardhat (throwaway testing) and your deployed network. The same frontend build handles both.
 
 When you’re ready to promote the backend to a hosted environment, continue with the Cloudflare deployment steps above or adapt them to your infrastructure of choice.
@@ -241,7 +241,7 @@ Every templ can expose notifications in a Telegram group. When you register a te
 
 When governance appoints a new priest or the community moves to another Telegram group, open the templ overview, click **Request binding code**, and approve the EIP-712 signature. The backend verifies the priest wallet against the contract before issuing a fresh code so only the current priest can rebind notifications.
 
-You can still provide a numeric chat id during registration if you have one; no binding code is generated in that case.
+You can provide a numeric chat id during registration if you have one; no binding code is generated in that case.
 
 ## 4. Run the frontend
 

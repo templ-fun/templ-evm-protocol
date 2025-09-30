@@ -110,7 +110,7 @@ Commonly used accounts (private keys are from Hardhat defaults—never use them 
 
 ## 7) Create proposals and vote
 
-- `/templs/:address/proposals/new` lets any member raise actions such as pausing, changing the priest, updating fees, etc. Titles and descriptions are now stored on-chain and emitted in `ProposalCreated` events.
+- `/templs/:address/proposals/new` lets any member raise actions such as pausing, changing the priest, updating fees, etc. Titles and descriptions live on-chain and emit in `ProposalCreated` events.
 - `/templs/:address/proposals/:id/vote` submits `vote(proposalId, support)` transactions.
 - If the templ was registered with a Telegram chat id, the backend will post:
   - Member joins (`AccessPurchased`) with live treasury/member-pool balances.
@@ -130,7 +130,7 @@ Once you can click through the flows, run the full validation pass before openin
 npm run test:all
 ```
 
-The helper script clears Vite caches, runs unit/integration coverage, and now installs the
+The helper script clears Vite caches, runs unit/integration coverage, and installs the
 Playwright Chromium binary automatically (unless `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` is set)
 via `npm --prefix frontend exec playwright install --with-deps chromium`. If you trigger the
 frontend E2E tests manually (`npm --prefix frontend run test:e2e`), run the same Playwright
@@ -155,13 +155,13 @@ Once you deploy a factory to a persistent network (Base, Base Sepolia, etc.), yo
    export VITE_TEMPL_FACTORY_DEPLOYMENT_BLOCK=12345678
    npm --prefix frontend run dev
    ```
-   If you prefer file-based overrides, set the same keys in `frontend/.env.local`. The landing page will now read templs from your live factory while your local backend keeps handling membership checks and Telegram bindings.
+   If you prefer file-based overrides, set the same keys in `frontend/.env.local`. The landing page reads templs from your live factory while your local backend keeps handling membership checks and Telegram bindings.
 3. Keep the Hardhat node around when you need throwaway contracts for testing; switch wallets/networks in MetaMask when you want to interact with the live deployment.
 
 ### Register templs minted outside your factory
 
 If you need to monitor or debug a templ that was deployed from a different `TemplFactory` (for example, a partner project that
-already has contracts on Base), you can still bring it into your local backend.
+already has contracts on Base), you can bring it into your local backend.
 
 1. Temporarily relax the factory guard so the backend accepts templs from other sources. Edit `backend/.env` and either clear
    `TRUSTED_FACTORY_ADDRESS` or set it to the factory that produced the templ you want to inspect. Restart the backend so the new
@@ -194,4 +194,4 @@ already has contracts on Base), you can still bring it into your local backend.
 - **Signature rejected** – signatures are cached in-memory for 6 hours. Restart the backend (or wait for the retention window) if you reused an old payload with the same nonce.
 - **Contract reverts** – hardhat console logs will show revert reasons. Common issues are fee splits not summing to 100 or attempting to vote after the deadline.
 
-You now have a full local environment for iterating on templ governance and Telegram notifications.
+This walkthrough leaves you with a full local environment for iterating on templ governance and Telegram notifications.

@@ -92,7 +92,7 @@ The templ overview shows the current Telegram chat id (if any) and lets the conn
 
 - `npm --prefix frontend run test` – vitest + jsdom. Use `frontend/vitest.setup.js` to tweak global behavior.
 - `npm --prefix frontend run coverage` – coverage for React components and services.
-- `npm --prefix frontend run test:e2e` – Playwright smoke tests. The harness now boots Hardhat, the backend, and a preview build. Telegram delivery is effectively disabled because the env omits `TELEGRAM_BOT_TOKEN`; you can point to a real bot by populating the env in `playwright.config.js`. Install the Chromium bundle once per machine with `npm --prefix frontend exec playwright install --with-deps chromium` (the root `npm run test:all` script now handles this automatically unless `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`).
+- `npm --prefix frontend run test:e2e` – Playwright smoke tests. The harness boots Hardhat, the backend, and a preview build. Telegram delivery is effectively disabled because the env omits `TELEGRAM_BOT_TOKEN`; you can point to a real bot by populating the env in `playwright.config.js`. Install the Chromium bundle once per machine with `npm --prefix frontend exec playwright install --with-deps chromium` (the root `npm run test:all` script handles this automatically unless `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`).
 
 ## Structure overview
 

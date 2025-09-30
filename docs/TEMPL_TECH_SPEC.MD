@@ -10,21 +10,21 @@ Use this spec to connect the canonical architecture: paid memberships, enforced 
 - auto-enrolment of the deploying priest as member zero so the first paid tribute accrues to them, plus a zero-member fallback that folds the pioneer pool slice into the treasury (letting the pioneer reclaim their fee minus burn/protocol when the second wallet joins),
   - optional member caps (`MAX_MEMBERS`) that auto-pause joins when the cap is reached; additional join attempts revert with `MemberLimitReached` until governance raises or clears the limit **and** manually resumes via `setPausedDAO(false)`,
   - an on-chain `templHomeLink` string surfaced across UI, backend, and Telegram,
-- one member = one vote proposals covering pause/unpause, priest changes, fee config updates, treasury withdrawals/disbands, membership caps, dictatorship toggles, and home-link changes. Disband proposals immediately toggle a join lock so newcomers cannot front-run the exit vote; the lock now unwinds automatically when the proposal executes or when its voting window expires.
+- one member = one vote proposals covering pause/unpause, priest changes, fee config updates, treasury withdrawals/disbands, membership caps, dictatorship toggles, and home-link changes. Disband proposals immediately toggle a join lock so newcomers cannot front-run the exit vote; the lock unwinds automatically when the proposal executes or when its voting window expires.
 
 See inline NatSpec comments and Hardhat tests for state transitions.
 
 ## 2. Backend responsibilities
 
 - Validate templ registrations (`POST /templs`) with EIP-712 signatures and optional Telegram chat ids.
-- Issue new Telegram binding codes (`POST /templs/rebind`) after verifying the signed priest still owns the contract.
+- Issue new Telegram binding codes (`POST /templs/rebind`) after verifying the signed priest owns the contract.
 - Confirm membership via `hasAccess` (`POST /join`).
 - Store templ ↔ Telegram chat bindings in Cloudflare D1 (with an in-memory fallback for local development) so notifications survive restarts; priest/home-link data is refreshed from chain when watchers attach.
 - Subscribe to templ events via `ethers.Contract` and forward them to Telegram:
   - `AccessPurchased` → “New member” message with join + claim links and live treasury/member-pool totals.
   - `ProposalCreated` → “Proposal created” with link to `/proposals/:id/vote`, including the on-chain title & description supplied at creation time.
   - `VoteCast` → “Vote recorded” summary, echoing the proposal title when available.
-  - `ProposalQuorumReached` (derived from snapshots) → one-off “Quorum reached” nudge so undecided members can still participate.
+  - `ProposalQuorumReached` (derived from snapshots) → one-off “Quorum reached” nudge so undecided members can participate before the window closes.
   - `ProposalVotingClosed` (time-based) → post-quorum notification explaining whether the proposal is executable.
   - `PriestChanged` → “Priest updated” alert.
   - `TemplHomeLinkUpdated` → broadcasts the new canonical URL so members share the latest link.
@@ -61,9 +61,3 @@ MetaMask/`window.ethereum` supplies the signer. All backend calls attach typed s
 - Backend `node:test` suite validates templ registration, membership checks, and watcher wiring.
 - Frontend Vitest suite focuses on services; Playwright smoke tests cover the create/join/vote flow with Telegram disabled.
 
-## 7. Roadmap considerations
-
-- Richer Telegram formatting (buttons, proposal summaries) once long-lived bot tokens are configured.
-- Optional webhook that mirrors events to other tooling (Discord, Matrix).
-- Automated pruning / archiving of templ entries when factories upgrade.
-- Scale templ discovery by adding paginated log queries or a subgraph so the frontend can enumerate large factories without hitting provider range limits.

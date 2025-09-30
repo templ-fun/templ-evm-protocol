@@ -75,7 +75,7 @@ sequenceDiagram
 
 `purchaseAccess` executes only when the templ is unpaused, no disband lock is active, and the membership cap has spare capacity. Attempts during an active disband (custom error `DisbandLockActive`) or when the cap is reached (`MemberLimitReached`) revert on-chain; frontend helpers surface these messages so members know to wait for governance to resolve the lock or raise the cap.
 
-Expired disband proposals no longer require a manual prune—`purchaseAccess` automatically refreshes disband locks and releases those whose voting window has lapsed, so membership resumes as soon as a failed or abandoned disband times out.
+Expired disband proposals clear without manual intervention—`purchaseAccess` automatically refreshes disband locks and releases those whose voting window has lapsed, so membership resumes as soon as a failed or abandoned disband times out.
 
 ## 3. Telegram notifications
 

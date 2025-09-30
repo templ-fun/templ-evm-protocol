@@ -136,11 +136,11 @@ Leaving the chat id empty is perfectly fine — the templ remains usable, and yo
 
 ### Deployment profile
 
-The backend now expects a traditional Node runtime. Run it on your favourite host (Fly, Railway, Render, bare metal, Kubernetes, etc.) and keep a single **active** process connected to your RPC provider. When Cloudflare D1 (or another SQL database) is available, the server uses it for durable bindings and leader election: one replica advertises itself as the leader and emits Telegram notifications, while additional replicas remain on standby.
+The backend expects a traditional Node runtime. Run it on your favourite host (Fly, Railway, Render, bare metal, Kubernetes, etc.) and keep a single **active** process connected to your RPC provider. When Cloudflare D1 (or another SQL database) is available, the server uses it for durable bindings and leader election: one replica advertises itself as the leader and emits Telegram notifications, while additional replicas remain on standby.
 
 - **Persistent Node host.** The Express server keeps WebSocket/JSON-RPC connections alive to stream on-chain events. Background jobs (proposal deadline checks, Telegram binding polls, daily digests) run inside the same process, so you should treat the service like any other long-lived API.
 - **Cloudflare D1 (optional but recommended).** D1 stores templ bindings, signature replay protection, and the `leader_election` row that coordinates active replicas. If you skip D1, the backend falls back to the in-memory adapter (suitable for local dev or single-instance deployments).
-- **Cloudflare Pages frontend.** The React SPA still builds to static assets that Pages serves from every POP with generous free tiers. Publishing the frontend separately keeps hosting costs near-zero while leaving you free to deploy the backend wherever you prefer.
+- **Cloudflare Pages frontend.** The React SPA builds to static assets that Pages serves from every POP with generous free tiers. Publishing the frontend separately keeps hosting costs near-zero while leaving you free to deploy the backend wherever you prefer.
 - **Redis rate limiting (optional).** Point `RATE_LIMIT_STORE` at Redis when you need shared rate limiting across multiple nodes; otherwise, the in-memory store is sufficient for single-instance deployments.
 
 ## Cloudflare Deploys (One Command)
