@@ -46,6 +46,15 @@ Start with `docs/README.md` for the full documentation index. Highlights:
 - Frontend routes and env – `docs/FRONTEND.md`
 - Local/dev/prod guides – `docs/TEST_LOCALLY.md`, `docs/DEPLOYMENT_GUIDE.md`
 
+## Learning templ
+
+1. Big-picture spec – `docs/TEMPL_TECH_SPEC.MD`
+2. Flow diagrams – `docs/CORE_FLOW_DOCS.MD`
+3. Smart contracts – `docs/CONTRACTS.md`
+4. Backend API + persistence – `docs/BACKEND.md` and `docs/PERSISTENCE.md`
+5. Frontend routes – `docs/FRONTEND.md`
+6. Local setup → prod rollout – `docs/TEST_LOCALLY.md` then `docs/DEPLOYMENT_GUIDE.md`
+
 ## Repository layout
 
 - `contracts/` – Solidity sources and Hardhat tests.
