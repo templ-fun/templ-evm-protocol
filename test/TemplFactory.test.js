@@ -472,6 +472,12 @@ describe("TemplFactory", function () {
         await expect(factory.createTempl(await token.getAddress(), ENTRY_FEE))
             .to.be.revertedWithCustomError(factory, "DeploymentFailed");
 
+        // Restore pointer with creation code that immediately reverts to hit the post-create check
+        const revertInit = "0xfe";
+        await ethers.provider.send("hardhat_setCode", [pointer, revertInit]);
+        await expect(factory.createTempl(await token.getAddress(), ENTRY_FEE))
+            .to.be.revertedWithCustomError(factory, "DeploymentFailed");
+
         await ethers.provider.send("hardhat_setCode", [pointer, originalCode]);
     });
 });

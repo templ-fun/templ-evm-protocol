@@ -167,6 +167,11 @@ describe("TemplHarness coverage helpers", function () {
     expect(remainder).to.equal(5n);
   });
 
+  it("returns zero total purchases when the membership counter resets", async function () {
+    await harness.harnessClearMembers();
+    expect(await harness.totalPurchases()).to.equal(0n);
+  });
+
   it("does not duplicate tokens when seeding remainders repeatedly", async function () {
     const tokenKey = ethers.Wallet.createRandom().address;
     await harness.harnessSeedExternalRemainder(tokenKey, 3, 1);
@@ -199,6 +204,34 @@ describe("TemplHarness coverage helpers", function () {
   it("clears the disband lock when invoked without an active lock", async function () {
     await harness.harnessFinalizeDisbandFailure(true, 3, 3, 0, false);
     expect(await harness.activeDisbandJoinLocks()).to.equal(0n);
+  });
+
+  it("returns early when lock ids are empty despite an active count", async function () {
+    await harness.harnessConfigureDisbandLocks(1, [], true);
+    await harness.harnessRefreshDisbandLocks();
+    expect(await harness.activeDisbandJoinLocks()).to.equal(1n);
+  });
+
+  it("invokes release when a tracked proposal already cleared its lock", async function () {
+    await harness.harnessConfigureDisbandLocks(1, [0], false);
+    await harness.harnessRefreshDisbandLocks();
+    expect(await harness.activeDisbandJoinLocks()).to.equal(1n);
+  });
+
+  it("clears disband locks when an expired proposal remains marked", async function () {
+    await harness.harnessConfigureDisbandLocks(1, [1], true);
+    await harness.harnessRefreshDisbandLocks();
+    expect(await harness.activeDisbandJoinLocks()).to.equal(0n);
+  });
+
+  it("swaps lock indices when releasing a non-tail entry", async function () {
+    await harness.harnessConfigureDisbandLocks(2, [1, 2], true);
+    await harness.harnessReleaseDisbandLock(1);
+    expect(await harness.activeDisbandJoinLocks()).to.equal(1n);
+  });
+
+  it("falls back to the base refresh implementation", async function () {
+    await expect(harness.harnessCallBaseRefresh()).to.not.be.reverted;
   });
 
   it("removes active proposals via the swap path", async function () {
