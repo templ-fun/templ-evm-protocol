@@ -13,6 +13,7 @@ This guide walks through the production deployment of templ on Cloudflare. The b
 - `wrangler` CLI v3.83.0+ installed locally or available through `npx`.
 - Telegram bot token generated with [@BotFather](https://t.me/botfather) and the production Telegram group that will receive notifications.
 - Local checkout of this repository with dependencies installed:
+
   ```bash
   npm ci
   npm --prefix backend ci
@@ -22,6 +23,7 @@ This guide walks through the production deployment of templ on Cloudflare. The b
 ## 2. Deploy the templ contracts
 
 1. Export the RPC endpoint, deployer key, and protocol parameters. The deployer must hold enough ETH to cover factory and templ deployments.
+
    ```bash
    export RPC_URL=https://base-mainnet.g.alchemy.com/v2/your-key
    export PRIVATE_KEY=0xyourdeployerkey
@@ -31,22 +33,30 @@ This guide walks through the production deployment of templ on Cloudflare. The b
    export PROTOCOL_PERCENT=10
    export PRIEST_ADDRESS=0xPriestWallet
    ```
+
    Optional overrides are available for quorum, execution delay, burn address, member cap, templ home link, backend callback URL, and Telegram chat id. See `scripts/deploy.js` for the full list.
 2. Deploy the contracts:
+
    ```bash
    npx hardhat run scripts/deploy.js --network base
    ```
+
    The script emits both `TemplFactory` and templ addresses. Capture the factory address and deployment block height; both values are required for the backend and frontend configuration.
 3. Export the trusted factory metadata for downstream steps:
+
    ```bash
    export TRUSTED_FACTORY_ADDRESS=<factory address>
    export TRUSTED_FACTORY_DEPLOYMENT_BLOCK=<factory deploy block>
    ```
+
 4. (Recommended) Verify the factory on BaseScan:
+
    ```bash
    npx hardhat verify --network base $TRUSTED_FACTORY_ADDRESS $PROTOCOL_FEE_RECIPIENT $PROTOCOL_PERCENT
    ```
+
 5. Register the templ with the backend once the Worker is live (section 6). If you need to pre-register immediately, run:
+
    ```bash
    export BACKEND_URL=https://api.templ.example
    export TEMPL_ADDRESS=<templ address>
@@ -57,10 +67,12 @@ This guide walks through the production deployment of templ on Cloudflare. The b
 ## 3. Provision Cloudflare resources
 
 1. **Create the D1 database** and record its name and id:
+
    ```bash
    wrangler d1 create templ-backend
    wrangler d1 info templ-backend
    ```
+
    The info command prints `database_id`, which the deployment script references.
 2. **Choose a Worker name** (e.g. `templ-backend`) and confirm the name is available within your account. The Worker runs the Express backend bundle.
 3. **Create a Cloudflare Pages project** (e.g. `templ-frontend`) with production branch `production`. No build command is required; the deployment script ships the prebuilt `frontend/dist/` directory.
@@ -71,9 +83,11 @@ This guide walks through the production deployment of templ on Cloudflare. The b
 ## 4. Create the Cloudflare deployment env file
 
 1. Start from the annotated template and fill in every required value gathered in the previous steps:
+
    ```bash
    cp scripts/cloudflare.deploy.example.env .cloudflare.env
    ```
+
 2. Update `.cloudflare.env` with:
    - `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` (scoped token described in section 1).
    - `CF_D1_DATABASE_NAME` and `CF_D1_DATABASE_ID` from `wrangler d1 info`.
@@ -85,9 +99,11 @@ This guide walks through the production deployment of templ on Cloudflare. The b
 ## 5. Run the Cloudflare deployment script
 
 1. Execute the bundled helper so the Worker, D1 database, and Pages project are updated in one pass:
+
    ```bash
    npm run deploy:cloudflare
    ```
+
    Use `npm run deploy:cloudflare -- --env-file path/to/env` when the env file lives outside the repo root.
 2. The script performs the following actions:
    - Loads `.cloudflare.env` and validates required variables.
@@ -101,26 +117,32 @@ This guide walks through the production deployment of templ on Cloudflare. The b
 ## 6. Register templs with the production backend
 
 1. Confirm the Worker responds by hitting the health endpoint:
+
    ```bash
    curl https://api.templ.example/health
    ```
+
    The endpoint returns `200 OK` when the Worker recognises its D1 connection and configuration.
 2. Run the templ registration helper for each templ deployed in section 2 (skip if you passed `BACKEND_URL` during deployment and the script confirmed auto-registration):
+
    ```bash
    export BACKEND_URL=https://api.templ.example
    export TEMPL_ADDRESS=<templ address>
    export PRIVATE_KEY=0xPriestKey
    npx hardhat run scripts/register-templ.js --network base
    ```
+
    The backend returns a binding code unless you provide a Telegram chat id upfront.
 
 ## 7. Bind Telegram notifications
 
 1. Invite `@templfunbot` to the production chat and grant it permission to read messages and send posts.
 2. Send the binding code provided by the backend in the chat:
+
    ```
    templ <code>
    ```
+
 3. The Worker links the templ to the chat and replies “Telegram bridge active”. Repeat for every templ you control. Regenerate a code from the frontend whenever governance appoints a new priest or the community migrates to another chat.
 
 ## 8. Production smoke checks
@@ -128,6 +150,7 @@ This guide walks through the production deployment of templ on Cloudflare. The b
 - Visit the Cloudflare Pages URL (`https://templ-frontend.pages.dev` or your custom domain) and confirm it loads the templ list using the production factory.
 - Join a templ, cast a vote, and verify that the Telegram bot forwards notifications.
 - Run the Playwright smoke suite against production endpoints once secrets are scoped appropriately:
+
   ```bash
   VITE_BACKEND_URL=https://api.templ.example \
   VITE_BACKEND_SERVER_ID=templ-prod \
