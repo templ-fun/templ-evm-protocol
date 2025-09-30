@@ -2,7 +2,6 @@
 pragma solidity ^0.8.23;
 
 import {TEMPL} from "../TEMPL.sol";
-import {TemplBase} from "../TemplBase.sol";
 
 /// @title TemplHarness
 /// @dev Testing harness that exposes internal helpers for coverage-only assertions
@@ -146,73 +145,18 @@ contract TemplHarness is TEMPL {
         memberCount = 0;
     }
 
-    /// @dev Manually configures disband lock tracking for coverage scenarios.
-    function harnessConfigureDisbandLocks(uint256 lockCount, uint256[] calldata ids, bool flag) external {
-        activeDisbandJoinLocks = lockCount;
-
-        // reset existing lock indices
-        while (disbandLockIds.length != 0) {
-            uint256 removedId = disbandLockIds[disbandLockIds.length - 1];
-            disbandLockIds.pop();
-            disbandLockIndex[removedId] = 0;
-        }
-
-        for (uint256 i = 0; i < ids.length; i++) {
-            uint256 id = ids[i];
-            disbandLockIds.push(id);
-            disbandLockIndex[id] = disbandLockIds.length;
-            Proposal storage proposal = proposals[id];
-            proposal.id = id;
-            proposal.disbandJoinLock = flag;
-            proposal.endTime = block.timestamp - 1;
-            proposal.executed = false;
-            proposal.eligibleVoters = 0;
-            proposal.yesVotes = 0;
-            proposal.noVotes = 0;
-        }
-    }
-
-    /// @dev Exposes the internal refresh helper so tests can drive lock cleanup branches.
-    function harnessRefreshDisbandLocks() external {
-        _refreshDisbandLocks();
-    }
-
-    /// @dev Directly invokes the release helper for targeted lock scenarios.
-    function harnessReleaseDisbandLock(uint256 id) external {
-        _releaseDisbandLock(proposals[id]);
-    }
-
-    /// @dev Invokes the base implementation of the refresh hook for coverage.
-    function harnessCallBaseRefresh() external {
-        TemplBase._refreshDisbandLocks();
-    }
-
     /// @dev Calls the internal disband helper for branch coverage.
     function harnessDisbandTreasury(address token) external {
         _disbandTreasury(token, 0);
     }
 
-    /// @dev Invokes the disband failure finalizer with custom parameters for coverage.
-    function harnessFinalizeDisbandFailure(
-        bool executed,
-        uint256 eligibleVoters,
-        uint256 yesVotes,
-        uint256 noVotes,
-        bool lockActive
-    ) external {
-        Proposal storage proposal = proposals[0];
-        proposal.executed = executed;
-        proposal.eligibleVoters = eligibleVoters;
-        proposal.yesVotes = yesVotes;
-        proposal.noVotes = noVotes;
-        proposal.disbandJoinLock = lockActive;
-        if (lockActive) {
-            if (activeDisbandJoinLocks == 0) {
-                activeDisbandJoinLocks = 1;
-            }
-        } else {
-            activeDisbandJoinLocks = 0;
-        }
-        _finalizeDisbandFailure(proposal);
+    /// @dev Exposes token registration to exercise external reward limits in tests.
+    function harnessRegisterExternalToken(address token) external {
+        _registerExternalToken(token);
+    }
+
+    /// @dev Invokes the base removal helper for coverage scenarios.
+    function harnessRemoveExternalToken(address token) external {
+        _removeExternalToken(token);
     }
 }

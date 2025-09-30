@@ -191,47 +191,20 @@ describe("TemplHarness coverage helpers", function () {
     expect(await harness.hasAccess(member.address)).to.equal(true);
   });
 
-  it("finalizes disband failure when quorum is not maintained", async function () {
-    await harness.harnessFinalizeDisbandFailure(false, 0, 0, 0, true);
-    expect(await harness.activeDisbandJoinLocks()).to.equal(0n);
+  it("caps external reward token registration", async function () {
+    const limit = 256;
+    for (let i = 0; i < limit; i++) {
+      const tokenKey = ethers.Wallet.createRandom().address;
+      await harness.harnessRegisterExternalToken(tokenKey);
+    }
+    const overflowToken = ethers.Wallet.createRandom().address;
+    await expect(harness.harnessRegisterExternalToken(overflowToken))
+      .to.be.revertedWithCustomError(harness, "ExternalRewardLimitReached");
   });
 
-  it("keeps the disband lock when quorum remains after execution", async function () {
-    await harness.harnessFinalizeDisbandFailure(true, 5, 5, 1, true);
-    expect(await harness.activeDisbandJoinLocks()).to.equal(1n);
-  });
-
-  it("clears the disband lock when invoked without an active lock", async function () {
-    await harness.harnessFinalizeDisbandFailure(true, 3, 3, 0, false);
-    expect(await harness.activeDisbandJoinLocks()).to.equal(0n);
-  });
-
-  it("returns early when lock ids are empty despite an active count", async function () {
-    await harness.harnessConfigureDisbandLocks(1, [], true);
-    await harness.harnessRefreshDisbandLocks();
-    expect(await harness.activeDisbandJoinLocks()).to.equal(1n);
-  });
-
-  it("invokes release when a tracked proposal already cleared its lock", async function () {
-    await harness.harnessConfigureDisbandLocks(1, [0], false);
-    await harness.harnessRefreshDisbandLocks();
-    expect(await harness.activeDisbandJoinLocks()).to.equal(1n);
-  });
-
-  it("clears disband locks when an expired proposal remains marked", async function () {
-    await harness.harnessConfigureDisbandLocks(1, [1], true);
-    await harness.harnessRefreshDisbandLocks();
-    expect(await harness.activeDisbandJoinLocks()).to.equal(0n);
-  });
-
-  it("swaps lock indices when releasing a non-tail entry", async function () {
-    await harness.harnessConfigureDisbandLocks(2, [1, 2], true);
-    await harness.harnessReleaseDisbandLock(1);
-    expect(await harness.activeDisbandJoinLocks()).to.equal(1n);
-  });
-
-  it("falls back to the base refresh implementation", async function () {
-    await expect(harness.harnessCallBaseRefresh()).to.not.be.reverted;
+  it("ignores cleanup requests for unknown external reward tokens", async function () {
+    const unknown = ethers.Wallet.createRandom().address;
+    await expect(harness.harnessRemoveExternalToken(unknown)).to.not.be.reverted;
   });
 
   it("removes active proposals via the swap path", async function () {

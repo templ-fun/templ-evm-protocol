@@ -22,6 +22,7 @@
 
 ## Documentation Expectations
 - Update docs alongside code so the repo remains the canonical protocol reference—write as though the current codebase is the only version that ever existed.
+- When writing docs, avoid historical framing or phrases such as “no longer”, “now”, or “before”; describe behavior as timeless facts of the current system.
 - Refresh `README.md`, `docs/*.md`, and in-app copy whenever behavior, configuration, or APIs shift; verify every example still runs.
 
 ## Commit & Pull Request Guidelines
