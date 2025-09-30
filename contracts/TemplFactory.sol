@@ -13,7 +13,7 @@ contract TemplFactory {
     // factory-level protocol share of 10%. Factories deployed with a different
     // `protocolPercent` should either adjust these constants prior to
     // deployment or call `createTemplWithConfig` with explicit splits so the
-    // totals continue to sum to 100.
+    // totals continue to sum to 100% (10_000 basis points).
     uint256 internal constant DEFAULT_BURN_PERCENT = 3_000;
     uint256 internal constant DEFAULT_TREASURY_PERCENT = 3_000;
     uint256 internal constant DEFAULT_MEMBER_POOL_PERCENT = 3_000;
