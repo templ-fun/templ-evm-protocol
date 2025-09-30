@@ -1,289 +1,148 @@
 # Deployment Guide
 
-Use this guide for the first end-to-end deployment of the templ stack: smart contracts, backend, frontend, and the Telegram bot binding required for notifications.
+This guide walks through the production deployment of templ on Cloudflare. The backend ships as a Cloudflare Worker backed by a D1 database, while the frontend is published to Cloudflare Pages. Follow every section in order to promote a fresh release.
 
 ## 1. Prerequisites
 
-- Node.js 22.18.0 or newer (matches the `engines` fields in every package)
-- npm 10+
-- Access to an Ethereum-compatible RPC endpoint (Base, Base Sepolia, or Hardhat localhost)
-- A Telegram bot token created via [@BotFather](https://t.me/botfather)
-- A Telegram group or supergroup where you can invite bots
-
-Clone the repository and install dependencies once at the root:
-
-```bash
-git clone https://github.com/MarcoWorms/templ.git
-cd templ
-npm ci
-npm --prefix backend ci
-npm --prefix frontend ci
-```
-
-> **Tip:** If you already ran `npm ci` before pulling new dependencies, refresh the package locks with `npm install --package-lock-only` inside `frontend/`.
-
-## 2. Deploy the Templ contract
-
-You can deploy from the CLI or via the frontend. The CLI is convenient for scripted environments; the UI is friendlier when exploring.
-
-### CLI deployment (Hardhat)
-
-1. Start a local chain or export your target RPC URL:
-   ```bash
-   export RPC_URL=http://127.0.0.1:8545
-   ```
-
-   > Deploying to Base (or any remote network) requires a funded deployer key. Export `PRIVATE_KEY` so Hardhat can sign transactions, and add `BASESCAN_API_KEY` if you plan to verify immediately:
-   > ```bash
-   > export PRIVATE_KEY=0xyourdeployerkey
-   > export BASESCAN_API_KEY=your-basescan-key
-   > ```
-2. In one terminal start Hardhat for local testing:
-   ```bash
-   npm run node
-   ```
-3. Export the deployment parameters required by `scripts/deploy.js`:
+- Node.js 22.18.0 or newer and npm 10+ (matches the `engines` fields across the monorepo).
+- A funded deployer wallet for your target chain (Base mainnet recommended) and an RPC provider URL with reliable archive access.
+- Cloudflare account with access to Workers, Pages, and D1, plus an API token that includes:
+  - **Account** → **Cloudflare Pages**: Edit
+  - **Account** → **Workers Scripts**: Edit
+  - **Account** → **D1**: Edit
+- `wrangler` CLI v3.83.0+ installed locally or available through `npx`.
+- Telegram bot token generated with [@BotFather](https://t.me/botfather) and the production Telegram group that will receive notifications.
+- Local checkout of this repository with dependencies installed:
   ```bash
-  export TOKEN_ADDRESS=0x...       # required: ERC-20 token gating access
-  export ENTRY_FEE=1000000000000   # required: must be >= 10 and divisible by 10
-  export PROTOCOL_FEE_RECIPIENT=0x...  # required: protocol treasury address
-   export PROTOCOL_PERCENT=10            # only used when deploying a brand new factory (defaults to 10)
-  export PRIEST_ADDRESS=0x...           # optional (defaults to deployer)
-  export FACTORY_ADDRESS=0x...          # optional: reuse an existing factory; leave unset to deploy a new one
+  npm ci
+  npm --prefix backend ci
+  npm --prefix frontend ci
   ```
 
-   > **Warning:** templ fee accounting assumes `TOKEN_ADDRESS` implements a vanilla ERC-20 transfer without taxes or hooks. Deploying against taxed tokens (or custom implementations that skim transfers) will corrupt treasury and member-pool balances.
+## 2. Deploy the templ contracts
 
-   > For remote deployments, confirm `PRIVATE_KEY` remains exported in your shell so Hardhat can access the deployer signer.
-
-   Optional configuration knobs:
+1. Export the RPC endpoint, deployer key, and protocol parameters. The deployer must hold enough ETH to cover factory and templ deployments.
    ```bash
-   export QUORUM_PERCENT=40            # override default 33% quorum
-   export EXECUTION_DELAY_SECONDS=86400  # override governance delay (seconds)
-   export BURN_ADDRESS=0x...           # use a custom burn sink
-   export MAX_MEMBERS=1000             # 0 keeps membership uncapped
-   export TEMPL_HOME_LINK="https://example.com"  # stored on-chain, shown in the app/alerts
-   export BACKEND_URL=http://localhost:3001  # auto-register with backend (requires priest PRIVATE_KEY)
-   export TELEGRAM_CHAT_ID=-1001234567890   # optional: seed the backend with an existing chat id
+   export RPC_URL=https://base-mainnet.g.alchemy.com/v2/your-key
+   export PRIVATE_KEY=0xyourdeployerkey
+   export TOKEN_ADDRESS=0xAccessToken
+   export ENTRY_FEE=1000000000000
+   export PROTOCOL_FEE_RECIPIENT=0xProtocolTreasury
+   export PROTOCOL_PERCENT=10
+   export PRIEST_ADDRESS=0xPriestWallet
    ```
-   When `MAX_MEMBERS` is non-zero the templ auto-pauses new joins once the cap is met. Additional purchases revert with the on-chain `MemberLimitReached` error until governance raises or clears the limit.
-4. Deploy a templ with custom parameters:
-  ```bash
-  npx hardhat run scripts/deploy.js --network localhost   # use --network base when targeting Base mainnet
-  ```
-   The script deploys `TemplFactory` automatically when `FACTORY_ADDRESS` is unset and then mints the templ. Copy the logged factory address and export it as `FACTORY_ADDRESS` before subsequent deployments on the same network so every templ originates from the same factory. When you reuse an existing factory the script automatically reads its on-chain protocol share and ignores any `PROTOCOL_PERCENT` override. The script prints both the `TemplFactory` and `TEMPL` addresses.
-
-5. Record the trusted factory address for downstream services:
-  ```bash
-  export TRUSTED_FACTORY_ADDRESS=<factory address from step 4>
-  export TRUSTED_FACTORY_DEPLOYMENT_BLOCK=<block number the factory was deployed>
-  ```
-   Use this value in your backend configuration so the Telegram bot only services templs created by that factory. Additional templ deployments should continue to use the same factory to remain eligible for alerts. Providing `TRUSTED_FACTORY_DEPLOYMENT_BLOCK` lets the backend verify older templs without hitting RPC log-range limits.
-
-6. Register the templ with the backend so the UI and Telegram bridge can discover it:
-   - If you exported `BACKEND_URL` before running the deploy script and the deployer signer matches the priest, the script already POSTed to `${BACKEND_URL}/templs`. Check the console output for a binding code or stored chat id.
-   - Otherwise run the helper script with the priest key:
-     ```bash
-     export BACKEND_URL=http://localhost:3001
-     export TEMPL_ADDRESS=<templ address printed above>
-     export PRIVATE_KEY=0xyourpriestkey
-     npx hardhat run scripts/register-templ.js --network base
-     ```
-     The backend responds with either a binding code (invite @templfunbot and send `templ <code>`) or the stored chat id if you pre-populated one. Registration is required before the frontend can list the templ or membership verification will succeed.
-   - **Adopting templs from other factories.** If the templ originated from a different factory, temporarily clear `TRUSTED_FACTORY_ADDRESS` (or point it at the source factory), restart the backend, and run the same helper with that templ’s priest key. Once the templ appears in `/templs`, restore your production factory guard so future registrations remain scoped to your deployments.
-
-7. (Optional) Verify the factory once you deploy to a public network:
+   Optional overrides are available for quorum, execution delay, burn address, member cap, templ home link, backend callback URL, and Telegram chat id. See `scripts/deploy.js` for the full list.
+2. Deploy the contracts:
    ```bash
-   npx hardhat verify --network <network> $FACTORY_ADDRESS $PROTOCOL_FEE_RECIPIENT $PROTOCOL_PERCENT
+   npx hardhat run scripts/deploy.js --network base
    ```
-   Verification is required only the first time you deploy the factory; the `deployments/` JSON captures the address and configuration for later reference.
-
-### UI deployment (recommended for first run)
-
-1. Run the backend (see the next section) so the UI can register the templ immediately.
-2. Start the frontend dev server:
+   The script emits both `TemplFactory` and templ addresses. Capture the factory address and deployment block height; both values are required for the backend and frontend configuration.
+3. Export the trusted factory metadata for downstream steps:
    ```bash
-   npm --prefix frontend run dev
+   export TRUSTED_FACTORY_ADDRESS=<factory address>
+   export TRUSTED_FACTORY_DEPLOYMENT_BLOCK=<factory deploy block>
    ```
-3. Open `http://localhost:5173`, connect your wallet, and navigate to **Create**.
-4. Provide:
-   - **Factory address** – deployed `TemplFactory` (local factory appears in Hardhat console logs).
-   - **Access token address** – ERC-20 gating access.
-   - **Entry fee / fee split** – must total 100%.
-   - **Templ home link** – public URL for the templ (e.g. your Telegram invite link). This value is stored on-chain and can be updated via governance later.
-   - **Telegram chat id** – optional. Leave blank to rely on the binding flow described below.
-5. Submit. The UI deploys the contract, registers it with the backend, and shows the Telegram binding instructions.
-
-## 3. Run and configure the backend
-
-### Local development
-
-1. Create `backend/.env` (you can start by copying `backend/.env.test` if you want the local defaults) and fill in:
-   ```ini
-   RPC_URL=http://127.0.0.1:8545
-   BACKEND_SERVER_ID=templ-dev
-   APP_BASE_URL=http://localhost:5173
-   TELEGRAM_BOT_TOKEN=123456:bot-token-from-botfather
-   TRUSTED_FACTORY_ADDRESS=0x...   ; same factory used during deployment
-   TRUSTED_FACTORY_DEPLOYMENT_BLOCK=0 ; optional: earliest block to scan for factory logs
-   SQLITE_DB_PATH=./templ.local.db  ; optional: persist data to a local SQLite file
-   ```
-2. Start the backend:
+4. (Recommended) Verify the factory on BaseScan:
    ```bash
-   npm --prefix backend start
+   npx hardhat verify --network base $TRUSTED_FACTORY_ADDRESS $PROTOCOL_FEE_RECIPIENT $PROTOCOL_PERCENT
    ```
-  By default the backend uses the in-memory persistence adapter so you can iterate quickly without provisioning infrastructure. Set `SQLITE_DB_PATH` if you want the data to survive restarts, or (optionally) wire up a Cloudflare D1 database via Wrangler for parity with production. When a D1 binding is present the server bootstraps the schema automatically, so no manual migrations are required.
-   > The backend only recognises templs that call the `/templs` registration endpoint and (when `TRUSTED_FACTORY_ADDRESS` is set) were emitted by the trusted factory. The CLI deploy script can auto-register (see step 6 above) or run `scripts/register-templ.js`. Until registration completes, the frontend will not list the templ and membership verification requests will return 404.
-
-### Deploying the backend to production
-
-Run the Express server like any other long-lived Node application. A typical production rollout looks like this:
-
-1. **Provision a host.** Any Node 22+ environment works: Fly.io, Render, Railway, AWS ECS/Fargate, bare metal, etc. Attach a persistent volume if you plan to use SQLite for storage.
-2. **Install dependencies:**
+5. Register the templ with the backend once the Worker is live (section 6). If you need to pre-register immediately, run:
    ```bash
-   npm ci --omit=dev
-   npm --prefix backend ci --omit=dev
+   export BACKEND_URL=https://api.templ.example
+   export TEMPL_ADDRESS=<templ address>
+   export PRIVATE_KEY=0xPriestKey
+   npx hardhat run scripts/register-templ.js --network base
    ```
-3. **Configure the environment:** copy `backend/.env` (or inject the variables through your hosting provider) and set:
-   - `RPC_URL` pointing at a reliable Base/mainnet RPC.
-   - `SQLITE_DB_PATH=/var/lib/templ/templ.db` (or another path on your persistent volume). If you prefer to bring your own database, wire up a D1-compatible adapter and point all replicas at it.
-   - `TELEGRAM_BOT_TOKEN`, `APP_BASE_URL`, `BACKEND_SERVER_ID`, `TRUSTED_FACTORY_ADDRESS`, etc.
-4. **First boot initialises the schema.** The SQLite adapter creates the `templ_bindings`, `used_signatures`, and `leader_election` tables automatically. (If you export your own schema, use `backend/src/persistence/schema.sql` as a reference.)
-5. **Start the service:**
+
+## 3. Provision Cloudflare resources
+
+1. **Create the D1 database** and record its name and id:
    ```bash
-   node backend/src/server.js
+   wrangler d1 create templ-backend
+   wrangler d1 info templ-backend
    ```
-   Wrap this command in your favourite process manager (`pm2`, `systemd`, Docker, etc.). Expose port `3001` (or override with `PORT`).
+   The info command prints `database_id`, which the deployment script references.
+2. **Choose a Worker name** (e.g. `templ-backend`) and confirm the name is available within your account. The Worker runs the Express backend bundle.
+3. **Create a Cloudflare Pages project** (e.g. `templ-frontend`) with production branch `production`. No build command is required; the deployment script ships the prebuilt `frontend/dist/` directory.
+4. **Set up DNS** so your custom domain points to the Pages project and Worker routes:
+   - Create a CNAME (or AAAA) for `app.templ.example` to the Pages hostname once the first deploy finishes.
+   - Reserve an HTTPS origin (e.g. `api.templ.example`) for the Worker using Cloudflare’s “Workers Routes” configuration.
 
-When you add more replicas, ensure they all point to the same persistent store (shared SQLite file or another SQL database). The built-in leader election guarantees that only one instance emits Telegram notifications at a time; followers continue serving HTTP traffic but skip background jobs.
+## 4. Create the Cloudflare deployment env file
 
-### Deploying the frontend to Cloudflare Pages
-
-Cloudflare Pages is an edge-cached static host with an extremely generous free tier (500 builds/month, 20k requests/day). The templ frontend is a static Vite build, so deploying is as simple as uploading the `frontend/dist/` directory:
-
-1. Create a Pages project (once per environment):
-   ```bash
-   wrangler pages project create templ-frontend --production-branch main
-   ```
-   Replace `templ-frontend` with your preferred project name; the script below will reuse it.
-2. Build the SPA with production env vars:
-   ```bash
-   VITE_BACKEND_URL=https://api.templ.example \
-   VITE_BACKEND_SERVER_ID=templ-prod \
-   VITE_TEMPL_FACTORY_ADDRESS=0x... \
-   VITE_TEMPL_FACTORY_DEPLOYMENT_BLOCK=12345678 \
-   npm --prefix frontend run build
-   ```
-   Replace `12345678` with the block height where your trusted factory was deployed so the landing page can page through logs without scanning the entire chain.
-3. Deploy to Pages:
-   ```bash
-   wrangler pages deploy frontend/dist --project-name templ-frontend --branch production
-   ```
-   The default Pages domain follows `https://<project>.pages.dev`. Point `APP_BASE_URL` (backend + Telegram deep links) to this hostname or your custom domain.
-
-### Automating the Cloudflare deploy (backend + frontend)
-
-To avoid juggling multiple commands, use the bundled `scripts/deploy-cloudflare.js` wrapper. It reads a single env file, applies the D1 schema (so your SQLite/D1 store has the required tables), builds the SPA with the correct `VITE_*` overrides, and publishes to Cloudflare Pages. The backend must be deployed separately on your Node host; pass `--skip-worker` to skip the Worker deploy while preparing the database and Pages artifacts.
-
-1. Copy the template and fill it out with your production details (database ids, secrets, Pages project, etc.). Worker fields remain for backwards compatibility—leave them as placeholders when running with `--skip-worker`:
+1. Start from the annotated template and fill in every required value gathered in the previous steps:
    ```bash
    cp scripts/cloudflare.deploy.example.env .cloudflare.env
-   $EDITOR .cloudflare.env
    ```
-2. Run the deploy:
+2. Update `.cloudflare.env` with:
+   - `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` (scoped token described in section 1).
+   - `CF_D1_DATABASE_NAME` and `CF_D1_DATABASE_ID` from `wrangler d1 info`.
+   - `CF_WORKER_NAME`, `APP_BASE_URL`, `TRUSTED_FACTORY_ADDRESS`, `TELEGRAM_BOT_TOKEN`, `RPC_URL`, and any additional backend vars (`CLOUDFLARE_BACKEND_VAR_*`).
+   - Frontend build overrides (`VITE_*`) that match the production configuration, including the trusted factory address, deployment block, and backend URL.
+   - Pages project name and branch.
+3. Store secrets (e.g. Redis URL) with the `CLOUDFLARE_BACKEND_SECRET_*` prefix so the deployment script can hand them to Wrangler without writing plaintext into git.
+
+## 5. Run the Cloudflare deployment script
+
+1. Execute the bundled helper so the Worker, D1 database, and Pages project are updated in one pass:
    ```bash
    npm run deploy:cloudflare
    ```
-  - `--skip-worker` omits the Worker deploy. Worker-only env vars (`CF_WORKER_NAME`, `APP_BASE_URL`, `TRUSTED_FACTORY_ADDRESS`, `TRUSTED_FACTORY_DEPLOYMENT_BLOCK`, `REQUIRE_CONTRACT_VERIFY`, `TELEGRAM_BOT_TOKEN`, `RPC_URL`, etc.) are optional in this mode, but Wrangler needs D1 + Pages settings.
-  - `--skip-pages` skips the Pages deploy when you’re adjusting backend configuration only.
+   Use `npm run deploy:cloudflare -- --env-file path/to/env` when the env file lives outside the repo root.
+2. The script performs the following actions:
+   - Loads `.cloudflare.env` and validates required variables.
+   - Applies the SQL schema to the D1 database via `wrangler d1 execute`.
+   - Generates `backend/wrangler.deployment.toml` with the configured bindings and variables.
+   - Syncs Worker secrets (`TELEGRAM_BOT_TOKEN`, `RPC_URL`, and any `CLOUDFLARE_BACKEND_SECRET_*` values).
+   - Deploys the Worker (`wrangler deploy`) so the API is globally available.
+   - Builds the Vite frontend with the supplied `VITE_*` overrides and uploads the static assets to Cloudflare Pages.
+3. On success, copy the Worker and Pages URLs printed at the end of the run. Update DNS aliases to point to these origins if you have not already.
 
-3. Production backend variables:
-   - Required/important: `BACKEND_SERVER_ID` (match `VITE_BACKEND_SERVER_ID`), `REQUIRE_CONTRACT_VERIFY=1`, `TRUSTED_FACTORY_ADDRESS`, `TRUSTED_FACTORY_DEPLOYMENT_BLOCK`, `APP_BASE_URL`, `RPC_URL`, and (optionally) `TELEGRAM_BOT_TOKEN`.
-   - Optional: `ALLOWED_ORIGINS`, `LEADER_TTL_MS`, `RATE_LIMIT_STORE=redis` and `REDIS_URL` for distributed rate limiting.
+## 6. Register templs with the production backend
 
-### Keep iterating locally after you deploy
-
-Deploying to Base (or another persistent network) doesn’t mean you have to abandon your local workflow. Point your dev stack at the live contracts and backend so you can repro issues without redeploying:
-
-1. **Reuse the backend config.** Copy the production factory address into `backend/.env` on your laptop:
-   ```env
-   RPC_URL=https://base-mainnet.infura.io/v3/<key>
-   TRUSTED_FACTORY_ADDRESS=0x...            # factory you deployed above
-   TRUSTED_FACTORY_DEPLOYMENT_BLOCK=12345678
-   ```
-   Keep `BACKEND_SERVER_ID` aligned with the frontend and restart `npm --prefix backend start`. The local backend reads on-chain state from the live RPC while serving endpoints from your machine.
-2. **Point the frontend at the same backend + factory.** Either export the values in your shell or create `frontend/.env.local`:
+1. Confirm the Worker responds by hitting the health endpoint:
    ```bash
-   VITE_BACKEND_URL=http://localhost:3001
-   VITE_BACKEND_SERVER_ID=templ-dev
-   VITE_TEMPL_FACTORY_ADDRESS=0x...
-   VITE_TEMPL_FACTORY_DEPLOYMENT_BLOCK=12345678
-   npm --prefix frontend run dev
+   curl https://api.templ.example/health
    ```
-   The dev server lists templs emitted by the deployed factory and proxies requests to your local backend (which in turn speaks to the live chain and Telegram bot).
-3. **Switch wallets when necessary.** Use MetaMask’s network selector to jump between Hardhat (throwaway testing) and your deployed network. The same frontend build handles both.
-
-When you’re ready to promote the backend to a hosted environment, continue with the Cloudflare deployment steps above or adapt them to your infrastructure of choice.
-   - For Worker deployments, the script injects these into `backend/wrangler.deployment.toml`. To provide additional values: use `CLOUDFLARE_BACKEND_VAR_*` for non-secrets (e.g. `CLOUDFLARE_BACKEND_VAR_ALLOWED_ORIGINS`) and `CLOUDFLARE_BACKEND_SECRET_*` for secrets (e.g. `CLOUDFLARE_BACKEND_SECRET_REDIS_URL`). For standalone Node hosts, set `NODE_ENV=production` and export the same variables in your process environment.
-
-### Telegram binding flow
-
-Every templ can expose notifications in a Telegram group. When you register a templ without a chat id, the backend returns a one-time **binding code**. Complete the binding once for each templ:
-
-1. Invite `@templfunbot` to your Telegram group and give it permission to post.
-   > Bots must be able to read messages in order to detect the binding code. After inviting the bot, open the group info → **Administrators**, promote `@templfunbot`, and enable “Read Messages” / “Manage Chat” (Telegram renames this toggle periodically). If the bot remains a regular member it will only receive mentions and cannot see the `templ <code>` message.
-2. In that group, send the binding message shown in the UI, e.g.:
+   The endpoint returns `200 OK` when the Worker recognises its D1 connection and configuration.
+2. Run the templ registration helper for each templ deployed in section 2 (skip if you passed `BACKEND_URL` during deployment and the script confirmed auto-registration):
+   ```bash
+   export BACKEND_URL=https://api.templ.example
+   export TEMPL_ADDRESS=<templ address>
+   export PRIVATE_KEY=0xPriestKey
+   npx hardhat run scripts/register-templ.js --network base
    ```
-   templ ca83cfbc0f47a9d1
+   The backend returns a binding code unless you provide a Telegram chat id upfront.
+
+## 7. Bind Telegram notifications
+
+1. Invite `@templfunbot` to the production chat and grant it permission to read messages and send posts.
+2. Send the binding code provided by the backend in the chat:
    ```
-   The backend polls the bot API, detects the binding code, and links the templ to the chat automatically.
-   Binding codes persist in the backend database, so a server restart will not invalidate them—request a new code only when you intentionally rotate chats.
-3. The bot replies with “Telegram bridge active” to confirm it will relay events.
+   templ <code>
+   ```
+3. The Worker links the templ to the chat and replies “Telegram bridge active”. Repeat for every templ you control. Regenerate a code from the frontend whenever governance appoints a new priest or the community migrates to another chat.
 
-When governance appoints a new priest or the community moves to another Telegram group, open the templ overview, click **Request binding code**, and approve the EIP-712 signature. The backend verifies the priest wallet against the contract before issuing a fresh code so only the current priest can rebind notifications.
+## 8. Production smoke checks
 
-You can provide a numeric chat id during registration if you have one; no binding code is generated in that case.
+- Visit the Cloudflare Pages URL (`https://templ-frontend.pages.dev` or your custom domain) and confirm it loads the templ list using the production factory.
+- Join a templ, cast a vote, and verify that the Telegram bot forwards notifications.
+- Run the Playwright smoke suite against production endpoints once secrets are scoped appropriately:
+  ```bash
+  VITE_BACKEND_URL=https://api.templ.example \
+  VITE_BACKEND_SERVER_ID=templ-prod \
+  VITE_TEMPL_FACTORY_ADDRESS=$TRUSTED_FACTORY_ADDRESS \
+  VITE_TEMPL_FACTORY_DEPLOYMENT_BLOCK=$TRUSTED_FACTORY_DEPLOYMENT_BLOCK \
+  npm --prefix frontend run test:e2e
+  ```
 
-## 4. Run the frontend
+## 9. Final checklist
 
-With the backend running:
+- Contracts deployed and (optionally) verified on the target network.
+- `TRUSTED_FACTORY_ADDRESS` and `TRUSTED_FACTORY_DEPLOYMENT_BLOCK` exported in both the Worker and frontend configuration.
+- Worker live at `https://api.templ.example` with D1 binding and required secrets (`RPC_URL`, `TELEGRAM_BOT_TOKEN`, etc.).
+- Cloudflare Pages serving the built SPA; `APP_BASE_URL` points to this domain for deep links.
+- Telegram binding confirmed for every templ.
+- `npm run test:all` completed locally with a clean run.
 
-```bash
-npm --prefix frontend run dev
-```
-
-Open the dashboard (`http://localhost:5173`) to:
-
-- Deploy additional templs
-- Join a templ and verify membership
-- Create proposals (including the new “Update templ home link” action)
-- Claim member rewards
-
-## 5. Smoke test the stack
-
-Run the Playwright smoke suite (launches Hardhat node, backend, and a preview build):
-
-```bash
-npm --prefix frontend run test:e2e
-```
-
-If the suite reports a binding code, follow the Telegram steps above before re-running the tests.
-
-## 6. Production checklist
-
-- Deploy `TemplFactory` and `TEMPL` to your target network with finalized parameters.
-- Set `NODE_ENV=production` and `REQUIRE_CONTRACT_VERIFY=1` for the backend so contract ownership is checked on registration.
-- Configure a trusted factory for safety: set `TRUSTED_FACTORY_ADDRESS` and `TRUSTED_FACTORY_DEPLOYMENT_BLOCK` in the backend so only templs from your factory are accepted and log scans remain efficient.
-- Set `APP_BASE_URL` to the deployed frontend URL (used to build deep links in Telegram messages).
-- Provision `TELEGRAM_BOT_TOKEN`, `RPC_URL`, and other secrets via `wrangler secret put` so they are not stored in git.
-- Bind the Cloudflare D1 database (see the Wrangler steps above) and confirm the tables exist before your first deploy.
-- Run `npm --prefix backend run lint` and `npm --prefix frontend run lint` before shipping.
-
-Once everything is live, members joining the templ will see:
-
-- Telegram alerts for new members, proposals, votes, quorum, and vote closures
-- Daily digests with treasury/member-pool balances
-- A direct link back to the templ home (your `templHomeLink` value)
-
-Welcome to the Telegram-first templ stack!
+Once every item above is complete, templ is live on Cloudflare with production-ready monitoring and notifications.
