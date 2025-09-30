@@ -16,7 +16,7 @@ This spec connects the core architecture: fee-gated memberships on chain, typed 
 
 - Validate templ registrations (`POST /templs`) and rebinds with EIP-712 signatures.
 - Confirm membership via `hasAccess` on chain (`POST /join`).
-- Persist templ ↔ Telegram chat bindings in Cloudflare D1 (or SQLite/in-memory) so notifications survive restarts.
+- Persist templ ↔ Telegram chat bindings in Cloudflare D1 (or SQLite/in-memory) so notifications survive restarts while keeping the registry templ-scoped only (contract + optional chat).
 - Subscribe to templ events with `ethers.Contract` and emit Telegram MarkdownV2 messages for joins, proposals, quorum, voting closure, priest changes, home-link updates, daily digests, and binding acknowledgements.
 - Run background jobs for proposal deadlines, digests, and Telegram binding polls while keeping HTTP responses fast.
 

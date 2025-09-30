@@ -4,7 +4,7 @@ This guide covers the Node 22 + Express app in `backend/`. Run it as a long-live
 
 **Core duties**
 - Verify EIP-712 signatures for templ registration, rebind requests, and membership checks.
-- Persist templ ↔ Telegram bindings so alerts survive restarts.
+- Persist templ ↔ Telegram bindings so alerts survive restarts (no wallet-to-chat mapping is stored).
 - Confirm membership directly against the chain instead of keeping local member lists.
 - Stream templ events into Telegram with MarkdownV2 notifications.
 
