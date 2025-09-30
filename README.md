@@ -7,7 +7,7 @@ Templ turns any ERC-20 community into a gated club with on-chain economics, type
 - Self-serve deployments from a factory with configurable fee splits and optional member caps.
 - One-member/one-vote governance covering pause/config/withdraw/priest/dictatorship/home-link actions.
 - Static frontend (Vite + React) that handles deploy, join, vote, and reward flows.
-- Long-lived Express backend that verifies signatures, keeps a templ registry (contract address + optional Telegram chat id), and streams on-chain events—no member wallet data is stored server-side.
+- Long-lived Express backend that verifies signatures, keeps a templ registry (contract address + optional Telegram chat id), and streams on-chain events.
 - Shared signing helpers and Solidity contracts tested through Hardhat, Vitest, and Playwright harnesses.
 
 ## System map
