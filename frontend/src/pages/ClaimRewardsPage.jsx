@@ -140,7 +140,7 @@ export function ClaimRewardsPage({
         )}
         {hasWallet && !hasClaimable && !loading ? (
           <p className={`${text.hint} mt-4`}>
-            No member pool rewards available yet. Check back after new contributions hit the Odle treasury.
+            No member pool rewards available yet. Check back after new contributions hit the templ treasury.
           </p>
         ) : null}
         {tokenSymbol ? (

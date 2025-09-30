@@ -156,10 +156,19 @@ When `TELEGRAM_BOT_TOKEN` is provided, the backend creates a notifier that emits
 - `AccessPurchased` – announces new members, surfaces the current treasury + unclaimed member pool balances, links to `/templs/join` and `/templs/:address/claim`, and repeats the templ home link when present.
 - `ProposalCreated` – highlights new proposals with their on-chain title/description and links directly to the vote page.
 - `VoteCast` – records individual votes (YES/NO) while keeping the proposal link handy.
+- `ProposalExecuted` – reports whether execution succeeded and links back to the proposal so members can audit the outcome.
 - `ProposalQuorumReached` – fires once quorum is first satisfied so members who have not voted yet can participate before the deadline.
 - `ProposalVotingClosed` – triggered after the post-quorum window elapses, stating whether the proposal can be executed and linking to the execution screen.
 - `PriestChanged` – announces leadership changes and links to the templ overview.
 - `TemplHomeLinkUpdated` – broadcasts when governance changes the on-chain home link so members have the latest canonical URL.
+- `MemberPoolClaimed` – flags when a member withdraws rewards, including the amount so the community can track redemptions.
+- `ExternalRewardClaimed` – mirrors `MemberPoolClaimed` for auxiliary reward tokens or ETH distributions.
+- `ContractPaused` – notifies the channel whenever governance pauses or resumes new joins/treasury actions.
+- `ConfigUpdated` – summarises entry fee and split changes so operators can confirm they match governance intent.
+- `TreasuryAction` – records treasury withdrawals with recipient/amount/reason context for audit trails.
+- `TreasuryDisbanded` – reports the total/per-member payout when treasury balances are dissolved into rewards.
+- `DictatorshipModeChanged` – signals when the priest gains (or relinquishes) direct execution powers.
+- `MaxMembersUpdated` – highlights membership cap changes with a call-to-action to invite new members when the limit increases.
 - Daily digest – once every 24 hours each templ receives a "gm" message summarising treasury + unclaimed member pool totals with a call-to-action to claim.
 - Binding acknowledgements – after a user posts the binding code (`templ <hash>`) in their Telegram group, the bot confirms the bridge is active.
 
