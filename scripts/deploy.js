@@ -8,6 +8,48 @@ const DEFAULT_TREASURY_PERCENT = 30;
 const DEFAULT_MEMBER_POOL_PERCENT = 30;
 const USE_DEFAULT_PERCENT = -1;
 
+function resolveProtocolPercentFromEnv() {
+  const percentInput = (process.env.PROTOCOL_PERCENT ?? '').trim();
+  const bpsInput = (process.env.PROTOCOL_BP ?? '').trim();
+
+  if (percentInput) {
+    const parsedPercent = Number(percentInput);
+    if (!Number.isFinite(parsedPercent)) {
+      throw new Error('PROTOCOL_PERCENT must be a valid number');
+    }
+    if (parsedPercent < 0 || parsedPercent > 100) {
+      throw new Error('PROTOCOL_PERCENT must be between 0 and 100');
+    }
+    return {
+      percent: parsedPercent,
+      bps: Math.round(parsedPercent * 100),
+      source: 'percent'
+    };
+  }
+
+  if (bpsInput) {
+    const parsedBps = Number(bpsInput);
+    if (!Number.isFinite(parsedBps)) {
+      throw new Error('PROTOCOL_BP must be a valid number');
+    }
+    if (parsedBps < 0 || parsedBps > 10_000) {
+      throw new Error('PROTOCOL_BP must be between 0 and 10_000');
+    }
+    const roundedBps = Math.round(parsedBps);
+    return {
+      percent: roundedBps / 100,
+      bps: roundedBps,
+      source: 'bps'
+    };
+  }
+
+  return {
+    percent: 10,
+    bps: 1_000,
+    source: 'default'
+  };
+}
+
 function readSplitPercent(label, percentEnv, bpsEnv, defaultPercent) {
   const trimmedPercent = percentEnv?.trim?.();
   if (trimmedPercent && trimmedPercent !== '') {
@@ -139,8 +181,10 @@ async function main() {
   const burnPercent = readSplitPercent('BURN_PERCENT', process.env.BURN_PERCENT, process.env.BURN_BP, DEFAULT_BURN_PERCENT);
   const treasuryPercent = readSplitPercent('TREASURY_PERCENT', process.env.TREASURY_PERCENT, process.env.TREASURY_BP, DEFAULT_TREASURY_PERCENT);
   const memberPoolPercent = readSplitPercent('MEMBER_POOL_PERCENT', process.env.MEMBER_POOL_PERCENT, process.env.MEMBER_POOL_BP, DEFAULT_MEMBER_POOL_PERCENT);
-  const rawProtocolPercent = process.env.PROTOCOL_PERCENT ?? process.env.PROTOCOL_BP ?? '10';
-  let protocolPercentPercent = Number(rawProtocolPercent);
+  const protocolPercentEnv = resolveProtocolPercentFromEnv();
+  let protocolPercentPercent = protocolPercentEnv.percent;
+  let protocolPercentBps = protocolPercentEnv.bps;
+  let protocolPercentSource = protocolPercentEnv.source;
   const QUORUM_PERCENT = process.env.QUORUM_PERCENT !== undefined ? Number(process.env.QUORUM_PERCENT) : undefined;
   const EXECUTION_DELAY_SECONDS = process.env.EXECUTION_DELAY_SECONDS !== undefined ? Number(process.env.EXECUTION_DELAY_SECONDS) : undefined;
   const BURN_ADDRESS = (process.env.BURN_ADDRESS || '').trim();
@@ -162,16 +206,6 @@ async function main() {
   if (!ENTRY_FEE) {
     throw new Error("ENTRY_FEE not set in environment");
   }
-  if (!FACTORY_ADDRESS_ENV) {
-    if (!Number.isFinite(protocolPercentPercent)) {
-      throw new Error('PROTOCOL_PERCENT must be a valid number');
-    }
-    if (protocolPercentPercent < 0 || protocolPercentPercent > 100) {
-      throw new Error('PROTOCOL_PERCENT must be between 0 and 100');
-    }
-  }
-
-  let protocolPercentSource = 'env';
   if (FACTORY_ADDRESS_ENV) {
     try {
       const existingFactory = await hre.ethers.getContractAt('TemplFactory', FACTORY_ADDRESS_ENV);
@@ -180,12 +214,13 @@ async function main() {
         throw new Error('Factory protocol percent is not a finite number');
       }
       const onChainPercent = onChainPercentBps / 100;
-      if (Number.isFinite(protocolPercentPercent) && protocolPercentPercent !== onChainPercent) {
+      if (protocolPercentSource !== 'factory' && protocolPercentPercent !== onChainPercent) {
         console.warn(
-          `[warn] Ignoring PROTOCOL_PERCENT=${protocolPercentPercent} from environment; factory ${FACTORY_ADDRESS_ENV} enforces ${onChainPercent}.`
+          `[warn] Ignoring PROTOCOL_${protocolPercentSource === 'bps' ? 'BP' : 'PERCENT'}=${protocolPercentSource === 'bps' ? protocolPercentBps : protocolPercentPercent} from environment; factory ${FACTORY_ADDRESS_ENV} enforces ${onChainPercent}.`
         );
       }
       protocolPercentPercent = onChainPercent;
+      protocolPercentBps = onChainPercentBps;
       protocolPercentSource = 'factory';
     } catch (err) {
       throw new Error(`Failed to read protocol percent from factory ${FACTORY_ADDRESS_ENV}: ${err?.message || err}`);
@@ -215,7 +250,6 @@ async function main() {
   const DEFAULT_BURN_ADDRESS = '0x000000000000000000000000000000000000dead';
   const effectiveBurnAddress = BURN_ADDRESS || DEFAULT_BURN_ADDRESS;
 
-  const protocolPercentBps = Math.round(protocolPercentPercent * 100);
   const quorumPercentBps = QUORUM_PERCENT !== undefined ? Math.round(QUORUM_PERCENT * 100) : 0;
 
   const entryFee = BigInt(ENTRY_FEE);
@@ -252,10 +286,10 @@ async function main() {
     protocolPercentPercent
   );
 
-  const burnAmount = (entryFee * BigInt(burnPercent.resolvedPercent)) / 100n;
-  const treasuryAmount = (entryFee * BigInt(treasuryPercent.resolvedPercent)) / 100n;
-  const memberPoolAmount = (entryFee * BigInt(memberPoolPercent.resolvedPercent)) / 100n;
-  const protocolAmount = (entryFee * BigInt(protocolPercentPercent)) / 100n;
+  const burnAmount = (entryFee * BigInt(Math.round(burnPercent.resolvedPercent * 100))) / 10_000n;
+  const treasuryAmount = (entryFee * BigInt(Math.round(treasuryPercent.resolvedPercent * 100))) / 10_000n;
+  const memberPoolAmount = (entryFee * BigInt(Math.round(memberPoolPercent.resolvedPercent * 100))) / 10_000n;
+  const protocolAmount = (entryFee * BigInt(protocolPercentBps)) / 10_000n;
   console.log("\nEntry Fee:", entryFee.toString());
   console.log("Fee Split:");
   console.log(`  - ${burnPercent.resolvedPercent}% Burn:`, burnAmount.toString());
@@ -274,10 +308,8 @@ async function main() {
   console.log("Execution Delay (seconds):", EXECUTION_DELAY_SECONDS ?? 7 * 24 * 60 * 60);
   console.log("Burn Address:", effectiveBurnAddress);
   console.log("Priest Dictatorship:", PRIEST_IS_DICTATOR ? 'enabled' : 'disabled');
-  console.log(
-    `Protocol Percent (${protocolPercentSource === 'factory' ? 'factory' : 'env'}):`,
-    protocolPercentPercent
-  );
+  console.log(`Protocol Percent (${protocolPercentSource}):`, protocolPercentPercent);
+  console.log('Protocol Percent (bps):', protocolPercentBps);
   
   if (network.chainId === 8453n) {
     console.log("\n⚠️  Deploying to BASE MAINNET");
@@ -421,7 +453,8 @@ async function main() {
     burnPercent: burnPercent.resolvedPercent,
     treasuryPercent: treasuryPercent.resolvedPercent,
     memberPoolPercent: memberPoolPercent.resolvedPercent,
-    protocolPercent: protocolPercentBps,
+    protocolPercentBps,
+    protocolPercentPercent,
     quorumPercent: QUORUM_PERCENT ?? 33,
     executionDelaySeconds: EXECUTION_DELAY_SECONDS ?? 7 * 24 * 60 * 60,
     burnAddress: effectiveBurnAddress,

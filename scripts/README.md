@@ -10,7 +10,7 @@ Run each script from the repo root unless noted. All commands assume dependencie
 - Reproduce the full CI pipeline locally before opening a PR.
 
 ## At a glance
-- `deploy.js` - stand up a factory/templ pair with environment-driven configuration and save deployment metadata.
+- `deploy.js` - stand up a factory/templ pair with environment-driven configuration and save deployment metadata (accepts percentages that the script converts to the 10_000 basis-point scale used on-chain).
 - `deploy-cloudflare.js` - apply the D1 schema (optional), build the SPA with production env vars, and push the site to Cloudflare Pages from a single env file. The backend must be deployed separately now that Workers hosting has been retired, so pass `--skip-worker` when you only need database prep + Pages.
 - `register-templ.js` - register an already-deployed templ with the backend API so the UI/alerts can discover it.
 - `gen-wallets.js` - mint fresh Hardhat wallets (and optional ERC-20 balances) for local integration or e2e runs.
@@ -18,6 +18,7 @@ Run each script from the repo root unless noted. All commands assume dependencie
 
 ## deploy.js
 - Deploys `TemplFactory` (when `FACTORY_ADDRESS` is unset) and creates a new templ via `createTemplWithConfig`.
+- Accepts either `PROTOCOL_PERCENT` (0–100) or `PROTOCOL_BP` (0–10_000) and normalises them to the 10_000 basis-point scale before broadcasting.
 - Reads configuration from `.env` (fee splits, quorum, delay, burn address) and persists outputs under `deployments/`.
 - Validates invariants locally (percent totals, entry-fee divisibility, quorum/delay bounds) before broadcasting and automatically reuses the factory’s on-chain protocol share when `FACTORY_ADDRESS` is supplied (any `PROTOCOL_PERCENT` override is ignored in that case).
 - Recognizes `PRIEST_IS_DICTATOR=1`/`true` to bypass proposal governance and grant the priest instant control of all DAO actions; the toggle can be flipped later through the on-chain `setDictatorship` governance proposal.

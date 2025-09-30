@@ -21,28 +21,27 @@ This guide walks through the production deployment of templ on Cloudflare. The b
   npm --prefix frontend ci
   ```
 
-## 2. Deploy the templ contracts
+## 2. Deploy the TemplFactory contract
 
-1. Export the RPC endpoint, deployer key, and protocol parameters. The deployer must hold enough ETH to cover factory and templ deployments.
+1. Export the RPC endpoint, deployer key, and protocol split. The deployer wallet must hold enough ETH to cover the factory deployment fees.
 
    ```bash
    export RPC_URL=https://base-mainnet.g.alchemy.com/v2/your-key
    export PRIVATE_KEY=0xyourdeployerkey
-   export TOKEN_ADDRESS=0xAccessToken
-   export ENTRY_FEE=1000000000000
    export PROTOCOL_FEE_RECIPIENT=0xProtocolTreasury
-   export PROTOCOL_PERCENT=10
-   export PRIEST_ADDRESS=0xPriestWallet
+   export PROTOCOL_PERCENT=10   # optional; 10% protocol share (auto-converted to 1_000 bps)
+   # or
+   export PROTOCOL_BP=1000      # same value expressed directly in basis points
    ```
 
-   Optional overrides are available for quorum, execution delay, burn address, member cap, templ home link, backend callback URL, and Telegram chat id. See `scripts/deploy.js` for the full list.
-2. Deploy the contracts:
+   The contracts use basis points internally (10_000 equals 100%). Provide either `PROTOCOL_PERCENT` (0–100) or `PROTOCOL_BP` (0–10_000) and the helper normalises the value before broadcasting.
+2. Deploy (or reuse) the factory:
 
    ```bash
-   npx hardhat run scripts/deploy.js --network base
+   npx hardhat run scripts/deploy-factory.js --network base
    ```
 
-   The script emits both `TemplFactory` and templ addresses. Capture the factory address and deployment block height; both values are required for the backend and frontend configuration.
+   The helper prints the factory address, transaction hash, and confirmed block number, then saves a JSON artifact under `deployments/`.
 3. Export the trusted factory metadata for downstream steps:
 
    ```bash
@@ -53,17 +52,11 @@ This guide walks through the production deployment of templ on Cloudflare. The b
 4. (Recommended) Verify the factory on BaseScan:
 
    ```bash
-   npx hardhat verify --network base $TRUSTED_FACTORY_ADDRESS $PROTOCOL_FEE_RECIPIENT $PROTOCOL_PERCENT
+   npx hardhat verify --network base $TRUSTED_FACTORY_ADDRESS $PROTOCOL_FEE_RECIPIENT <protocolPercentBps from script output>
    ```
 
-5. Register the templ with the backend once the Worker is live (section 6). If you need to pre-register immediately, run:
-
-   ```bash
-   export BACKEND_URL=https://api.templ.example
-   export TEMPL_ADDRESS=<templ address>
-   export PRIVATE_KEY=0xPriestKey
-   npx hardhat run scripts/register-templ.js --network base
-   ```
+   The deployment helper prints the protocol share in basis points—reuse that exact value when calling `hardhat verify`.
+5. All future templ instances should be minted through the app (section 6). The frontend prompts the connected wallet for token, entry-fee, and split details, then routes the deployment through the trusted factory so every templ inherits the verified bytecode.
 
 ## 3. Provision Cloudflare resources
 
@@ -115,7 +108,7 @@ This guide walks through the production deployment of templ on Cloudflare. The b
    - Builds the Vite frontend with the supplied `VITE_*` overrides and uploads the static assets to Cloudflare Pages.
 3. On success, copy the Worker and Pages URLs printed at the end of the run. Update DNS aliases to point to these origins if you have not already.
 
-## 6. Register templs with the production backend
+## 6. Create and register templs
 
 1. Confirm the Worker responds by hitting the health endpoint:
 
@@ -124,7 +117,8 @@ This guide walks through the production deployment of templ on Cloudflare. The b
    ```
 
    The endpoint returns `200 OK` when the Worker recognises its D1 connection and configuration.
-2. Run the templ registration helper for each templ deployed in section 2 (skip if you passed `BACKEND_URL` during deployment and the script confirmed auto-registration):
+2. Visit the production frontend, connect the priest wallet, and run the “Create templ” flow. The UI calls `TemplFactory.createTemplWithConfig`, then signs the backend registration payload so the Worker starts tracking the new templ immediately.
+3. If the UI cannot reach the backend (for example, while DNS propagates), register the templ manually:
 
    ```bash
    export BACKEND_URL=https://api.templ.example
