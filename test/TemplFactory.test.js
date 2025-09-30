@@ -159,9 +159,9 @@ describe("TemplFactory", function () {
         expect(templCreated.args.homeLink).to.equal("");
     });
 
-    it("sets and emits the member limit when provided", async function () {
-        const [, priest, protocolRecipient] = await ethers.getSigners();
-        const token = await deployToken("Limit", "LIM");
+  it("sets and emits the member limit when provided", async function () {
+    const [, priest, protocolRecipient] = await ethers.getSigners();
+    const token = await deployToken("Limit", "LIM");
 
         const Factory = await ethers.getContractFactory("TemplFactory");
         const factory = await Factory.deploy(protocolRecipient.address, pct(12));
@@ -199,9 +199,48 @@ describe("TemplFactory", function () {
             .find((log) => log && log.name === "TemplCreated");
 
         expect(templCreated).to.not.equal(undefined);
-        expect(templCreated.args.maxMembers).to.equal(5n);
-        expect(templCreated.args.homeLink).to.equal("");
-    });
+    expect(templCreated.args.maxMembers).to.equal(5n);
+    expect(templCreated.args.homeLink).to.equal("");
+  });
+
+  it("applies factory defaults when optional fields are omitted", async function () {
+    const [deployer, protocolRecipient] = await ethers.getSigners();
+    const token = await deployToken("Minimal", "MIN");
+
+    const Factory = await ethers.getContractFactory("TemplFactory");
+    const protocolPercent = pct(15);
+    const factory = await Factory.deploy(protocolRecipient.address, protocolPercent);
+    await factory.waitForDeployment();
+
+    const config = {
+      priest: ethers.ZeroAddress,
+      token: await token.getAddress(),
+      entryFee: ENTRY_FEE,
+      burnPercent: pct(35),
+      treasuryPercent: pct(35),
+      memberPoolPercent: pct(15),
+      quorumPercent: 0,
+      executionDelaySeconds: 0,
+      burnAddress: ethers.ZeroAddress,
+      priestIsDictator: false,
+      maxMembers: 0,
+      homeLink: ""
+    };
+
+    const templAddress = await factory.createTemplWithConfig.staticCall(config);
+    await (await factory.createTemplWithConfig(config)).wait();
+
+    const templ = await ethers.getContractAt("TEMPL", templAddress);
+
+    expect(await templ.priest()).to.equal(deployer.address);
+    expect(await templ.burnPercent()).to.equal(3_500n);
+    expect(await templ.treasuryPercent()).to.equal(3_500n);
+    expect(await templ.memberPoolPercent()).to.equal(1_500n);
+    expect(await templ.protocolPercent()).to.equal(BigInt(protocolPercent));
+    expect(await templ.quorumPercent()).to.equal(3_300n);
+    expect(await templ.executionDelayAfterQuorum()).to.equal(7n * 24n * 60n * 60n);
+    expect(await templ.burnAddress()).to.equal("0x000000000000000000000000000000000000dEaD");
+  });
 
     it("reverts when fee split does not sum to 100", async function () {
         const [deployer, , protocolRecipient] = await ethers.getSigners();

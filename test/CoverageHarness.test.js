@@ -202,6 +202,11 @@ describe("TemplHarness coverage helpers", function () {
       .to.be.revertedWithCustomError(harness, "ExternalRewardLimitReached");
   });
 
+  it("ignores cleanup requests for unknown external reward tokens", async function () {
+    const unknown = ethers.Wallet.createRandom().address;
+    await expect(harness.harnessRemoveExternalToken(unknown)).to.not.be.reverted;
+  });
+
   it("removes active proposals via the swap path", async function () {
     const [, memberA, memberB] = await ethers.getSigners();
     const entryFee = await harness.entryFee();

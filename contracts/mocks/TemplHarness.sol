@@ -154,4 +154,9 @@ contract TemplHarness is TEMPL {
     function harnessRegisterExternalToken(address token) external {
         _registerExternalToken(token);
     }
+
+    /// @dev Invokes the base removal helper for coverage scenarios.
+    function harnessRemoveExternalToken(address token) external {
+        _removeExternalToken(token);
+    }
 }
