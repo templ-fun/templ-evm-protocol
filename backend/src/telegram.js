@@ -312,7 +312,7 @@ export function createTelegramNotifier({ botToken, linkBaseUrl, logger = default
     async notifyDailyDigest({ chatId, contractAddress, treasuryBalance, memberPoolBalance, homeLink }) {
       await send(chatId, [
         formatBold('gm templ crew!'),
-        escapeMarkdown('Odle treasury check-in: top up the vault and claim your share.'),
+        escapeMarkdown('templ treasury check-in: top up the vault and claim your share.'),
         formatAmount('Treasury balance:', treasuryBalance),
         formatAmount('Member pool (unclaimed):', memberPoolBalance),
         buildLinksBlock(
