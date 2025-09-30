@@ -3,6 +3,7 @@
 This guide covers the Node 22 + Express app in `backend/`. Run it as a long-lived process locally or on a host such as Fly, Render, Railway, or bare metal.
 
 **Core duties**
+
 - Verify EIP-712 signatures for templ registration, rebind requests, and membership checks.
 - Persist templ ↔ Telegram bindings so alerts survive restarts (no wallet-to-chat mapping is stored).
 - Confirm membership directly against the chain instead of keeping local member lists.
@@ -201,6 +202,7 @@ Coverage uses `c8`; run `npm --prefix backend run coverage` for LCOV reports.
 3. Configure `APP_BASE_URL` so Telegram links point to your deployed frontend.
 4. Provide `TELEGRAM_BOT_TOKEN` and confirm the bot is present in each group you care about. (Leaving it unset disables notifications.)
 5. Consider supplying `REDIS_URL` if you run multiple backend replicas and need distributed rate limiting.
+
 ### Cloudflare Worker variables (using deploy helper)
 
 The `scripts/deploy-cloudflare.js` helper injects backend env vars into a Wrangler config for the Worker. Besides first‑class vars (`BACKEND_SERVER_ID`, `APP_BASE_URL`, `TRUSTED_FACTORY_ADDRESS`, `TRUSTED_FACTORY_DEPLOYMENT_BLOCK`, `REQUIRE_CONTRACT_VERIFY`, etc.), you can pass additional values via prefixes:
