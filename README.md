@@ -38,32 +38,21 @@ Run `npm run test:all` before shipping changes; it mirrors the CI matrix. Additi
 
 ## Documentation
 
-Start with `docs/README.md` for the full documentation index. Highlights:
+See [docs/README.md](docs/README.md) for complete documentation.
 
-- Architecture overview – `docs/TEMPL_TECH_SPEC.MD`
-- Contract internals – `docs/CONTRACTS.md`
-- Backend API + persistence – `docs/BACKEND.md` / `docs/PERSISTENCE.md`
-- Frontend routes and env – `docs/FRONTEND.md`
-- Local/dev/prod guides – `docs/TEST_LOCALLY.md`, `docs/DEPLOYMENT_GUIDE.md`
+### Learning templ
 
-## Learning templ
+1. Big-picture spec – [docs/TEMPL_TECH_SPEC.MD](./docs/TEMPL_TECH_SPEC.MD)  
+2. Flow diagrams – [docs/CORE_FLOW_DOCS.MD](./docs/CORE_FLOW_DOCS.MD)  
+3. Smart contracts – [docs/CONTRACTS.md](./docs/CONTRACTS.md)  
+4. Backend API + persistence – [docs/BACKEND.md](docs/BACKEND.md) and [docs/PERSISTENCE.md](./docs/PERSISTENCE.md)  
+5. Frontend routes – [docs/FRONTEND.md](./docs/FRONTEND.md)  
+6. Local setup → prod rollout – [docs/TEST_LOCALLY.md](./docs/TEST_LOCALLY.md) then [docs/DEPLOYMENT_GUIDE.md](./docs/DEPLOYMENT_GUIDE.md)  
 
-1. Big-picture spec – `docs/TEMPL_TECH_SPEC.MD`
-2. Flow diagrams – `docs/CORE_FLOW_DOCS.MD`
-3. Smart contracts – `docs/CONTRACTS.md`
-4. Backend API + persistence – `docs/BACKEND.md` and `docs/PERSISTENCE.md`
-5. Frontend routes – `docs/FRONTEND.md`
-6. Local setup → prod rollout – `docs/TEST_LOCALLY.md` then `docs/DEPLOYMENT_GUIDE.md`
+## Modules
 
-## Repository layout
-
-- `contracts/` – Solidity sources and Hardhat tests.
-- `backend/` – Express API, Telegram notifier, and node:test suite.
-- `frontend/` – Vite + React app with Vitest + Playwright specs.
-- `shared/` – Shared utilities (signing helpers, formatting).
-- `scripts/` – Deployment and maintenance scripts.
-- `docs/` – Living documentation for every part of the stack.
-
-## Contributing
-
-Follow the repo’s linting and formatting defaults (2 spaces, trailing semicolons, ESM imports). Conventional commits keep history tidy, and PRs should list the checks you ran. Secrets stay in `.env` files—never commit production keys.
+- [./contracts/](./contracts/)   – Solidity sources and Hardhat tests.
+- [./backend/](./backend/) – Express API, Telegram notifier.
+- [./frontend/](./frontend/) – Vite + React app with Vitest + E2E tests.
+- [./shared/](./shared/) – Shared utilities (signing helpers, formatting).
+- [./scripts/](./scripts/) – Deployment and maintenance scripts.
