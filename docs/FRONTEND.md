@@ -53,16 +53,20 @@ The app uses `ethers.BrowserProvider` and the injected `window.ethereum`. Connec
 ### Production build & Pages deploy
 
 - Build with the production API URL and factory settings:
+
   ```bash
   VITE_BACKEND_URL=https://templ-backend.example.workers.dev \
   VITE_BACKEND_SERVER_ID=templ-prod \
   VITE_TEMPL_FACTORY_ADDRESS=0x... \
   npm --prefix frontend run build
   ```
+
 - Deploy `frontend/dist/` to Cloudflare Pages:
+
   ```bash
   wrangler pages deploy frontend/dist --project-name templ-frontend --branch production
   ```
+
 - Or reuse the top-level `npm run deploy:cloudflare` helper to apply the database schema and publish the Pages site in one command (see `scripts/cloudflare.deploy.example.env`).
 
 ### Join flow

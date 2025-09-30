@@ -5,21 +5,27 @@ Use this doc to spin up the full templ stack—Hardhat chain, Express backend, a
 ## Before you start
 
 1. **Check your toolchain.**
+
    ```bash
    node --version  # should be >= 22.18.0
    npm --version   # should be >= 10
    ```
+
 2. **Install dependencies once.** Run these from the repository root so Hardhat, the backend, and the frontend all share a consistent lockfile:
+
    ```bash
    npm ci
    npm --prefix backend ci
    npm --prefix frontend ci
    ```
+
 3. **Copy the example env files (optional but handy).**
+
    ```bash
    cp backend/.env.test backend/.env          # then tweak values in the next step
    cp frontend/.env.example frontend/.env.local 2>/dev/null || true
    ```
+
    The backend sample already sets `BACKEND_SERVER_ID=templ-dev` and `APP_BASE_URL=http://localhost:5173` so the next section's values
    line up without edits. The frontend ships sensible defaults, so creating `frontend/.env.local` is optional unless you want to
    override URLs later.
@@ -141,13 +147,16 @@ install command once per machine so the browser executable is present.
 Once you deploy a factory to a persistent network (Base, Base Sepolia, etc.), you can continue iterating locally against those contracts instead of Hardhat:
 
 1. Update `backend/.env`:
+
    ```env
    RPC_URL=https://base-mainnet.infura.io/v3/<key>
    TRUSTED_FACTORY_ADDRESS=0x...        # factory you deployed in production
    TRUSTED_FACTORY_DEPLOYMENT_BLOCK=12345678
    ```
+
    Leave `BACKEND_SERVER_ID`, `APP_BASE_URL`, and other values as they were for local development. Restart the backend so it reconnects to the live RPC.
 2. Update your frontend overrides (either via `frontend/.env.local` or the shell):
+
    ```bash
    export VITE_BACKEND_URL=http://localhost:3001
    export VITE_BACKEND_SERVER_ID=templ-dev
@@ -155,6 +164,7 @@ Once you deploy a factory to a persistent network (Base, Base Sepolia, etc.), yo
    export VITE_TEMPL_FACTORY_DEPLOYMENT_BLOCK=12345678
    npm --prefix frontend run dev
    ```
+
    If you prefer file-based overrides, set the same keys in `frontend/.env.local`. The landing page reads templs from your live factory while your local backend keeps handling membership checks and Telegram bindings.
 3. Keep the Hardhat node around when you need throwaway contracts for testing; switch wallets/networks in MetaMask when you want to interact with the live deployment.
 
@@ -167,6 +177,7 @@ already has contracts on Base), you can bring it into your local backend.
    `TRUSTED_FACTORY_ADDRESS` or set it to the factory that produced the templ you want to inspect. Restart the backend so the new
    value takes effect.
 2. Export the values required by the registration helper and run it with the priest wallet for the templ you want to adopt:
+
    ```bash
    export BACKEND_URL=http://localhost:3001
    export TEMPL_ADDRESS=0xExistingTempl
@@ -176,6 +187,7 @@ already has contracts on Base), you can bring it into your local backend.
    export TEMPL_HOME_LINK="https://example.com"
    npx hardhat run scripts/register-templ.js --network base
    ```
+
    The script signs the standard registration payload and POSTs it to the backend. You’ll either receive the existing Telegram
    chat id or a fresh binding code.
 3. Reinstate your usual `TRUSTED_FACTORY_ADDRESS` once the templ shows up in `/templs` responses so future registrations continue
