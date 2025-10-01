@@ -97,22 +97,71 @@ async function deployContract({
   const receipt = await tx.wait();
 
   if (!templAddress) {
-    const iface = factory.interface || new ethers.Interface(factoryArtifact.abi);
-    for (const log of receipt.logs || []) {
-      try {
-        const parsed = iface.parseLog(log);
-        if (parsed?.name === 'TemplCreated' && parsed.args?.templ) {
-          templAddress = parsed.args.templ;
-          break;
+    const templCreatedTopics = [
+      'TemplCreated(address,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,address,bool,uint256,string)',
+      'TemplCreated(address,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,address,bool,uint256)'
+    ].map((signature) => ethers.id(signature).toLowerCase());
+
+    const factoryAddressLower = factoryAddress?.toLowerCase?.() ?? '';
+
+    const topicToAddress = (topic) => {
+      if (typeof topic !== 'string' || topic.length !== 66) {
+        throw new Error('invalid topic');
+      }
+      return ethers.getAddress(`0x${topic.slice(26)}`);
+    };
+
+    const parseLogs = (logs = []) => {
+      for (const log of logs) {
+        if (!log) continue;
+        const logAddress = (log.address || '').toLowerCase();
+        if (factoryAddressLower && logAddress !== factoryAddressLower) {
+          continue;
         }
-      } catch {
-        /* ignore unrelated logs */
+        const topics = Array.isArray(log.topics) ? log.topics : [];
+        if (topics.length < 2) {
+          continue;
+        }
+        const topic0 = (topics[0] || '').toLowerCase();
+        const matchesKnownSignature = templCreatedTopics.includes(topic0);
+        if (!matchesKnownSignature && topics.length < 2) {
+          continue;
+        }
+        try {
+          const candidate = topicToAddress(topics[1]);
+          templAddress = candidate;
+          return true;
+        } catch {
+          /* ignore parse errors */
+        }
+      }
+      return false;
+    };
+
+    if (!parseLogs(receipt?.logs || [])) {
+      try {
+        const provider = signer?.provider;
+        const blockHash = receipt?.blockHash;
+        if (provider?.getLogs && blockHash) {
+          const fallbackLogs = await provider.getLogs({
+            address: factoryAddress,
+            blockHash
+          });
+          parseLogs(
+            fallbackLogs.filter((log) => !log?.transactionHash || log.transactionHash === tx.hash)
+          );
+        }
+      } catch (err) {
+        console.warn('[templ] Failed to recover templ address from provider logs', err);
       }
     }
   }
 
   if (!templAddress) {
-    throw new Error('Templ deployment succeeded but the contract address was not returned. Check the transaction receipt for TemplCreated.');
+    const txHash = tx?.hash || receipt?.transactionHash || 'unknown';
+    throw new Error(
+      `Templ deployment succeeded but the contract address was not returned. Check the transaction receipt for TemplCreated (tx: ${txHash}).`
+    );
   }
 
   let normalized = templAddress;
