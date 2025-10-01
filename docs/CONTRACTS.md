@@ -97,7 +97,9 @@ sequenceDiagram
 
 ### Quorum and eligibility
 
-- Quorum threshold: `quorumPercent = 33` (33% yes votes of `eligibleVoters`).
+- Quorum threshold: templs require YES votes that meet their configured `quorumPercent` of
+  `eligibleVoters`. Factories default deployments to 33%, but each templ can choose a different
+  quorum during creation.
 - On creation: proposer auto-YES, and `eligibleVoters` snapshots the member count at proposal creation. If quorum is immediately satisfied, `quorumReachedAt` is set, `postQuorumEligibleVoters` matches the creation snapshot, and `endTime` is reset to the current timestamp plus `executionDelayAfterQuorum`.
 - Before quorum: only members captured in the creation snapshot may vote; anyone joining later reverts with `JoinedAfterProposal` until quorum is reached.
 - After quorum: a new snapshot is recorded (`postQuorumEligibleVoters` + `quorumSnapshotBlock`). Members who joined before that quorum transaction retain voting rights; later joiners are rejected with `JoinedAfterProposal`. Because Ethereum timestamps are per block, joins mined in the same block that reached quorum remain eligible. When quorum is later lost (YES votes drop below the threshold), execution reverts with `QuorumNotReached` until quorum support is restored.

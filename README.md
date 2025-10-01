@@ -36,6 +36,10 @@ npm --prefix frontend run dev
 
 Run `npm run test:all` before shipping changes; it mirrors the CI matrix. Additional coverage commands live in the package scripts (`npm --prefix backend run coverage`, `npm --prefix frontend run coverage`).
 
+### Security checks
+
+- `npm run slither` runs the Solidity static analysis suite. Install `solc-select` once (`pip install solc-select`) so the script can pin the compiler before invoking Slither.
+
 ## Documentation
 
 See [docs/README.md](docs/README.md) for complete documentation.
