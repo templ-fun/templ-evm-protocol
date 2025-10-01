@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { sanitizeLink } from '../../../shared/linkSanitizer.js';
+import { sanitizeLink, sanitizeLinkMap } from '../../../shared/linkSanitizer.js';
 
 function HomeLinkPreview({ value }) {
   const { href, text } = sanitizeLink(value);
@@ -19,5 +19,15 @@ describe('home link sanitization', () => {
   it('renders anchor tags for safe links', () => {
     const html = renderToStaticMarkup(createElement(HomeLinkPreview, { value: 'https://example.com' }));
     expect(html).toBe('<a href="https://example.com" target="_blank" rel="noreferrer">https://example.com</a>');
+  });
+
+  it('drops unsafe entries when sanitizing link records', () => {
+    const sanitized = sanitizeLinkMap({
+      docs: 'https://templ.fun/docs',
+      invalid: 'javascript:alert(1)',
+      relative: '/templs/abc',
+      number: 42
+    });
+    expect(sanitized).toEqual({ docs: 'https://templ.fun/docs' });
   });
 });

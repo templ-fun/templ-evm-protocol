@@ -28,3 +28,31 @@ export function sanitizeLink(value, { allowedSchemes = DEFAULT_ALLOWED_SCHEMES }
 
   return { href: null, text, isSafe: false };
 }
+
+/**
+ * Reduces an arbitrary record of link candidates down to only safe hrefs.
+ *
+ * @template T extends Record<string, any>
+ * @param {T | null | undefined} value
+ * @param {{ allowedSchemes?: string[] }} [options]
+ * @returns {{ [K in keyof T]?: string }}
+ */
+export function sanitizeLinkMap(value, { allowedSchemes = DEFAULT_ALLOWED_SCHEMES } = {}) {
+  if (!value || typeof value !== 'object') {
+    return {};
+  }
+
+  /** @type {Record<string, string>} */
+  const safe = {};
+  for (const [key, candidate] of Object.entries(value)) {
+    if (typeof candidate !== 'string') {
+      continue;
+    }
+    const sanitized = sanitizeLink(candidate, { allowedSchemes });
+    if (sanitized.href) {
+      safe[key] = sanitized.href;
+    }
+  }
+
+  return safe;
+}

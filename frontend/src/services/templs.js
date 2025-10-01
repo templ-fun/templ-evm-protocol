@@ -1,6 +1,7 @@
 // @ts-check
 import templFactoryArtifact from '../contracts/TemplFactory.json';
 import templArtifact from '../contracts/TEMPL.json';
+import { sanitizeLink, sanitizeLinkMap } from '../../../shared/linkSanitizer.js';
 
 const ERC20_METADATA_ABI = [
   'function symbol() view returns (string)',
@@ -245,6 +246,15 @@ export async function fetchTemplStats({
   const burnedFormatted = formatValue(ethers, totalBurned, tokenDecimals);
 
   const normalizedHomeLink = homeLink && homeLink.trim().length ? homeLink.trim() : '';
+  const rawHomeLink = normalizedHomeLink || metaInfo.templHomeLink || '';
+  const sanitizedHomeLink = sanitizeLink(rawHomeLink);
+  const links = { overview: `/templs/${normalizedAddress.toLowerCase()}` };
+  Object.assign(links, sanitizeLinkMap(metaInfo.links || {}));
+  if (sanitizedHomeLink.href) {
+    links.homeLink = sanitizedHomeLink.href;
+  } else {
+    delete links.homeLink;
+  }
 
   return {
     contract: normalizedAddress.toLowerCase(),
@@ -265,15 +275,12 @@ export async function fetchTemplStats({
     joinPaused,
     totalTreasuryReceived: totalTreasuryReceived.toString(),
     totalProtocolFees: totalProtocolFees.toString(),
-    templHomeLink: normalizedHomeLink || metaInfo.templHomeLink || '',
+    templHomeLink: sanitizedHomeLink.text || '',
     protocolPercent: toPercent(protocolPercentBps),
     burnPercent: toPercent(burnPercentBps),
     treasuryPercent: toPercent(treasuryPercentBps),
     memberPoolPercent: toPercent(memberPoolPercentBps),
-    links: {
-      overview: `/templs/${normalizedAddress.toLowerCase()}`,
-      homeLink: normalizedHomeLink || undefined
-    }
+    links
   };
 }
 

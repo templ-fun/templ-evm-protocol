@@ -3,6 +3,7 @@ import { ethers } from 'ethers';
 import { useAppLocation } from './hooks/useAppLocation.js';
 import { BACKEND_URL, FACTORY_CONFIG, RPC_URL } from './config.js';
 import { fetchTemplStats, loadFactoryTempls } from './services/templs.js';
+import { sanitizeLink, sanitizeLinkMap } from '../../shared/linkSanitizer.js';
 import { button, layout } from './ui/theme.js';
 
 const HomePage = lazy(() => import('./pages/HomePage.jsx').then((mod) => ({ default: mod.HomePage })));
@@ -12,6 +13,36 @@ const NewProposalPage = lazy(() => import('./pages/NewProposalPage.jsx').then((m
 const VoteProposalPage = lazy(() => import('./pages/VoteProposalPage.jsx').then((mod) => ({ default: mod.VoteProposalPage })));
 const TemplOverviewPage = lazy(() => import('./pages/TemplOverviewPage.jsx').then((mod) => ({ default: mod.TemplOverviewPage })));
 const ClaimRewardsPage = lazy(() => import('./pages/ClaimRewardsPage.jsx').then((mod) => ({ default: mod.ClaimRewardsPage })));
+
+function withSanitizedHomeLink(templ) {
+  const primaryCandidate = typeof templ.templHomeLink === 'string' && templ.templHomeLink.trim().length
+    ? templ.templHomeLink
+    : templ.links?.homeLink ?? '';
+  const sanitized = sanitizeLink(primaryCandidate);
+  const rawLinks = (templ && typeof templ === 'object' && templ.links && typeof templ.links === 'object')
+    ? templ.links
+    : {};
+  const sanitizedExternalLinks = sanitizeLinkMap(rawLinks);
+  const nextLinks = { ...sanitizedExternalLinks };
+  if (!nextLinks.overview && templ.contract) {
+    nextLinks.overview = `/templs/${templ.contract}`;
+  } else if (typeof rawLinks.overview === 'string') {
+    const trimmed = rawLinks.overview.trim();
+    if (trimmed.startsWith('/')) {
+      nextLinks.overview = trimmed;
+    }
+  }
+  if (sanitized.href) {
+    nextLinks.homeLink = sanitized.href;
+  } else {
+    delete nextLinks.homeLink;
+  }
+  return {
+    ...templ,
+    templHomeLink: sanitized.text || '',
+    links: nextLinks
+  };
+}
 
 export default function App() {
   const { path, query, navigate } = useAppLocation();
@@ -130,7 +161,7 @@ export default function App() {
               templHomeLink: row.templHomeLink || row.homeLink || '',
               priest: row.priest || '',
               telegramChatIdHidden: !Object.hasOwn(row, 'telegramChatId') && !Object.hasOwn(row, 'groupId')
-            }));
+            })).map(withSanitizedHomeLink);
           }
         }
       } catch {
@@ -171,8 +202,8 @@ export default function App() {
         templHomeLink: templ.templHomeLink,
         telegramChatId: templ.telegramChatId || '',
         telegramChatIdHidden: templ.telegramChatIdHidden || false,
-        links: { overview: `/templs/${templ.contract}`, homeLink: templ.templHomeLink || undefined },
-      }));
+        links: { overview: `/templs/${templ.contract}`, homeLink: templ.links?.homeLink },
+      })).map(withSanitizedHomeLink);
 
       if (readProvider) {
         merged = await Promise.all(merged.map(async (templ) => {
@@ -205,7 +236,7 @@ export default function App() {
         }));
       }
 
-      setTempls(merged);
+      setTempls(merged.map(withSanitizedHomeLink));
     } catch (err) {
       pushMessage(`Failed to load templs: ${err?.message || err}`);
     } finally {

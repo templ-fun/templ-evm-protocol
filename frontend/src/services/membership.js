@@ -1,6 +1,7 @@
 // @ts-check
 import { BACKEND_URL } from '../config.js';
 import { buildJoinTypedData } from '../../../shared/signing.js';
+import { sanitizeLink, sanitizeLinkMap } from '../../../shared/linkSanitizer.js';
 import { dlog } from './utils.js';
 import { postJson } from './http.js';
 
@@ -324,7 +325,19 @@ export async function verifyMembership({
     const body = await res.text().catch(() => '');
     throw new Error(`Join failed: ${res.status} ${res.statusText} ${body}`.trim());
   }
-  return res.json();
+  const json = await res.json();
+  const sanitizedLinks = sanitizeLinkMap(json?.links);
+  const templHomeLink = sanitizeLink(json?.templ?.templHomeLink);
+  return {
+    ...json,
+    templ: json?.templ
+      ? {
+          ...json.templ,
+          templHomeLink: templHomeLink.text || ''
+        }
+      : json?.templ,
+    links: sanitizedLinks
+  };
 }
 
 export async function fetchMemberPoolStats({

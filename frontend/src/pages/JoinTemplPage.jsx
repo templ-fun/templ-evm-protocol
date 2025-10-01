@@ -372,11 +372,19 @@ export function JoinTemplPage({
           </dl>
           {verification.links && (
             <ul className="mt-4 list-disc space-y-2 pl-6 text-sm text-slate-700">
-              {Object.entries(verification.links).map(([key, value]) => (
-                <li key={key}>
-                  <a className="text-primary underline" href={value} target="_blank" rel="noreferrer">{key}</a>
-                </li>
-              ))}
+              {Object.entries(verification.links)
+                .map(([key, value]) => {
+                  const sanitized = sanitizeLink(value);
+                  if (!sanitized.href) return null;
+                  return (
+                    <li key={key}>
+                      <a className="text-primary underline" href={sanitized.href} target="_blank" rel="noreferrer">
+                        {key}
+                      </a>
+                    </li>
+                  );
+                })
+                .filter(Boolean)}
             </ul>
           )}
         </section>
