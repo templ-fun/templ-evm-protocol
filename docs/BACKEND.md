@@ -18,13 +18,13 @@ Start the service in development with `npm --prefix backend start`.
 | `GET` | `/templs` | List known templs. Optional `?include=homelink` adds `templHomeLink` to each row. Chat ids are never returned. |
 | `POST` | `/templs` | Register a templ. Requires typed signature from the priest. Body fields: `contractAddress`, `priestAddress`, optional `telegramChatId`, optional `templHomeLink`, plus `chainId/nonce/issuedAt/expiry/signature`. Returns `{ contract, priest, templHomeLink, telegramChatId?, bindingCode? }`. |
 | `POST` | `/templs/rebind` | Request a new binding code to rotate Telegram chats. Requires typed signature from the current priest. Returns `{ contract, bindingCode, telegramChatId?, priest }`. |
-| `POST` | `/join` | Verify membership. Requires typed signature from the member. Body fields: `contractAddress`, `memberAddress`, plus `chainId/nonce/issuedAt/expiry/signature`. Returns `{ member:{hasAccess}, templ:{...}, links:{...} }`. |
+| `POST` | `/join` | Verify membership. Requires typed signature from the member. Body fields: `contractAddress`, `memberAddress`, plus `chainId/nonce/issuedAt/expiry/signature`. Returns `{ member:{isMember}, templ:{...}, links:{...} }`. |
 
 Example `/join` response:
 
 ```json
 {
-  "member": { "hasAccess": true },
+  "member": { "isMember": true },
   "templ": {
     "contract": "0xabc…",
     "priest": "0xdef…",
@@ -146,15 +146,15 @@ The response includes the new `bindingCode`; once the bot sees that code inside 
 
 ### `POST /join`
 
-Verifies a member has purchased access and returns templ metadata plus convenience links.
+Verifies a member has joined and returns templ metadata plus convenience links.
 
-Request body mirrors the frontend’s join payload (`buildJoinTypedData`). The backend calls `hasAccess(member)` on the contract and responds with templ metadata (and convenience links) on success.
+Request body mirrors the frontend’s join payload (`buildJoinTypedData`). The backend calls `isMember(member)` on the contract and responds with templ metadata (and convenience links) on success.
 
 ## Telegram notifications
 
 When `TELEGRAM_BOT_TOKEN` is provided, the backend creates a notifier that emits plain-text, newline-delimited messages for key lifecycle moments:
 
-- `AccessPurchased` – announces new members, surfaces the current treasury + unclaimed member pool balances, links to `/templs/join` and `/templs/:address/claim`, and repeats the templ home link when present.
+- `MemberJoined` – announces new members, surfaces the current treasury + unclaimed member pool balances, links to `/templs/join` and `/templs/:address/claim`, and repeats the templ home link when present.
 - `ProposalCreated` – highlights new proposals with their on-chain title/description and links directly to the vote page.
 - `VoteCast` – records individual votes (YES/NO) while keeping the proposal link handy.
 - `ProposalExecuted` – reports whether execution succeeded and links back to the proposal so members can audit the outcome.
@@ -162,9 +162,9 @@ When `TELEGRAM_BOT_TOKEN` is provided, the backend creates a notifier that emits
 - `ProposalVotingClosed` – triggered after the post-quorum window elapses, stating whether the proposal can be executed and linking to the execution screen.
 - `PriestChanged` – announces leadership changes and links to the templ overview.
 - `TemplHomeLinkUpdated` – broadcasts when governance changes the on-chain home link so members have the latest canonical URL.
-- `MemberPoolClaimed` – flags when a member withdraws rewards, including the amount so the community can track redemptions.
-- `ExternalRewardClaimed` – mirrors `MemberPoolClaimed` for auxiliary reward tokens or ETH distributions.
-- `ContractPaused` – notifies the channel whenever governance pauses or resumes new joins/treasury actions.
+- `MemberRewardsClaimed` – flags when a member withdraws rewards, including the amount so the community can track redemptions.
+- `ExternalRewardClaimed` – mirrors `MemberRewardsClaimed` for auxiliary reward tokens or ETH distributions.
+- `JoinPauseUpdated` – notifies the channel whenever governance pauses or resumes new joins.
 - `ConfigUpdated` – summarises entry fee and split changes so operators can confirm they match governance intent.
 - `TreasuryAction` – records treasury withdrawals with recipient/amount/reason context for audit trails.
 - `TreasuryDisbanded` – reports the total/per-member payout when treasury balances are dissolved into rewards.

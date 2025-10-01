@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
-const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
+const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 
 const ENTRY_FEE = ethers.parseUnits("100", 18);
 const DAY = 24 * 60 * 60;
@@ -13,7 +13,7 @@ describe("Treasury coverage extras", function () {
     const [, priest, member] = accounts;
 
     await mintToUsers(token, [member], ENTRY_FEE * 2n);
-    await purchaseAccess(templ, token, [member]);
+    await joinMembers(templ, token, [member]);
 
     await templ
       .connect(member)
@@ -33,7 +33,7 @@ describe("Treasury coverage extras", function () {
     const [, , member] = accounts;
 
     await mintToUsers(token, [member], ENTRY_FEE * 2n);
-    await purchaseAccess(templ, token, [member]);
+    await joinMembers(templ, token, [member]);
 
     await expect(
       templ.connect(member).setMaxMembersDAO(10)
@@ -49,7 +49,7 @@ describe("Treasury coverage extras", function () {
     const [, priest, member, voter] = accounts;
 
     await mintToUsers(token, [member, voter], ENTRY_FEE * 4n);
-    await purchaseAccess(templ, token, [member, voter]);
+    await joinMembers(templ, token, [member, voter]);
 
     const Rejector = await ethers.getContractFactory("contracts/mocks/RejectEther.sol:RejectEther");
     const rejector = await Rejector.deploy();
@@ -83,7 +83,7 @@ describe("Treasury coverage extras", function () {
     const [, , memberA, memberB] = accounts;
 
     await mintToUsers(token, [memberA, memberB], ENTRY_FEE * 4n);
-    await purchaseAccess(templ, token, [memberA, memberB]);
+    await joinMembers(templ, token, [memberA, memberB]);
 
     const OtherToken = await ethers.getContractFactory("contracts/mocks/TestToken.sol:TestToken");
     const otherToken = await OtherToken.deploy("Bonus", "BON", 18);
@@ -118,7 +118,7 @@ describe("Treasury coverage extras", function () {
     const [, , memberA, memberB] = accounts;
 
     await mintToUsers(token, [memberA, memberB], ENTRY_FEE * 6n);
-    await purchaseAccess(templ, token, [memberA, memberB]);
+    await joinMembers(templ, token, [memberA, memberB]);
 
     const OtherToken = await ethers.getContractFactory("contracts/mocks/TestToken.sol:TestToken");
     const otherToken = await OtherToken.deploy("Repeat", "RPT", 18);
@@ -156,7 +156,7 @@ describe("Treasury coverage extras", function () {
     const [, priest, member, voter] = accounts;
 
     await mintToUsers(token, [member, voter], ENTRY_FEE * 6n);
-    await purchaseAccess(templ, token, [member, voter]);
+    await joinMembers(templ, token, [member, voter]);
 
     const templAddress = await templ.getAddress();
     const extraDonation = ethers.parseUnits("10", 18);

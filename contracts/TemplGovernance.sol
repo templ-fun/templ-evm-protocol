@@ -7,8 +7,8 @@ import {TemplErrors} from "./TemplErrors.sol";
 /// @title templ governance module
 /// @notice Adds proposal creation, voting, and execution flows on top of treasury + membership logic.
 abstract contract TemplGovernance is TemplBase {
-    /// @notice Hook executed when governance-set pause proposals execute.
-    function _governanceSetPaused(bool _paused) internal virtual;
+    /// @notice Hook executed when governance-set join pause proposals execute.
+    function _governanceSetJoinPaused(bool _paused) internal virtual;
 
     /// @notice Hook executed when governance updates templ configuration.
     function _governanceUpdateConfig(
@@ -44,13 +44,13 @@ abstract contract TemplGovernance is TemplBase {
     /// @notice Hook executed when governance updates the templ home link.
     function _governanceSetHomeLink(string memory newLink) internal virtual;
 
-    /// @notice Opens a proposal to pause or unpause the templ.
-    /// @param _paused Desired paused state.
+    /// @notice Opens a proposal to pause or resume new member joins.
+    /// @param _paused Desired join pause state.
     /// @param _votingPeriod Optional custom voting duration (seconds).
     /// @param _title On-chain title for the proposal.
     /// @param _description On-chain description for the proposal.
     /// @return Proposal id for tracking and voting.
-    function createProposalSetPaused(
+    function createProposalSetJoinPaused(
         bool _paused,
         uint256 _votingPeriod,
         string calldata _title,
@@ -58,8 +58,8 @@ abstract contract TemplGovernance is TemplBase {
     ) external returns (uint256) {
         if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
-        p.action = Action.SetPaused;
-        p.paused = _paused;
+        p.action = Action.SetJoinPaused;
+        p.joinPaused = _paused;
         return id;
     }
 
@@ -332,8 +332,8 @@ abstract contract TemplGovernance is TemplBase {
             activeProposalId[proposerAddr] = 0;
         }
 
-        if (proposal.action == Action.SetPaused) {
-            _governanceSetPaused(proposal.paused);
+        if (proposal.action == Action.SetJoinPaused) {
+            _governanceSetJoinPaused(proposal.joinPaused);
         } else if (proposal.action == Action.UpdateConfig) {
             _governanceUpdateConfig(
                 proposal.token,
@@ -538,7 +538,7 @@ abstract contract TemplGovernance is TemplBase {
         string memory _title,
         string memory _description
     ) internal returns (uint256 proposalId, Proposal storage proposal) {
-        if (!members[msg.sender].purchased) revert TemplErrors.NotMember();
+        if (!members[msg.sender].joined) revert TemplErrors.NotMember();
         if (hasActiveProposal[msg.sender]) {
             uint256 existingId = activeProposalId[msg.sender];
             Proposal storage existingProposal = proposals[existingId];
@@ -638,10 +638,10 @@ abstract contract TemplGovernance is TemplBase {
         if (snapshotBlock == 0) {
             return false;
         }
-        if (memberInfo.block > snapshotBlock) {
+        if (memberInfo.blockNumber > snapshotBlock) {
             return true;
         }
-        if (memberInfo.block == snapshotBlock && memberInfo.timestamp > snapshotTimestamp) {
+        if (memberInfo.blockNumber == snapshotBlock && memberInfo.timestamp > snapshotTimestamp) {
             return true;
         }
         return false;

@@ -165,7 +165,7 @@ export default function App() {
         memberPoolBalanceRaw: '0',
         memberPoolBalanceFormatted: '0',
         memberCount: 0,
-        totalPurchases: '0',
+        totalJoins: '0',
         entryFeeRaw: '0',
         entryFeeFormatted: '0',
         templHomeLink: templ.templHomeLink,

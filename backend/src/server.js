@@ -35,15 +35,15 @@ import { createPersistence } from './persistence/index.js';
  */
 
 const TEMPL_EVENT_ABI = [
-  'event AccessPurchased(address indexed purchaser,uint256 totalAmount,uint256 burnedAmount,uint256 treasuryAmount,uint256 memberPoolAmount,uint256 protocolAmount,uint256 timestamp,uint256 blockNumber,uint256 purchaseId)',
+  'event MemberJoined(address indexed payer,address indexed member,uint256 totalAmount,uint256 burnedAmount,uint256 treasuryAmount,uint256 memberPoolAmount,uint256 protocolAmount,uint256 timestamp,uint256 blockNumber,uint256 joinId)',
   'event ProposalCreated(uint256 indexed proposalId,address indexed proposer,uint256 endTime,string title,string description)',
   'event VoteCast(uint256 indexed proposalId,address indexed voter,bool support,uint256 timestamp)',
   'event PriestChanged(address indexed oldPriest,address indexed newPriest)',
   'event ProposalExecuted(uint256 indexed proposalId,bool success,bytes returnData)',
   'event TemplHomeLinkUpdated(string previousLink,string newLink)',
-  'event MemberPoolClaimed(address indexed member,uint256 amount,uint256 timestamp)',
+  'event MemberRewardsClaimed(address indexed member,uint256 amount,uint256 timestamp)',
   'event ExternalRewardClaimed(address indexed token,address indexed member,uint256 amount)',
-  'event ContractPaused(bool isPaused)',
+  'event JoinPauseUpdated(bool joinPaused)',
   'event ConfigUpdated(address indexed token,uint256 entryFee,uint256 burnPercent,uint256 treasuryPercent,uint256 memberPoolPercent,uint256 protocolPercent)',
   'event TreasuryAction(uint256 indexed proposalId,address indexed token,address indexed recipient,uint256 amount,string description)',
   'event TreasuryDisbanded(uint256 indexed proposalId,address indexed token,uint256 amount,uint256 perMember,uint256 remainder)',
@@ -347,15 +347,15 @@ function createContractWatcher({ connectContract, templs, persist, notifier, log
     const existing = listenerRegistry.get(key);
     if (!existing) return;
     const { contract, handlers } = existing;
-    try { contract.off('AccessPurchased', handlers.handleAccessPurchased); } catch (err) { void err; }
+    try { contract.off('MemberJoined', handlers.handleMemberJoined); } catch (err) { void err; }
     try { contract.off('ProposalCreated', handlers.handleProposal); } catch (err) { void err; }
     try { contract.off('VoteCast', handlers.handleVote); } catch (err) { void err; }
     try { contract.off('PriestChanged', handlers.handlePriestChanged); } catch (err) { void err; }
     try { contract.off('ProposalExecuted', handlers.handleProposalExecuted); } catch (err) { void err; }
     try { contract.off('TemplHomeLinkUpdated', handlers.handleTemplHomeLinkUpdated); } catch (err) { void err; }
-    try { contract.off('MemberPoolClaimed', handlers.handleMemberPoolClaimed); } catch (err) { void err; }
+    try { contract.off('MemberRewardsClaimed', handlers.handleMemberRewardsClaimed); } catch (err) { void err; }
     try { contract.off('ExternalRewardClaimed', handlers.handleExternalRewardClaimed); } catch (err) { void err; }
-    try { contract.off('ContractPaused', handlers.handleContractPaused); } catch (err) { void err; }
+    try { contract.off('JoinPauseUpdated', handlers.handleJoinPauseUpdated); } catch (err) { void err; }
     try { contract.off('ConfigUpdated', handlers.handleConfigUpdated); } catch (err) { void err; }
     try { contract.off('TreasuryAction', handlers.handleTreasuryAction); } catch (err) { void err; }
     try { contract.off('TreasuryDisbanded', handlers.handleTreasuryDisbanded); } catch (err) { void err; }
@@ -449,14 +449,15 @@ function createContractWatcher({ connectContract, templs, persist, notifier, log
       }
     };
 
-    const handleAccessPurchased = wrapListener('Contract listener error', async (purchaser, totalAmount, burnedAmount, treasuryAmount, memberPoolAmount, protocolAmount, timestamp, blockNumber, purchaseId) => {
-      if (!record.telegramChatId || !notifier?.notifyAccessPurchased) return;
+    const handleMemberJoined = wrapListener('Contract listener error', async (payer, member, totalAmount, burnedAmount, treasuryAmount, memberPoolAmount, protocolAmount, timestamp, blockNumber, joinId) => {
+      if (!record.telegramChatId || !notifier?.notifyMemberJoined) return;
       const balances = await fetchBalances(record, logger);
-      await notifier.notifyAccessPurchased({
+      await notifier.notifyMemberJoined({
         chatId: record.telegramChatId,
         contractAddress: key,
-        memberAddress: purchaser,
-        purchaseId: purchaseId != null ? purchaseId.toString?.() ?? String(purchaseId) : null,
+        payerAddress: payer,
+        memberAddress: member,
+        joinId: joinId != null ? joinId.toString?.() ?? String(joinId) : null,
         timestamp: timestamp?.toString?.() ?? timestamp,
         treasuryBalance: balances.treasuryBalance,
         memberPoolBalance: balances.memberPoolBalance,
@@ -575,9 +576,9 @@ function createContractWatcher({ connectContract, templs, persist, notifier, log
       }
     });
 
-    const handleMemberPoolClaimed = wrapListener('Contract listener error', async (member, amount, timestamp) => {
-      if (!record.telegramChatId || !notifier?.notifyMemberPoolClaimed) return;
-      await notifier.notifyMemberPoolClaimed({
+    const handleMemberRewardsClaimed = wrapListener('Contract listener error', async (member, amount, timestamp) => {
+      if (!record.telegramChatId || !notifier?.notifyMemberRewardsClaimed) return;
+      await notifier.notifyMemberRewardsClaimed({
         chatId: record.telegramChatId,
         contractAddress: key,
         member,
@@ -599,15 +600,15 @@ function createContractWatcher({ connectContract, templs, persist, notifier, log
       });
     });
 
-    const handleContractPaused = wrapListener('Contract listener error', async (isPaused) => {
-      record.isPaused = Boolean(isPaused);
+    const handleJoinPauseUpdated = wrapListener('Contract listener error', async (joinPaused) => {
+      record.joinPaused = Boolean(joinPaused);
       templs.set(key, record);
       await persist?.(key, record);
-      if (!record.telegramChatId || !notifier?.notifyContractPaused) return;
-      await notifier.notifyContractPaused({
+      if (!record.telegramChatId || !notifier?.notifyJoinPauseUpdated) return;
+      await notifier.notifyJoinPauseUpdated({
         chatId: record.telegramChatId,
         contractAddress: key,
-        paused: Boolean(isPaused),
+        paused: Boolean(joinPaused),
         homeLink: record.templHomeLink || ''
       });
     });
@@ -701,15 +702,15 @@ function createContractWatcher({ connectContract, templs, persist, notifier, log
       });
     });
 
-    contract.on('AccessPurchased', handleAccessPurchased);
+    contract.on('MemberJoined', handleMemberJoined);
     contract.on('ProposalCreated', handleProposal);
     contract.on('VoteCast', handleVote);
     contract.on('PriestChanged', handlePriestChanged);
     contract.on('ProposalExecuted', handleProposalExecuted);
     contract.on('TemplHomeLinkUpdated', handleTemplHomeLinkUpdated);
-    contract.on('MemberPoolClaimed', handleMemberPoolClaimed);
+    contract.on('MemberRewardsClaimed', handleMemberRewardsClaimed);
     contract.on('ExternalRewardClaimed', handleExternalRewardClaimed);
-    contract.on('ContractPaused', handleContractPaused);
+    contract.on('JoinPauseUpdated', handleJoinPauseUpdated);
     contract.on('ConfigUpdated', handleConfigUpdated);
     contract.on('TreasuryAction', handleTreasuryAction);
     contract.on('TreasuryDisbanded', handleTreasuryDisbanded);
@@ -743,15 +744,15 @@ function createContractWatcher({ connectContract, templs, persist, notifier, log
       contract,
       record,
       handlers: {
-        handleAccessPurchased,
+        handleMemberJoined,
         handleProposal,
         handleVote,
         handlePriestChanged,
         handleProposalExecuted,
         handleTemplHomeLinkUpdated,
-        handleMemberPoolClaimed,
+        handleMemberRewardsClaimed,
         handleExternalRewardClaimed,
-        handleContractPaused,
+        handleJoinPauseUpdated,
         handleConfigUpdated,
         handleTreasuryAction,
         handleTreasuryDisbanded,
@@ -978,7 +979,7 @@ function createBackgroundTasks({ templs, notifier, logger, persist }) {
 
 export async function createApp(opts) {
   const {
-    hasPurchased,
+    hasJoined,
     connectContract: providedConnectContract,
     rateLimitStore,
     provider,
@@ -1189,7 +1190,7 @@ export async function createApp(opts) {
     });
 
   const context = {
-    hasPurchased,
+    hasJoined,
     templs,
     persist,
     provider,
@@ -1243,13 +1244,13 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   }
   const provider = new ethers.JsonRpcProvider(RPC_URL);
 
-  const hasPurchased = async (contractAddress, memberAddress) => {
+  const hasJoined = async (contractAddress, memberAddress) => {
     const contract = new ethers.Contract(
       contractAddress,
-      ['function hasAccess(address) view returns (bool)'],
+      ['function isMember(address) view returns (bool)'],
       provider
     );
-    return contract.hasAccess(memberAddress);
+    return contract.isMember(memberAddress);
   };
 
   const rateLimitStore = await createRateLimitStore();
@@ -1258,7 +1259,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     linkBaseUrl: process.env.APP_BASE_URL,
     logger
   });
-  const app = await createApp({ hasPurchased, rateLimitStore, provider, telegram: { notifier } });
+  const app = await createApp({ hasJoined, rateLimitStore, provider, telegram: { notifier } });
   const port = process.env.PORT || 3001;
   app.listen(port, () => {
     logger.info({ port }, 'TEMPL backend listening');

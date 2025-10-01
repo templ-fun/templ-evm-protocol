@@ -1,8 +1,8 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
-const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
-const { encodeSetPausedDAO, encodeWithdrawTreasuryDAO, encodeUpdateConfigDAO } = require("./utils/callDataBuilders");
+const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
+const { encodeSetJoinPausedDAO, encodeWithdrawTreasuryDAO, encodeUpdateConfigDAO } = require("./utils/callDataBuilders");
 
 describe("TEMPL Contract with DAO Governance", function () {
     let templ;
@@ -252,8 +252,8 @@ describe("TEMPL Contract with DAO Governance", function () {
         });
     });
 
-    describe("Access Purchase with 30/30/30/10 Split", function () {
-        it("Should correctly split payments: 30% burn, 30% treasury, 30% pool, 10% protocol", async function () {
+    describe("Member join with 30/30/30/10 split", function () {
+        it("splits join payments: 30% burn, 30% treasury, 30% pool, 10% protocol", async function () {
             const burnAddress = await templ.burnAddress();
             const protocolRecipient = await templ.protocolFeeRecipient();
 
@@ -262,7 +262,7 @@ describe("TEMPL Contract with DAO Governance", function () {
 
             const templAddress = await templ.getAddress();
             await token.connect(user1).approve(templAddress, ENTRY_FEE);
-            const tx = await templ.connect(user1).purchaseAccess();
+            const tx = await templ.connect(user1).join();
             const receipt = await tx.wait();
 
             const accessPurchased = receipt.logs
@@ -273,10 +273,12 @@ describe("TEMPL Contract with DAO Governance", function () {
                         return null;
                     }
                 })
-                .find((log) => log && log.name === "AccessPurchased");
+                .find((log) => log && log.name === "MemberJoined");
 
-            expect(accessPurchased, "AccessPurchased event").to.not.equal(undefined);
-            const { burnedAmount, treasuryAmount, memberPoolAmount, protocolAmount } = accessPurchased.args;
+            expect(accessPurchased, "MemberJoined event").to.not.equal(undefined);
+            const { payer, member, burnedAmount, treasuryAmount, memberPoolAmount, protocolAmount } = accessPurchased.args;
+            expect(payer).to.equal(user1.address);
+            expect(member).to.equal(user1.address);
 
             const thirtyPercent = (ENTRY_FEE * 30n) / 100n;
             const tenPercent = (ENTRY_FEE * 10n) / 100n;
@@ -292,23 +294,23 @@ describe("TEMPL Contract with DAO Governance", function () {
             expect(await token.balanceOf(burnAddress)).to.equal(deadBalanceBefore + thirtyPercent);
         });
 
-        it("Should mark user as having purchased", async function () {
-            await purchaseAccess(templ, token, [user1]);
+        it("marks a user as joined", async function () {
+            await joinMembers(templ, token, [user1]);
 
-            expect(await templ.hasAccess(user1.address)).to.be.true;
+            expect(await templ.isMember(user1.address)).to.be.true;
             expect(await templ.getMemberCount()).to.equal(2);
         });
 
-        it("Should prevent double purchase", async function () {
-            await purchaseAccess(templ, token, [user1]);
+        it("prevents double join attempts", async function () {
+            await joinMembers(templ, token, [user1]);
 
             await token.connect(user1).approve(await templ.getAddress(), ENTRY_FEE);
-            await expect(templ.connect(user1).purchaseAccess())
-                .to.be.revertedWithCustomError(templ, "AlreadyPurchased");
+            await expect(templ.connect(user1).join())
+                .to.be.revertedWithCustomError(templ, "MemberAlreadyJoined");
         });
 
-        it("Should revert when user has insufficient balance", async function () {
-            await expect(templ.connect(owner).purchaseAccess())
+        it("reverts when user has insufficient balance", async function () {
+            await expect(templ.connect(owner).join())
                 .to.be.revertedWithCustomError(templ, "InsufficientBalance");
         });
     });
@@ -316,7 +318,7 @@ describe("TEMPL Contract with DAO Governance", function () {
     describe("DAO Proposal Creation", function () {
         beforeEach(async function () {
             // User1 becomes a member
-            await purchaseAccess(templ, token, [user1]);
+            await joinMembers(templ, token, [user1]);
         });
 
         it("Should allow members to create proposals", async function () {
@@ -324,7 +326,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             const description = "This is a test proposal";
             const votingPeriod = 7 * 24 * 60 * 60; // 7 days
 
-            await expect(templ.connect(user1).createProposalSetPaused(
+            await expect(templ.connect(user1).createProposalSetJoinPaused(
                 false,
                 votingPeriod
             )).to.emit(templ, "ProposalCreated");
@@ -336,7 +338,7 @@ describe("TEMPL Contract with DAO Governance", function () {
         });
 
         it("Should prevent non-members from creating proposals", async function () {
-            await expect(templ.connect(user2).createProposalSetPaused(
+            await expect(templ.connect(user2).createProposalSetJoinPaused(
                 false,
                 7 * 24 * 60 * 60
             )).to.be.revertedWithCustomError(templ, "NotMember");
@@ -357,21 +359,21 @@ describe("TEMPL Contract with DAO Governance", function () {
         // withdrawAll proposal removed
 
         it("Should enforce minimum voting period", async function () {
-            await expect(templ.connect(user1).createProposalSetPaused(
+            await expect(templ.connect(user1).createProposalSetJoinPaused(
                 false,
                 6 * 24 * 60 * 60
             )).to.be.revertedWithCustomError(templ, "VotingPeriodTooShort");
         });
 
         it("Should enforce maximum voting period", async function () {
-            await expect(templ.connect(user1).createProposalSetPaused(
+            await expect(templ.connect(user1).createProposalSetJoinPaused(
                 false,
                 31 * 24 * 60 * 60
             )).to.be.revertedWithCustomError(templ, "VotingPeriodTooLong");
         });
 
         it("Should default to standard voting period when none provided", async function () {
-            await templ.connect(user1).createProposalSetPaused(
+            await templ.connect(user1).createProposalSetJoinPaused(
                 false,
                 0,
                     ""
@@ -392,11 +394,11 @@ describe("TEMPL Contract with DAO Governance", function () {
     describe("DAO Voting", function () {
         beforeEach(async function () {
             // Multiple users become members
-            await purchaseAccess(templ, token, [user1]);
+            await joinMembers(templ, token, [user1]);
             
-            await purchaseAccess(templ, token, [user2]);
+            await joinMembers(templ, token, [user2]);
             
-            await purchaseAccess(templ, token, [user3]);
+            await joinMembers(templ, token, [user3]);
 
             // Create a proposal
             const callData = encodeWithdrawTreasuryDAO(
@@ -489,11 +491,11 @@ describe("TEMPL Contract with DAO Governance", function () {
     describe("DAO Proposal Execution", function () {
         beforeEach(async function () {
             // Setup members
-            await purchaseAccess(templ, token, [user1]);
+            await joinMembers(templ, token, [user1]);
             
-            await purchaseAccess(templ, token, [user2]);
+            await joinMembers(templ, token, [user2]);
             
-            await purchaseAccess(templ, token, [user3]);
+            await joinMembers(templ, token, [user3]);
         });
 
         it("Should execute passed treasury withdrawal proposal", async function () {
@@ -571,7 +573,7 @@ describe("TEMPL Contract with DAO Governance", function () {
 
         it("Should not execute before voting ends", async function () {
             // Create proposal
-            const callData = encodeSetPausedDAO(true);
+            const callData = encodeSetJoinPausedDAO(true);
 
             await templ.connect(user1).createProposal(
                 "Pause",
@@ -622,7 +624,7 @@ describe("TEMPL Contract with DAO Governance", function () {
 
 
         it("Should execute pause/unpause proposal", async function () {
-            const callData = encodeSetPausedDAO(true);
+            const callData = encodeSetJoinPausedDAO(true);
 
             await templ.connect(user1).createProposal(
                 "Pause Contract",
@@ -641,16 +643,16 @@ describe("TEMPL Contract with DAO Governance", function () {
 
             await templ.executeProposal(0);
 
-            expect(await templ.paused()).to.be.true;
+            expect(await templ.joinPaused()).to.be.true;
 
-            // Should prevent purchases when paused
+            // Should prevent joins when paused
             await token.connect(user4).approve(await templ.getAddress(), ENTRY_FEE);
-            await expect(templ.connect(user4).purchaseAccess())
-                .to.be.revertedWithCustomError(templ, "ContractPausedError");
+            await expect(templ.connect(user4).join())
+                .to.be.revertedWithCustomError(templ, "JoinIntakePaused");
         });
 
         it("Should prevent double execution", async function () {
-            const callData = encodeSetPausedDAO(true);
+            const callData = encodeSetJoinPausedDAO(true);
 
             await templ.connect(user1).createProposal(
                 "Test",
@@ -675,9 +677,9 @@ describe("TEMPL Contract with DAO Governance", function () {
     describe("DAO Treasury Security", function () {
         beforeEach(async function () {
             // Setup members and treasury
-            await purchaseAccess(templ, token, [user1]);
+            await joinMembers(templ, token, [user1]);
             
-            await purchaseAccess(templ, token, [user2]);
+            await joinMembers(templ, token, [user2]);
         });
 
         it("Should prevent direct treasury withdrawal by priest", async function () {
@@ -745,7 +747,7 @@ describe("TEMPL Contract with DAO Governance", function () {
         });
 
         it("Should prevent pause without DAO approval", async function () {
-            await expect(templ.connect(priest).setPausedDAO(true))
+            await expect(templ.connect(priest).setJoinPausedDAO(true))
                 .to.be.revertedWithCustomError(templ, "NotDAO");
         });
     });
@@ -753,16 +755,16 @@ describe("TEMPL Contract with DAO Governance", function () {
     describe("Paused contract behavior", function () {
         beforeEach(async function () {
             // user1 and user2 become members
-            await purchaseAccess(templ, token, [user1]);
+            await joinMembers(templ, token, [user1]);
 
-            await purchaseAccess(templ, token, [user2]);
+            await joinMembers(templ, token, [user2]);
             // Add more members so initial auto-yes does not meet quorum
-            await purchaseAccess(templ, token, [user3]);
-            await purchaseAccess(templ, token, [user4]);
+            await joinMembers(templ, token, [user3]);
+            await joinMembers(templ, token, [user4]);
 
             // interface for pause/unpause proposals
             // create proposal that remains active for voting after pause
-            const unpauseData = encodeSetPausedDAO(false);
+            const unpauseData = encodeSetJoinPausedDAO(false);
             await templ.connect(user1).createProposal(
                 "Unpause",
                 "Resume operations",
@@ -771,7 +773,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             );
 
             // create and execute pause proposal
-            const pauseData = encodeSetPausedDAO(true);
+            const pauseData = encodeSetJoinPausedDAO(true);
 
             await templ.connect(user2).createProposal(
                 "Pause",
@@ -787,17 +789,17 @@ describe("TEMPL Contract with DAO Governance", function () {
             await ethers.provider.send("evm_mine");
 
             await templ.executeProposal(1);
-            expect(await templ.paused()).to.be.true;
+            expect(await templ.joinPaused()).to.be.true;
         });
 
-        it("Should revert purchaseAccess when paused", async function () {
+        it("Should revert joinMembers when paused", async function () {
             await token.connect(user3).approve(await templ.getAddress(), ENTRY_FEE);
-            await expect(templ.connect(user3).purchaseAccess())
-                .to.be.revertedWithCustomError(templ, "ContractPausedError");
+            await expect(templ.connect(user3).join())
+                .to.be.revertedWithCustomError(templ, "JoinIntakePaused");
         });
 
         it("Should allow createProposal when paused", async function () {
-            const callData = encodeSetPausedDAO(false);
+            const callData = encodeSetJoinPausedDAO(false);
             await expect(
                 templ.connect(user2).createProposal(
                     "New",
@@ -826,26 +828,26 @@ describe("TEMPL Contract with DAO Governance", function () {
                 templ,
                 "ProposalExecuted"
             );
-            expect(await templ.paused()).to.be.false;
+            expect(await templ.joinPaused()).to.be.false;
         });
     });
 
     describe("Active Proposals Query", function () {
         beforeEach(async function () {
             // Setup members
-            await purchaseAccess(templ, token, [user1]);
+            await joinMembers(templ, token, [user1]);
             
             // Add user2 as member too (needed for multiple proposal tests)
-            await purchaseAccess(templ, token, [user2]);
+            await joinMembers(templ, token, [user2]);
             // Add more members so initial auto-yes does not meet quorum
-            await purchaseAccess(templ, token, [user3]);
-            await purchaseAccess(templ, token, [user4]);
+            await joinMembers(templ, token, [user3]);
+            await joinMembers(templ, token, [user4]);
         });
 
         it("Should return active proposals correctly", async function () {
             // Create multiple proposals with different users (due to single proposal restriction)
-            const cd1 = encodeSetPausedDAO(false);
-            const cd2 = encodeSetPausedDAO(true);
+            const cd1 = encodeSetJoinPausedDAO(false);
+            const cd2 = encodeSetJoinPausedDAO(true);
             await templ.connect(user1).createProposal(
                 "Active 1",
                 "First active",
@@ -867,7 +869,7 @@ describe("TEMPL Contract with DAO Governance", function () {
         });
 
         it("Should exclude expired proposals", async function () {
-            const cd3 = encodeSetPausedDAO(false);
+            const cd3 = encodeSetJoinPausedDAO(false);
             await templ.connect(user1).createProposal(
                 "Short",
                 "Expires soon",
@@ -875,7 +877,7 @@ describe("TEMPL Contract with DAO Governance", function () {
                 7 * 24 * 60 * 60 // 7 days
             );
 
-            const cd4 = encodeSetPausedDAO(true);
+            const cd4 = encodeSetJoinPausedDAO(true);
             await templ.connect(user2).createProposal(
                 "Long",
                 "Active longer",
@@ -893,7 +895,7 @@ describe("TEMPL Contract with DAO Governance", function () {
         });
 
         it("Should exclude executed proposals", async function () {
-            const callData = encodeSetPausedDAO(true);
+            const callData = encodeSetJoinPausedDAO(true);
 
             await templ.connect(user1).createProposal(
                 "Execute Me",
@@ -902,7 +904,7 @@ describe("TEMPL Contract with DAO Governance", function () {
                 7 * 24 * 60 * 60
             );
 
-            const cd5 = encodeSetPausedDAO(false);
+            const cd5 = encodeSetJoinPausedDAO(false);
             await templ.connect(user2).createProposal(
                 "Still Active",
                 "Not executed",
@@ -932,75 +934,75 @@ describe("TEMPL Contract with DAO Governance", function () {
     describe("Member Pool Distribution", function () {
         it("Should distribute rewards correctly to existing members", async function () {
             // First member joins
-            await purchaseAccess(templ, token, [user1]);
+            await joinMembers(templ, token, [user1]);
 
             // Check first member has no claimable (no one joined after them yet)
-            expect(await templ.getClaimablePoolAmount(user1.address)).to.equal(0);
+            expect(await templ.getClaimableMemberRewards(user1.address)).to.equal(0);
 
             // Second member joins
-            await purchaseAccess(templ, token, [user2]);
+            await joinMembers(templ, token, [user2]);
 
             // First member should now have claimable rewards (split with the priest)
             const thirtyPercent = (ENTRY_FEE * 30n) / 100n;
             const secondJoinShare = thirtyPercent / 2n;
-            expect(await templ.getClaimablePoolAmount(user1.address)).to.equal(secondJoinShare);
+            expect(await templ.getClaimableMemberRewards(user1.address)).to.equal(secondJoinShare);
 
             // Second member has no claimable yet
-            expect(await templ.getClaimablePoolAmount(user2.address)).to.equal(0);
+            expect(await templ.getClaimableMemberRewards(user2.address)).to.equal(0);
 
             // Third member joins
-            await purchaseAccess(templ, token, [user3]);
+            await joinMembers(templ, token, [user3]);
 
             // Priest, user1, and user2 share the contribution evenly
             const thirdJoinShare = thirtyPercent / 3n;
-            expect(await templ.getClaimablePoolAmount(user1.address)).to.equal(
+            expect(await templ.getClaimableMemberRewards(user1.address)).to.equal(
                 secondJoinShare + thirdJoinShare
             );
-            expect(await templ.getClaimablePoolAmount(user2.address)).to.equal(thirdJoinShare);
+            expect(await templ.getClaimableMemberRewards(user2.address)).to.equal(thirdJoinShare);
         });
 
         it("Should allow members to claim their pool rewards", async function () {
             // Setup: 3 members join
-            await purchaseAccess(templ, token, [user1]);
+            await joinMembers(templ, token, [user1]);
 
-            await purchaseAccess(templ, token, [user2]);
+            await joinMembers(templ, token, [user2]);
 
-            await purchaseAccess(templ, token, [user3]);
+            await joinMembers(templ, token, [user3]);
 
-            const claimable = await templ.getClaimablePoolAmount(user1.address);
+            const claimable = await templ.getClaimableMemberRewards(user1.address);
             const balanceBefore = await token.balanceOf(user1.address);
 
-            await expect(templ.connect(user1).claimMemberPool())
-                .to.emit(templ, "MemberPoolClaimed");
+            await expect(templ.connect(user1).claimMemberRewards())
+                .to.emit(templ, "MemberRewardsClaimed");
 
             expect(await token.balanceOf(user1.address)).to.equal(balanceBefore + claimable);
-            expect(await templ.getClaimablePoolAmount(user1.address)).to.equal(0);
+            expect(await templ.getClaimableMemberRewards(user1.address)).to.equal(0);
         });
 
         it("Should prevent claiming when no rewards available", async function () {
-            await purchaseAccess(templ, token, [user1]);
+            await joinMembers(templ, token, [user1]);
 
-            await expect(templ.connect(user1).claimMemberPool())
+            await expect(templ.connect(user1).claimMemberRewards())
                 .to.be.revertedWithCustomError(templ, "NoRewardsToClaim");
         });
 
         it("Should track claimed amounts correctly", async function () {
             // Setup members
-            await purchaseAccess(templ, token, [user1]);
+            await joinMembers(templ, token, [user1]);
 
-            await purchaseAccess(templ, token, [user2]);
+            await joinMembers(templ, token, [user2]);
 
             // Claim once
-            await templ.connect(user1).claimMemberPool();
+            await templ.connect(user1).claimMemberRewards();
 
             // Third member joins
-            await purchaseAccess(templ, token, [user3]);
+            await joinMembers(templ, token, [user3]);
 
             // User1 should only be able to claim new rewards
             const thirtyPercent = (ENTRY_FEE * 30n) / 100n;
             const expectedNew = thirtyPercent / 3n; // Split between priest and 2 existing members
 
-            expect(await templ.getClaimablePoolAmount(user1.address)).to.equal(expectedNew);
+            expect(await templ.getClaimableMemberRewards(user1.address)).to.equal(expectedNew);
         });
     });
 
@@ -1025,7 +1027,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             ]);
 
             await token.connect(user1).approve(await minTempl.getAddress(), 10);
-            await minTempl.connect(user1).purchaseAccess();
+            await minTempl.connect(user1).join();
 
             // Should still split correctly even with rounding
             expect(await minTempl.treasuryBalance()).to.be.gte(0);
@@ -1058,9 +1060,9 @@ describe("TEMPL Contract with DAO Governance", function () {
     describe("Additional DAO Functions", function () {
         beforeEach(async function () {
             // Setup members
-            await purchaseAccess(templ, token, [user1]);
+            await joinMembers(templ, token, [user1]);
             
-            await purchaseAccess(templ, token, [user2]);
+            await joinMembers(templ, token, [user2]);
         });
 
         // withdrawAll proposal path removed
@@ -1070,38 +1072,38 @@ describe("TEMPL Contract with DAO Governance", function () {
 
     describe("Comprehensive View Functions", function () {
         beforeEach(async function () {
-            await purchaseAccess(templ, token, [user1]);
+            await joinMembers(templ, token, [user1]);
         });
 
-        it("Should return correct hasAccess status", async function () {
-            expect(await templ.hasAccess(user1.address)).to.be.true;
-            expect(await templ.hasAccess(user2.address)).to.be.false;
+        it("Should return correct isMember status", async function () {
+            expect(await templ.isMember(user1.address)).to.be.true;
+            expect(await templ.isMember(user2.address)).to.be.false;
         });
 
-        it("Should return correct purchase details", async function () {
-            const details = await templ.getPurchaseDetails(user1.address);
-            expect(details.purchased).to.be.true;
+        it("Should return correct join details", async function () {
+            const details = await templ.getJoinDetails(user1.address);
+            expect(details.joined).to.be.true;
             expect(details.timestamp).to.be.gt(0);
-            expect(details.blockNum).to.be.gt(0);
+            expect(details.blockNumber).to.be.gt(0);
 
-            const noDetails = await templ.getPurchaseDetails(user2.address);
-            expect(noDetails.purchased).to.be.false;
+            const noDetails = await templ.getJoinDetails(user2.address);
+            expect(noDetails.joined).to.be.false;
             expect(noDetails.timestamp).to.equal(0);
-            expect(noDetails.blockNum).to.equal(0);
+            expect(noDetails.blockNumber).to.equal(0);
         });
 
         it("Should return correct config information", async function () {
             const config = await templ.getConfig();
             expect(config.token).to.equal(await token.getAddress());
             expect(config.fee).to.equal(ENTRY_FEE);
-            expect(config.isPaused).to.be.false;
-            expect(config.purchases).to.equal(1);
+            expect(config.joinPaused).to.be.false;
+            expect(config.joins).to.equal(1);
             expect(config.treasury).to.be.gt(0);
             expect(config.pool).to.be.gt(0);
         });
 
         it("Should return 0 claimable for non-members", async function () {
-            expect(await templ.getClaimablePoolAmount(user2.address)).to.equal(0);
+            expect(await templ.getClaimableMemberRewards(user2.address)).to.equal(0);
         });
 
         it("Should expose treasury info totals", async function () {
@@ -1123,13 +1125,13 @@ describe("TEMPL Contract with DAO Governance", function () {
 
             for (const signer of joiners) {
                 await token.connect(signer).approve(await templ.getAddress(), ENTRY_FEE);
-                await templ.connect(signer).purchaseAccess();
+                await templ.connect(signer).join();
             }
 
             expect(await templ.getMemberCount()).to.equal(1n + BigInt(joiners.length));
 
             // Check that the first paying member can still claim efficiently
-            const claimable = await templ.getClaimablePoolAmount(joiners[0].address);
+            const claimable = await templ.getClaimableMemberRewards(joiners[0].address);
             expect(claimable).to.be.gt(0);
         });
     });
@@ -1137,17 +1139,17 @@ describe("TEMPL Contract with DAO Governance", function () {
     describe("Integration Tests", function () {
         it("Should handle complete user journey", async function () {
             // User 1 joins
-            await purchaseAccess(templ, token, [user1]);
+            await joinMembers(templ, token, [user1]);
             expect(await templ.getMemberCount()).to.equal(2);
 
             // User 2 joins
-            await purchaseAccess(templ, token, [user2]);
+            await joinMembers(templ, token, [user2]);
             expect(await templ.getMemberCount()).to.equal(3);
 
             // User 1 claims rewards
-            const claimable = await templ.getClaimablePoolAmount(user1.address);
+            const claimable = await templ.getClaimableMemberRewards(user1.address);
             expect(claimable).to.be.gt(0);
-            await templ.connect(user1).claimMemberPool();
+            await templ.connect(user1).claimMemberRewards();
 
             // User 1 creates proposal
             const callData = encodeWithdrawTreasuryDAO(

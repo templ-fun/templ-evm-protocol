@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
-const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
+const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 
 describe("Reentrancy protection", function () {
   const ENTRY_FEE = ethers.parseUnits("100", 18);
@@ -11,7 +11,7 @@ describe("Reentrancy protection", function () {
   const PROTOCOL_BPS = 1000;
   const QUORUM_BPS = 3300;
 
-  describe("purchaseAccess", function () {
+  describe("join", function () {
     let accounts;
     let templ;
     let token;
@@ -48,7 +48,7 @@ describe("Reentrancy protection", function () {
       await token.setTempl(await templ.getAddress());
     });
 
-    it("reverts when purchaseAccess is reentered", async function () {
+    it("reverts when join is reentered", async function () {
       const attacker = accounts[2];
 
       await token.mint(attacker.address, ENTRY_FEE);
@@ -59,7 +59,7 @@ describe("Reentrancy protection", function () {
       await token.setCallback(1);
 
       await expect(
-        templ.connect(attacker).purchaseAccess()
+        templ.connect(attacker).join()
       ).to.be.revertedWithCustomError(templ, "ReentrancyGuardReentrantCall");
     });
 
@@ -74,7 +74,7 @@ describe("Reentrancy protection", function () {
     });
   });
 
-  describe("claimMemberPool", function () {
+  describe("claimMemberRewards", function () {
     let accounts;
     let templ;
     let token;
@@ -112,25 +112,25 @@ describe("Reentrancy protection", function () {
       await token.joinTempl(ENTRY_FEE);
     });
 
-    it("reverts when claimMemberPool is reentered", async function () {
+    it("reverts when claimMemberRewards is reentered", async function () {
       const [, member1, member2] = accounts;
 
       await mintToUsers(token, [member1, member2], ENTRY_FEE);
 
-      await purchaseAccess(templ, token, [member1, member2]);
+      await joinMembers(templ, token, [member1, member2]);
 
       await token.setCallback(2);
 
       await expect(
-        templ.connect(member1).claimMemberPool()
+        templ.connect(member1).claimMemberRewards()
       ).to.be.revertedWithCustomError(templ, "ReentrancyGuardReentrantCall");
     });
   });
 
-  describe("claimExternalToken", function () {
+  describe("claimExternalReward", function () {
     const VOTING_PERIOD = 7 * 24 * 60 * 60;
 
-    it("reverts when claimExternalToken is reentered", async function () {
+    it("reverts when claimExternalReward is reentered", async function () {
       const { templ, token, accounts, priest } = await deployTempl({ entryFee: ENTRY_FEE });
       const [, , member, donor] = accounts;
 
@@ -142,14 +142,14 @@ describe("Reentrancy protection", function () {
       await rewardToken.setTempl(await templ.getAddress());
 
       await mintToUsers(token, [priest, member], ENTRY_FEE * 4n);
-      await purchaseAccess(templ, token, [priest, member]);
+      await joinMembers(templ, token, [priest, member]);
 
       await token.mint(await rewardToken.getAddress(), ENTRY_FEE);
       await rewardToken.joinTemplWithAccessToken(await token.getAddress(), ENTRY_FEE);
 
-      expect(await templ.hasAccess(priest.address)).to.equal(true);
-      expect(await templ.hasAccess(member.address)).to.equal(true);
-      expect(await templ.hasAccess(await rewardToken.getAddress())).to.equal(true);
+      expect(await templ.isMember(priest.address)).to.equal(true);
+      expect(await templ.isMember(member.address)).to.equal(true);
+      expect(await templ.isMember(await rewardToken.getAddress())).to.equal(true);
 
       const donation = ethers.parseUnits("30", 18);
       await rewardToken.mint(donor.address, donation);
@@ -163,13 +163,13 @@ describe("Reentrancy protection", function () {
       await ethers.provider.send("evm_mine", []);
       await templ.executeProposal(0);
 
-      expect(await templ.hasAccess(member.address)).to.equal(true);
+      expect(await templ.isMember(member.address)).to.equal(true);
 
       await rewardToken.setCallback(3);
       await rewardToken.setCallbackToken(await rewardToken.getAddress());
 
       await expect(
-        templ.connect(member).claimExternalToken(rewardToken.target)
+        templ.connect(member).claimExternalReward(rewardToken.target)
       ).to.be.revertedWithCustomError(templ, "ReentrancyGuardReentrantCall");
     });
 

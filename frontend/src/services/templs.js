@@ -15,7 +15,8 @@ const ERC20_METADATA_ABI = [
  *   entryFeeRaw?: string,
  *   tokenSymbol?: string,
  *   templHomeLink?: string,
- *   protocolPercent?: number
+ *   protocolPercent?: number,
+ *   joinPaused?: boolean
  * }} TemplMeta
  */
 
@@ -35,7 +36,8 @@ const ERC20_METADATA_ABI = [
  * @property {string} burnedRaw
  * @property {string} burnedFormatted
  * @property {number} memberCount
- * @property {string} totalPurchases
+ * @property {string} totalJoins
+ * @property {boolean} joinPaused
  * @property {string} totalTreasuryReceived
  * @property {string} totalProtocolFees
  * @property {string} templHomeLink
@@ -127,16 +129,19 @@ export async function fetchTemplStats({
   let homeLink = '';
   let memberCount = 0n;
   let priestAddress = metaInfo.priest || '';
-  let totalPurchasesValue = null;
+  let totalJoinsValue = null;
+  let joinPaused = metaInfo.joinPaused !== undefined && metaInfo.joinPaused !== null
+    ? Boolean(metaInfo.joinPaused)
+    : false;
 
   try {
-    [config, treasuryInfo, homeLink, memberCount, priestAddress, totalPurchasesValue] = await Promise.all([
+    [config, treasuryInfo, homeLink, memberCount, priestAddress, totalJoinsValue] = await Promise.all([
       templ.getConfig().catch(() => null),
       templ.getTreasuryInfo().catch(() => null),
       templ.templHomeLink().catch(() => ''),
       templ.getMemberCount?.().catch(() => 0n),
       templ.priest?.().catch(() => metaInfo.priest || ''),
-      templ.totalPurchases?.().catch(() => null)
+      templ.totalJoins?.().catch(() => null)
     ]);
   } catch (err) {
     console.warn('[templ] Failed to load templ summary', templAddress, err);
@@ -144,9 +149,9 @@ export async function fetchTemplStats({
 
   let tokenAddress = metaInfo.tokenAddress || '';
   let entryFeeRaw = metaInfo.entryFee !== undefined ? toBigInt(metaInfo.entryFee) : toBigInt(metaInfo.entryFeeRaw);
-  let totalPurchases = 0n;
-  if (totalPurchasesValue !== undefined && totalPurchasesValue !== null) {
-    totalPurchases = toBigInt(totalPurchasesValue, 0n);
+  let totalJoins = 0n;
+  if (totalJoinsValue !== undefined && totalJoinsValue !== null) {
+    totalJoins = toBigInt(totalJoinsValue, 0n);
   }
   let treasuryAvailable = 0n;
   let memberPoolBalance = 0n;
@@ -161,10 +166,11 @@ export async function fetchTemplStats({
     : 0;
 
   if (config) {
-    const [cfgToken, fee, , purchases, treasuryBal, poolBal, burnPct, treasuryPct, memberPct, protocolPct] = config;
+    const [cfgToken, fee, joinState, joinsValue, treasuryBal, poolBal, burnPct, treasuryPct, memberPct, protocolPct] = config;
     if (typeof cfgToken === 'string' && cfgToken) {
       tokenAddress = cfgToken.toLowerCase();
     }
+    joinPaused = Boolean(joinState);
     if (burnPct !== undefined && burnPct !== null) {
       const parsed = Number(burnPct);
       if (Number.isFinite(parsed)) burnPercentBps = parsed;
@@ -184,8 +190,8 @@ export async function fetchTemplStats({
     if (fee !== undefined && fee !== null) {
       entryFeeRaw = typeof fee === 'bigint' ? fee : BigInt(fee);
     }
-    if (purchases !== undefined && purchases !== null) {
-      totalPurchases = typeof purchases === 'bigint' ? purchases : BigInt(purchases);
+    if (joinsValue !== undefined && joinsValue !== null) {
+      totalJoins = typeof joinsValue === 'bigint' ? joinsValue : BigInt(joinsValue);
     }
     if (treasuryBal !== undefined && treasuryBal !== null) {
       treasuryAvailable = typeof treasuryBal === 'bigint' ? treasuryBal : BigInt(treasuryBal);
@@ -210,11 +216,11 @@ export async function fetchTemplStats({
     tokenAddress = metaInfo.tokenAddress;
   }
 
-  let purchasesFromEvents = 0n;
-  if (templ.filters?.AccessPurchased && typeof templ.queryFilter === 'function') {
+  let joinsFromEvents = 0n;
+  if (templ.filters?.MemberJoined && typeof templ.queryFilter === 'function') {
     try {
-      const events = await templ.queryFilter(templ.filters.AccessPurchased(), 0, 'latest');
-      purchasesFromEvents = BigInt(events.length);
+      const events = await templ.queryFilter(templ.filters.MemberJoined(), 0, 'latest');
+      joinsFromEvents = BigInt(events.length);
       for (const evt of events) {
         const args = typeof evt === 'object' && evt !== null && 'args' in evt
           ? /** @type {Record<string | number, any>} */ (evt.args)
@@ -223,11 +229,11 @@ export async function fetchTemplStats({
         totalTreasuryReceived += toBigInt(args?.treasuryAmount, 0n);
         totalProtocolFees += toBigInt(args?.protocolAmount, 0n);
       }
-      if (totalPurchases === 0n && purchasesFromEvents > 0n) {
-        totalPurchases = purchasesFromEvents;
+      if (totalJoins === 0n && joinsFromEvents > 0n) {
+        totalJoins = joinsFromEvents;
       }
     } catch (err) {
-      console.warn('[templ] Failed to aggregate AccessPurchased events', templAddress, err);
+      console.warn('[templ] Failed to aggregate MemberJoined events', templAddress, err);
     }
   }
 
@@ -255,7 +261,8 @@ export async function fetchTemplStats({
     burnedRaw: totalBurned.toString(),
     burnedFormatted,
     memberCount: Number(memberCount),
-    totalPurchases: totalPurchases.toString(),
+    totalJoins: totalJoins.toString(),
+    joinPaused,
     totalTreasuryReceived: totalTreasuryReceived.toString(),
     totalProtocolFees: totalProtocolFees.toString(),
     templHomeLink: normalizedHomeLink || metaInfo.templHomeLink || '',
@@ -291,7 +298,7 @@ export async function fetchTemplStats({
  *   memberPoolBalanceRaw: string,
  *   memberPoolBalanceFormatted: string,
  *   memberCount: number,
- *   totalPurchases: string,
+ *   totalJoins: string,
  *   templHomeLink: string,
  *   links: {
  *     overview: string,

@@ -45,9 +45,9 @@ contract DaoCallerHarness is TEMPL {
     ) external {
         this.updateConfigDAO(token, fee, updateSplit, burnPercent, treasuryPercent, memberPoolPercent);
     }
-    /// @notice Wrapper to call setPausedDAO via contract self-call
+    /// @notice Wrapper to call setJoinPausedDAO via contract self-call
     function daoPause(bool p) external {
-        this.setPausedDAO(p);
+        this.setJoinPausedDAO(p);
     }
     /// @notice Wrapper to call disbandTreasuryDAO via contract self-call
     function daoDisband(address token) external {

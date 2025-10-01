@@ -12,10 +12,23 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 abstract contract TemplMembership is TemplBase {
     using SafeERC20 for IERC20;
 
-    /// @notice Purchase templ membership using the configured access token.
-    function purchaseAccess() external whenNotPaused notSelf nonReentrant {
-        Member storage joiningMember = members[msg.sender];
-        if (joiningMember.purchased) revert TemplErrors.AlreadyPurchased();
+    /// @notice Join the templ by paying the configured entry fee on behalf of the caller.
+    function join() external whenNotPaused notSelf nonReentrant {
+        _join(msg.sender, msg.sender);
+    }
+
+    /// @notice Join the templ on behalf of another wallet by covering their entry fee.
+    /// @param recipient Wallet receiving membership. Must not already be a member.
+    function joinFor(address recipient) external whenNotPaused notSelf nonReentrant {
+        _join(msg.sender, recipient);
+    }
+
+    /// @dev Shared join workflow that handles accounting updates for new members.
+    function _join(address payer, address recipient) internal {
+        if (recipient == address(0)) revert TemplErrors.InvalidRecipient();
+
+        Member storage joiningMember = members[recipient];
+        if (joiningMember.joined) revert TemplErrors.MemberAlreadyJoined();
 
         uint256 currentMemberCount = memberCount;
 
@@ -33,11 +46,11 @@ abstract contract TemplMembership is TemplBase {
         uint256 treasuryAmount = entryFee - burnAmount - memberPoolAmount - protocolAmount;
         uint256 toContract = treasuryAmount + memberPoolAmount;
 
-        if (IERC20(accessToken).balanceOf(msg.sender) < entryFee) revert TemplErrors.InsufficientBalance();
+        if (IERC20(accessToken).balanceOf(payer) < entryFee) revert TemplErrors.InsufficientBalance();
 
-        joiningMember.purchased = true;
+        joiningMember.joined = true;
         joiningMember.timestamp = block.timestamp;
-        joiningMember.block = block.number;
+        joiningMember.blockNumber = block.number;
         memberCount = currentMemberCount + 1;
 
         if (currentMemberCount > 0) {
@@ -53,14 +66,15 @@ abstract contract TemplMembership is TemplBase {
         memberPoolBalance += memberPoolAmount;
         IERC20 accessTokenContract = IERC20(accessToken);
         // NOTE: Fee-on-transfer tokens are unsupported; transfer-based fees break internal accounting.
-        accessTokenContract.safeTransferFrom(msg.sender, burnAddress, burnAmount);
-        accessTokenContract.safeTransferFrom(msg.sender, address(this), toContract);
-        accessTokenContract.safeTransferFrom(msg.sender, protocolFeeRecipient, protocolAmount);
+        accessTokenContract.safeTransferFrom(payer, burnAddress, burnAmount);
+        accessTokenContract.safeTransferFrom(payer, address(this), toContract);
+        accessTokenContract.safeTransferFrom(payer, protocolFeeRecipient, protocolAmount);
 
-        uint256 purchaseId = currentMemberCount == 0 ? 0 : currentMemberCount - 1;
+        uint256 joinId = currentMemberCount == 0 ? 0 : currentMemberCount - 1;
 
-        emit AccessPurchased(
-            msg.sender,
+        emit MemberJoined(
+            payer,
+            recipient,
             entryFee,
             burnAmount,
             treasuryAmount,
@@ -68,7 +82,7 @@ abstract contract TemplMembership is TemplBase {
             protocolAmount,
             block.timestamp,
             block.number,
-            purchaseId
+            joinId
         );
 
         _autoPauseIfLimitReached();
@@ -77,8 +91,8 @@ abstract contract TemplMembership is TemplBase {
     /// @notice Returns the member pool allocation pending for a given wallet.
     /// @param member Wallet to inspect.
     /// @return amount Claimable balance denominated in the access token.
-    function getClaimablePoolAmount(address member) public view returns (uint256) {
-        if (!members[member].purchased) {
+    function getClaimableMemberRewards(address member) public view returns (uint256) {
+        if (!members[member].joined) {
             return 0;
         }
 
@@ -111,8 +125,8 @@ abstract contract TemplMembership is TemplBase {
     /// @param member Wallet to inspect.
     /// @param token ERC-20 token address or address(0) for ETH.
     /// @return amount Claimable balance of the external reward for the member.
-    function getClaimableExternalToken(address member, address token) public view returns (uint256 amount) {
-        if (!members[member].purchased) {
+    function getClaimableExternalReward(address member, address token) public view returns (uint256 amount) {
+        if (!members[member].joined) {
             return 0;
         }
         if (token == accessToken) {
@@ -132,9 +146,9 @@ abstract contract TemplMembership is TemplBase {
         return accrued > snapshot ? accrued - snapshot : 0;
     }
 
-    /// @notice Claims the caller's accrued share of the member pool.
-    function claimMemberPool() external onlyMember nonReentrant {
-        uint256 claimableAmount = getClaimablePoolAmount(msg.sender);
+    /// @notice Claims the caller's accrued share of the member rewards pool.
+    function claimMemberRewards() external onlyMember nonReentrant {
+        uint256 claimableAmount = getClaimableMemberRewards(msg.sender);
         if (claimableAmount == 0) revert TemplErrors.NoRewardsToClaim();
         uint256 distributableBalance = memberPoolBalance - memberRewardRemainder;
         if (distributableBalance < claimableAmount) revert TemplErrors.InsufficientPoolBalance();
@@ -145,17 +159,17 @@ abstract contract TemplMembership is TemplBase {
 
         IERC20(accessToken).safeTransfer(msg.sender, claimableAmount);
 
-        emit MemberPoolClaimed(msg.sender, claimableAmount, block.timestamp);
+        emit MemberRewardsClaimed(msg.sender, claimableAmount, block.timestamp);
     }
 
     /// @notice Claims the caller's accrued share of an external reward token or ETH.
     /// @param token ERC-20 token address or address(0) for ETH.
-    function claimExternalToken(address token) external onlyMember nonReentrant {
+    function claimExternalReward(address token) external onlyMember nonReentrant {
         if (token == accessToken) revert TemplErrors.InvalidCallData();
         ExternalRewardState storage rewards = externalRewards[token];
         if (!rewards.exists) revert TemplErrors.NoRewardsToClaim();
 
-        uint256 claimable = getClaimableExternalToken(msg.sender, token);
+        uint256 claimable = getClaimableExternalReward(msg.sender, token);
         if (claimable == 0) revert TemplErrors.NoRewardsToClaim();
 
         uint256 remaining = rewards.poolBalance;
@@ -175,28 +189,28 @@ abstract contract TemplMembership is TemplBase {
     }
 
     /// @notice Reports whether a wallet currently counts as a member.
-    function hasAccess(address user) external view returns (bool) {
-        return members[user].purchased;
+    function isMember(address user) external view returns (bool) {
+        return members[user].joined;
     }
 
-    /// @notice Returns metadata about when a wallet purchased access.
+    /// @notice Returns metadata about when a wallet joined.
     /// @param user Wallet to inspect.
-    /// @return purchased True if the wallet has joined.
+    /// @return joined True if the wallet has joined.
     /// @return timestamp Block timestamp when the join completed.
-    /// @return blockNum Block number when the join completed.
-    function getPurchaseDetails(address user) external view returns (
-        bool purchased,
+    /// @return blockNumber Block number when the join completed.
+    function getJoinDetails(address user) external view returns (
+        bool joined,
         uint256 timestamp,
-        uint256 blockNum
+        uint256 blockNumber
     ) {
         Member storage m = members[user];
-        return (m.purchased, m.timestamp, m.block);
+        return (m.joined, m.timestamp, m.blockNumber);
     }
 
     /// @notice Exposes treasury balances, member pool totals, and protocol receipts.
     /// @return treasury Access-token balance currently available for governance-controlled withdrawals.
     /// @return memberPool Access-token balance locked for member pool claims.
-    /// @return protocolAddress Wallet that receives protocol fee splits during purchases.
+    /// @return protocolAddress Wallet that receives protocol fee splits during joins.
     function getTreasuryInfo()
         external
         view
@@ -214,8 +228,8 @@ abstract contract TemplMembership is TemplBase {
     /// @notice Returns high level configuration and aggregate balances for the templ.
     /// @return token Address of the access token required for membership.
     /// @return fee Current entry fee denominated in the access token.
-    /// @return isPaused Whether membership joins are paused.
-    /// @return purchases Historical count of successful joins (excluding the auto-enrolled priest).
+    /// @return joinPaused Whether membership joins are paused.
+    /// @return joins Historical count of successful joins (excluding the auto-enrolled priest).
     /// @return treasury Treasury balance currently available to governance.
     /// @return pool Aggregate member pool balance reserved for claims.
     /// @return burnPercentOut Burn allocation expressed in basis points.
@@ -225,8 +239,8 @@ abstract contract TemplMembership is TemplBase {
     function getConfig() external view returns (
         address token,
         uint256 fee,
-        bool isPaused,
-        uint256 purchases,
+        bool joinPaused,
+        uint256 joins,
         uint256 treasury,
         uint256 pool,
         uint256 burnPercentOut,
@@ -239,8 +253,8 @@ abstract contract TemplMembership is TemplBase {
         return (
             accessToken,
             entryFee,
-            paused,
-            totalPurchases(),
+            joinPaused,
+            totalJoins(),
             available,
             memberPoolBalance,
             burnPercent,
@@ -257,8 +271,8 @@ abstract contract TemplMembership is TemplBase {
     }
 
     /// @notice Historical counter for total successful joins (mirrors member count without storing extra state).
-    /// @return purchases Number of completed joins excluding the auto-enrolled priest.
-    function totalPurchases() public view returns (uint256) {
+    /// @return joins Number of completed joins excluding the auto-enrolled priest.
+    function totalJoins() public view returns (uint256) {
         if (memberCount == 0) {
             return 0;
         }
@@ -269,7 +283,7 @@ abstract contract TemplMembership is TemplBase {
     /// @param voter Address to inspect for voting rights.
     /// @return weight Voting weight (1 when the wallet is a member, 0 otherwise).
     function getVoteWeight(address voter) external view returns (uint256 weight) {
-        if (!members[voter].purchased) {
+        if (!members[voter].joined) {
             return 0;
         }
         return 1;
@@ -286,7 +300,7 @@ abstract contract TemplMembership is TemplBase {
             return rewards.cumulativeRewards;
         }
 
-        uint256 memberBlock = memberInfo.block;
+        uint256 memberBlockNumber = memberInfo.blockNumber;
         uint256 memberTimestamp = memberInfo.timestamp;
         uint256 low = 0;
         uint256 high = len;
@@ -294,9 +308,9 @@ abstract contract TemplMembership is TemplBase {
         while (low < high) {
             uint256 mid = (low + high) >> 1;
             RewardCheckpoint storage cp = checkpoints[mid];
-            if (memberBlock < cp.blockNumber) {
+            if (memberBlockNumber < cp.blockNumber) {
                 high = mid;
-            } else if (memberBlock > cp.blockNumber) {
+            } else if (memberBlockNumber > cp.blockNumber) {
                 low = mid + 1;
             } else if (memberTimestamp < cp.timestamp) {
                 high = mid;

@@ -23,18 +23,18 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @dev Caps the number of external reward tokens tracked to keep join gas bounded.
     uint256 internal constant MAX_EXTERNAL_REWARD_TOKENS = 256;
 
-    /// @notice Percent of the entry fee that is burned on every purchase.
+    /// @notice Percent of the entry fee that is burned on every join.
     uint256 public burnPercent;
     /// @notice Percent of the entry fee routed into the treasury balance.
     uint256 public treasuryPercent;
     /// @notice Percent of the entry fee set aside for the member rewards pool.
     uint256 public memberPoolPercent;
-    /// @notice Percent of the entry fee forwarded to the protocol on every purchase.
+    /// @notice Percent of the entry fee forwarded to the protocol on every join.
     uint256 public immutable protocolPercent;
 
     /// @notice Address empowered to act as the priest (and temporary dictator).
     address public priest;
-    /// @notice Address that receives the protocol share during purchases and distributions.
+    /// @notice Address that receives the protocol share during joins and distributions.
     address public immutable protocolFeeRecipient;
     /// @notice ERC-20 token required to join the templ.
     address public immutable accessToken;
@@ -46,8 +46,8 @@ abstract contract TemplBase is ReentrancyGuard {
     uint256 public treasuryBalance;
     /// @notice Member pool balance denominated in the access token.
     uint256 public memberPoolBalance;
-    /// @notice Whether joins and other restricted flows are paused.
-    bool public paused;
+    /// @notice Whether new member joins are currently paused.
+    bool public joinPaused;
     /// @notice Maximum allowed members when greater than zero (0 = uncapped).
     /// @dev Named in uppercase historically; kept for backwards compatibility with emitted ABI.
     uint256 public MAX_MEMBERS;
@@ -62,12 +62,12 @@ abstract contract TemplBase is ReentrancyGuard {
     string public templHomeLink;
 
     struct Member {
-        /// @notice Whether the address has successfully purchased access.
-        bool purchased;
+        /// @notice Whether the address has successfully joined.
+        bool joined;
         /// @notice Block timestamp when the member joined.
         uint256 timestamp;
         /// @notice Block number recorded at the time of the join.
-        uint256 block;
+        uint256 blockNumber;
         /// @notice Reward checkpoint captured when the member joined.
         uint256 rewardSnapshot;
     }
@@ -99,7 +99,7 @@ abstract contract TemplBase is ReentrancyGuard {
         string title;
         string description;
         string reason;
-        bool paused;
+        bool joinPaused;
         uint256 newEntryFee;
         uint256 newBurnPercent;
         uint256 newTreasuryPercent;
@@ -134,7 +134,7 @@ abstract contract TemplBase is ReentrancyGuard {
     uint256 public constant MAX_VOTING_PERIOD = 30 days;
 
     enum Action {
-        SetPaused,
+        SetJoinPaused,
         UpdateConfig,
         WithdrawTreasury,
         DisbandTreasury,
@@ -145,8 +145,9 @@ abstract contract TemplBase is ReentrancyGuard {
         Undefined
     }
 
-    event AccessPurchased(
-        address indexed purchaser,
+    event MemberJoined(
+        address indexed payer,
+        address indexed member,
         uint256 totalAmount,
         uint256 burnedAmount,
         uint256 treasuryAmount,
@@ -154,10 +155,10 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 protocolAmount,
         uint256 timestamp,
         uint256 blockNumber,
-        uint256 purchaseId
+        uint256 joinId
     );
 
-    event MemberPoolClaimed(
+    event MemberRewardsClaimed(
         address indexed member,
         uint256 amount,
         uint256 timestamp
@@ -197,7 +198,7 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 protocolPercent
     );
 
-    event ContractPaused(bool isPaused);
+    event JoinPauseUpdated(bool joinPaused);
     event MaxMembersUpdated(uint256 maxMembers);
     event PriestChanged(address indexed oldPriest, address indexed newPriest);
     event TreasuryDisbanded(
@@ -232,9 +233,9 @@ abstract contract TemplBase is ReentrancyGuard {
     mapping(address => uint256) internal externalRewardTokenIndex;
     /// @notice Member snapshots for each external reward token.
     mapping(address => mapping(address => uint256)) internal memberExternalRewardSnapshots;
-    /// @dev Restricts a function so only wallets that successfully purchased access may call it.
+    /// @dev Restricts a function so only wallets that successfully joined may call it.
     modifier onlyMember() {
-        if (!members[msg.sender].purchased) revert TemplErrors.NotMember();
+        if (!members[msg.sender].joined) revert TemplErrors.NotMember();
         _;
     }
 
@@ -248,7 +249,7 @@ abstract contract TemplBase is ReentrancyGuard {
         _;
     }
 
-    /// @dev Blocks direct calls from the contract to avoid double-entry during purchase flows.
+    /// @dev Blocks direct calls from the contract to avoid double-entry during join flows.
     modifier notSelf() {
         if (msg.sender == address(this)) revert TemplErrors.InvalidSender();
         _;
@@ -256,7 +257,7 @@ abstract contract TemplBase is ReentrancyGuard {
 
     /// @dev Ensures joins and other gated actions only execute when the templ is unpaused.
     modifier whenNotPaused() {
-        if (paused) revert TemplErrors.ContractPausedError();
+        if (joinPaused) revert TemplErrors.JoinIntakePaused();
         _;
     }
 
@@ -406,12 +407,12 @@ abstract contract TemplBase is ReentrancyGuard {
         emit TemplHomeLinkUpdated(previous, newLink);
     }
 
-    /// @dev Pauses the templ when a membership cap is set and already reached.
+    /// @dev Pauses new joins when a membership cap is set and already reached.
     function _autoPauseIfLimitReached() internal {
         uint256 limit = MAX_MEMBERS;
-        if (limit > 0 && memberCount >= limit && !paused) {
-            paused = true;
-            emit ContractPaused(true);
+        if (limit > 0 && memberCount >= limit && !joinPaused) {
+            joinPaused = true;
+            emit JoinPauseUpdated(true);
         }
     }
 

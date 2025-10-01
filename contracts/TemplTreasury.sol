@@ -43,10 +43,10 @@ abstract contract TemplTreasury is TemplBase {
         _updateConfig(_token, _entryFee, _updateFeeSplit, _burnPercent, _treasuryPercent, _memberPoolPercent);
     }
 
-    /// @notice Governance action that toggles the paused state.
-    /// @param _paused Desired paused state to apply.
-    function setPausedDAO(bool _paused) external onlyDAO {
-        _setPaused(_paused);
+    /// @notice Governance action that toggles whether new members can join.
+    /// @param _paused Desired join pause state to apply.
+    function setJoinPausedDAO(bool _paused) external onlyDAO {
+        _setJoinPaused(_paused);
     }
 
     /// @notice Governance action that adjusts the membership cap.
@@ -150,10 +150,10 @@ abstract contract TemplTreasury is TemplBase {
         emit ConfigUpdated(accessToken, entryFee, burnPercent, treasuryPercent, memberPoolPercent, protocolPercent);
     }
 
-    /// @dev Sets the paused flag without mutating membership limits during manual resumes.
-    function _setPaused(bool _paused) internal {
-        paused = _paused;
-        emit ContractPaused(_paused);
+    /// @dev Sets the join pause flag without mutating membership limits during manual resumes.
+    function _setJoinPaused(bool _paused) internal {
+        joinPaused = _paused;
+        emit JoinPauseUpdated(_paused);
     }
 
     /// @dev Routes treasury balances into member or external pools so members can claim them evenly.

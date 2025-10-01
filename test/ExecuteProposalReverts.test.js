@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
-const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
+const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 
 describe("executeProposal reverts", function () {
   let templ;
@@ -25,7 +25,7 @@ describe("executeProposal reverts", function () {
 
   it("rejects invalid update fee at creation", async function () {
     await mintToUsers(token, [owner], ENTRY_FEE);
-    await purchaseAccess(templ, token, [owner]);
+    await joinMembers(templ, token, [owner]);
     await expect(
       templ
         .connect(owner)
@@ -36,11 +36,11 @@ describe("executeProposal reverts", function () {
   it("reverts when executing before quorum is reached", async function () {
     const [, , member1, member2, member3, member4] = accounts;
     await mintToUsers(token, [member1, member2, member3, member4], ENTRY_FEE * 5n);
-    await purchaseAccess(templ, token, [member1, member2, member3, member4]);
+    await joinMembers(templ, token, [member1, member2, member3, member4]);
 
     await templ
       .connect(member1)
-      .createProposalSetPaused(false, 7 * 24 * 60 * 60, 'Keep running', 'Ensure quorum required');
+      .createProposalSetJoinPaused(false, 7 * 24 * 60 * 60, 'Keep running', 'Ensure quorum required');
 
     await expect(templ.executeProposal(0))
       .to.be.revertedWithCustomError(templ, "QuorumNotReached");
@@ -56,11 +56,11 @@ describe("executeProposal reverts", function () {
     const members = highQuorumAccounts.slice(2, 8);
 
     await mintToUsers(highQuorumToken, members, ENTRY_FEE * 3n);
-    await purchaseAccess(highQuorumTempl, highQuorumToken, members);
+    await joinMembers(highQuorumTempl, highQuorumToken, members);
 
     await highQuorumTempl
       .connect(members[0])
-      .createProposalSetPaused(false, 7 * 24 * 60 * 60, 'Keep running', 'Require quorum persistence');
+      .createProposalSetJoinPaused(false, 7 * 24 * 60 * 60, 'Keep running', 'Require quorum persistence');
 
     await highQuorumTempl.connect(members[1]).vote(0, true);
     await highQuorumTempl.connect(members[2]).vote(0, true);
@@ -101,11 +101,11 @@ describe("executeProposal reverts", function () {
     await harness.waitForDeployment();
 
     await mintToUsers(harnessToken, [member1, member2], ENTRY_FEE * 5n);
-    await purchaseAccess(harness, harnessToken, [member1, member2]);
+    await joinMembers(harness, harnessToken, [member1, member2]);
 
     await harness
       .connect(member1)
-      .createProposalSetPaused(true, 7 * 24 * 60 * 60, 'Pause harness', 'Testing invalid call data');
+      .createProposalSetJoinPaused(true, 7 * 24 * 60 * 60, 'Pause harness', 'Testing invalid call data');
     await harness.setUndefinedAction(0);
 
     const delay = Number(await harness.executionDelayAfterQuorum());

@@ -45,12 +45,12 @@ contract TemplHarness is TEMPL {
         address member,
         uint256 blockNumber,
         uint256 timestamp,
-        bool purchased
+        bool joined
     ) external {
         Member storage info = members[member];
-        info.block = blockNumber;
+        info.blockNumber = blockNumber;
         info.timestamp = timestamp;
-        info.purchased = purchased;
+        info.joined = joined;
     }
 
     /// @dev Exposes the internal snapshot helper for coverage assertions.

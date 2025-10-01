@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
-const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
+const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 const { encodeWithdrawTreasuryDAO } = require("./utils/callDataBuilders");
 
 describe("Vote reverts", function () {
@@ -17,7 +17,7 @@ describe("Vote reverts", function () {
         [owner, priest, member1] = accounts;
 
         await mintToUsers(token, [member1], TOKEN_SUPPLY);
-        await purchaseAccess(templ, token, [member1]);
+        await joinMembers(templ, token, [member1]);
     });
 
     it("reverts when voting on non-existent proposal", async function () {
@@ -44,7 +44,7 @@ describe("Vote reverts", function () {
     it("counts first-time yes votes from non-proposers", async function () {
         const member2 = accounts[3];
         await mintToUsers(token, [member2], TOKEN_SUPPLY);
-        await purchaseAccess(templ, token, [member2]);
+        await joinMembers(templ, token, [member2]);
 
         await templ.connect(member1).createProposalWithdrawTreasury(
             token.target,

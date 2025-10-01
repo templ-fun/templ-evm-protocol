@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
-const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
+const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 
 describe("Fee Distribution Invariant", function () {
     const ENTRY_FEE = ethers.parseUnits("100", 18);
@@ -32,7 +32,7 @@ describe("Fee Distribution Invariant", function () {
             const member = members[i];
             await token.connect(member).approve(templAddress, ENTRY_FEE);
 
-            const tx = await templ.connect(member).purchaseAccess();
+            const tx = await templ.connect(member).join();
             const receipt = await tx.wait();
 
             const accessPurchased = receipt.logs
@@ -43,9 +43,9 @@ describe("Fee Distribution Invariant", function () {
                         return null;
                     }
                 })
-                .find((log) => log && log.name === "AccessPurchased");
+                .find((log) => log && log.name === "MemberJoined");
 
-            expect(accessPurchased, "AccessPurchased event").to.not.equal(undefined);
+            expect(accessPurchased, "MemberJoined event").to.not.equal(undefined);
 
             cumulativeBurn += accessPurchased.args.burnedAmount;
             cumulativeTreasury += accessPurchased.args.treasuryAmount;
@@ -63,6 +63,6 @@ describe("Fee Distribution Invariant", function () {
             }
         }
 
-        expect(await templ.totalPurchases()).to.equal(BigInt(members.length));
+        expect(await templ.totalJoins()).to.equal(BigInt(members.length));
     });
 });

@@ -13,7 +13,7 @@ process.env.APP_BASE_URL = 'http://localhost:5173';
 
 function createTestNotifier(notifications) {
   return {
-    notifyAccessPurchased: async (payload) => notifications.push({ type: 'access', payload }),
+    notifyMemberJoined: async (payload) => notifications.push({ type: 'access', payload }),
     notifyProposalCreated: async (payload) => notifications.push({ type: 'proposal', payload }),
     notifyVoteCast: async (payload) => notifications.push({ type: 'vote', payload }),
     notifyPriestChanged: async (payload) => notifications.push({ type: 'priest', payload }),
@@ -23,9 +23,9 @@ function createTestNotifier(notifications) {
     notifyTemplHomeLinkUpdated: async (payload) => notifications.push({ type: 'homeLink', payload }),
     notifyBindingComplete: async (payload) => notifications.push({ type: 'binding', payload }),
     notifyProposalExecuted: async (payload) => notifications.push({ type: 'proposalExecuted', payload }),
-    notifyMemberPoolClaimed: async (payload) => notifications.push({ type: 'memberClaimed', payload }),
+    notifyMemberRewardsClaimed: async (payload) => notifications.push({ type: 'memberClaimed', payload }),
     notifyExternalRewardClaimed: async (payload) => notifications.push({ type: 'externalClaimed', payload }),
-    notifyContractPaused: async (payload) => notifications.push({ type: 'paused', payload }),
+    notifyJoinPauseUpdated: async (payload) => notifications.push({ type: 'paused', payload }),
     notifyConfigUpdated: async (payload) => notifications.push({ type: 'config', payload }),
     notifyTreasuryAction: async (payload) => notifications.push({ type: 'treasuryAction', payload }),
     notifyTreasuryDisbanded: async (payload) => notifications.push({ type: 'treasuryDisbanded', payload }),
@@ -158,14 +158,14 @@ function createTestProvider(contractState) {
 }
 
 
-async function makeApp({ hasPurchased = async () => true, persistence = createMemoryPersistence() } = {}) {
+async function makeApp({ hasJoined = async () => true, persistence = createMemoryPersistence() } = {}) {
   const notifications = [];
   const handlerRegistry = new Map();
   const contractState = new Map();
   const notifier = createTestNotifier(notifications);
   const connectContract = createTestConnectContract(handlerRegistry, contractState);
   const provider = createTestProvider(contractState);
-  const app = await createApp({ hasPurchased, persistence, connectContract, provider, telegram: { notifier } });
+  const app = await createApp({ hasJoined, persistence, connectContract, provider, telegram: { notifier } });
   return { app, persistence, notifications, handlerRegistry, contractState, connectContract, provider };
 }
 
@@ -230,34 +230,38 @@ test('register templ persists record and wires contract listeners', async (t) =>
   const entry = handlerRegistry.get(contractAddress);
   assert.ok(entry, 'contract handlers registered');
   const { handlers, metadata } = entry;
-  assert.equal(typeof handlers.AccessPurchased, 'function');
+  assert.equal(typeof handlers.MemberJoined, 'function');
   assert.equal(typeof handlers.ProposalCreated, 'function');
   assert.equal(typeof handlers.VoteCast, 'function');
   assert.equal(typeof handlers.PriestChanged, 'function');
   assert.equal(typeof handlers.ProposalExecuted, 'function');
   assert.equal(typeof handlers.TemplHomeLinkUpdated, 'function');
-  assert.equal(typeof handlers.MemberPoolClaimed, 'function');
+  assert.equal(typeof handlers.MemberRewardsClaimed, 'function');
   assert.equal(typeof handlers.ExternalRewardClaimed, 'function');
-  assert.equal(typeof handlers.ContractPaused, 'function');
+  assert.equal(typeof handlers.JoinPauseUpdated, 'function');
   assert.equal(typeof handlers.ConfigUpdated, 'function');
   assert.equal(typeof handlers.TreasuryAction, 'function');
   assert.equal(typeof handlers.TreasuryDisbanded, 'function');
   assert.equal(typeof handlers.DictatorshipModeChanged, 'function');
   assert.equal(typeof handlers.MaxMembersUpdated, 'function');
 
-  await handlers.AccessPurchased(wallet.address, 0n, 0n, 0n, 0n, 0n, 1n, 0n, 2n);
-  assert.equal(notifications.at(-1)?.type, 'access');
+  await handlers.MemberJoined(wallet.address, wallet.address, 0n, 0n, 0n, 0n, 0n, 1n, 0n, 2n);
+  const lastAccess = notifications.at(-1);
+  assert.equal(lastAccess?.type, 'access');
+  assert.equal(lastAccess?.payload?.memberAddress?.toLowerCase?.(), wallet.address.toLowerCase());
+  assert.equal(lastAccess?.payload?.payerAddress?.toLowerCase?.(), wallet.address.toLowerCase());
+  assert.equal(lastAccess?.payload?.joinId, '2');
   await handlers.ProposalCreated(1n, wallet.address, 1234n, 'Proposal title', 'Proposal description');
   assert.equal(notifications.at(-1)?.type, 'proposal');
   await handlers.VoteCast(1n, wallet.address, true, 5678n);
   assert.equal(notifications.at(-1)?.type, 'vote');
   await handlers.PriestChanged(wallet.address, wallet.address);
   assert.equal(notifications.at(-1)?.type, 'priest');
-  await handlers.MemberPoolClaimed(wallet.address, 10n, 123n);
+  await handlers.MemberRewardsClaimed(wallet.address, 10n, 123n);
   assert.equal(notifications.at(-1)?.type, 'memberClaimed');
   await handlers.ExternalRewardClaimed(wallet.address, wallet.address, 20n);
   assert.equal(notifications.at(-1)?.type, 'externalClaimed');
-  await handlers.ContractPaused(true);
+  await handlers.JoinPauseUpdated(true);
   assert.equal(notifications.at(-1)?.type, 'paused');
   await handlers.ConfigUpdated('0xToken', 1n, 10, 20, 30, 40);
   assert.equal(notifications.at(-1)?.type, 'config');
@@ -333,7 +337,7 @@ test('proposal executed events capture execution success state', async (t) => {
 });
 
 test('join endpoint validates membership', async (t) => {
-  const { app, contractState } = await makeApp({ hasPurchased: async () => true });
+  const { app, contractState } = await makeApp({ hasJoined: async () => true });
   t.after(async () => {
     await app.close?.();
   });
@@ -345,13 +349,13 @@ test('join endpoint validates membership', async (t) => {
   const res = await joinTempl(app, contractAddress, memberWallet);
   assert.equal(res.status, 200);
   assert.equal(res.body.member.address, memberWallet.address.toLowerCase());
-  assert.equal(res.body.member.hasAccess, true);
+  assert.equal(res.body.member.isMember, true);
   assert.equal(res.body.templ.contract, contractAddress);
   assert.equal(res.body.templ.templHomeLink, '');
 });
 
 test('join endpoint rejects non-members', async (t) => {
-  const { app, contractState } = await makeApp({ hasPurchased: async () => false });
+  const { app, contractState } = await makeApp({ hasJoined: async () => false });
   t.after(async () => {
     await app.close?.();
   });
@@ -366,7 +370,7 @@ test('join endpoint rejects non-members', async (t) => {
 });
 
 test('list templs includes registered entries', async (t) => {
-  const { app, contractState } = await makeApp({ hasPurchased: async () => true });
+  const { app, contractState } = await makeApp({ hasJoined: async () => true });
   t.after(async () => {
     await app.close?.();
   });
@@ -388,7 +392,7 @@ test('list templs includes registered entries', async (t) => {
 });
 
 test('templs listing exposes home links but never chat ids', async (t) => {
-  const { app, contractState } = await makeApp({ hasPurchased: async () => true });
+  const { app, contractState } = await makeApp({ hasJoined: async () => true });
   t.after(async () => {
     await app.close?.();
   });
@@ -436,7 +440,7 @@ test('signature replay rejected after restart with shared store', async (t) => {
   let { app, contractState } = await makeApp({ persistence });
   let appReload = null;
   const wallet = Wallet.createRandom();
-  const hasPurchased = async () => true;
+  const hasJoined = async () => true;
   t.after(async () => {
     await app?.close?.();
     await appReload?.close?.();
@@ -470,7 +474,7 @@ test('signature replay rejected after restart with shared store', async (t) => {
   app = null;
 
   appReload = await createApp({
-    hasPurchased,
+    hasJoined,
     persistence,
     connectContract: createTestConnectContract(new Map(), contractState),
     telegram: { notifier: createTestNotifier([]) }
@@ -496,7 +500,7 @@ test('templ without chat binding survives restart', async (t) => {
   const persistence = createMemoryPersistence();
   let { app, contractState } = await makeApp({ persistence });
   let appReload = null;
-  const hasPurchased = async () => true;
+  const hasJoined = async () => true;
   t.after(async () => {
     await app?.close?.();
     await appReload?.close?.();
@@ -519,7 +523,7 @@ test('templ without chat binding survives restart', async (t) => {
   const handlerRegistry = new Map();
   const notifier = createTestNotifier(notifications);
   const connectContract = createTestConnectContract(handlerRegistry, contractState);
-  appReload = await createApp({ hasPurchased, persistence, connectContract, telegram: { notifier } });
+  appReload = await createApp({ hasJoined, persistence, connectContract, telegram: { notifier } });
   await appReload.locals.restorationPromise;
 
   const restored = appReload.locals.templs.get(contractAddress);
@@ -571,7 +575,7 @@ test('active proposals are backfilled after restart', async (t) => {
 
   const connectContract = createTestConnectContract(new Map(), contractState);
   appReload = await createApp({
-    hasPurchased: async () => true,
+    hasJoined: async () => true,
     persistence,
     connectContract,
     telegram: { notifier: createTestNotifier([]) }

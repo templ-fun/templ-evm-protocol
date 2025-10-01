@@ -1,6 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
+const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 
 describe("TemplHarness coverage helpers", function () {
   let harness;
@@ -136,7 +136,7 @@ describe("TemplHarness coverage helpers", function () {
     const [,, , memberA, memberB, memberC] = signers;
     const entryFee = await harness.entryFee();
     await mintToUsers(token, [memberA, memberB, memberC], entryFee);
-    await purchaseAccess(harness, token, [memberA, memberB], entryFee);
+    await joinMembers(harness, token, [memberA, memberB], entryFee);
 
     const tokenKey = ethers.Wallet.createRandom().address;
     await harness.harnessSeedExternalRemainder(tokenKey, 10, 5);
@@ -150,7 +150,7 @@ describe("TemplHarness coverage helpers", function () {
     const latest = await harness.harnessGetLatestCheckpoint(tokenKey);
     expect(latest[2]).to.equal(8);
 
-    await purchaseAccess(harness, token, [memberC], entryFee);
+    await joinMembers(harness, token, [memberC], entryFee);
   });
 
   it("ignores inactive ids when removing proposals for coverage", async function () {
@@ -167,9 +167,9 @@ describe("TemplHarness coverage helpers", function () {
     expect(remainder).to.equal(5n);
   });
 
-  it("returns zero total purchases when the membership counter resets", async function () {
+  it("returns zero total joins when the membership counter resets", async function () {
     await harness.harnessClearMembers();
-    expect(await harness.totalPurchases()).to.equal(0n);
+    expect(await harness.totalJoins()).to.equal(0n);
   });
 
   it("does not duplicate tokens when seeding remainders repeatedly", async function () {
@@ -181,14 +181,14 @@ describe("TemplHarness coverage helpers", function () {
     expect(occurrences.length).to.equal(1);
   });
 
-  it("permits entry purchases when the member list is empty", async function () {
+  it("permits new joins when the member list is empty", async function () {
     const [, priest, , member] = await ethers.getSigners();
     const entryFee = await harness.entryFee();
     await harness.harnessClearMembers();
     await harness.harnessSetMember(priest.address, 0, 0, false);
     await mintToUsers(token, [member], entryFee);
-    await purchaseAccess(harness, token, [member], entryFee);
-    expect(await harness.hasAccess(member.address)).to.equal(true);
+    await joinMembers(harness, token, [member], entryFee);
+    expect(await harness.isMember(member.address)).to.equal(true);
   });
 
   it("caps external reward token registration", async function () {
@@ -211,14 +211,14 @@ describe("TemplHarness coverage helpers", function () {
     const [, memberA, memberB] = await ethers.getSigners();
     const entryFee = await harness.entryFee();
     await mintToUsers(token, [memberA, memberB], entryFee);
-    await purchaseAccess(harness, token, [memberA, memberB], entryFee);
+    await joinMembers(harness, token, [memberA, memberB], entryFee);
 
     await harness
       .connect(memberA)
-      .createProposalSetPaused(false, 7 * 24 * 60 * 60, "Swap-1", "First proposal");
+      .createProposalSetJoinPaused(false, 7 * 24 * 60 * 60, "Swap-1", "First proposal");
     await harness
       .connect(memberB)
-      .createProposalSetPaused(false, 7 * 24 * 60 * 60, "Swap-2", "Second proposal");
+      .createProposalSetJoinPaused(false, 7 * 24 * 60 * 60, "Swap-2", "Second proposal");
 
     const before = await harness.getActiveProposals();
     expect(before.length).to.equal(2);

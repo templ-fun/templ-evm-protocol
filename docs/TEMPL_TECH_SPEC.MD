@@ -5,7 +5,7 @@ This spec connects the core architecture: fee-gated memberships on chain, typed 
 ## 1. Contracts
 
 - **Factory.** `TemplFactory` deploys templ instances and locks the protocol rake shared by every templ it mints.
-- **Entry fees.** `TEMPL` contracts accept ERC-20 fees via `purchaseAccess`, split tribute across burn/treasury/member/protocol slices, and auto-enrol the deploying priest so the pioneer pool accrues to them.
+- **Entry fees.** `TEMPL` contracts accept ERC-20 fees via `join`, split tribute across burn/treasury/member/protocol slices, and auto-enrol the deploying priest so the pioneer pool accrues to them.
 - **Caps and pauses.** Optional `MAX_MEMBERS` enforces an upper bound; hitting the cap pauses new joins with `MemberLimitReached` until governance raises or clears the limit and resumes the contract.
 - **Governance scope.** One-wallet-one-vote proposals manage pause/unpause, fee config, treasury withdrawals/disbands, priest rotation, dictatorship toggles, and the on-chain `templHomeLink` string. Disbanding keeps joins open so communities cannot brick new entrants mid-vote.
 - **Quorum escape hatch.** A priest-authored `disbandTreasury` proposal skips quorum so an inactive templ that can no longer meet the threshold still has a deterministic path to dissolve and distribute funds via the priest.
@@ -15,7 +15,7 @@ This spec connects the core architecture: fee-gated memberships on chain, typed 
 ## 2. Backend responsibilities
 
 - Validate templ registrations (`POST /templs`) and rebinds with EIP-712 signatures.
-- Confirm membership via `hasAccess` on chain (`POST /join`).
+- Confirm membership via `isMember` on chain (`POST /join`).
 - Persist templ ↔ Telegram chat bindings in Cloudflare D1 (or SQLite/in-memory) so notifications survive restarts while keeping the registry templ-scoped only (contract + optional chat).
 - Subscribe to templ events with `ethers.Contract` and emit Telegram MarkdownV2 messages for joins, proposals, quorum, voting closure, priest changes, home-link updates, daily digests, and binding acknowledgements.
 - Run background jobs for proposal deadlines, digests, and Telegram binding polls while keeping HTTP responses fast.
@@ -23,7 +23,7 @@ This spec connects the core architecture: fee-gated memberships on chain, typed 
 ## 3. Frontend flows
 
 - **Deploy** (`/templs/create`): collect config, call the factory, sign the registration payload, and post to the backend (optional Telegram chat id).
-- **Join** (`/templs/join`): approve + purchase access when needed, then sign a `join` payload for backend verification.
+- **Join** (`/templs/join`): approve the entry fee when needed, join (or gift a join) on-chain, then sign a `join` payload for backend verification.
 - **Governance** (`/templs/:address/...`): create proposals with on-chain title/description, cast YES/NO votes, execute outcomes, and manage Telegram bindings.
 - Shared signing helpers in `shared/` build the typed data used across frontend and backend.
 

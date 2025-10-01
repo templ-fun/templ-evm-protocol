@@ -1,8 +1,8 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
-const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
-const { encodeWithdrawTreasuryDAO, encodeSetPausedDAO } = require("./utils/callDataBuilders");
+const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
+const { encodeWithdrawTreasuryDAO, encodeSetJoinPausedDAO } = require("./utils/callDataBuilders");
 
 describe("Single Active Proposal Restriction", function () {
     let templ;
@@ -19,7 +19,7 @@ describe("Single Active Proposal Restriction", function () {
 
         await mintToUsers(token, [member1, member2, member3], TOKEN_SUPPLY);
 
-        await purchaseAccess(templ, token, [member1, member2, member3]);
+        await joinMembers(templ, token, [member1, member2, member3]);
     });
 
     describe("Single Proposal Per Account", function () {
@@ -118,11 +118,11 @@ describe("Single Active Proposal Restriction", function () {
         });
 
         it("Should allow creating new proposal after previous one is executed", async function () {
-            const callData1 = encodeSetPausedDAO(true);
-            const callData2 = encodeSetPausedDAO(false);
+            const callData1 = encodeSetJoinPausedDAO(true);
+            const callData2 = encodeSetJoinPausedDAO(false);
 
             // Create and execute first proposal
-            await templ.connect(member1).createProposalSetPaused(
+            await templ.connect(member1).createProposalSetJoinPaused(
                 true,
                 7 * 24 * 60 * 60
             );
@@ -142,7 +142,7 @@ describe("Single Active Proposal Restriction", function () {
             expect(await templ.activeProposalId(member1.address)).to.equal(0);
 
             // Now member1 should be able to create a new proposal
-            await expect(templ.connect(member1).createProposalSetPaused(
+            await expect(templ.connect(member1).createProposalSetJoinPaused(
                 false,
                 7 * 24 * 60 * 60
             )).to.emit(templ, "ProposalCreated");
@@ -281,10 +281,10 @@ describe("Single Active Proposal Restriction", function () {
 
     describe("Edge Cases", function () {
         it("Should handle proposal ID 0 correctly", async function () {
-            const callData = encodeSetPausedDAO(true);
+            const callData = encodeSetJoinPausedDAO(true);
 
             // First proposal gets ID 0
-            await templ.connect(member1).createProposalSetPaused(
+            await templ.connect(member1).createProposalSetJoinPaused(
                 true,
                 7 * 24 * 60 * 60
             );
@@ -310,7 +310,7 @@ describe("Single Active Proposal Restriction", function () {
         it("Should track active proposals correctly across multiple cycles", async function () {
 
             // Cycle 1: Create, pass, execute
-            await templ.connect(member1).createProposalSetPaused(
+            await templ.connect(member1).createProposalSetJoinPaused(
                 true,
                 7 * 24 * 60 * 60
             );
@@ -322,7 +322,7 @@ describe("Single Active Proposal Restriction", function () {
             await templ.executeProposal(0);
 
             // Cycle 2: Create, let expire
-            await templ.connect(member1).createProposalSetPaused(
+            await templ.connect(member1).createProposalSetJoinPaused(
                 false,
                 7 * 24 * 60 * 60
             );
@@ -331,7 +331,7 @@ describe("Single Active Proposal Restriction", function () {
             await ethers.provider.send("evm_mine");
 
             // Cycle 3: Create new one after expiry
-            await templ.connect(member1).createProposalSetPaused(
+            await templ.connect(member1).createProposalSetJoinPaused(
                 true,
                 7 * 24 * 60 * 60
             );

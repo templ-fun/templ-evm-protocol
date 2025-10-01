@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
-const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
+const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 const {
   encodeWithdrawTreasuryDAO,
 } = require("./utils/callDataBuilders");
@@ -20,7 +20,7 @@ describe("Treasury withdrawals for arbitrary assets", function () {
     [owner, , member1, member2] = accounts;
 
     await mintToUsers(token, [member1, member2], ENTRY_FEE * 10n);
-    await purchaseAccess(templ, token, [member1, member2]);
+    await joinMembers(templ, token, [member1, member2]);
 
     const OtherToken = await ethers.getContractFactory("TestToken");
     otherToken = await OtherToken.deploy("Other", "OTH", 18);
@@ -78,7 +78,7 @@ describe("Treasury withdrawals for arbitrary assets", function () {
   // withdrawAll removed; partial withdraw tests cover functionality
 
   it("should withdraw donated accessToken beyond tracked treasuryBalance while preserving member pool", async function () {
-    // At this point, two members have purchased access. The contract holds:
+    // At this point, two members have joined. The contract holds:
     // - accessToken balance = 60% * 2 = 120 (30% pool x2 + 30% treasury x2)
     // - memberPoolBalance = 30% * 2 = 60
     // - treasuryBalance (tracked) = 30% * 2 = 60

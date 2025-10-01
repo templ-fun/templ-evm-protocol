@@ -1,8 +1,8 @@
 const { ethers } = require("hardhat");
 
-function encodeSetPausedDAO(paused) {
-  const iface = new ethers.Interface(["function setPausedDAO(bool)"]);
-  return iface.encodeFunctionData("setPausedDAO", [paused]);
+function encodeSetJoinPausedDAO(paused) {
+  const iface = new ethers.Interface(["function setJoinPausedDAO(bool)"]);
+  return iface.encodeFunctionData("setJoinPausedDAO", [paused]);
 }
 
 function encodeWithdrawTreasuryDAO(token, recipient, amount, reason) {
@@ -33,15 +33,9 @@ function encodeSetMaxMembersDAO(limit) {
   return iface.encodeFunctionData("setMaxMembersDAO", [limit]);
 }
 
-function encodePurchaseAccess() {
-  const iface = new ethers.Interface(["function purchaseAccess()"]);
-  return iface.encodeFunctionData("purchaseAccess", []);
-}
-
 module.exports = {
-  encodeSetPausedDAO,
+  encodeSetJoinPausedDAO,
   encodeWithdrawTreasuryDAO,
   encodeUpdateConfigDAO,
   encodeSetMaxMembersDAO,
-  encodePurchaseAccess,
 };

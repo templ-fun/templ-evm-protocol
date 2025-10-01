@@ -1,10 +1,10 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
-const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
+const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 const {
     encodeWithdrawTreasuryDAO,
-    encodeSetPausedDAO,
+    encodeSetJoinPausedDAO,
 } = require("./utils/callDataBuilders");
 
 describe("Voting Eligibility Based on Join Time", function () {
@@ -26,13 +26,13 @@ describe("Voting Eligibility Based on Join Time", function () {
         it("Should allow members who joined before proposal to vote", async function () {
             // Members 1, 2, 3 join
             await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member1).purchaseAccess();
+            await templ.connect(member1).join();
             
             await token.connect(member2).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member2).purchaseAccess();
+            await templ.connect(member2).join();
             
             await token.connect(member3).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member3).purchaseAccess();
+            await templ.connect(member3).join();
 
             // Wait a bit to ensure clear timestamp difference
             await ethers.provider.send("evm_increaseTime", [100]);
@@ -70,13 +70,13 @@ describe("Voting Eligibility Based on Join Time", function () {
         it("Should prevent members who joined after quorum from voting", async function () {
             // Initial members join (ensure no auto-quorum at creation)
             await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member1).purchaseAccess();
+            await templ.connect(member1).join();
             await token.connect(member2).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member2).purchaseAccess();
+            await templ.connect(member2).join();
             await token.connect(member3).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member3).purchaseAccess();
+            await templ.connect(member3).join();
             await token.connect(member4).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member4).purchaseAccess();
+            await templ.connect(member4).join();
 
             // Create proposal (4 members total; auto-yes alone won't meet quorum)
             await templ.connect(member1).createProposalWithdrawTreasury(
@@ -92,7 +92,7 @@ describe("Voting Eligibility Based on Join Time", function () {
 
             // New member joins AFTER quorum is reached
             await token.connect(lateMember).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(lateMember).purchaseAccess();
+            await templ.connect(lateMember).join();
 
             // Late member should NOT be able to vote after quorum
             await expect(templ.connect(lateMember).vote(0, true))
@@ -105,13 +105,13 @@ describe("Voting Eligibility Based on Join Time", function () {
         it("Should allow members who joined earlier in the quorum block to vote", async function () {
             // Four members join to avoid auto-quorum at creation
             await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member1).purchaseAccess();
+            await templ.connect(member1).join();
             await token.connect(member2).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member2).purchaseAccess();
+            await templ.connect(member2).join();
             await token.connect(member3).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member3).purchaseAccess();
+            await templ.connect(member3).join();
             await token.connect(member4).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member4).purchaseAccess();
+            await templ.connect(member4).join();
 
             await templ.connect(member1).createProposalWithdrawTreasury(
                 token.target,
@@ -128,7 +128,7 @@ describe("Voting Eligibility Based on Join Time", function () {
             const txOverrides = { gasLimit: 1_000_000 };
             // Use a lower gas limit override so both txs fit in the manual block mining step.
             const voteTxPromise = templ.connect(member2).vote(0, true, txOverrides);
-            const joinTxPromise = templ.connect(lateMember).purchaseAccess({ ...txOverrides });
+            const joinTxPromise = templ.connect(lateMember).join({ ...txOverrides });
 
             const [voteTx, joinTx] = await Promise.all([voteTxPromise, joinTxPromise]);
 
@@ -144,13 +144,13 @@ describe("Voting Eligibility Based on Join Time", function () {
         it("Should block members who joined after proposal creation until quorum is reached", async function () {
             // 4 members join initially (avoid auto-quorum at creation)
             await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member1).purchaseAccess();
+            await templ.connect(member1).join();
             await token.connect(member2).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member2).purchaseAccess();
+            await templ.connect(member2).join();
             await token.connect(member3).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member3).purchaseAccess();
+            await templ.connect(member3).join();
             await token.connect(member4).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member4).purchaseAccess();
+            await templ.connect(member4).join();
 
             expect(await templ.getMemberCount()).to.equal(5);
 
@@ -159,14 +159,14 @@ describe("Voting Eligibility Based on Join Time", function () {
             await ethers.provider.send("evm_mine");
 
             // Create proposal - starts with 4 eligible voters
-            await templ.connect(member1).createProposalSetPaused(
+            await templ.connect(member1).createProposalSetJoinPaused(
                 true,
                 7 * 24 * 60 * 60
             );
 
             // One more member joins after proposal creation
             await token.connect(lateMember).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(lateMember).purchaseAccess();
+            await templ.connect(lateMember).join();
 
             // Late member cannot vote before quorum is reached
             await expect(templ.connect(lateMember).vote(0, true))
@@ -186,10 +186,10 @@ describe("Voting Eligibility Based on Join Time", function () {
         it("Should prevent gaming the system by adding members after quorum", async function () {
             // Start with just 2 members
             await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member1).purchaseAccess();
+            await templ.connect(member1).join();
             
             await token.connect(member2).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member2).purchaseAccess();
+            await templ.connect(member2).join();
 
             // Wait
             await ethers.provider.send("evm_increaseTime", [100]);
@@ -208,9 +208,9 @@ describe("Voting Eligibility Based on Join Time", function () {
             await templ.connect(member1).vote(0, true);
             // yesVotes = 2 of 2 (auto-yes + member1), quorum reached; now add friendly members
             await token.connect(member3).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member3).purchaseAccess();
+            await templ.connect(member3).join();
             await token.connect(member4).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member4).purchaseAccess();
+            await templ.connect(member4).join();
 
             // New members cannot vote post-quorum
             await expect(templ.connect(member3).vote(0, true))
@@ -238,10 +238,10 @@ describe("Voting Eligibility Based on Join Time", function () {
         it("Should handle multiple proposals with changing membership correctly", async function () {
             // Initial 2 members
             await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member1).purchaseAccess();
+            await templ.connect(member1).join();
             
             await token.connect(member2).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member2).purchaseAccess();
+            await templ.connect(member2).join();
 
             // Wait
             await ethers.provider.send("evm_increaseTime", [100]);
@@ -251,13 +251,13 @@ describe("Voting Eligibility Based on Join Time", function () {
             await templ.connect(member1).createProposal(
                 "Proposal 1",
                 "With 2 members",
-                encodeSetPausedDAO(true),
+                encodeSetJoinPausedDAO(true),
                 7 * 24 * 60 * 60
             );
 
             // Member 3 joins
             await token.connect(member3).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member3).purchaseAccess();
+            await templ.connect(member3).join();
 
             // Wait for first proposal to end
             await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
@@ -267,7 +267,7 @@ describe("Voting Eligibility Based on Join Time", function () {
             await templ.connect(member2).createProposal(
                 "Proposal 2",
                 "With 3 members",
-                encodeSetPausedDAO(false),
+                encodeSetJoinPausedDAO(false),
                 7 * 24 * 60 * 60
             );
 
@@ -277,7 +277,7 @@ describe("Voting Eligibility Based on Join Time", function () {
 
             // Member 4 joins after quorum has been reached
             await token.connect(member4).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member4).purchaseAccess();
+            await templ.connect(member4).join();
 
             // Wait a bit
             await ethers.provider.send("evm_increaseTime", [100]);
@@ -298,20 +298,20 @@ describe("Voting Eligibility Based on Join Time", function () {
         it("Should handle proposals created in the same block as membership", async function () {
             // Member 1 joins first
             await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member1).purchaseAccess();
+            await templ.connect(member1).join();
 
             // In a real scenario, these would be in the same block, but we can't
             // perfectly simulate that in tests. The contract should handle it correctly
             // by using < instead of <= for timestamp comparison
             
             await token.connect(member2).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member2).purchaseAccess();
+            await templ.connect(member2).join();
             
             // Create proposal immediately
             await templ.connect(member1).createProposal(
                 "Quick Proposal",
                 "Same block test",
-                encodeSetPausedDAO(true),
+                encodeSetJoinPausedDAO(true),
                 7 * 24 * 60 * 60
             );
 

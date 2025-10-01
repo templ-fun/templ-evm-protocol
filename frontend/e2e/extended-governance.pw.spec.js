@@ -173,14 +173,14 @@ test.describe('Extended governance flows', () => {
     await page.getByRole('button', { name: 'Submit vote' }).click();
     await expect(page.getByText(/Vote submitted/)).toBeVisible();
     await executeProposal({ provider, templContract: templForPriest, proposalId: pauseProposalId });
-    await expect(await templReadOnly.paused()).toBe(true);
+    await expect(await templReadOnly.joinPaused()).toBe(true);
 
     await walletBridge.switchAccount('member');
     await page.goto(`/templs/join?address=${templAddress}`);
     await expect(page.getByRole('heading', { name: 'Join a Templ' })).toBeVisible();
     await approveEntryFeeWithRetry(page);
-    await page.getByRole('button', { name: 'Purchase Access' }).click();
-    await expect(page.getByText(/Purchase failed: Access token transfer failed/i)).toBeVisible();
+    await page.getByRole('button', { name: 'Join templ' }).click();
+    await expect(page.getByText(/Join failed: Access token transfer failed/i)).toBeVisible();
 
     await walletBridge.switchAccount('priest');
     const unpauseProposalId = await createProposalThroughUI({
@@ -193,14 +193,14 @@ test.describe('Extended governance flows', () => {
     await page.getByRole('button', { name: 'Submit vote' }).click();
     await expect(page.getByText(/Vote submitted/)).toBeVisible();
     await executeProposal({ provider, templContract: templForPriest, proposalId: unpauseProposalId });
-    await expect(await templReadOnly.paused()).toBe(false);
+    await expect(await templReadOnly.joinPaused()).toBe(false);
 
     await walletBridge.switchAccount('member');
     await page.goto(`/templs/join?address=${templAddress}`);
-    await expect(page.getByRole('button', { name: 'Purchase Access' })).toBeEnabled();
-    await page.getByRole('button', { name: 'Purchase Access' }).click();
-    await expect(page.getByText(/Purchasing access/)).toBeVisible();
-    await expect(page.getByText(/Access purchase complete/)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Join templ' })).toBeEnabled();
+    await page.getByRole('button', { name: 'Join templ' }).click();
+    await expect(page.getByText(/Joining templ/)).toBeVisible();
+    await expect(page.getByText(/Join complete/)).toBeVisible();
 
     const setCapProposalId = await createProposalThroughUI({
       page,
@@ -226,14 +226,14 @@ test.describe('Extended governance flows', () => {
     await page.getByRole('button', { name: 'Submit vote' }).click();
     await expect(page.getByText(/Vote submitted/)).toBeVisible();
     await executeProposal({ provider, templContract: templForPriest, proposalId: resumeAfterCapProposalId });
-    await expect(await templReadOnly.paused()).toBe(false);
+    await expect(await templReadOnly.joinPaused()).toBe(false);
 
     await walletBridge.switchAccount('guest');
     await page.goto(`/templs/join?address=${templAddress}`);
     await expect(page.getByRole('heading', { name: 'Join a Templ' })).toBeVisible();
     await approveEntryFeeWithRetry(page);
-    await page.getByRole('button', { name: 'Purchase Access' }).click();
-    await expect(page.getByText(/Purchase failed: Access token transfer failed/i)).toBeVisible();
+    await page.getByRole('button', { name: 'Join templ' }).click();
+    await expect(page.getByText(/Join failed: Access token transfer failed/i)).toBeVisible();
 
     await walletBridge.switchAccount('priest');
     const raiseCapProposalId = await createProposalThroughUI({
@@ -252,14 +252,14 @@ test.describe('Extended governance flows', () => {
 
     await walletBridge.switchAccount('guest');
     await page.goto(`/templs/join?address=${templAddress}`);
-    await page.getByRole('button', { name: 'Purchase Access' }).click();
-    await expect(page.getByText(/Purchasing access/)).toBeVisible();
-    await expect(page.getByText(/Access purchase complete/)).toBeVisible();
+    await page.getByRole('button', { name: 'Join templ' }).click();
+    await expect(page.getByText(/Joining templ/)).toBeVisible();
+    await expect(page.getByText(/Join complete/)).toBeVisible();
 
     const templForMember = new ethers.Contract(templAddress, templArtifact.abi, wallets.member);
-    await expect(await templForMember.hasAccess(memberAddress)).toBe(true);
+    await expect(await templForMember.isMember(memberAddress)).toBe(true);
     const templForGuest = new ethers.Contract(templAddress, templArtifact.abi, guestWallet);
-    await expect(await templForGuest.hasAccess(guestAddress)).toBe(true);
+    await expect(await templForGuest.isMember(guestAddress)).toBe(true);
   });
 
   test('priest rotation, dictatorship, treasury, and disband flows succeed', async ({ page, provider, wallets }) => {
@@ -291,17 +291,17 @@ test.describe('Extended governance flows', () => {
     await walletBridge.switchAccount('member');
     await page.goto(`/templs/join?address=${templAddress}`);
     await approveEntryFeeWithRetry(page);
-    await page.getByRole('button', { name: 'Purchase Access' }).click();
-    await expect(page.getByText(/Purchasing access/)).toBeVisible();
-    await expect(page.getByText(/Access purchase complete/)).toBeVisible();
+    await page.getByRole('button', { name: 'Join templ' }).click();
+    await expect(page.getByText(/Joining templ/)).toBeVisible();
+    await expect(page.getByText(/Join complete/)).toBeVisible();
 
     await walletBridge.switchAccount('candidatePriest');
     await page.goto(`/templs/join?address=${templAddress}`);
     await expect(page.getByText('0.0 TEST', { exact: true })).toBeVisible();
     await approveEntryFeeWithRetry(page);
-    await page.getByRole('button', { name: 'Purchase Access' }).click();
-    await expect(page.getByText(/Purchasing access/)).toBeVisible();
-    await expect(page.getByText(/Access purchase complete/)).toBeVisible();
+    await page.getByRole('button', { name: 'Join templ' }).click();
+    await expect(page.getByText(/Joining templ/)).toBeVisible();
+    await expect(page.getByText(/Join complete/)).toBeVisible();
 
         const templForCandidate = new ethers.Contract(templAddress, templArtifact.abi, candidatePriest);
 
@@ -416,10 +416,10 @@ test.describe('Extended governance flows', () => {
     await page.goto(`/templs/join?address=${templAddress}`);
     await expect(page.getByText('0.0 TEST', { exact: true })).toBeVisible();
     await approveEntryFeeWithRetry(page);
-    await page.getByRole('button', { name: 'Purchase Access' }).click();
-    await expect(page.getByText(/Purchasing access/)).toBeVisible();
-    await expect(page.getByText(/Access purchase complete/)).toBeVisible();
-    await expect(await templReadOnly.hasAccess(latecomerAddress)).toBe(true);
+    await page.getByRole('button', { name: 'Join templ' }).click();
+    await expect(page.getByText(/Joining templ/)).toBeVisible();
+    await expect(page.getByText(/Join complete/)).toBeVisible();
+    await expect(await templReadOnly.isMember(latecomerAddress)).toBe(true);
 
     await walletBridge.switchAccount('candidatePriest');
     await page.goto(`/templs/${templAddress}/proposals/${disbandProposalId}/vote`);
@@ -431,14 +431,14 @@ test.describe('Extended governance flows', () => {
     await walletBridge.switchAccount('postDisband');
     await page.goto(`/templs/join?address=${templAddress}`);
     await approveEntryFeeWithRetry(page);
-    await page.getByRole('button', { name: 'Purchase Access' }).click();
-    await expect(page.getByText(/Purchasing access/)).toBeVisible();
-    await expect(page.getByText(/Access purchase complete/)).toBeVisible();
+    await page.getByRole('button', { name: 'Join templ' }).click();
+    await expect(page.getByText(/Joining templ/)).toBeVisible();
+    await expect(page.getByText(/Join complete/)).toBeVisible();
 
     const latecomerTempl = new ethers.Contract(templAddress, templArtifact.abi, latecomerWallet);
-    await expect(await latecomerTempl.hasAccess(latecomerAddress)).toBe(true);
+    await expect(await latecomerTempl.isMember(latecomerAddress)).toBe(true);
     const postDisbandTempl = new ethers.Contract(templAddress, templArtifact.abi, postDisbandWallet);
-    await expect(await postDisbandTempl.hasAccess(postDisbandAddress)).toBe(true);
+    await expect(await postDisbandTempl.isMember(postDisbandAddress)).toBe(true);
     const finalMemberCount = await templReadOnly.getMemberCount();
     await expect(Number(finalMemberCount)).toBeGreaterThan(4);
   });

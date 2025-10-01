@@ -64,11 +64,11 @@ contract TEMPL is TemplBase, TemplMembership, TemplTreasury, TemplGovernance {
 
         priest = _priest;
         entryFee = _entryFee;
-        paused = false;
+        joinPaused = false;
         Member storage priestMember = members[_priest];
-        priestMember.purchased = true;
+        priestMember.joined = true;
         priestMember.timestamp = block.timestamp;
-        priestMember.block = block.number;
+        priestMember.blockNumber = block.number;
         priestMember.rewardSnapshot = cumulativeMemberRewards;
         memberCount = 1;
         if (_maxMembers != 0) {
@@ -80,8 +80,8 @@ contract TEMPL is TemplBase, TemplMembership, TemplTreasury, TemplGovernance {
     receive() external payable {}
 
     /// @inheritdoc TemplGovernance
-    function _governanceSetPaused(bool _paused) internal override {
-        _setPaused(_paused);
+    function _governanceSetJoinPaused(bool _paused) internal override {
+        _setJoinPaused(_paused);
     }
 
     /// @inheritdoc TemplGovernance

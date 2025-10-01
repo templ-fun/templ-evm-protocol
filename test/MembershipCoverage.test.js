@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
-const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
+const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 
 const ENTRY_FEE = ethers.parseUnits("100", 18);
 const DAY = 24 * 60 * 60;
@@ -73,18 +73,48 @@ describe("Membership coverage extras", function () {
     expect(treasuryInfo.memberPool).to.equal(0n);
   });
 
-  it("returns purchase metadata for members and non-members", async function () {
+  it("returns join metadata for members and non-members", async function () {
     const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE });
     const [, , member, outsider] = accounts;
 
     await mintToUsers(token, [member], ENTRY_FEE * 2n);
-    await purchaseAccess(templ, token, [member]);
+    await joinMembers(templ, token, [member]);
 
-    const joined = await templ.getPurchaseDetails(member.address);
-    expect(joined.purchased).to.equal(true);
+    const joined = await templ.getJoinDetails(member.address);
+    expect(joined.joined).to.equal(true);
 
-    const neverJoined = await templ.getPurchaseDetails(outsider.address);
-    expect(neverJoined.purchased).to.equal(false);
+    const neverJoined = await templ.getJoinDetails(outsider.address);
+    expect(neverJoined.joined).to.equal(false);
+  });
+
+  it("allows gifting membership via joinFor", async function () {
+    const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE });
+    const [, , payer, recipient] = accounts;
+
+    await mintToUsers(token, [payer], ENTRY_FEE * 2n);
+    await token.connect(payer).approve(await templ.getAddress(), ENTRY_FEE * 2n);
+
+    const joinTx = await templ.connect(payer).joinFor(recipient.address);
+    const receipt = await joinTx.wait();
+    const memberJoined = receipt.logs
+      .map((log) => {
+        try {
+          return templ.interface.parseLog(log);
+        } catch (_) {
+          return null;
+        }
+      })
+      .find((log) => log && log.name === "MemberJoined");
+
+    expect(memberJoined, "member joined event").to.not.equal(undefined);
+    expect(memberJoined.args.payer).to.equal(payer.address);
+    expect(memberJoined.args.member).to.equal(recipient.address);
+    expect(await templ.isMember(recipient.address)).to.equal(true);
+    expect(await templ.isMember(payer.address)).to.equal(false);
+
+    await expect(
+      templ.connect(payer).joinFor(recipient.address)
+    ).to.be.revertedWithCustomError(templ, "MemberAlreadyJoined");
   });
 
   it("rejects external reward claims using the access token", async function () {
@@ -92,10 +122,10 @@ describe("Membership coverage extras", function () {
     const [, , member] = accounts;
 
     await mintToUsers(token, [member], ENTRY_FEE * 2n);
-    await purchaseAccess(templ, token, [member]);
+    await joinMembers(templ, token, [member]);
 
     await expect(
-      templ.connect(member).claimExternalToken(await token.getAddress())
+      templ.connect(member).claimExternalReward(await token.getAddress())
     ).to.be.revertedWithCustomError(templ, "InvalidCallData");
   });
 
@@ -104,17 +134,17 @@ describe("Membership coverage extras", function () {
     const [, , memberA, memberB, donor, newcomer] = accounts;
 
     await mintToUsers(token, [memberA, memberB, donor, newcomer], ENTRY_FEE * 6n);
-    await purchaseAccess(templ, token, [memberA, memberB]);
+    await joinMembers(templ, token, [memberA, memberB]);
 
     // Access token path short-circuits to zero
     expect(
-      await templ.getClaimableExternalToken(memberA.address, await token.getAddress())
+      await templ.getClaimableExternalReward(memberA.address, await token.getAddress())
     ).to.equal(0n);
 
     // Unknown token path returns zero without membership short-circuit
     const randomToken = ethers.Wallet.createRandom().address;
     expect(
-      await templ.getClaimableExternalToken(memberA.address, randomToken)
+      await templ.getClaimableExternalReward(memberA.address, randomToken)
     ).to.equal(0n);
 
     // Deploy secondary reward token and donate
@@ -134,26 +164,26 @@ describe("Membership coverage extras", function () {
     await templ.executeProposal(0);
 
     // Existing members accrue rewards
-    const claimable = await templ.getClaimableExternalToken(memberA.address, otherToken.target);
+    const claimable = await templ.getClaimableExternalReward(memberA.address, otherToken.target);
     expect(claimable).to.be.gt(0n);
 
     // New members sync snapshots to zero
-    await purchaseAccess(templ, token, [newcomer]);
+    await joinMembers(templ, token, [newcomer]);
     expect(
-      await templ.getClaimableExternalToken(newcomer.address, otherToken.target)
+      await templ.getClaimableExternalReward(newcomer.address, otherToken.target)
     ).to.equal(0n);
 
     // Claim rewards to cover snapshot updates and ternary false path
     const balanceBefore = await otherToken.balanceOf(memberA.address);
-    await templ.connect(memberA).claimExternalToken(otherToken.target);
+    await templ.connect(memberA).claimExternalReward(otherToken.target);
     const balanceAfter = await otherToken.balanceOf(memberA.address);
     expect(balanceAfter - balanceBefore).to.equal(claimable);
     expect(
-      await templ.getClaimableExternalToken(memberA.address, otherToken.target)
+      await templ.getClaimableExternalReward(memberA.address, otherToken.target)
     ).to.equal(0n);
 
     await expect(
-      templ.connect(memberA).claimExternalToken(otherToken.target)
+      templ.connect(memberA).claimExternalReward(otherToken.target)
     ).to.be.revertedWithCustomError(templ, "NoRewardsToClaim");
   });
 
@@ -162,10 +192,10 @@ describe("Membership coverage extras", function () {
     const [, , member, outsider] = accounts;
 
     await mintToUsers(token, [member], ENTRY_FEE * 3n);
-    await purchaseAccess(templ, token, [member]);
+    await joinMembers(templ, token, [member]);
 
     await expect(
-      templ.connect(outsider).claimExternalToken(ethers.ZeroAddress)
+      templ.connect(outsider).claimExternalReward(ethers.ZeroAddress)
     ).to.be.revertedWithCustomError(templ, "NotMember");
   });
 
@@ -174,9 +204,9 @@ describe("Membership coverage extras", function () {
     const [, , member] = accounts;
 
     await mintToUsers(token, [member], ENTRY_FEE * 3n);
-    await purchaseAccess(templ, token, [member]);
+    await joinMembers(templ, token, [member]);
 
-    await expect(templ.connect(member).claimMemberPool()).to.be.revertedWithCustomError(
+    await expect(templ.connect(member).claimMemberRewards()).to.be.revertedWithCustomError(
       templ,
       "NoRewardsToClaim"
     );
@@ -203,7 +233,7 @@ describe("Membership coverage extras", function () {
     const [, , memberA, memberB] = accounts;
 
     await mintToUsers(token, [memberA, memberB], ENTRY_FEE * 5n);
-    await purchaseAccess(templ, token, [memberA, memberB]);
+    await joinMembers(templ, token, [memberA, memberB]);
 
     const donation = ethers.parseUnits("5", 18);
     await accounts[0].sendTransaction({ to: await templ.getAddress(), value: donation });
@@ -218,7 +248,7 @@ describe("Membership coverage extras", function () {
     await templ.executeProposal(0);
 
     const before = await ethers.provider.getBalance(memberA.address);
-    const tx = await templ.connect(memberA).claimExternalToken(ethers.ZeroAddress);
+    const tx = await templ.connect(memberA).claimExternalReward(ethers.ZeroAddress);
     const receipt = await tx.wait();
     const gasPaid = receipt.gasUsed * receipt.gasPrice;
     const after = await ethers.provider.getBalance(memberA.address);
@@ -237,9 +267,9 @@ describe("Membership coverage extras", function () {
 
     // Seed contract with tokens and join as member
     await token.mint(claimer.target, ENTRY_FEE);
-    await claimer.purchaseMembership(await templ.getAddress(), await token.getAddress(), ENTRY_FEE);
+    await claimer.joinTempl(await templ.getAddress(), await token.getAddress(), ENTRY_FEE);
 
-    await purchaseAccess(templ, token, [memberA, memberB]);
+    await joinMembers(templ, token, [memberA, memberB]);
 
     const donation = ethers.parseUnits("3", 18);
     await priest.sendTransaction({ to: await templ.getAddress(), value: donation });
@@ -263,14 +293,14 @@ describe("Membership coverage extras", function () {
     const [, , member] = accounts;
 
     await mintToUsers(token, [member], ENTRY_FEE * 3n);
-    await purchaseAccess(templ, token, [member]);
+    await joinMembers(templ, token, [member]);
 
     await expect(
-      templ.connect(member).claimExternalToken(await token.getAddress())
+      templ.connect(member).claimExternalReward(await token.getAddress())
     ).to.be.revertedWithCustomError(templ, "InvalidCallData");
 
     const randomToken = ethers.Wallet.createRandom().address;
-    await expect(templ.connect(member).claimExternalToken(randomToken)).to.be.revertedWithCustomError(
+    await expect(templ.connect(member).claimExternalReward(randomToken)).to.be.revertedWithCustomError(
       templ,
       "NoRewardsToClaim"
     );
@@ -281,7 +311,7 @@ describe("Membership coverage extras", function () {
     const [, , memberA, memberB, donor] = accounts;
 
     await mintToUsers(token, [memberA, memberB, donor], ENTRY_FEE * 6n);
-    await purchaseAccess(templ, token, [memberA, memberB]);
+    await joinMembers(templ, token, [memberA, memberB]);
 
     // Create ERC20 reward distribution
     const OtherToken = await ethers.getContractFactory("contracts/mocks/TestToken.sol:TestToken");
@@ -299,7 +329,7 @@ describe("Membership coverage extras", function () {
     await ethers.provider.send("evm_mine", []);
     await templ.executeProposal(0);
 
-    const claimable = await templ.getClaimableExternalToken(memberA.address, otherToken.target);
+    const claimable = await templ.getClaimableExternalReward(memberA.address, otherToken.target);
     expect(claimable).to.be.gt(0n);
 
     const templAddr = await templ.getAddress();
@@ -314,7 +344,7 @@ describe("Membership coverage extras", function () {
     ]);
     await ethers.provider.send("evm_mine", []);
 
-    await expect(templ.connect(memberA).claimMemberPool()).to.be.revertedWithCustomError(
+    await expect(templ.connect(memberA).claimMemberRewards()).to.be.revertedWithCustomError(
       templ,
       "InsufficientPoolBalance"
     );
@@ -340,7 +370,7 @@ describe("Membership coverage extras", function () {
     await ethers.provider.send("evm_mine", []);
 
     await expect(
-      templ.connect(memberA).claimExternalToken(otherToken.target)
+      templ.connect(memberA).claimExternalReward(otherToken.target)
     ).to.be.revertedWithCustomError(templ, "InsufficientPoolBalance");
   });
 
@@ -349,7 +379,7 @@ describe("Membership coverage extras", function () {
     const [, , memberA, memberB] = accounts;
 
     await mintToUsers(token, [memberA, memberB], ENTRY_FEE * 50n);
-    await purchaseAccess(templ, token, [memberA]);
+    await joinMembers(templ, token, [memberA]);
 
     const newEntryFee = ENTRY_FEE + 10n;
     const proposalId = await templ.proposalCount();
@@ -362,7 +392,7 @@ describe("Membership coverage extras", function () {
     await templ.executeProposal(proposalId);
 
     const treasuryBefore = await templ.treasuryBalance();
-    await purchaseAccess(templ, token, [memberB]);
+    await joinMembers(templ, token, [memberB]);
     const treasuryAfter = await templ.treasuryBalance();
 
     const treasuryPortion = (newEntryFee * 31n) / 100n;
