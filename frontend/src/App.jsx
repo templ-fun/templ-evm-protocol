@@ -3,7 +3,7 @@ import { ethers } from 'ethers';
 import { useAppLocation } from './hooks/useAppLocation.js';
 import { BACKEND_URL, FACTORY_CONFIG, RPC_URL } from './config.js';
 import { fetchTemplStats, loadFactoryTempls } from './services/templs.js';
-import { button, layout } from './ui/theme.js';
+import { button, layout, surface } from './ui/theme.js';
 
 const HomePage = lazy(() => import('./pages/HomePage.jsx').then((mod) => ({ default: mod.HomePage })));
 const CreateTemplPage = lazy(() => import('./pages/CreateTemplPage.jsx').then((mod) => ({ default: mod.CreateTemplPage })));
@@ -27,6 +27,13 @@ export default function App() {
     const text = String(message);
     setStatusMessages((prev) => [...prev.slice(-4), text]);
   }, []);
+
+  const disconnectWallet = useCallback(() => {
+    setSigner(null);
+    setWalletAddress('');
+    setProvider(null);
+    pushMessage('Wallet disconnected.');
+  }, [pushMessage]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !window.ethereum) return;
@@ -322,6 +329,7 @@ export default function App() {
       <HomePage
         walletAddress={walletAddress}
         onConnectWallet={connectWallet}
+        onDisconnectWallet={disconnectWallet}
         onNavigate={navigate}
         templs={templs}
         loadingTempls={loadingTempls}
@@ -333,9 +341,27 @@ export default function App() {
   return (
     <div className={layout.appShell}>
       <nav className="flex flex-wrap items-center gap-3 bg-slate-900 px-6 py-3">
-        <button type="button" className={button.nav} onClick={() => navigate('/')}>Home</button>
-        <button type="button" className={button.nav} onClick={() => navigate('/templs/create')}>Create</button>
-        <button type="button" className={button.nav} onClick={() => navigate('/templs/join')}>Join</button>
+        <div className="flex flex-wrap items-center gap-3">
+          <button type="button" className={button.nav} onClick={() => navigate('/')}>Home</button>
+          <button type="button" className={button.nav} onClick={() => navigate('/templs/create')}>Create</button>
+          <button type="button" className={button.nav} onClick={() => navigate('/templs/join')}>Join</button>
+        </div>
+        <div className="ml-auto flex items-center gap-3">
+          {walletAddress ? (
+            <>
+              <span className={surface.pill}>
+                Connected: {walletAddress.slice(0, 6)}…{walletAddress.slice(-4)}
+              </span>
+              <button type="button" className={button.base} onClick={disconnectWallet}>
+                Disconnect
+              </button>
+            </>
+          ) : (
+            <button type="button" className={button.primary} onClick={connectWallet}>
+              Connect Wallet
+            </button>
+          )}
+        </div>
       </nav>
       <main className={layout.main}>
         <Suspense fallback={<div className="p-6 text-sm text-slate-500">Loading…</div>}>

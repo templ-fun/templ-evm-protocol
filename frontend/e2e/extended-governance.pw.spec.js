@@ -50,7 +50,7 @@ async function bootstrapTempl({ page, provider, wallets, extraWallets = [], entr
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'TEMPL Control Center' })).toBeVisible();
 
-  const connectButton = page.getByRole('button', { name: 'Connect Wallet' });
+  const connectButton = page.getByRole('navigation').getByRole('button', { name: 'Connect Wallet' });
   await connectButton.click();
   await expect(page.getByText(/Wallet connected:/)).toBeVisible();
 
@@ -263,6 +263,9 @@ test.describe('Extended governance flows', () => {
     await expect(await templForMember.isMember(memberAddress)).toBe(true);
     const templForGuest = new ethers.Contract(templAddress, templArtifact.abi, guestWallet);
     await expect(await templForGuest.isMember(guestAddress)).toBe(true);
+
+    await page.getByRole('navigation').getByRole('button', { name: 'Disconnect' }).click();
+    await expect(page.getByRole('navigation').getByRole('button', { name: 'Connect Wallet' })).toBeVisible();
   });
 
   test('priest rotation, dictatorship, treasury, and disband flows succeed', async ({ page, provider, wallets }) => {
@@ -444,5 +447,8 @@ test.describe('Extended governance flows', () => {
     await expect(await postDisbandTempl.isMember(postDisbandAddress)).toBe(true);
     const finalMemberCount = await templReadOnly.getMemberCount();
     await expect(Number(finalMemberCount)).toBeGreaterThan(4);
+
+    await page.getByRole('navigation').getByRole('button', { name: 'Disconnect' }).click();
+    await expect(page.getByRole('navigation').getByRole('button', { name: 'Connect Wallet' })).toBeVisible();
   });
 });

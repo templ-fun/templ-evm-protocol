@@ -45,7 +45,7 @@ test.describe('Templ core workflows', () => {
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'TEMPL Control Center' })).toBeVisible();
 
-    const connectButton = page.getByRole('button', { name: 'Connect Wallet' });
+    const connectButton = page.getByRole('navigation').getByRole('button', { name: 'Connect Wallet' });
     await expect(connectButton).toBeVisible();
     await connectButton.click();
     await expect(page.getByText(/Wallet connected:/)).toBeVisible();
@@ -167,5 +167,8 @@ test.describe('Templ core workflows', () => {
     await expect(entryFeeRow.locator('dd')).toContainText('2');
     const entryFeeOnChain = await templReadOnly.entryFee();
     await expect(entryFeeOnChain).toBe(updatedEntryFee);
+
+    await page.getByRole('navigation').getByRole('button', { name: 'Disconnect' }).click();
+    await expect(page.getByRole('navigation').getByRole('button', { name: 'Connect Wallet' })).toBeVisible();
   });
 });
