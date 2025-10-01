@@ -942,7 +942,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             // Second member joins
             await joinMembers(templ, token, [user2]);
 
-            // First member should now have claimable rewards (split with the priest)
+            // First member has claimable rewards (split with the priest)
             const thirtyPercent = (ENTRY_FEE * 30n) / 100n;
             const secondJoinShare = thirtyPercent / 2n;
             expect(await templ.getClaimableMemberRewards(user1.address)).to.equal(secondJoinShare);

@@ -56,7 +56,7 @@ export async function proposeVote({
     const p = params || {};
     let tx;
     switch (action) {
-      case 'setPaused':
+      case 'setJoinPaused':
         tx = await contract.createProposalSetJoinPaused(!!p.paused, votingPeriod, proposalTitle, proposalDescription, txOptions); break;
       case 'withdrawTreasury':
         tx = await contract.createProposalWithdrawTreasury(p.token, p.recipient, p.amount, p.reason || '', votingPeriod, proposalTitle, proposalDescription, txOptions); break;

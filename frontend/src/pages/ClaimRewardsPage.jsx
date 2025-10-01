@@ -116,7 +116,7 @@ export function ClaimRewardsPage({
             </dd>
           </div>
           <div className="space-y-1">
-            <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Claimable right now</dt>
+            <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Claimable balance</dt>
             <dd className={`${text.mono} text-sm`}>
               {buildDisplay(stats.claimable, stats.claimableFormatted, tokenSymbol)}
             </dd>

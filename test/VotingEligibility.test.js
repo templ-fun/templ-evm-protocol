@@ -206,7 +206,7 @@ describe("Voting Eligibility Based on Join Time", function () {
 
             // Reach quorum immediately with the two existing members
             await templ.connect(member1).vote(0, true);
-            // yesVotes = 2 of 2 (auto-yes + member1), quorum reached; now add friendly members
+            // yesVotes = 2 of 2 (auto-yes + member1), quorum reached; add friendly members
             await token.connect(member3).approve(await templ.getAddress(), ENTRY_FEE);
             await templ.connect(member3).join();
             await token.connect(member4).approve(await templ.getAddress(), ENTRY_FEE);

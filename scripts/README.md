@@ -11,7 +11,7 @@ Run each script from the repo root unless noted. All commands assume dependencie
 
 ## At a glance
 - `deploy.js` - stand up a factory/templ pair with environment-driven configuration and save deployment metadata (accepts percentages that the script converts to the 10_000 basis-point scale used on-chain).
-- `deploy-cloudflare.js` - apply the D1 schema (optional), build the SPA with production env vars, and push the site to Cloudflare Pages from a single env file. The backend must be deployed separately now that Workers hosting has been retired, so pass `--skip-worker` when you only need database prep + Pages.
+- `deploy-cloudflare.js` - apply the D1 schema (optional), build the SPA with production env vars, and push the site to Cloudflare Pages from a single env file. The backend deploys separately, so pass `--skip-worker` when you only need database prep + Pages.
 - `register-templ.js` - register an already-deployed templ with the backend API so the UI/alerts can discover it.
 - `gen-wallets.js` - mint fresh Hardhat wallets (and optional ERC-20 balances) for local integration or e2e runs.
 - `test-all.sh` - replicate CI locally in four phases so regressions surface before pushing.

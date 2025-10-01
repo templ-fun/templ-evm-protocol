@@ -59,7 +59,7 @@ describe("Disband Treasury", function () {
     expect(after2 - before2).to.equal(perMember);
     expect(after3 - before3).to.equal(perMember);
 
-    // members can claim now without reverts
+    // members can claim without reverts
     await templ.connect(m1).claimMemberRewards();
     await templ.connect(m2).claimMemberRewards();
     await templ.connect(m3).claimMemberRewards();

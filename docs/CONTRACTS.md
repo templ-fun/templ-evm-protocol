@@ -83,7 +83,7 @@ sequenceDiagram
 - Factory-configurable governance parameters cover quorum percentage and the `executionDelayAfterQuorum`; they apply uniformly to every templ deployed by the factory.
 - Execution: Any address may call `executeProposal(id)`. Execution is atomic and non-reentrant.
 - Typed proposals only (no arbitrary calls). The allowed actions are:
-  - `setJoinPausedDAO(bool)` - pause/unpause membership purchasing.
+- `setJoinPausedDAO(bool)` - pause or resume new member joins.
   - `updateConfigDAO(address,uint256,bool,uint256,uint256,uint256)` - update the entry fee (must remain >0 and multiple of 10) and, when `_updateFeeSplit` is true, adjust the burn/treasury/member percentages. The protocol split comes from the factory and cannot be changed. Token changes are disabled (`_token` must be `address(0)` or the current token), else `TokenChangeDisabled`.
   - `withdrawTreasuryDAO(address,address,uint256,string)` - withdraw a specific amount of any asset (access token, other ERC-20, or ETH with `address(0)`).
   - `changePriestDAO(address)` - change the priest address via governance; backends persist the new priest and announce it via Telegram notifications.

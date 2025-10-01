@@ -100,7 +100,7 @@ describe("TEMPL - Proposal Pagination", function () {
       await templ.connect(priest).createProposal("Proposal 5", "Description 5", calldata, 14 * 24 * 60 * 60);
       await templ.connect(user1).createProposal("Proposal 6", "Description 6", calldata, 14 * 24 * 60 * 60);
 
-      // Now we have proposals 2,3,4 expired but not executed, and 5,6 new and active = 2 active total
+      // At this moment proposals 2,3,4 are expired but not executed, and 5,6 are new and active = 2 active total
       // Proposals 0,1 are executed, 2,3,4 are expired, 5,6 are active
       
       // Get all active proposals
@@ -137,7 +137,7 @@ describe("TEMPL - Proposal Pagination", function () {
       await templ.executeProposal(0);
       
       // Don't move time back, just check that executed proposals are filtered out
-      // Proposals 1 and 2 are now expired since we moved time forward
+      // Proposals 1 and 2 are expired after advancing time
 
       // Should return empty since 0 is executed and 1,2 are expired
       const [proposalIds, hasMore] = await templ.getActiveProposalsPaginated(0, 10);

@@ -141,7 +141,7 @@ describe("Single Active Proposal Restriction", function () {
             expect(await templ.hasActiveProposal(member1.address)).to.be.false;
             expect(await templ.activeProposalId(member1.address)).to.equal(0);
 
-            // Now member1 should be able to create a new proposal
+            // At this point member1 can create a new proposal
             await expect(templ.connect(member1).createProposalSetJoinPaused(
                 false,
                 7 * 24 * 60 * 60
@@ -264,11 +264,11 @@ describe("Single Active Proposal Restriction", function () {
             const proposal = await templ.getProposal(0);
             expect(proposal.executed).to.be.false;
 
-            // Now let the proposal expire
+            // Allow the proposal to expire
             await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60]);
             await ethers.provider.send("evm_mine");
 
-            // Now should be able to create another proposal since the first expired
+            // Member1 can create another proposal because the first one expired
             await expect(templ.connect(member1).createProposalWithdrawTreasury(
                 token.target,
                 member1.address,

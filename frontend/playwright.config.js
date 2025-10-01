@@ -32,7 +32,7 @@ export default defineConfig({
         }
       },
     },
-    // TODO: This should be enabled when real UI design begins, right now our UI exists only to prove the idea works and has no design
+    // TODO: enable when real UI design work begins; the current UI exists only to prove the idea works and has no design
     // {
     //   name: 'tech-demo-mobile',
     //   use: {

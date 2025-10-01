@@ -75,9 +75,9 @@ export function buildActionConfig(kind, params, helpers = {}) {
     : null;
   switch (kind) {
     case 'pause':
-      return { action: 'setPaused', params: { paused: true } };
+      return { action: 'setJoinPaused', params: { paused: true } };
     case 'unpause':
-      return { action: 'setPaused', params: { paused: false } };
+      return { action: 'setJoinPaused', params: { paused: false } };
     case 'changePriest':
       if (!params.newPriest) throw new Error('New priest address is required');
       return { action: 'changePriest', params: { newPriest: params.newPriest } };
