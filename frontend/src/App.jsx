@@ -28,6 +28,13 @@ export default function App() {
     setStatusMessages((prev) => [...prev.slice(-4), text]);
   }, []);
 
+  const disconnectWallet = useCallback(() => {
+    setSigner(null);
+    setWalletAddress('');
+    setProvider(null);
+    pushMessage('Wallet disconnected.');
+  }, [pushMessage]);
+
   useEffect(() => {
     if (typeof window === 'undefined' || !window.ethereum) return;
     const browserProvider = new ethers.BrowserProvider(window.ethereum);
@@ -322,6 +329,7 @@ export default function App() {
       <HomePage
         walletAddress={walletAddress}
         onConnectWallet={connectWallet}
+        onDisconnectWallet={disconnectWallet}
         onNavigate={navigate}
         templs={templs}
         loadingTempls={loadingTempls}
@@ -340,9 +348,14 @@ export default function App() {
         </div>
         <div className="ml-auto flex items-center gap-3">
           {walletAddress ? (
-            <span className={surface.pill}>
-              Connected: {walletAddress.slice(0, 6)}…{walletAddress.slice(-4)}
-            </span>
+            <>
+              <span className={surface.pill}>
+                Connected: {walletAddress.slice(0, 6)}…{walletAddress.slice(-4)}
+              </span>
+              <button type="button" className={button.base} onClick={disconnectWallet}>
+                Disconnect
+              </button>
+            </>
           ) : (
             <button type="button" className={button.primary} onClick={connectWallet}>
               Connect Wallet

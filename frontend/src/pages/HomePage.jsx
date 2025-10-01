@@ -11,16 +11,19 @@ function splitDisplay(display) {
   return [parts[0], parts.slice(1).join(' ')];
 }
 
-export function HomePage({ walletAddress, onConnectWallet, onNavigate, templs, loadingTempls, refreshTempls }) {
+export function HomePage({ walletAddress, onConnectWallet, onDisconnectWallet, onNavigate, templs, loadingTempls, refreshTempls }) {
   return (
     <div className={layout.page}>
       <header className={layout.header}>
         <h1 className="text-3xl font-semibold tracking-tight">TEMPL Control Center</h1>
         <div className={layout.cardActions}>
           {walletAddress ? (
-            <span className={surface.pill}>
-              Connected: {walletAddress.slice(0, 6)}…{walletAddress.slice(-4)}
-            </span>
+            <>
+              <span className={surface.pill}>
+                Connected: {walletAddress.slice(0, 6)}…{walletAddress.slice(-4)}
+              </span>
+              <button type="button" onClick={() => onDisconnectWallet?.()} className={button.base}>Disconnect</button>
+            </>
           ) : (
             <button type="button" onClick={onConnectWallet} className={button.primary}>Connect Wallet</button>
           )}

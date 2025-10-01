@@ -167,5 +167,8 @@ test.describe('Templ core workflows', () => {
     await expect(entryFeeRow.locator('dd')).toContainText('2');
     const entryFeeOnChain = await templReadOnly.entryFee();
     await expect(entryFeeOnChain).toBe(updatedEntryFee);
+
+    await page.getByRole('navigation').getByRole('button', { name: 'Disconnect' }).click();
+    await expect(page.getByRole('navigation').getByRole('button', { name: 'Connect Wallet' })).toBeVisible();
   });
 });
