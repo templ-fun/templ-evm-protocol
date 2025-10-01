@@ -77,7 +77,7 @@ sequenceDiagram
 
 ## 3. Telegram notifications
 
-Whenever watchers detect events and the templ has a `telegramChatId`, the backend posts formatted messages. In addition to join/proposal/vote updates, the notifier announces quorum, flags when a voting window closes (including whether execution is possible), and emits a daily treasury/member-pool digest. No Telegram messages are sent if the bot token or chat id is missing.
+Whenever watchers detect events and the templ has a `telegramChatId`, the backend posts formatted messages. In addition to join/proposal/vote updates, the notifier announces quorum, flags when a voting window closes (including whether execution is possible), emits daily treasury/member-pool digests, and mirrors every contract event handled in [`backend/src/server.js`](../backend/src/server.js)—config updates, priest changes, dictatorship toggles, treasury actions, reward claims, and more. No Telegram messages are sent if the bot token or chat id is missing.
 
 ```mermaid
 sequenceDiagram
@@ -89,9 +89,11 @@ sequenceDiagram
     C-->>B: ProposalCreated(id, proposer, endTime, title, description)
     B->>T: "Proposal created" + vote link
     C-->>B: VoteCast(id, voter, support)
-    B->>T: "Vote recorded" + vote link
+    B->>T: "Vote recorded" + vote/quorum status
     C-->>B: PriestChanged(old, new)
     B->>T: "Priest updated" + overview link
+    C-->>B: ProposalExecuted(id, success, returnData)
+    B->>T: "Proposal executed" + outcome link
 ```
 
 Messages use `APP_BASE_URL` to build URLs such as `/templs/<address>` or `/templs/<address>/proposals/<id>/vote`.
@@ -158,7 +160,7 @@ sequenceDiagram
 
 ## 6. Execution
 
-Execution remains on-chain only. Telegram notifications can be extended later to reflect `ProposalExecuted` events if desired.
+Execution runs entirely on chain and immediately triggers a Telegram notification when the templ is bound to a chat.
 
 ```mermaid
 sequenceDiagram

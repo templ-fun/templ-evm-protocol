@@ -110,13 +110,13 @@ This guide walks through the production deployment of templ on Cloudflare. The b
 
 ## 6. Create and register templs
 
-1. Confirm the Worker responds by hitting the health endpoint:
+1. Confirm the Worker responds by listing templs:
 
    ```bash
-   curl https://api.templ.example/health
+   curl https://api.templ.example/templs
    ```
 
-   The endpoint returns `200 OK` when the Worker recognises its D1 connection and configuration.
+   A healthy deployment returns `{"templs": []}` (or your registered templs) with a `200 OK` response.
 2. Visit the production frontend, connect the priest wallet, and run the “Create templ” flow. The UI calls `TemplFactory.createTemplWithConfig`, then signs the backend registration payload so the Worker starts tracking the new templ immediately.
 3. If the UI cannot reach the backend (for example, while DNS propagates), register the templ manually:
 

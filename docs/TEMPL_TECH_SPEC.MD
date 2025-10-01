@@ -1,35 +1,116 @@
-# Templ Technical Spec
+# Templ technical specification
 
-This spec connects the core architecture: fee-gated memberships on chain, typed governance, and Telegram notifications that mirror contract activity.
+Templ combines on-chain membership contracts, typed governance, and an off-chain notification stack. This document connects those pieces so you can reason about protocol behaviour end to end.
 
-## 1. Contracts
+---
 
-- **Factory.** `TemplFactory` deploys templ instances and locks the protocol rake shared by every templ it mints.
-- **Entry fees.** `TEMPL` contracts accept ERC-20 fees via `join`, split tribute across burn/treasury/member/protocol slices, and auto-enrol the deploying priest so the pioneer pool accrues to them.
-- **Caps and pauses.** Optional `MAX_MEMBERS` enforces an upper bound; hitting the cap pauses new joins with `MemberLimitReached` until governance raises or clears the limit and resumes the contract.
-- **Governance scope.** One-wallet-one-vote proposals manage pause/unpause, fee config, treasury withdrawals/disbands, priest rotation, dictatorship toggles, and the on-chain `templHomeLink` string. Disbanding keeps joins open so communities cannot brick new entrants mid-vote.
-- **Quorum escape hatch.** A priest-authored `disbandTreasury` proposal skips quorum so an inactive templ that can no longer meet the threshold still has a deterministic path to dissolve and distribute funds via the priest.
-- **External rewards.** Up to 256 reward tokens can be tracked at once. `cleanupExternalRewardToken(token)` frees a slot after distributions settle to keep gas predictable.
-- **NatSpec + tests.** Hardhat tests and inline comments document state transitions and edge cases.
+## 1. On-chain system
 
-## 2. Backend responsibilities
+### 1.1 Factory
 
-- Validate templ registrations (`POST /templs`) and rebinds with EIP-712 signatures.
-- Confirm membership via `isMember` on chain (`POST /join`).
-- Persist templ ↔ Telegram chat bindings in Cloudflare D1 (or SQLite/in-memory) so notifications survive restarts while keeping the registry templ-scoped only (contract + optional chat).
-- Subscribe to templ events with `ethers.Contract` and emit Telegram MarkdownV2 messages for joins, proposals, quorum, voting closure, priest changes, home-link updates, daily digests, and binding acknowledgements.
-- Run background jobs for proposal deadlines, digests, and Telegram binding polls while keeping HTTP responses fast.
+- **Contract** – [`TemplFactory`](../contracts/TemplFactory.sol) stores the immutable protocol fee recipient and percentage for every templ it mints.
+- **Deployment helpers** – `createTempl(token, entryFee)` uses defaults; `createTemplWithConfig(CreateConfig)` allows custom percentages, quorum, execution delay, burn address, max members, dictatorship flag, and home link.
+- **Defaults** – Burn/treasury/member splits each default to 3_000 BPS (30%), quorum to 3_300 BPS (33%), execution delay to 7 days, and the burn address to `0x0000…dEaD`. Callers can request defaults explicitly by passing `-1` for percentage fields.
+- **Validation** – Entry fees must be ≥10 units of the access token and divisible by 10. Percentages must sum to 10_000 BPS once the factory’s `protocolPercent` is included.
+- **Implementation detail** – The factory stores the `TEMPL` creation bytecode in SSTORE2 and concatenates constructor arguments during deployment to minimise gas.
 
-## 3. Frontend flows
+### 1.2 Templ composition
 
-- **Deploy** (`/templs/create`): collect config, call the factory, sign the registration payload, and post to the backend (optional Telegram chat id).
-- **Join** (`/templs/join`): approve the entry fee when needed, join (or gift a join) on-chain, then sign a `join` payload for backend verification.
-- **Governance** (`/templs/:address/...`): create proposals with on-chain title/description, cast YES/NO votes, execute outcomes, and manage Telegram bindings.
-- Shared signing helpers in `shared/` build the typed data used across frontend and backend.
+Every templ instance is the [`TEMPL`](../contracts/TEMPL.sol) contract, which inherits four modules:
+
+| Module | Responsibility |
+| --- | --- |
+| `TemplBase` | Shared storage, immutables, events, join pause flag, membership cap, quorum/execution delay, and the on-chain `templHomeLink`. Provides helpers for percentage validation, dictatorship toggles, and external reward bookkeeping. |
+| `TemplMembership` | `join`/`joinFor`, reward accounting, `claimMemberRewards`, external reward claims, configuration views (`getConfig`, `getTreasuryInfo`, etc.), and member metadata (`getMemberCount`, `totalJoins`, `getJoinDetails`). |
+| `TemplTreasury` | Governance hooks to withdraw funds, update fee splits, toggle joins, adjust caps, disband treasury balances, rotate priests, toggle dictatorship, and update the home link. Also tracks treasury balances credited from entry fees. |
+| `TemplGovernance` | Proposal lifecycle, voting rules, execution router, pagination helpers, and quorum calculations. |
+
+The constructor:
+
+- Requires a non-zero priest, entry fee ≥10, and fee multiples of 10.
+- Auto-enrols the priest as the founding member (with reward snapshot alignment) so the first paid join distributes rewards to them.
+- Applies the configured cap (if any) and leaves joins unpaused.
+
+### 1.3 Membership and economics
+
+- **Joining** – `join()` lets a payer enroll themselves; `joinFor(address recipient)` gifts membership to another wallet. Both revert when joins are paused, the membership cap is reached, or the recipient already joined. Fee-on-transfer tokens are unsupported because the contract relies on exact transfers.
+- **Fee routing** – Each join splits the entry fee into burn, treasury, member pool, and protocol allocations. The protocol share is forwarded immediately to the factory-wide recipient. Treasury and member pool balances accumulate on the contract; the burn share goes to the configured burn address. Percentages are stored in basis points.
+- **Member rewards** – Existing members receive `floor(memberPoolShare / activeMembers)` tokens whenever a new member joins or treasury access-token balances are disbanded into the pool. Leftover remainders accumulate in `memberRewardRemainder` and are rolled into the next distribution. Members claim via `claimMemberRewards()`.
+- **External rewards** – Treasury withdrawals or disbands involving non-access-token assets route through `externalRewards`. Each token (including ETH as `address(0)`) tracks its own cumulative rewards and remainder. The contract supports up to 256 concurrent external reward tokens; `cleanupExternalRewardToken(token)` removes empty pools.
+- **Caps and pauses** – Governance can set a membership cap via `setMaxMembersDAO`. When active members reach the cap the contract automatically pauses joins (`joinPaused = true`). Removing or raising the cap leaves the templ paused until governance explicitly resumes joins.
+
+### 1.4 Governance
+
+- **Eligibility** – One member equals one vote. Members that join after a proposal’s snapshot block cannot vote on that proposal. Dictatorship mode disables new proposals (except to exit dictatorship) and voting on existing ones.
+- **Proposal creation** – Members can open proposals to:
+  - Pause or resume joins.
+  - Update the entry fee and, optionally, the burn/treasury/member percentages (protocol share is immutable per factory).
+  - Adjust the membership cap.
+  - Update the templ home link.
+  - Withdraw treasury or external funds to a recipient.
+  - Disband treasury holdings into member or external reward pools.
+  - Change the priest.
+  - Enable or disable dictatorship mode.
+- **Voting windows** – Each proposal can choose a voting period between 7 and 30 days (`0` defaults to 7). Once quorum is reached the contract enforces the per-templ `executionDelayAfterQuorum` (default 7 days) before allowing execution. Priest-authored disband proposals skip quorum but must wait for their voting window to close.
+- **Quorum** – `quorumPercent` is set at deployment (default 33%). Proposals compute quorum against the number of eligible voters at snapshot time. Execution requires `yesVotes > noVotes` and the quorum percentage to be satisfied (unless the proposal is quorum-exempt).
+- **Execution router** – `executeProposal(id)` calls the relevant governance hook (`_governanceSetJoinPaused`, `_governanceUpdateConfig`, etc.). Execution is non-reentrant and reverts if quorum/delay requirements are not met, the proposal already executed, or votes did not pass.
+- **Active proposal guard** – Each address can have at most one active proposal at a time. Helpers such as `getActiveProposalsPaginated` and `pruneInactiveProposals` keep views bounded.
+
+### 1.5 Events and errors
+
+- Key events: `MemberJoined`, `MemberRewardsClaimed`, `ExternalRewardClaimed`, `ProposalCreated`, `VoteCast`, `ProposalExecuted`, `TreasuryAction`, `TreasuryDisbanded`, `JoinPauseUpdated`, `ConfigUpdated`, `PriestChanged`, `DictatorshipModeChanged`, `MaxMembersUpdated`, `TemplHomeLinkUpdated`.
+- Errors: see [`TemplErrors.sol`](../contracts/TemplErrors.sol) for the canonical list (`EntryFeeTooSmall`, `InvalidPercentageSplit`, `MemberLimitReached`, `DictatorshipEnabled`, etc.).
+
+---
+
+## 2. Backend service
+
+The backend (`backend/src`) is a Node 22 Express app designed to run as a long-lived process or in a Cloudflare Worker via the provided deployment script.
+
+- **Signature verification** – `/templs`, `/templs/rebind`, and `/join` require EIP-712 signatures generated by the shared signing helpers. The backend maintains replay protection in persistence (`used_signatures`).
+- **Templ registry** – Registrations store contract, priest, optional `templHomeLink`, and optional `telegramChatId`. Chat identifiers are never returned to clients unless they own the templ; listing endpoints deliberately omit them.
+- **Membership checks** – `/join` calls `isMember(member)` on chain using the configured RPC endpoint. Failure to confirm membership surfaces as `403 Membership not found`.
+- **Telegram notifier** – When a templ is bound to a chat and `TELEGRAM_BOT_TOKEN` is configured, the backend streams contract events (`MemberJoined`, `ProposalCreated`, `VoteCast`, `PriestChanged`, etc.) and delivers MarkdownV2-formatted messages. Daily digests summarise treasury and member pool balances once every 24 hours while the server holds the leader lease.
+- **Background work** – Leader election (via D1) ensures exactly one replica runs watchers, polls Telegram binding codes, and triggers digests. Other replicas stay idle until the lease expires.
+- **Persistence** – See [PERSISTENCE.md](PERSISTENCE.md) for table layouts and failover behaviour (Cloudflare D1, SQLite, or in-memory adapters).
+- **Configuration** – `BACKEND.md` documents every environment variable (`RPC_URL`, `BACKEND_SERVER_ID`, `ALLOWED_ORIGINS`, `TRUSTED_FACTORY_*`, rate limiting, Telegram secrets, etc.) along with sample responses.
+
+---
+
+## 3. Frontend application
+
+- **Stack** – Vite + React SPA served statically (Cloudflare Pages in production). Uses `ethers.BrowserProvider` for wallet interaction and shared signing helpers for typed data.
+- **Key routes** –
+  - `/` – Landing page that lists templs discovered via the configured factory and backend metadata.
+  - `/templs/create` – Guided deployment, including fee split validation and registration with the backend.
+  - `/templs/join` – Join or gift membership; handles approvals when required.
+  - `/templs/:address` – Overview with priest info, Telegram binding status, treasury/member pool snapshots, and governance shortcuts.
+  - `/templs/:address/proposals/new` – Proposal composer with typed action selection.
+  - `/templs/:address/proposals/:id/vote` – Voting surface (YES/NO) and execution helpers.
+  - `/templs/:address/claim` – Member rewards claim page (access-token and external pools).
+- **Configuration** – Environment variables prefixed with `VITE_` control the backend URL, trusted factory metadata, protocol fee hints, and RPC providers. `VITE_BACKEND_SERVER_ID` must match the backend’s `BACKEND_SERVER_ID` so signatures verify.
+- **Telegram binding UX** – After registering a templ the SPA surfaces the binding code returned by the backend. Priests can request new codes from the overview page to rotate chats.
+- **Testing** – Vitest covers components and services; Playwright E2E scripts exercise deploy/join/governance flows.
+
+---
 
 ## 4. Telegram integration
 
-- `TELEGRAM_BOT_TOKEN` enables delivery; leaving it unset disables notifications without impacting contract flows.
-- Chat ids live in persistence (`templ_bindings.telegramChatId`). Supergroups use negative ids as returned by the Telegram API.
-- Rebinds require the current priest to sign typed data; the backend issues a fresh code and revokes the previous binding as soon as the new chat posts `templ <code>`.
-- MarkdownV2 formatting keeps alerts readable (bold headings, inline code for addresses, deep links sourced from `APP_BASE_URL`). Failures are logged but never crash the service.
+- Providing `TELEGRAM_BOT_TOKEN` enables delivery. Omitting it keeps all contract flows operational while disabling notifications.
+- Chat IDs (positive for direct chats, negative for supergroups) live in persistence; only the backend sees them. Clients receive binding codes instead of raw IDs.
+- Rebinding requires the current priest to sign a typed request. The backend revokes the previous binding immediately and listens for the new chat to post `templ <code>`.
+- Messages use MarkdownV2 formatting, include deep links derived from `APP_BASE_URL`, and are resilient to transient Telegram errors (failures are logged, not fatal).
+
+---
+
+## 5. Operational guarantees and invariants
+
+- **Protocol share immutability** – The protocol percentage and recipient are fixed per factory; governance cannot alter them.
+- **Entry fee safety** – Entry fees stay ≥10 and divisible by 10. Governance proposals that violate these constraints revert.
+- **Dictatorship exit hatch** – Even when dictatorship mode is active, members (including the priest) can always propose to disable it; all other proposal types are blocked until dictatorship is lifted.
+- **Quorum escape hatch** – Priest-authored disband proposals (`quorumExempt = true`) provide a deterministic way to distribute funds when quorum can no longer be met.
+- **Join availability** – Disbanding treasury funds never pauses joins. Only explicit pause proposals or hard member caps block new members.
+- **Reward accounting** – Member and external reward calculations carry remainders forward to guarantee eventual distribution of every token.
+- **Non-reentrancy** – `join`, reward claims, and `executeProposal` are guarded by `ReentrancyGuard`.
+
+Use this spec alongside the source to audit behaviour, design new features, or run incident response without guesswork.

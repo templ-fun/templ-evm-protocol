@@ -72,7 +72,7 @@ The app uses `ethers.BrowserProvider` and the injected `window.ethereum`. Connec
 ### Join flow
 
 1. User enters a templ address on `/templs/join`.
-2. If necessary, `joinTempl` approves + calls `joinTempl()` on the contract.
+2. If necessary, the `joinTempl` helper approves the entry fee and calls `join()` (or `joinFor(recipient)` when gifting) on the contract.
 3. The app signs a `join` typed message and asks the backend to verify membership.
 4. The UI surfaces templ metadata, including Telegram chat id and quick links.
 

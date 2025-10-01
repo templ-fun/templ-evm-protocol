@@ -1,16 +1,19 @@
 # templ.fun
 
-Templ turns any ERC-20 community into a gated club with on-chain economics, typed governance, and optional Telegram alerts. Holders deploy their own templ, charge an entry fee, and redistribute tributes between burn, treasury, protocol upkeep, and member rewards.
+Templ lets any ERC-20 community spin up a gated club with transparent economics, one-member/one-vote governance, and optional Telegram alerts. A single factory mints templs, each templ tracks its own members and fee splits, and the surrounding tooling keeps every surface in sync.
 
-## What you ship
+---
 
-- Self-serve deployments from a factory with configurable fee splits and optional member caps.
-- One-member/one-vote governance covering pause/config/withdraw/priest/dictatorship/home-link actions.
-- Static frontend (Vite + React) that handles deploy, join, vote, and reward flows.
-- Long-lived Express backend that verifies signatures, keeps a templ registry (contract address + optional Telegram chat id), and streams on-chain events.
-- Shared signing helpers and Solidity contracts tested through Hardhat, Vitest, and Playwright harnesses.
+## Core capabilities
 
-## System map
+| Area | What ships |
+| --- | --- |
+| On-chain | `TemplFactory` deployments with configurable priest, entry fee, burn/treasury/member splits, quorum, execution delay, optional caps, and home links. Each templ wires membership, treasury, and typed-governance modules together so communities can join, vote, withdraw, or disband without bespoke code. |
+| Frontend | Static Vite + React SPA that handles templ creation, join + gifting flows, proposal creation/voting/execution, reward claims, and Telegram rebinding. |
+| Backend | Node 22 Express service that verifies typed signatures, persists templ ↔ Telegram bindings, streams contract events, and emits MarkdownV2 Telegram notifications. |
+| Shared utilities | Signing helpers, factories for typed data, and Hardhat/Vitest/Playwright harnesses that keep the stack coherent. |
+
+## Architecture snapshot
 
 ```mermaid
 flowchart LR
@@ -21,38 +24,45 @@ flowchart LR
   backend -->|Notifications| telegram[Telegram Bot]
 ```
 
-More detailed diagrams live in `docs/CORE_FLOW_DOCS.MD`.
+More detailed diagrams and sequence charts live in [`docs/CORE_FLOW_DOCS.MD`](docs/CORE_FLOW_DOCS.MD).
 
-## Getting started
+## Get started locally
 
 ```bash
-npm ci                      # install root deps
-npm --prefix backend ci     # install backend deps
-npm --prefix frontend ci    # install frontend deps
-npm run compile             # compile contracts
-npm --prefix backend test   # backend tests
-npm --prefix frontend run dev
+npm ci
+npm --prefix backend ci
+npm --prefix frontend ci
+
+npm run compile                 # compile contracts
+npm --prefix backend start      # start the API (requires RPC_URL)
+npm --prefix frontend run dev   # run the SPA on http://localhost:5173
 ```
 
-Run `npm run test:all` before shipping changes; it mirrors the CI matrix. Additional coverage commands live in the package scripts (`npm --prefix backend run coverage`, `npm --prefix frontend run coverage`).
+Hardhat tests, Vitest specs, Playwright smoke tests, and backend unit tests are wired together under one script:
 
-## Documentation
+```bash
+npm run test:all
+```
 
-See [docs/README.md](docs/README.md) for complete documentation.
+Run that command before handing off a change. Package-specific coverage targets remain available via `npm --prefix backend run coverage` and `npm --prefix frontend run coverage`.
 
-### Learning templ
+## Documentation map
 
-1. Big-picture spec – [docs/TEMPL_TECH_SPEC.MD](./docs/TEMPL_TECH_SPEC.MD)  
-2. Flow diagrams – [docs/CORE_FLOW_DOCS.MD](./docs/CORE_FLOW_DOCS.MD)  
-3. Smart contracts – [docs/CONTRACTS.md](./docs/CONTRACTS.md)  
-4. Backend API + persistence – [docs/BACKEND.md](docs/BACKEND.md) and [docs/PERSISTENCE.md](./docs/PERSISTENCE.md)  
-5. Frontend routes – [docs/FRONTEND.md](./docs/FRONTEND.md)  
-6. Local setup → prod rollout – [docs/TEST_LOCALLY.md](./docs/TEST_LOCALLY.md) then [docs/DEPLOYMENT_GUIDE.md](./docs/DEPLOYMENT_GUIDE.md)  
+| Topic | Reference |
+| --- | --- |
+| Protocol handbook & glossary | [`docs/README.md`](docs/README.md) |
+| Technical spec (contracts ↔ backend ↔ frontend) | [`docs/TEMPL_TECH_SPEC.MD`](docs/TEMPL_TECH_SPEC.MD) |
+| Flow diagrams | [`docs/CORE_FLOW_DOCS.MD`](docs/CORE_FLOW_DOCS.MD) |
+| Contract reference | [`docs/CONTRACTS.md`](docs/CONTRACTS.md) |
+| Backend API, env, and persistence | [`docs/BACKEND.md`](docs/BACKEND.md), [`docs/PERSISTENCE.md`](docs/PERSISTENCE.md) |
+| Frontend routes and configuration | [`docs/FRONTEND.md`](docs/FRONTEND.md) |
+| Local dev checklist | [`docs/TEST_LOCALLY.md`](docs/TEST_LOCALLY.md) |
+| Production rollout | [`docs/DEPLOYMENT_GUIDE.md`](docs/DEPLOYMENT_GUIDE.md) |
 
-## Modules
+## Repository tour
 
-- [./contracts/](./contracts/)   – Solidity sources and Hardhat tests.
-- [./backend/](./backend/) – Express API, Telegram notifier.
-- [./frontend/](./frontend/) – Vite + React app with Vitest + E2E tests.
-- [./shared/](./shared/) – Shared utilities (signing helpers, formatting).
-- [./scripts/](./scripts/) – Deployment and maintenance scripts.
+- [`contracts/`](contracts/) – Solidity sources, libraries, and Hardhat tests.
+- [`backend/`](backend/) – Express API, Telegram notifier, persistence adapters, and integration tests.
+- [`frontend/`](frontend/) – Vite + React app, Vitest suite, and Playwright harness.
+- [`shared/`](shared/) – Typed-data builders and utilities reused across packages.
+- [`scripts/`](scripts/) – Deployment helpers, factory/templ registrars, and Cloudflare automation.
