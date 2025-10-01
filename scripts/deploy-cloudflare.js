@@ -130,11 +130,13 @@ async function main() {
   const frontendEnv = { ...collectPrefixedEnv('FRONTEND_BUILD_VAR_') };
   const requiredFrontendKeys = ['VITE_BACKEND_URL', 'VITE_BACKEND_SERVER_ID', 'VITE_TEMPL_FACTORY_ADDRESS', 'VITE_TEMPL_FACTORY_DEPLOYMENT_BLOCK'];
   for (const key of requiredFrontendKeys) {
-    const value = optionalEnv(key);
-    if (!value) {
-      throw new Error(`${key} must be set to build the frontend for production.`);
+    if (!frontendEnv[key]) {
+      const value = optionalEnv(key);
+      if (!value) {
+        throw new Error(`${key} must be set to build the frontend for production.`);
+      }
+      frontendEnv[key] = value;
     }
-    frontendEnv[key] = value;
   }
   const optionalFrontendKeys = ['VITE_TEMPL_FACTORY_PROTOCOL_RECIPIENT', 'VITE_TEMPL_FACTORY_PROTOCOL_PERCENT', 'VITE_RPC_URL'];
   for (const key of optionalFrontendKeys) {
