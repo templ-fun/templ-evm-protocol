@@ -84,4 +84,10 @@ library TemplErrors {
     error ExternalRewardLimitReached();
     /// @notice Thrown when attempting to clear an external reward token that still holds value.
     error ExternalRewardsNotSettled();
+    /// @notice Thrown when templ creation is restricted to the factory deployer.
+    error FactoryAccessRestricted();
+    /// @notice Thrown when a non-deployer attempts to update factory permissionless settings.
+    error NotFactoryDeployer();
+    /// @notice Thrown when attempting to set permissionless mode to its current state.
+    error PermissionlessUnchanged();
 }

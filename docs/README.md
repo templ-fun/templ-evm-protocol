@@ -25,7 +25,7 @@ Every document in this folder describes the current templ protocol and its suppo
 - **Templ** – A deployed membership contract (`TEMPL`) produced by the factory.
 - **Priest** – Wallet with elevated governance powers; auto-enrolled as the founding member.
 - **Member** – Wallet that joined by paying the templ’s entry fee in the access token.
-- **Factory** – `TemplFactory` contract that deploys templ instances and enforces the protocol fee share.
+- **Factory** – `TemplFactory` contract that deploys templ instances, enforces the protocol fee share, and gates templ creation until the deployer enables permissionless mode.
 - **Home link** – Canonical templ URL stored on-chain (`templHomeLink`) and surfaced throughout the app + Telegram.
 - **Dictatorship mode** – Governance flag that lets the priest execute the usual DAO actions directly.
 

@@ -521,4 +521,64 @@ describe("TemplFactory", function () {
 
         await ethers.provider.send("hardhat_setCode", [pointer, originalCode]);
     });
+
+    it("restricts templ creation to the deployer until permissionless mode is enabled", async function () {
+        const [deployer, outsider, protocolRecipient] = await ethers.getSigners();
+        const token = await deployToken("Access", "ACC");
+        const Factory = await ethers.getContractFactory("TemplFactory");
+        const factory = await Factory.deploy(protocolRecipient.address, pct(10));
+        await factory.waitForDeployment();
+
+        const tokenAddress = await token.getAddress();
+        await expect(
+            factory.connect(outsider).createTempl(tokenAddress, ENTRY_FEE)
+        ).to.be.revertedWithCustomError(factory, "FactoryAccessRestricted");
+
+        const config = {
+            priest: deployer.address,
+            token: tokenAddress,
+            entryFee: ENTRY_FEE,
+            burnPercent: pct(30),
+            treasuryPercent: pct(30),
+            memberPoolPercent: pct(30),
+            quorumPercent: pct(33),
+            executionDelaySeconds: 7 * 24 * 60 * 60,
+            burnAddress: ethers.ZeroAddress,
+            priestIsDictator: false,
+            maxMembers: 0,
+            homeLink: "",
+        };
+
+        await expect(
+            factory.connect(outsider).createTemplWithConfig(config)
+        ).to.be.revertedWithCustomError(factory, "FactoryAccessRestricted");
+
+        await expect(factory.connect(outsider).setPermissionless(true)).to.be.revertedWithCustomError(
+            factory,
+            "NotFactoryDeployer"
+        );
+
+        await expect(factory.setPermissionless(true))
+            .to.emit(factory, "PermissionlessModeUpdated")
+            .withArgs(true);
+
+        expect(await factory.permissionless()).to.equal(true);
+
+        const templAddress = await factory
+            .connect(outsider)
+            .createTemplWithConfig.staticCall(config);
+        await factory.connect(outsider).createTemplWithConfig(config);
+
+        const templ = await ethers.getContractAt("TEMPL", templAddress);
+        expect(await templ.priest()).to.equal(deployer.address);
+
+        await expect(factory.setPermissionless(true)).to.be.revertedWithCustomError(
+            factory,
+            "PermissionlessUnchanged"
+        );
+
+        await expect(factory.setPermissionless(false))
+            .to.emit(factory, "PermissionlessModeUpdated")
+            .withArgs(false);
+    });
 });
