@@ -89,9 +89,22 @@ contract TemplFactory {
     /// @param _entryFee Entry fee denominated in `_token`.
     /// @return templAddress Address of the deployed templ.
     function createTempl(address _token, uint256 _entryFee) external returns (address templAddress) {
+        return createTemplFor(msg.sender, _token, _entryFee);
+    }
+
+    /// @notice Deploys a templ on behalf of an explicit priest using default configuration.
+    /// @param _priest Wallet that will assume the templ priest role after deployment.
+    /// @param _token ERC-20 access token for the templ.
+    /// @param _entryFee Entry fee denominated in `_token`.
+    /// @return templAddress Address of the deployed templ.
+    function createTemplFor(address _priest, address _token, uint256 _entryFee)
+        public
+        returns (address templAddress)
+    {
         _enforceCreationAccess();
+        if (_priest == address(0)) revert TemplErrors.InvalidRecipient();
         CreateConfig memory cfg = CreateConfig({
-            priest: msg.sender,
+            priest: _priest,
             token: _token,
             entryFee: _entryFee,
             burnPercent: int256(DEFAULT_BURN_PERCENT),
@@ -132,7 +145,7 @@ contract TemplFactory {
     /// @param cfg Struct containing the templ deployment parameters.
     /// @return templAddress Address of the deployed templ.
     function _deploy(CreateConfig memory cfg) internal returns (address templAddress) {
-        if (cfg.token == address(0)) revert TemplErrors.InvalidRecipient();
+        if (cfg.priest == address(0) || cfg.token == address(0)) revert TemplErrors.InvalidRecipient();
         if (cfg.entryFee < 10) revert TemplErrors.EntryFeeTooSmall();
         if (cfg.entryFee % 10 != 0) revert TemplErrors.InvalidEntryFee();
         if (cfg.quorumPercent > TOTAL_PERCENT) revert TemplErrors.InvalidPercentage();
