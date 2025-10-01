@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
-const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
+const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 
 describe("External reward remainders", function () {
   it("do not leak to members who joined after the remainder accrued", async function () {
@@ -34,20 +34,20 @@ describe("External reward remainders", function () {
 
     const initialMembers = [member1, member2, member3];
     await mintToUsers(accessToken, [...initialMembers, lateMember], entryFee * 5n);
-    await purchaseAccess(templ, accessToken, initialMembers, entryFee);
+    await joinMembers(templ, accessToken, initialMembers, entryFee);
 
     const tenTokens = ethers.parseUnits("10", 18);
     await rewardToken.mint(owner.address, ethers.parseUnits("100", 18));
     await rewardToken.connect(owner).transfer(templ.target, tenTokens);
     await templ.connect(owner).daoDisband(rewardToken.target);
 
-    await purchaseAccess(templ, accessToken, [lateMember], entryFee);
+    await joinMembers(templ, accessToken, [lateMember], entryFee);
 
     const sevenTokens = ethers.parseUnits("7", 18);
     await rewardToken.connect(owner).transfer(templ.target, sevenTokens);
     await templ.connect(owner).daoDisband(rewardToken.target);
 
-    const claimableLate = await templ.getClaimableExternalToken(lateMember.address, rewardToken.target);
+    const claimableLate = await templ.getClaimableExternalReward(lateMember.address, rewardToken.target);
 
     const totalMembers = await templ.getMemberCount();
     const expected = sevenTokens / totalMembers;
@@ -60,7 +60,7 @@ describe("External reward remainders", function () {
     const [, , member1, member2] = accounts;
 
     await mintToUsers(token, [member1, member2], entryFee * 3n);
-    await purchaseAccess(templ, token, [member1, member2], entryFee);
+    await joinMembers(templ, token, [member1, member2], entryFee);
 
     const RewardToken = await ethers.getContractFactory(
       "contracts/mocks/TestToken.sol:TestToken"
@@ -74,11 +74,11 @@ describe("External reward remainders", function () {
 
     await templ.connect(priest).disbandTreasuryDAO(rewardToken.target);
 
-    const claimable = await templ.getClaimableExternalToken(member1.address, rewardToken.target);
+    const claimable = await templ.getClaimableExternalReward(member1.address, rewardToken.target);
     expect(claimable).to.be.gt(0n);
 
     const before = await rewardToken.balanceOf(member1.address);
-    await expect(templ.connect(member1).claimExternalToken(rewardToken.target))
+    await expect(templ.connect(member1).claimExternalReward(rewardToken.target))
       .to.emit(templ, "ExternalRewardClaimed")
       .withArgs(rewardToken.target, member1.address, claimable);
     const after = await rewardToken.balanceOf(member1.address);

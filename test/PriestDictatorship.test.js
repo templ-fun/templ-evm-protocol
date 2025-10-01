@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
-const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
+const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 
 describe("Priest dictatorship governance toggle", function () {
   const ENTRY_FEE = ethers.parseUnits("100", 18);
@@ -22,7 +22,7 @@ describe("Priest dictatorship governance toggle", function () {
     ({ templ, token, accounts, priest } = await deployTempl({ entryFee: ENTRY_FEE }));
     [, , member] = accounts;
     await mintToUsers(token, [member], TOKEN_SUPPLY);
-    await purchaseAccess(templ, token, [member]);
+    await joinMembers(templ, token, [member]);
   });
 
   function advanceBeyondExecutionDelay() {
@@ -64,7 +64,7 @@ describe("Priest dictatorship governance toggle", function () {
     await expect(
       templ
         .connect(member)
-        .createProposalSetPaused(true, VOTING_PERIOD, "Pause templ", "Attempt to pause while dictator")
+        .createProposalSetJoinPaused(true, VOTING_PERIOD, "Pause templ", "Attempt to pause while dictator")
     ).to.be.revertedWithCustomError(templ, "DictatorshipEnabled");
 
     const txDisable = await templ
@@ -172,7 +172,7 @@ describe("Priest dictatorship governance toggle", function () {
 
   it("enforces the voting window for quorum-exempt priest proposals", async function () {
     await mintToUsers(token, [priest], TOKEN_SUPPLY);
-    await purchaseAccess(templ, token, [priest]);
+    await joinMembers(templ, token, [priest]);
 
     await templ
       .connect(priest)
@@ -197,7 +197,7 @@ describe("Priest dictatorship governance toggle", function () {
     const secondMember = accounts[3];
 
     await mintToUsers(token, [secondMember], TOKEN_SUPPLY);
-    await purchaseAccess(templ, token, [secondMember]);
+    await joinMembers(templ, token, [secondMember]);
 
     await templ
       .connect(member)
@@ -224,11 +224,11 @@ describe("Priest dictatorship governance toggle", function () {
   it("blocks executing non-dictatorship proposals while dictatorship is enabled", async function () {
     const [, , memberA, memberB] = accounts;
     await mintToUsers(token, [memberA, memberB], TOKEN_SUPPLY);
-    await purchaseAccess(templ, token, [memberA, memberB]);
+    await joinMembers(templ, token, [memberA, memberB]);
 
     await templ
       .connect(memberA)
-      .createProposalSetPaused(false, VOTING_PERIOD, "Pause", "Pre-dictatorship");
+      .createProposalSetJoinPaused(false, VOTING_PERIOD, "Pause", "Pre-dictatorship");
 
     await templ
       .connect(memberB)

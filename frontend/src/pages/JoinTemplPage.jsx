@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { sanitizeLink } from '../../../shared/linkSanitizer.js';
 import templArtifact from '../contracts/TEMPL.json';
-import { approveEntryFee, loadEntryRequirements, purchaseAccess, verifyMembership } from '../services/membership.js';
+import { approveEntryFee, loadEntryRequirements, joinTempl, verifyMembership } from '../services/membership.js';
 import { button, form, layout, text } from '../ui/theme.js';
 
 export function JoinTemplPage({
@@ -16,11 +16,12 @@ export function JoinTemplPage({
   refreshTempls
 }) {
   const [templAddress, setTemplAddress] = useState('');
-  const [purchasePending, setPurchasePending] = useState(false);
+  const [joinPending, setJoinPending] = useState(false);
   const [approvePending, setApprovePending] = useState(false);
   const [verification, setVerification] = useState(null);
   const [entryInfo, setEntryInfo] = useState(null);
   const [loadingEntry, setLoadingEntry] = useState(false);
+  const [recipientAddress, setRecipientAddress] = useState('');
 
   useEffect(() => {
     const fromQuery = query.get('address');
@@ -169,33 +170,46 @@ export function JoinTemplPage({
     }
   };
 
-  const handlePurchase = async () => {
+  const handleJoin = async () => {
     if (!ensureWallet()) return;
-    setPurchasePending(true);
-    pushMessage?.('Purchasing access…');
+    setJoinPending(true);
+    const trimmedRecipient = recipientAddress?.trim();
+    const gifting = Boolean(trimmedRecipient && trimmedRecipient.length);
+    pushMessage?.(gifting ? 'Sending membership…' : 'Joining templ…');
     try {
-      const result = await purchaseAccess({
+      const result = await joinTempl({
         ethers,
         signer,
         templAddress,
         templArtifact,
         walletAddress,
         tokenAddress,
-        entryFee: entryFeeWei
+        entryFee: entryFeeWei,
+        recipientAddress: gifting ? trimmedRecipient : undefined
       });
-      pushMessage?.(result.purchased ? 'Access purchase complete' : 'You already have access');
+      if (result.joined) {
+        const recipientLower = result.recipient?.toLowerCase?.();
+        const walletLower = walletAddress?.toLowerCase?.();
+        if (recipientLower && walletLower && recipientLower !== walletLower) {
+          pushMessage?.(`Gifted membership to ${result.recipient}`);
+        } else {
+          pushMessage?.('Join complete');
+        }
+      } else {
+        pushMessage?.('Recipient already has membership');
+      }
       await refreshEntryInfo();
       await refreshTempls?.();
     } catch (err) {
-      pushMessage?.(`Purchase failed: ${err?.message || err}`);
+      pushMessage?.(`Join failed: ${err?.message || err}`);
     } finally {
-      setPurchasePending(false);
+      setJoinPending(false);
     }
   };
 
   const handleVerify = async () => {
     if (!ensureWallet()) return;
-    setPurchasePending(true);
+    setJoinPending(true);
     pushMessage?.('Verifying membership…');
     try {
       const data = await verifyMembership({
@@ -208,7 +222,7 @@ export function JoinTemplPage({
     } catch (err) {
       pushMessage?.(`Verification failed: ${err?.message || err}`);
     } finally {
-      setPurchasePending(false);
+      setJoinPending(false);
     }
   };
 
@@ -254,28 +268,38 @@ export function JoinTemplPage({
             </p>
           </div>
         ) : null}
+        <label className={form.label}>
+          Gift recipient (optional)
+          <input
+            type="text"
+            className={form.input}
+            value={recipientAddress}
+            onChange={(e) => setRecipientAddress(e.target.value)}
+            placeholder="0x… (leave blank to join yourself)"
+          />
+        </label>
         <div className={layout.cardActions}>
           <button
             type="button"
             className={button.base}
             onClick={handleApprove}
-            disabled={approvePending || purchasePending || !templAddress || !hasWallet || !entryFeeWei || allowanceSatisfied}
+            disabled={approvePending || joinPending || !templAddress || !hasWallet || !entryFeeWei || allowanceSatisfied}
           >
             {approvePending ? 'Approving…' : 'Approve entry fee'}
           </button>
           <button
             type="button"
             className={button.primary}
-            onClick={handlePurchase}
-            disabled={purchasePending || !templAddress || !hasWallet || !allowanceSatisfied}
+            onClick={handleJoin}
+            disabled={joinPending || !templAddress || !hasWallet || !allowanceSatisfied}
           >
-            {purchasePending ? 'Purchasing…' : 'Purchase Access'}
+            {joinPending ? 'Joining…' : 'Join templ'}
           </button>
           <button
             type="button"
             className={button.base}
             onClick={handleVerify}
-            disabled={purchasePending || approvePending || !templAddress}
+            disabled={joinPending || approvePending || !templAddress}
           >
             Verify Membership
           </button>

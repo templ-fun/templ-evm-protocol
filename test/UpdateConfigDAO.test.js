@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
-const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
+const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 
 describe("updateConfigDAO", function () {
     const ENTRY_FEE = ethers.parseUnits("100", 18);
@@ -21,7 +21,7 @@ describe("updateConfigDAO", function () {
         [, , member, secondMember] = accounts;
 
         await mintToUsers(token, [member, secondMember], TOKEN_SUPPLY);
-        await purchaseAccess(templ, token, [member]);
+        await joinMembers(templ, token, [member]);
     });
 
     it("reverts when entry fee is less than 10", async function () {
@@ -111,8 +111,8 @@ describe("updateConfigDAO", function () {
 
         const templAddress = await templ.getAddress();
         await token.connect(secondMember).approve(templAddress, ENTRY_FEE);
-        const purchaseTx = await templ.connect(secondMember).purchaseAccess();
-        await purchaseTx.wait();
+        const joinTx = await templ.connect(secondMember).join();
+        await joinTx.wait();
 
         const burnAmount = (ENTRY_FEE * BigInt(NEW_BURN)) / BPS_DENOMINATOR;
         const treasuryAmount = (ENTRY_FEE * BigInt(NEW_TREASURY)) / BPS_DENOMINATOR;

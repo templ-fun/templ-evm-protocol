@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
-const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
+const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 
 async function bootstrapTempl() {
   const entryFee = ethers.parseUnits("100", 18);
@@ -9,15 +9,15 @@ async function bootstrapTempl() {
   const [owner, , member1, member2, member3] = accounts;
 
   await mintToUsers(token, [owner, member1, member2, member3], entryFee * 10n);
-  await purchaseAccess(templ, token, [member1, member2, member3], entryFee);
+  await joinMembers(templ, token, [member1, member2, member3], entryFee);
 
   const members = [priest, member1, member2, member3];
   for (const member of members) {
-    const claimable = await templ.getClaimablePoolAmount(member.address);
+    const claimable = await templ.getClaimableMemberRewards(member.address);
     if (claimable > 0n) {
-      await templ.connect(member).claimMemberPool();
+      await templ.connect(member).claimMemberRewards();
     }
-    expect(await templ.getClaimablePoolAmount(member.address)).to.equal(0n);
+    expect(await templ.getClaimableMemberRewards(member.address)).to.equal(0n);
   }
 
   expect(await templ.memberPoolBalance()).to.equal(0n);
@@ -49,16 +49,16 @@ describe("Reward withdrawal rounding", function () {
 
     let totalClaimed = 0n;
     for (const member of members) {
-      const claimable = await templ.getClaimablePoolAmount(member.address);
+      const claimable = await templ.getClaimableMemberRewards(member.address);
       expect(claimable).to.equal(expectedPerMember);
 
       const beforeBalance = await token.balanceOf(member.address);
-      await templ.connect(member).claimMemberPool();
+      await templ.connect(member).claimMemberRewards();
       const afterBalance = await token.balanceOf(member.address);
 
       expect(afterBalance - beforeBalance).to.equal(claimable);
       totalClaimed += claimable;
-      expect(await templ.getClaimablePoolAmount(member.address)).to.equal(0n);
+      expect(await templ.getClaimableMemberRewards(member.address)).to.equal(0n);
     }
 
     const poolAfterClaims = await templ.memberPoolBalance();
@@ -97,16 +97,16 @@ describe("Reward withdrawal rounding", function () {
 
     let totalClaimed = 0n;
     for (const member of members) {
-      const claimable = await templ.getClaimablePoolAmount(member.address);
+      const claimable = await templ.getClaimableMemberRewards(member.address);
       expect(claimable).to.equal(expectedPerMember);
 
       const beforeBalance = await token.balanceOf(member.address);
-      await templ.connect(member).claimMemberPool();
+      await templ.connect(member).claimMemberRewards();
       const afterBalance = await token.balanceOf(member.address);
 
       expect(afterBalance - beforeBalance).to.equal(claimable);
       totalClaimed += claimable;
-      expect(await templ.getClaimablePoolAmount(member.address)).to.equal(0n);
+      expect(await templ.getClaimableMemberRewards(member.address)).to.equal(0n);
     }
 
     const poolAfter = await templ.memberPoolBalance();
@@ -148,16 +148,16 @@ describe("Reward withdrawal rounding", function () {
 
     let totalClaimed = 0n;
     for (const member of members) {
-      const claimable = await templ.getClaimableExternalToken(member.address, rewardToken.target);
+      const claimable = await templ.getClaimableExternalReward(member.address, rewardToken.target);
       expect(claimable).to.equal(expectedPerMember);
 
       const beforeBalance = await rewardToken.balanceOf(member.address);
-      await templ.connect(member).claimExternalToken(rewardToken.target);
+      await templ.connect(member).claimExternalReward(rewardToken.target);
       const afterBalance = await rewardToken.balanceOf(member.address);
 
       expect(afterBalance - beforeBalance).to.equal(claimable);
       totalClaimed += claimable;
-      expect(await templ.getClaimableExternalToken(member.address, rewardToken.target)).to.equal(0n);
+      expect(await templ.getClaimableExternalReward(member.address, rewardToken.target)).to.equal(0n);
     }
 
     const [poolAfterClaims, , remainderAfterClaims] = await templ.getExternalRewardState(rewardToken.target);
@@ -186,15 +186,15 @@ describe("Reward withdrawal rounding", function () {
 
     let totalClaimed = 0n;
     for (const member of members) {
-      const claimable = await templ.getClaimableExternalToken(member.address, ethers.ZeroAddress);
+      const claimable = await templ.getClaimableExternalReward(member.address, ethers.ZeroAddress);
       expect(claimable).to.equal(expectedPerMember);
       const contractBalanceBefore = await ethers.provider.getBalance(templAddress);
-      await templ.connect(member).claimExternalToken(ethers.ZeroAddress);
+      await templ.connect(member).claimExternalReward(ethers.ZeroAddress);
       const contractBalanceAfter = await ethers.provider.getBalance(templAddress);
 
       expect(contractBalanceBefore - contractBalanceAfter).to.equal(claimable);
       totalClaimed += claimable;
-      expect(await templ.getClaimableExternalToken(member.address, ethers.ZeroAddress)).to.equal(0n);
+      expect(await templ.getClaimableExternalReward(member.address, ethers.ZeroAddress)).to.equal(0n);
     }
 
     const [poolFinal, , remainderFinal] = await templ.getExternalRewardState(ethers.ZeroAddress);

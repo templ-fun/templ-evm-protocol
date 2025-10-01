@@ -4,16 +4,16 @@ pragma solidity ^0.8.23;
 /// @title TemplErrors
 /// @notice Shared custom errors for TEMPL contracts
 library TemplErrors {
-    /// @notice Thrown when the caller has not purchased membership.
+    /// @notice Thrown when the caller has not joined the templ.
     error NotMember();
     /// @notice Thrown when a function restricted to the DAO is called externally.
     error NotDAO();
     /// @notice Thrown when a function requires the priest caller under dictatorship mode.
     error PriestOnly();
-    /// @notice Thrown when an action is attempted while the contract is paused.
-    error ContractPausedError();
-    /// @notice Thrown when attempting to purchase access more than once.
-    error AlreadyPurchased();
+    /// @notice Thrown when joins are paused by governance.
+    error JoinIntakePaused();
+    /// @notice Thrown when attempting to join more than once.
+    error MemberAlreadyJoined();
     /// @notice Thrown when an account lacks sufficient token balance.
     error InsufficientBalance();
     /// @notice Thrown when an address already has an active proposal.

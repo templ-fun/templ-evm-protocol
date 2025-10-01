@@ -74,7 +74,7 @@ npm --prefix frontend run dev
 Open `http://localhost:5173`. The SPA provides dedicated routes for every core flow:
 
 - `/templs/create` – deploy + register a templ (optionally include a Telegram chat id).
-- `/templs/join` – purchase access and verify membership with the backend.
+- `/templs/join` – join (or gift a join) and verify membership with the backend.
 - `/templs/:address` – overview page with quick navigation to proposals.
 - `/templs/:address/proposals/new` – create governance actions.
 - `/templs/:address/proposals/:id/vote` – cast a YES/NO vote.
@@ -110,7 +110,7 @@ Commonly used accounts (private keys are from Hardhat defaults—never use them 
 ## 6) Join and verify membership
 
 1. Switch to the member wallet and open `/templs/join?address=<templAddress>`.
-2. Use “Purchase Access” to approve + call `purchaseAccess` if you haven’t joined before.
+2. Use “Join templ” to approve + call `join` if you haven’t joined before.
 3. Click “Verify Membership” to sign the EIP-712 payload and call the backend `/join` endpoint.
 4. The response includes the templ metadata plus deep links (join, overview, proposals) derived from `APP_BASE_URL`.
 
@@ -119,14 +119,14 @@ Commonly used accounts (private keys are from Hardhat defaults—never use them 
 - `/templs/:address/proposals/new` lets any member raise actions such as pausing, changing the priest, updating fees, etc. Titles and descriptions live on-chain and emit in `ProposalCreated` events.
 - `/templs/:address/proposals/:id/vote` submits `vote(proposalId, support)` transactions.
 - If the templ was registered with a Telegram chat id, the backend will post:
-  - Member joins (`AccessPurchased`) with live treasury/member-pool balances.
+  - Member joins (`MemberJoined`) with live treasury/member-pool balances.
   - Proposal creations (including on-chain title/description).
   - Votes (enriched with cached proposal titles) and quorum milestones.
   - Voting window closures with an execute/not-executable summary.
   - Priest changes and templ home-link updates.
   - Daily treasury/member-pool digests (every 24h) when the server remains online.
   Each message links back to the relevant frontend route so members can take action quickly and is formatted with Telegram Markdown V2 for consistent bold headers, code spans, and deep links. Posting the one-time binding code also yields an immediate “Telegram bridge active” acknowledgement.
-- `/templs/:address/claim` lets connected wallets see the raw member pool balance and call `claimMemberPool()`.
+- `/templs/:address/claim` lets connected wallets see the raw member pool balance and call `claimMemberRewards()`.
 
 ## 8) Run the automated checks
 

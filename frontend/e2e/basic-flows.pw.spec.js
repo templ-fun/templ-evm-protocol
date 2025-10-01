@@ -92,35 +92,35 @@ test.describe('Templ core workflows', () => {
     await expect(page.getByText('Approving entry fee…')).toBeVisible();
     await expect(page.getByText(/Allowance approved/)).toBeVisible();
 
-    const purchaseButton = page.getByRole('button', { name: 'Purchase Access' });
-    await expect(purchaseButton).toBeEnabled();
-    await purchaseButton.click();
-    await expect(page.getByText('Purchasing access…')).toBeVisible();
-    await expect(page.getByText(/Access purchase complete/)).toBeVisible();
+    const joinButton = page.getByRole('button', { name: 'Join templ' });
+    await expect(joinButton).toBeEnabled();
+    await joinButton.click();
+    await expect(page.getByText('Joining templ…')).toBeVisible();
+    await expect(page.getByText(/Join complete/)).toBeVisible();
 
     await page.getByRole('button', { name: 'Verify Membership' }).click();
     await expect(page.getByText(/Verifying membership/)).toBeVisible();
     await expect(page.getByText(/Membership verified/)).toBeVisible();
-    await expect(await templForMember.hasAccess(memberAddress)).toBe(true);
+    await expect(await templForMember.isMember(memberAddress)).toBe(true);
 
     const secondApproveTx = await token.connect(secondMember).approve(templAddress, entryFee);
     await secondApproveTx.wait();
     const templForSecondMember = new ethers.Contract(templAddress, templArtifact.abi, secondMember);
-    const secondJoinTx = await templForSecondMember.purchaseAccess();
+    const secondJoinTx = await templForSecondMember.join();
     await secondJoinTx.wait();
     await provider.send('evm_mine', []);
 
     await page.goto(`/templs/${templAddress}/claim`);
     await expect(page.getByRole('heading', { name: 'Claim Member Rewards' })).toBeVisible();
     const memberBalanceBefore = await token.balanceOf(memberAddress);
-    const claimableBefore = await templForMember.getClaimablePoolAmount(memberAddress);
+    const claimableBefore = await templForMember.getClaimableMemberRewards(memberAddress);
     await expect(claimableBefore).not.toBe(0n);
     const claimButton = page.getByRole('button', { name: 'Claim rewards' });
     await claimButton.click();
     await expect(page.getByText(/Claiming member pool rewards/)).toBeVisible();
     await expect(page.getByText(/Rewards claimed successfully/)).toBeVisible();
     const memberBalanceAfter = await token.balanceOf(memberAddress);
-    const claimableAfter = await templForMember.getClaimablePoolAmount(memberAddress);
+    const claimableAfter = await templForMember.getClaimableMemberRewards(memberAddress);
     const balanceDelta = memberBalanceAfter - memberBalanceBefore;
     await expect(balanceDelta).toBe(claimableBefore);
     await expect(claimableAfter).toBe(0n);

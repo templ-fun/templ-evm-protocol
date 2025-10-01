@@ -499,7 +499,7 @@ async function main() {
   console.log("\n🔒 Security Features:");
   console.log("- No backdoor functions");
   console.log("- All tokens only movable via DAO votes");
-  console.log("- One purchase per wallet");
+  console.log("- One join per wallet");
   console.log("- Vote gaming prevention");
 }
 

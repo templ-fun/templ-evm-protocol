@@ -17,16 +17,22 @@ function resolveCustomErrorName(err) {
   if (err.errorName && typeof err.errorName === 'string') return err.errorName;
   if (typeof err.shortMessage === 'string') {
     if (err.shortMessage.includes('MemberLimitReached')) return 'MemberLimitReached';
+    if (err.shortMessage.includes('MemberAlreadyJoined')) return 'MemberAlreadyJoined';
+    if (err.shortMessage.includes('JoinIntakePaused')) return 'JoinIntakePaused';
   }
   const data = err.data ?? err.error?.data;
   if (data && typeof data === 'object') {
     if (typeof data.errorName === 'string') return data.errorName;
     if (typeof data.message === 'string') {
       if (data.message.includes('MemberLimitReached')) return 'MemberLimitReached';
+      if (data.message.includes('MemberAlreadyJoined')) return 'MemberAlreadyJoined';
+      if (data.message.includes('JoinIntakePaused')) return 'JoinIntakePaused';
     }
   }
   if (typeof err.reason === 'string') {
     if (err.reason.includes('MemberLimitReached')) return 'MemberLimitReached';
+    if (err.reason.includes('MemberAlreadyJoined')) return 'MemberAlreadyJoined';
+    if (err.reason.includes('JoinIntakePaused')) return 'JoinIntakePaused';
   }
   return null;
 }
@@ -35,6 +41,12 @@ function translateJoinCallError(err) {
   const name = resolveCustomErrorName(err);
   if (name === 'MemberLimitReached') {
     return new Error('Membership is currently capped. Governance must raise or clear the limit before new joins succeed.');
+  }
+  if (name === 'MemberAlreadyJoined') {
+    return new Error('Selected wallet already has active membership.');
+  }
+  if (name === 'JoinIntakePaused') {
+    return new Error('Joins are paused by governance. Try again after the community reopens membership.');
   }
   return err instanceof Error ? err : new Error(err?.message ?? 'Join transaction failed');
 }
@@ -151,7 +163,7 @@ export async function approveEntryFee({
   return true;
 }
 
-export async function purchaseAccess({
+export async function joinTempl({
   ethers,
   signer,
   templAddress,
@@ -159,10 +171,11 @@ export async function purchaseAccess({
   tokenAddress,
   entryFee,
   walletAddress,
+  recipientAddress,
   txOptions = {}
 }) {
   if (!ethers || !signer || !templAddress || !templArtifact?.abi) {
-    throw new Error('purchaseAccess requires templ configuration');
+    throw new Error('joinTempl requires templ configuration');
   }
   let normalizedTemplAddress;
   try {
@@ -181,16 +194,26 @@ export async function purchaseAccess({
     }
   }
   const contract = new ethers.Contract(normalizedTemplAddress, templArtifact.abi, signer);
-  const member = await resolveMemberAddress({ signer, walletAddress });
-  if (!member) {
+  const payerAddress = await resolveMemberAddress({ signer, walletAddress });
+  if (!payerAddress) {
     throw new Error('Wallet not connected');
   }
+  let recipient = recipientAddress;
+  if (recipient) {
+    try {
+      recipient = ethers.getAddress?.(recipient) ?? recipient;
+    } catch {
+      throw new Error('Invalid recipient address provided');
+    }
+  } else {
+    recipient = payerAddress;
+  }
   try {
-    if (typeof contract.hasAccess === 'function') {
-      const already = await contract.hasAccess(member);
+    if (typeof contract.isMember === 'function') {
+      const already = await contract.isMember(recipient);
       if (already) {
-        dlog('purchaseAccess: member already has access');
-        return { purchased: false };
+        dlog('joinTempl: recipient already has access');
+        return { joined: false, recipient };
       }
     }
   } catch {}
@@ -225,16 +248,23 @@ export async function purchaseAccess({
 
   const normalizedTokenAddress = ethers.getAddress?.(accessToken) ?? accessToken;
   const token = new ethers.Contract(normalizedTokenAddress, ERC20_ABI, signer);
-  const allowanceRaw = await token.allowance(member, normalizedTemplAddress);
+  const allowanceRaw = await token.allowance(payerAddress, normalizedTemplAddress);
   const allowance = typeof allowanceRaw === 'bigint' ? allowanceRaw : BigInt(allowanceRaw || 0);
   if (allowance < entryFeeValue) {
-    throw new Error('Allowance is lower than the entry fee. Approve the entry fee amount before purchasing.');
+    throw new Error('Allowance is lower than the entry fee. Approve the entry fee amount before joining.');
   }
   const overrides = { ...txOptions };
 
   let tx;
   try {
-    tx = await contract.purchaseAccess(overrides);
+    if (recipient !== payerAddress) {
+      if (typeof contract.joinFor !== 'function') {
+        throw new Error('Templ contract does not support gifting membership');
+      }
+      tx = await contract.joinFor(recipient, overrides);
+    } else {
+      tx = await contract.join(overrides);
+    }
   } catch (err) {
     const translated = translateJoinCallError(err);
     if (translated !== err) {
@@ -257,7 +287,7 @@ export async function purchaseAccess({
     }
     throw translated;
   }
-  return { purchased: true };
+  return { joined: true, recipient };
 }
 
 export async function verifyMembership({
@@ -321,7 +351,7 @@ export async function fetchMemberPoolStats({
       memberClaimed = 0n;
     }
     try {
-      claimable = await contract.getClaimablePoolAmount(memberAddress);
+      claimable = await contract.getClaimableMemberRewards(memberAddress);
     } catch {
       claimable = 0n;
     }
@@ -391,7 +421,7 @@ export async function claimMemberRewards({
     throw new Error('claimMemberRewards requires connected wallet');
   }
   const contract = new ethers.Contract(templAddress, templArtifact.abi, signer);
-  const tx = await contract.claimMemberPool(txOptions);
+  const tx = await contract.claimMemberRewards(txOptions);
   await tx.wait();
   return true;
 }

@@ -284,8 +284,8 @@ export function TemplOverviewPage({
             <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Members</dt>
             <dd className={`${text.mono} text-sm`}>
               {Number.isFinite(templRecord?.memberCount) ? templRecord.memberCount : 'Unknown'}
-              {templRecord?.totalPurchases ? (
-                <span className={`ml-2 ${text.subtle}`}>({templRecord.totalPurchases} total purchases)</span>
+              {templRecord?.totalJoins ? (
+                <span className={`ml-2 ${text.subtle}`}>({templRecord.totalJoins} total joins)</span>
               ) : null}
             </dd>
           </div>

@@ -5,7 +5,7 @@ import { logger } from '../logger.js';
 import { joinTempl } from '../services/joinTempl.js';
 import { extractTypedRequestParams } from './typed.js';
 
-export default function joinRouter({ hasPurchased, templs, signatureStore }) {
+export default function joinRouter({ hasJoined, templs, signatureStore }) {
   const router = express.Router();
 
   router.post(
@@ -22,7 +22,7 @@ export default function joinRouter({ hasPurchased, templs, signatureStore }) {
     async (req, res) => {
       try {
         const result = await joinTempl(req.body, {
-          hasPurchased,
+          hasJoined,
           templs,
           logger,
         });

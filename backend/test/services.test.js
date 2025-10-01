@@ -70,7 +70,7 @@ test('registerTempl accepts numeric telegram chat ids', async () => {
 
 test('joinTempl rejects malformed addresses', async () => {
   await assert.rejects(
-    () => joinTempl({ contractAddress: '0x123', memberAddress: '0x123' }, { ...noopContext, hasPurchased: async () => true }),
+    () => joinTempl({ contractAddress: '0x123', memberAddress: '0x123' }, { ...noopContext, hasJoined: async () => true }),
     (err) => expectStatus(err, 400)
   );
 });

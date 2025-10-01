@@ -5,11 +5,11 @@ pragma solidity ^0.8.23;
 contract ClaimExternalTarget {
     event ExternalClaim(address token, address caller);
 
-    function purchaseAccess() external {}
+    function join() external {}
 
-    function claimMemberPool() external {}
+    function claimMemberRewards() external {}
 
-    function claimExternalToken(address token) external {
+    function claimExternalReward(address token) external {
         emit ExternalClaim(token, msg.sender);
     }
 }

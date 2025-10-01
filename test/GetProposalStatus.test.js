@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
-const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
+const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 
 describe("getProposal passed status coverage", function () {
   const ENTRY_FEE = ethers.parseUnits("100", 18);
@@ -27,11 +27,11 @@ describe("getProposal passed status coverage", function () {
     const [, , m1, m2, m3, m4] = accounts;
 
     await mintToUsers(token, [m1, m2, m3, m4], ENTRY_FEE * 5n);
-    await purchaseAccess(templ, token, [m1, m2, m3, m4]);
+    await joinMembers(templ, token, [m1, m2, m3, m4]);
 
     await templ
       .connect(m1)
-      .createProposalSetPaused(false, VOTING_PERIOD);
+      .createProposalSetJoinPaused(false, VOTING_PERIOD);
 
     const proposal = await templ.getProposal(0);
     expect(proposal.passed).to.equal(false);
@@ -42,11 +42,11 @@ describe("getProposal passed status coverage", function () {
     const [, , m1, m2] = accounts;
 
     await mintToUsers(token, [m1, m2], ENTRY_FEE * 5n);
-    await purchaseAccess(templ, token, [m1, m2]);
+    await joinMembers(templ, token, [m1, m2]);
 
     await templ
       .connect(m1)
-      .createProposalSetPaused(false, VOTING_PERIOD);
+      .createProposalSetJoinPaused(false, VOTING_PERIOD);
     await templ.connect(m2).vote(0, true);
 
     const delay = Number(await templ.executionDelayAfterQuorum());

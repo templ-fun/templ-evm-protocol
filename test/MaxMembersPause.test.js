@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
-const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
+const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 
 describe("Max Members Pause Handling", function () {
   const ENTRY_FEE = ethers.parseUnits("100", 18);
@@ -27,14 +27,14 @@ describe("Max Members Pause Handling", function () {
     [, priest, m1, m2] = accounts;
 
     await mintToUsers(token, [m1, m2], ENTRY_FEE * 5n);
-    await purchaseAccess(templ, token, [m1, m2]);
+    await joinMembers(templ, token, [m1, m2]);
 
-    expect(await templ.paused()).to.equal(true);
+    expect(await templ.joinPaused()).to.equal(true);
     expect(await templ.MAX_MEMBERS()).to.equal(MAX_MEMBERS);
   });
 
   it("retains the membership cap when unpausing after reaching the limit", async function () {
-    await templ.connect(m1).createProposalSetPaused(false, VOTING_PERIOD);
+    await templ.connect(m1).createProposalSetJoinPaused(false, VOTING_PERIOD);
     await templ.connect(priest).vote(0, true);
 
     await ethers.provider.send("evm_increaseTime", [EXECUTION_DELAY + 1]);
@@ -42,7 +42,7 @@ describe("Max Members Pause Handling", function () {
 
     await templ.executeProposal(0);
 
-    expect(await templ.paused()).to.equal(false);
+    expect(await templ.joinPaused()).to.equal(false);
     expect(await templ.MAX_MEMBERS()).to.equal(MAX_MEMBERS);
   });
 });

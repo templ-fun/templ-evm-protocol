@@ -1,6 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
+const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 
 describe("TemplFactory", function () {
     const ENTRY_FEE = ethers.parseUnits("100", 18);
@@ -82,9 +82,9 @@ describe("TemplFactory", function () {
         const burnBalanceBefore = await token.balanceOf(burnAddress);
         const protocolBalanceBefore = await token.balanceOf(protocolRecipientAddress);
 
-        const purchaseTx = await templ.connect(member).purchaseAccess();
-        const purchaseReceipt = await purchaseTx.wait();
-        const accessPurchased = purchaseReceipt.logs
+        const joinTx = await templ.connect(member).join();
+        const joinReceipt = await joinTx.wait();
+        const memberJoined = joinReceipt.logs
             .map((log) => {
                 try {
                     return templ.interface.parseLog(log);
@@ -92,19 +92,21 @@ describe("TemplFactory", function () {
                     return null;
                 }
             })
-            .find((log) => log && log.name === "AccessPurchased");
+            .find((log) => log && log.name === "MemberJoined");
 
-        expect(accessPurchased, "AccessPurchased event").to.not.equal(undefined);
+        expect(memberJoined, "MemberJoined event").to.not.equal(undefined);
+        expect(memberJoined.args.payer).to.equal(member.address);
+        expect(memberJoined.args.member).to.equal(member.address);
 
         const burnAmount = (ENTRY_FEE * BigInt(burnPercent)) / BPS_DENOMINATOR;
         const memberPoolAmount = (ENTRY_FEE * BigInt(memberPoolPercent)) / BPS_DENOMINATOR;
         const protocolAmount = (ENTRY_FEE * BigInt(protocolPercent)) / BPS_DENOMINATOR;
         const treasuryAmount = ENTRY_FEE - burnAmount - memberPoolAmount - protocolAmount;
 
-        expect(accessPurchased.args.burnedAmount).to.equal(burnAmount);
-        expect(accessPurchased.args.memberPoolAmount).to.equal(memberPoolAmount);
-        expect(accessPurchased.args.protocolAmount).to.equal(protocolAmount);
-        expect(accessPurchased.args.treasuryAmount).to.equal(treasuryAmount);
+        expect(memberJoined.args.burnedAmount).to.equal(burnAmount);
+        expect(memberJoined.args.memberPoolAmount).to.equal(memberPoolAmount);
+        expect(memberJoined.args.protocolAmount).to.equal(protocolAmount);
+        expect(memberJoined.args.treasuryAmount).to.equal(treasuryAmount);
 
         expect(await templ.memberPoolBalance()).to.equal(memberPoolAmount);
         expect(await templ.treasuryBalance()).to.equal(treasuryAmount);

@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
-const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
+const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 
 describe("ChangePriest governance action", function () {
   const ENTRY_FEE = ethers.parseUnits("100", 18);
@@ -12,7 +12,7 @@ describe("ChangePriest governance action", function () {
 
     // Fund and onboard two members
     await mintToUsers(token, [member1, member2], ENTRY_FEE * 10n);
-    await purchaseAccess(templ, token, [member1, member2]);
+    await joinMembers(templ, token, [member1, member2]);
 
     // Sanity: initial priest is deploy-time arg
     expect(await templ.priest()).to.equal(oldPriest.address);

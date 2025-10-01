@@ -51,9 +51,9 @@ flowchart LR
     F[Frontend];
     B[Backend];
     C[Contract];
-    F -->|"purchaseAccess"| C;
+    F -->|"join"| C;
     F -->|"POST /join"| B;
-    B -->|"hasAccess(member)"| C;
+    B -->|"isMember(member)"| C;
     C -->|"true/false"| B;
     B -->|"respond with templ links"| F;
 ```
@@ -65,15 +65,15 @@ sequenceDiagram
     participant F as Frontend
     participant C as Contract
     participant B as Backend
-    F->>C: approve + purchaseAccess()
+    F->>C: approve + join()
     C-->>F: tx receipt (member counted)
     F->>B: POST /join {contract, member, signature}
-    B->>C: hasAccess(member)?
+    B->>C: isMember(member)?
     C-->>B: true
-    B-->>F: { member:{hasAccess:true}, templ:{...}, links:{...} }
+    B-->>F: { member:{isMember:true}, templ:{...}, links:{...} }
 ```
 
-`purchaseAccess` executes whenever the templ is unpaused and under the member cap. Disband proposals never gate the join flow; governance keeps the community open unless it explicitly pauses the contract or enforces a hard cap. Frontend helpers still surface `MemberLimitReached` so members know when governance must expand the cohort.
+`join` executes whenever the templ is unpaused and under the member cap. Disband proposals never gate the join flow; governance keeps the community open unless it explicitly pauses the contract or enforces a hard cap. Frontend helpers still surface `MemberLimitReached` so members know when governance must expand the cohort.
 
 ## 3. Telegram notifications
 
@@ -84,7 +84,7 @@ sequenceDiagram
     participant C as Contract
     participant B as Backend
     participant T as Telegram
-    C-->>B: AccessPurchased(purchaser, ..., purchaseId)
+    C-->>B: MemberJoined(payer, ..., joinId)
     B->>T: "New member joined" + join link
     C-->>B: ProposalCreated(id, proposer, endTime, title, description)
     B->>T: "Proposal created" + vote link
@@ -117,7 +117,7 @@ sequenceDiagram
     participant C as Contract
     participant B as Backend
     participant T as Telegram
-    M->>C: createProposalSetPaused(...)
+    M->>C: createProposalSetJoinPaused(...)
     C-->>B: ProposalCreated(id, proposer, endTime, title, description)
     B->>B: cache metadata (ensureProposalMeta)
     B->>T: message with id/proposer/endTime/link

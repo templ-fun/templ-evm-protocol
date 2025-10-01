@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
-const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
+const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 
 const DAY = 24 * 60 * 60;
 const VOTING_PERIOD = 7 * DAY;
@@ -17,7 +17,7 @@ describe("Governance coverage gaps", function () {
       [priest, member, secondMember, thirdMember, fourthMember],
       ENTRY_FEE * 4n
     );
-    await purchaseAccess(templ, token, [
+    await joinMembers(templ, token, [
       member,
       secondMember,
       thirdMember,
@@ -25,7 +25,7 @@ describe("Governance coverage gaps", function () {
     ]);
 
     await expect(
-      templ.connect(outsider).createProposalSetPaused(true, VOTING_PERIOD)
+      templ.connect(outsider).createProposalSetJoinPaused(true, VOTING_PERIOD)
     ).to.be.revertedWithCustomError(templ, "NotMember");
 
     await expect(
@@ -66,9 +66,9 @@ describe("Governance coverage gaps", function () {
     expect(priestProposal.quorumExempt).to.equal(true);
 
     // Successful creation with zero entry fee and updateFeeSplit false exercises the skipped branches
-    await templ.connect(member).createProposalSetPaused(false, VOTING_PERIOD);
+    await templ.connect(member).createProposalSetJoinPaused(false, VOTING_PERIOD);
     await expect(
-      templ.connect(member).createProposalSetPaused(true, VOTING_PERIOD)
+      templ.connect(member).createProposalSetJoinPaused(true, VOTING_PERIOD)
     ).to.be.revertedWithCustomError(templ, "ActiveProposalExists");
 
     await templ
@@ -103,7 +103,7 @@ describe("Governance coverage gaps", function () {
     const [, , memberA, memberB, memberC, outsider] = accounts;
 
     await mintToUsers(token, [memberA, memberB, memberC], ENTRY_FEE * 5n);
-    await purchaseAccess(templ, token, [memberA, memberB]);
+    await joinMembers(templ, token, [memberA, memberB]);
 
     await expect(
       templ.connect(outsider).createProposalSetMaxMembers(4, VOTING_PERIOD)
@@ -124,9 +124,9 @@ describe("Governance coverage gaps", function () {
     await templ.executeProposal(proposalId);
     expect(await templ.MAX_MEMBERS()).to.equal(4n);
 
-    await purchaseAccess(templ, token, [memberC]);
-    expect(await templ.totalPurchases()).to.equal(3n);
-    expect(await templ.paused()).to.equal(true);
+    await joinMembers(templ, token, [memberC]);
+    expect(await templ.totalJoins()).to.equal(3n);
+    expect(await templ.joinPaused()).to.equal(true);
   });
 
   it("allows governance to update the templ home link", async function () {
@@ -136,7 +136,7 @@ describe("Governance coverage gaps", function () {
     const [, , memberA, memberB] = accounts;
 
     await mintToUsers(token, [memberA, memberB], ENTRY_FEE * 4n);
-    await purchaseAccess(templ, token, [memberA, memberB]);
+    await joinMembers(templ, token, [memberA, memberB]);
 
     expect(await templ.templHomeLink()).to.equal(initialLink);
 
@@ -159,9 +159,9 @@ describe("Governance coverage gaps", function () {
     const [, , member] = accounts;
 
     await mintToUsers(token, [member], ENTRY_FEE * 3n);
-    await purchaseAccess(templ, token, [member]);
+    await joinMembers(templ, token, [member]);
 
-    await templ.connect(member).createProposalSetPaused(false, VOTING_PERIOD);
+    await templ.connect(member).createProposalSetJoinPaused(false, VOTING_PERIOD);
     const firstId = await templ.activeProposalId(member.address);
     expect(firstId).to.equal(0n);
 
@@ -180,9 +180,9 @@ describe("Governance coverage gaps", function () {
     const [, priest, memberA, memberB, memberC, lateJoiner] = accounts;
 
     await mintToUsers(token, [priest, memberA, memberB, memberC, lateJoiner], ENTRY_FEE * 5n);
-    await purchaseAccess(templ, token, [memberA, memberB, memberC]);
+    await joinMembers(templ, token, [memberA, memberB, memberC]);
 
-    await templ.connect(memberA).createProposalSetPaused(true, VOTING_PERIOD);
+    await templ.connect(memberA).createProposalSetJoinPaused(true, VOTING_PERIOD);
 
     await templ.connect(memberB).vote(0, false);
     await templ.connect(memberC).vote(0, true);
@@ -190,7 +190,7 @@ describe("Governance coverage gaps", function () {
     await templ.connect(memberC).vote(0, false);
     await templ.connect(memberC).vote(0, true);
 
-    await purchaseAccess(templ, token, [lateJoiner]);
+    await joinMembers(templ, token, [lateJoiner]);
     await expect(templ.connect(lateJoiner).vote(0, true)).to.be.revertedWithCustomError(
       templ,
       "JoinedAfterProposal"
@@ -202,7 +202,7 @@ describe("Governance coverage gaps", function () {
     const [, priest, voter] = accounts;
 
     await mintToUsers(token, [priest, voter], ENTRY_FEE * 4n);
-    await purchaseAccess(templ, token, [voter]);
+    await joinMembers(templ, token, [voter]);
 
     await templ
       .connect(priest)
@@ -224,7 +224,7 @@ describe("Governance coverage gaps", function () {
     const [, priest, voter] = accounts;
 
     await mintToUsers(token, [priest, voter], ENTRY_FEE * 4n);
-    await purchaseAccess(templ, token, [voter]);
+    await joinMembers(templ, token, [voter]);
 
     await templ
       .connect(priest)
@@ -233,7 +233,7 @@ describe("Governance coverage gaps", function () {
     await ethers.provider.send("evm_increaseTime", [VOTING_PERIOD + 1]);
     await ethers.provider.send("evm_mine", []);
 
-    await templ.connect(priest).createProposalSetPaused(false, VOTING_PERIOD);
+    await templ.connect(priest).createProposalSetJoinPaused(false, VOTING_PERIOD);
 
     await templ.executeProposal(0);
     expect(await templ.hasActiveProposal(priest.address)).to.equal(true);
@@ -266,9 +266,9 @@ describe("Governance coverage gaps", function () {
     const [, , member] = accounts;
 
     await mintToUsers(token, [member], ENTRY_FEE * 2n);
-    await purchaseAccess(templ, token, [member]);
+    await joinMembers(templ, token, [member]);
 
-    await templ.connect(member).createProposalSetPaused(false, VOTING_PERIOD);
+    await templ.connect(member).createProposalSetJoinPaused(false, VOTING_PERIOD);
 
     await expect(templ.getActiveProposalsPaginated(0, 0)).to.be.revertedWithCustomError(
       templ,
@@ -286,9 +286,9 @@ describe("Governance coverage gaps", function () {
     const [, , member, voter] = accounts;
 
     await mintToUsers(token, [member, voter], ENTRY_FEE * 4n);
-    await purchaseAccess(templ, token, [member, voter]);
+    await joinMembers(templ, token, [member, voter]);
 
-    await templ.connect(member).createProposalSetPaused(false, VOTING_PERIOD);
+    await templ.connect(member).createProposalSetJoinPaused(false, VOTING_PERIOD);
     await templ.connect(voter).vote(0, true);
     const delay = Number(await templ.executionDelayAfterQuorum());
     await ethers.provider.send("evm_increaseTime", [delay + 1]);
@@ -304,7 +304,7 @@ describe("Governance coverage gaps", function () {
     const [, , member] = accounts;
 
     await mintToUsers(token, [member], ENTRY_FEE * 2n);
-    await purchaseAccess(templ, token, [member]);
+    await joinMembers(templ, token, [member]);
 
     await expect(templ.connect(member).vote(5, true)).to.be.revertedWithCustomError(
       templ,

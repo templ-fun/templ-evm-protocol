@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
-const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
+const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 const {
     encodeWithdrawTreasuryDAO,
 } = require("./utils/callDataBuilders");
@@ -20,7 +20,7 @@ describe("Treasury Withdrawal Reverts", function () {
 
         await mintToUsers(token, [user1, user2], TOKEN_SUPPLY);
 
-        await purchaseAccess(templ, token, [user1, user2]);
+        await joinMembers(templ, token, [user1, user2]);
     });
 
     describe("withdrawTreasuryDAO", function () {

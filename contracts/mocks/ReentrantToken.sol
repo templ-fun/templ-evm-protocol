@@ -5,9 +5,10 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 interface ITempl {
-    function purchaseAccess() external;
-    function claimMemberPool() external;
-    function claimExternalToken(address token) external;
+    function join() external;
+    function joinFor(address recipient) external;
+    function claimMemberRewards() external;
+    function claimExternalReward(address token) external;
 }
 
 /// @dev ERC20 token that can reenter TEMPL during token transfers
@@ -47,18 +48,18 @@ contract ReentrantToken is ERC20 {
     function joinTempl(uint256 amount) external {
         _mint(address(this), amount);
         _approve(address(this), templ, amount);
-        ITempl(templ).purchaseAccess();
+        ITempl(templ).join();
     }
     /// @notice Join TEMPL by spending an external access token already held by this contract
     function joinTemplWithAccessToken(address accessToken, uint256 amount) external {
         IERC20(accessToken).approve(templ, amount);
-        ITempl(templ).purchaseAccess();
+        ITempl(templ).join();
     }
     /// @inheritdoc ERC20
     function transferFrom(address from, address to, uint256 value) public override returns (bool) {
         bool success = super.transferFrom(from, to, value);
         if (callback == Callback.Purchase) {
-            ITempl(templ).purchaseAccess();
+            ITempl(templ).join();
         }
         return success;
     }
@@ -66,10 +67,10 @@ contract ReentrantToken is ERC20 {
     function transfer(address to, uint256 value) public override returns (bool) {
         bool success = super.transfer(to, value);
         if (callback == Callback.Claim) {
-            ITempl(templ).claimMemberPool();
+            ITempl(templ).claimMemberRewards();
         } else if (callback == Callback.ClaimExternal) {
             address tokenAddress = callbackToken == address(0) ? address(this) : callbackToken;
-            ITempl(templ).claimExternalToken(tokenAddress);
+            ITempl(templ).claimExternalReward(tokenAddress);
         }
         return success;
     }

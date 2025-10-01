@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
-const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
+const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 
 describe("Active proposal indexing", function () {
   it("prunes inactive proposals to keep the active set small", async function () {
@@ -11,14 +11,14 @@ describe("Active proposal indexing", function () {
     const members = accounts.slice(2, 6);
 
     await mintToUsers(token, members, entryFee * 5n);
-    await purchaseAccess(templ, token, members, entryFee);
+    await joinMembers(templ, token, members, entryFee);
 
     await templ.pruneInactiveProposals(0);
 
     for (let i = 0; i < 3; i += 1) {
       await templ
         .connect(members[i])
-        .createProposalSetPaused(false, votingPeriod, `Pause-${i}`, `Description ${i}`);
+        .createProposalSetJoinPaused(false, votingPeriod, `Pause-${i}`, `Description ${i}`);
     }
 
     const activeIds = await templ.getActiveProposals();
@@ -45,11 +45,11 @@ describe("Active proposal indexing", function () {
     const members = accounts.slice(2, 4);
 
     await mintToUsers(token, members, entryFee * 2n);
-    await purchaseAccess(templ, token, members, entryFee);
+    await joinMembers(templ, token, members, entryFee);
 
     await templ
       .connect(members[0])
-      .createProposalSetPaused(false, votingPeriod, "Live", "Still active");
+      .createProposalSetJoinPaused(false, votingPeriod, "Live", "Still active");
 
     const attempt = await templ.pruneInactiveProposals.staticCall(5);
     expect(attempt).to.equal(0n);

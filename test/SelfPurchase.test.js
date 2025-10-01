@@ -1,10 +1,9 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
-const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
-const { encodePurchaseAccess } = require("./utils/callDataBuilders");
+const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 
-describe("Self Purchase Guard", function () {
+describe("Join guard", function () {
   const ENTRY_FEE = ethers.parseUnits("100", 18);
   let templ, token;
   let owner, priest, member;
@@ -15,16 +14,16 @@ describe("Self Purchase Guard", function () {
     [owner, priest, member] = accounts;
 
     await mintToUsers(token, [member], ethers.parseUnits("1000", 18));
-    await purchaseAccess(templ, token, [member]);
+    await joinMembers(templ, token, [member]);
   });
 
-  it("does not expose arbitrary purchase proposals (typed-only governance)", async function () {
+  it("does not expose arbitrary proposal entrypoints (typed-only governance)", async function () {
     expect(typeof templ.createProposal).to.equal('undefined');
   });
 
-  it("reverts when DAO invokes helper calling purchaseAccess", async function () {
+  it("reverts when DAO invokes helper calling join", async function () {
     const Caller = await ethers.getContractFactory(
-      "contracts/mocks/PurchaseCaller.sol:PurchaseCaller"
+      "contracts/mocks/JoinCaller.sol:JoinCaller"
     );
     const caller = await Caller.deploy(await templ.getAddress());
     await caller.waitForDeployment();
@@ -41,13 +40,13 @@ describe("Self Purchase Guard", function () {
     const dao = await ethers.getSigner(templAddress);
 
     await expect(
-      caller.connect(dao).callPurchaseAccess()
+      caller.connect(dao).callJoin()
     ).to.be.revertedWithCustomError(templ, "InsufficientBalance");
 
     await ethers.provider.send("hardhat_stopImpersonatingAccount", [templAddress]);
   });
 
-  it("reverts when DAO calls purchaseAccess directly", async function () {
+  it("reverts when DAO calls join directly", async function () {
     const templAddress = await templ.getAddress();
 
     // fund DAO address with ETH for gas
@@ -61,7 +60,7 @@ describe("Self Purchase Guard", function () {
     const dao = await ethers.getSigner(templAddress);
 
     await expect(
-      templ.connect(dao).purchaseAccess()
+      templ.connect(dao).join()
     ).to.be.revertedWithCustomError(templ, "InvalidSender");
 
     await ethers.provider.send("hardhat_stopImpersonatingAccount", [templAddress]);

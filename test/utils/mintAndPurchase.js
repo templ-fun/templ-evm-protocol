@@ -5,16 +5,16 @@ const mintToUsers = async (token, users, amount) => {
   }
 };
 
-const purchaseAccess = async (templ, token, users, entryFee) => {
+const joinMembers = async (templ, token, users, entryFee) => {
   const fee = entryFee !== undefined ? BigInt(entryFee) : await templ.entryFee();
   const templAddress = await templ.getAddress();
   for (const user of users) {
-    if (await templ.hasAccess(user.address)) {
+    if (await templ.isMember(user.address)) {
       continue;
     }
     await token.connect(user).approve(templAddress, fee);
-    await templ.connect(user).purchaseAccess();
+    await templ.connect(user).join();
   }
 };
 
-module.exports = { mintToUsers, purchaseAccess };
+module.exports = { mintToUsers, joinMembers };

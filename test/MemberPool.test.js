@@ -2,7 +2,7 @@ const { expect } = require("chai");
 const { loadFixture } = require("@nomicfoundation/hardhat-network-helpers");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
-const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
+const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 const { encodeSweepMemberRewardRemainderDAO } = require("./utils/callDataBuilders");
 
 describe("Member Pool Distribution - Exhaustive Tests", function () {
@@ -32,12 +32,12 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
             expect(await templ.getMemberCount()).to.equal(1n);
 
             await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member1).purchaseAccess();
+            await templ.connect(member1).join();
 
             expect(await templ.getMemberCount()).to.equal(2n);
 
-            const priestClaimable = await templ.getClaimablePoolAmount(priest.address);
-            const member1Claimable = await templ.getClaimablePoolAmount(member1.address);
+            const priestClaimable = await templ.getClaimableMemberRewards(priest.address);
+            const member1Claimable = await templ.getClaimableMemberRewards(member1.address);
 
             expect(priestClaimable).to.equal(thirtyPercent);
             expect(member1Claimable).to.equal(0n);
@@ -51,18 +51,18 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
             const templAddress = await templ.getAddress();
 
             await token.connect(member1).approve(templAddress, ENTRY_FEE);
-            await templ.connect(member1).purchaseAccess();
+            await templ.connect(member1).join();
 
-            await templ.connect(priest).claimMemberPool();
+            await templ.connect(priest).claimMemberRewards();
 
             await token.connect(member2).approve(templAddress, ENTRY_FEE);
-            await templ.connect(member2).purchaseAccess();
+            await templ.connect(member2).join();
 
             const expectedSplit = thirtyPercent / 2n;
 
-            expect(await templ.getClaimablePoolAmount(priest.address)).to.equal(expectedSplit);
-            expect(await templ.getClaimablePoolAmount(member1.address)).to.equal(expectedSplit);
-            expect(await templ.getClaimablePoolAmount(member2.address)).to.equal(0n);
+            expect(await templ.getClaimableMemberRewards(priest.address)).to.equal(expectedSplit);
+            expect(await templ.getClaimableMemberRewards(member1.address)).to.equal(expectedSplit);
+            expect(await templ.getClaimableMemberRewards(member2.address)).to.equal(0n);
 
             console.log("✅ Pool splits evenly between priest and first payer once a second payer arrives");
         });
@@ -71,23 +71,23 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
             const templAddress = await templ.getAddress();
 
             await token.connect(member1).approve(templAddress, ENTRY_FEE);
-            await templ.connect(member1).purchaseAccess();
+            await templ.connect(member1).join();
 
             await token.connect(member2).approve(templAddress, ENTRY_FEE);
-            await templ.connect(member2).purchaseAccess();
+            await templ.connect(member2).join();
 
-            await templ.connect(priest).claimMemberPool();
-            await templ.connect(member1).claimMemberPool();
+            await templ.connect(priest).claimMemberRewards();
+            await templ.connect(member1).claimMemberRewards();
 
             await token.connect(member3).approve(templAddress, ENTRY_FEE);
-            await templ.connect(member3).purchaseAccess();
+            await templ.connect(member3).join();
 
             const expectedShare = thirtyPercent / 3n;
 
-            expect(await templ.getClaimablePoolAmount(priest.address)).to.equal(expectedShare);
-            expect(await templ.getClaimablePoolAmount(member1.address)).to.equal(expectedShare);
-            expect(await templ.getClaimablePoolAmount(member2.address)).to.equal(expectedShare);
-            expect(await templ.getClaimablePoolAmount(member3.address)).to.equal(0n);
+            expect(await templ.getClaimableMemberRewards(priest.address)).to.equal(expectedShare);
+            expect(await templ.getClaimableMemberRewards(member1.address)).to.equal(expectedShare);
+            expect(await templ.getClaimableMemberRewards(member2.address)).to.equal(expectedShare);
+            expect(await templ.getClaimableMemberRewards(member3.address)).to.equal(0n);
 
             console.log("✅ Priest and early members share later pool allocations evenly");
         });
@@ -96,28 +96,28 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
             const templAddress = await templ.getAddress();
 
             await token.connect(member1).approve(templAddress, ENTRY_FEE);
-            await templ.connect(member1).purchaseAccess();
+            await templ.connect(member1).join();
 
             await token.connect(member2).approve(templAddress, ENTRY_FEE);
-            await templ.connect(member2).purchaseAccess();
+            await templ.connect(member2).join();
 
             await token.connect(member3).approve(templAddress, ENTRY_FEE);
-            await templ.connect(member3).purchaseAccess();
+            await templ.connect(member3).join();
 
-            await templ.connect(priest).claimMemberPool();
-            await templ.connect(member1).claimMemberPool();
-            await templ.connect(member2).claimMemberPool();
+            await templ.connect(priest).claimMemberRewards();
+            await templ.connect(member1).claimMemberRewards();
+            await templ.connect(member2).claimMemberRewards();
 
             await token.connect(member4).approve(templAddress, ENTRY_FEE);
-            await templ.connect(member4).purchaseAccess();
+            await templ.connect(member4).join();
 
             const expectedShare = thirtyPercent / 4n;
 
-            expect(await templ.getClaimablePoolAmount(priest.address)).to.equal(expectedShare);
-            expect(await templ.getClaimablePoolAmount(member1.address)).to.equal(expectedShare);
-            expect(await templ.getClaimablePoolAmount(member2.address)).to.equal(expectedShare);
-            expect(await templ.getClaimablePoolAmount(member3.address)).to.equal(expectedShare);
-            expect(await templ.getClaimablePoolAmount(member4.address)).to.equal(0n);
+            expect(await templ.getClaimableMemberRewards(priest.address)).to.equal(expectedShare);
+            expect(await templ.getClaimableMemberRewards(member1.address)).to.equal(expectedShare);
+            expect(await templ.getClaimableMemberRewards(member2.address)).to.equal(expectedShare);
+            expect(await templ.getClaimableMemberRewards(member3.address)).to.equal(expectedShare);
+            expect(await templ.getClaimableMemberRewards(member4.address)).to.equal(0n);
 
             console.log("✅ Priest and three paid members split the pool after the fourth payer joins");
         });
@@ -127,24 +127,24 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
         it("Should track cumulative rewards correctly without claiming", async function () {
             // Member 1 joins
             await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member1).purchaseAccess();
+            await templ.connect(member1).join();
 
             // Member 2 joins - pool splits between priest and first payer
             await token.connect(member2).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member2).purchaseAccess();
+            await templ.connect(member2).join();
 
             const thirtyPercent = (ENTRY_FEE * 30n) / 100n;
             const secondJoinShare = thirtyPercent / 2n;
-            let claimable1 = await templ.getClaimablePoolAmount(member1.address);
+            let claimable1 = await templ.getClaimableMemberRewards(member1.address);
             expect(claimable1).to.equal(secondJoinShare);
 
             // Member 3 joins - pool splits between priest, member 1, and member 2
             await token.connect(member3).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member3).purchaseAccess();
+            await templ.connect(member3).join();
 
             const thirdJoinShare = thirtyPercent / 3n;
-            claimable1 = await templ.getClaimablePoolAmount(member1.address);
-            let claimable2 = await templ.getClaimablePoolAmount(member2.address);
+            claimable1 = await templ.getClaimableMemberRewards(member1.address);
+            let claimable2 = await templ.getClaimableMemberRewards(member2.address);
 
             // Member 1 should have: 15 from member 2 + 10 from member 3
             expect(claimable1).to.equal(secondJoinShare + thirdJoinShare);
@@ -153,12 +153,12 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
 
             // Member 4 joins - pool splits between priest and the first three paid members
             await token.connect(member4).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member4).purchaseAccess();
+            await templ.connect(member4).join();
 
             const fourthJoinShare = thirtyPercent / 4n;
-            claimable1 = await templ.getClaimablePoolAmount(member1.address);
-            claimable2 = await templ.getClaimablePoolAmount(member2.address);
-            let claimable3 = await templ.getClaimablePoolAmount(member3.address);
+            claimable1 = await templ.getClaimableMemberRewards(member1.address);
+            claimable2 = await templ.getClaimableMemberRewards(member2.address);
+            let claimable3 = await templ.getClaimableMemberRewards(member3.address);
 
             // Member 1: 15 + 10 + 7.5
             expect(claimable1).to.equal(secondJoinShare + thirdJoinShare + fourthJoinShare);
@@ -180,16 +180,16 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
         it("Should allow members to claim exact amounts and update balances correctly", async function () {
             // Setup: 4 members join
             await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member1).purchaseAccess();
+            await templ.connect(member1).join();
             
             await token.connect(member2).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member2).purchaseAccess();
+            await templ.connect(member2).join();
             
             await token.connect(member3).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member3).purchaseAccess();
+            await templ.connect(member3).join();
             
             await token.connect(member4).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member4).purchaseAccess();
+            await templ.connect(member4).join();
 
             // Calculate expected amounts
             const thirtyPercent = (ENTRY_FEE * 30n) / 100n;
@@ -210,8 +210,8 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
 
             // Priest claims first
             const priestBalanceBefore = await token.balanceOf(priest.address);
-            const priestClaimable = await templ.getClaimablePoolAmount(priest.address);
-            await templ.connect(priest).claimMemberPool();
+            const priestClaimable = await templ.getClaimableMemberRewards(priest.address);
+            await templ.connect(priest).claimMemberRewards();
             const priestBalanceAfter = await token.balanceOf(priest.address);
 
             expect(priestBalanceAfter - priestBalanceBefore).to.equal(priestClaimable);
@@ -221,30 +221,30 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
 
             // Member 1 claims
             const balance1Before = await token.balanceOf(member1.address);
-            const claimable1 = await templ.getClaimablePoolAmount(member1.address);
-            await templ.connect(member1).claimMemberPool();
+            const claimable1 = await templ.getClaimableMemberRewards(member1.address);
+            await templ.connect(member1).claimMemberRewards();
             const balance1After = await token.balanceOf(member1.address);
 
             expect(balance1After - balance1Before).to.equal(claimable1);
-            expect(await templ.getClaimablePoolAmount(member1.address)).to.equal(0);
+            expect(await templ.getClaimableMemberRewards(member1.address)).to.equal(0);
 
             // Member 2 claims
             const balance2Before = await token.balanceOf(member2.address);
-            const claimable2 = await templ.getClaimablePoolAmount(member2.address);
-            await templ.connect(member2).claimMemberPool();
+            const claimable2 = await templ.getClaimableMemberRewards(member2.address);
+            await templ.connect(member2).claimMemberRewards();
             const balance2After = await token.balanceOf(member2.address);
 
             expect(balance2After - balance2Before).to.equal(claimable2);
-            expect(await templ.getClaimablePoolAmount(member2.address)).to.equal(0);
+            expect(await templ.getClaimableMemberRewards(member2.address)).to.equal(0);
 
             // Member 3 claims
             const balance3Before = await token.balanceOf(member3.address);
-            const claimable3 = await templ.getClaimablePoolAmount(member3.address);
-            await templ.connect(member3).claimMemberPool();
+            const claimable3 = await templ.getClaimableMemberRewards(member3.address);
+            await templ.connect(member3).claimMemberRewards();
             const balance3After = await token.balanceOf(member3.address);
 
             expect(balance3After - balance3Before).to.equal(claimable3);
-            expect(await templ.getClaimablePoolAmount(member3.address)).to.equal(0);
+            expect(await templ.getClaimableMemberRewards(member3.address)).to.equal(0);
 
             // Verify final pool balance
             const finalPoolBalance = await templ.memberPoolBalance();
@@ -284,30 +284,30 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
 
             // Setup 3 members
             await token.connect(member1).approve(await oddTempl.getAddress(), ODD_FEE);
-            await oddTempl.connect(member1).purchaseAccess();
+            await oddTempl.connect(member1).join();
             
             await token.connect(member2).approve(await oddTempl.getAddress(), ODD_FEE);
-            await oddTempl.connect(member2).purchaseAccess();
+            await oddTempl.connect(member2).join();
             
             await token.connect(member3).approve(await oddTempl.getAddress(), ODD_FEE);
-            await oddTempl.connect(member3).purchaseAccess();
+            await oddTempl.connect(member3).join();
             
             // Clear claims
-            await oddTempl.connect(priest).claimMemberPool();
-            await oddTempl.connect(member1).claimMemberPool();
-            await oddTempl.connect(member2).claimMemberPool();
+            await oddTempl.connect(priest).claimMemberRewards();
+            await oddTempl.connect(member1).claimMemberRewards();
+            await oddTempl.connect(member2).claimMemberRewards();
 
             // Member 4 joins - pool is 30.3 tokens (30% of 101)
             await token.connect(member4).approve(await oddTempl.getAddress(), ODD_FEE);
-            await oddTempl.connect(member4).purchaseAccess();
+            await oddTempl.connect(member4).join();
 
             // 30% of 101 = 30.3, divided by 4 existing members = 7.575 each (floored)
             const thirtyPercent = (ODD_FEE * 30n) / 100n; // 30.3
             const perMember = thirtyPercent / 4n; // 7.575 -> floored value
             
-            const claimable1 = await oddTempl.getClaimablePoolAmount(member1.address);
-            const claimable2 = await oddTempl.getClaimablePoolAmount(member2.address);
-            const claimable3 = await oddTempl.getClaimablePoolAmount(member3.address);
+            const claimable1 = await oddTempl.getClaimableMemberRewards(member1.address);
+            const claimable2 = await oddTempl.getClaimableMemberRewards(member2.address);
+            const claimable3 = await oddTempl.getClaimableMemberRewards(member3.address);
             
             // Each should get the rounded down amount
             expect(claimable1).to.equal(perMember);
@@ -316,7 +316,7 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
             
             // Some dust may remain in the pool due to rounding
             const totalClaimable = claimable1 + claimable2 + claimable3;
-            const priestShare = await oddTempl.getClaimablePoolAmount(priest.address);
+            const priestShare = await oddTempl.getClaimableMemberRewards(priest.address);
             const dust = thirtyPercent - (totalClaimable + priestShare);
             
             console.log("✅ Rounding handled correctly:");
@@ -325,34 +325,34 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
             console.log(`   Dust remaining: ${ethers.formatEther(dust)}`);
         });
 
-        it("Should prevent claims when member hasn't purchased", async function () {
-            await expect(templ.connect(member1).claimMemberPool())
+        it("Should prevent claims when member hasn't joined", async function () {
+            await expect(templ.connect(member1).claimMemberRewards())
                 .to.be.revertedWithCustomError(templ, "NotMember");
         });
 
         it("Should handle partial claims correctly", async function () {
             // Setup 3 members
             await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member1).purchaseAccess();
+            await templ.connect(member1).join();
             
             await token.connect(member2).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member2).purchaseAccess();
+            await templ.connect(member2).join();
             
             await token.connect(member3).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member3).purchaseAccess();
+            await templ.connect(member3).join();
 
             // Member 1 claims their rewards from member 2
-            await templ.connect(member1).claimMemberPool();
+            await templ.connect(member1).claimMemberRewards();
             
             // Member 4 joins
             await token.connect(member4).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member4).purchaseAccess();
+            await templ.connect(member4).join();
 
             // Member 1 should only get their share from member 4 (not double claim from member 2 & 3)
             const thirtyPercent = (ENTRY_FEE * 30n) / 100n;
             const newShare = thirtyPercent / 4n;
 
-            const claimable1 = await templ.getClaimablePoolAmount(member1.address);
+            const claimable1 = await templ.getClaimableMemberRewards(member1.address);
             expect(claimable1).to.equal(newShare); // Only from member 4
             
             console.log("✅ Partial claims tracked correctly");
@@ -367,42 +367,42 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
 
             // Member 1 joins - pool receives the full member allocation for the priest
             await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member1).purchaseAccess();
+            await templ.connect(member1).join();
             expectedPoolBalance += thirtyPercent;
             expect(await templ.memberPoolBalance()).to.equal(expectedPoolBalance);
 
             // Priest claims their pioneer allocation
-            let claimable = await templ.getClaimablePoolAmount(priest.address);
-            await templ.connect(priest).claimMemberPool();
+            let claimable = await templ.getClaimableMemberRewards(priest.address);
+            await templ.connect(priest).claimMemberRewards();
             expectedPoolBalance -= claimable;
             expect(await templ.memberPoolBalance()).to.equal(expectedPoolBalance);
 
             // Member 2 joins - adds 30% to pool
             await token.connect(member2).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member2).purchaseAccess();
+            await templ.connect(member2).join();
             expectedPoolBalance += thirtyPercent;
             expect(await templ.memberPoolBalance()).to.equal(expectedPoolBalance);
 
             // Member 1 claims their share from member 2
-            claimable = await templ.getClaimablePoolAmount(member1.address);
-            await templ.connect(member1).claimMemberPool();
+            claimable = await templ.getClaimableMemberRewards(member1.address);
+            await templ.connect(member1).claimMemberRewards();
             expectedPoolBalance -= claimable;
             expect(await templ.memberPoolBalance()).to.equal(expectedPoolBalance);
 
             // Member 3 joins - adds 30% to pool
             await token.connect(member3).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member3).purchaseAccess();
+            await templ.connect(member3).join();
             expectedPoolBalance += thirtyPercent;
             expect(await templ.memberPoolBalance()).to.equal(expectedPoolBalance);
 
             // Remaining members claim their accrued rewards
-            claimable = await templ.getClaimablePoolAmount(priest.address);
-            await templ.connect(priest).claimMemberPool();
+            claimable = await templ.getClaimableMemberRewards(priest.address);
+            await templ.connect(priest).claimMemberRewards();
             expectedPoolBalance -= claimable;
             expect(await templ.memberPoolBalance()).to.equal(expectedPoolBalance);
 
-            claimable = await templ.getClaimablePoolAmount(member2.address);
-            await templ.connect(member2).claimMemberPool();
+            claimable = await templ.getClaimableMemberRewards(member2.address);
+            await templ.connect(member2).claimMemberRewards();
             expectedPoolBalance -= claimable;
             expect(await templ.memberPoolBalance()).to.equal(expectedPoolBalance);
 
@@ -415,7 +415,7 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
         it("Should accumulate total claimed rewards across multiple claims", async function () {
             // Initial member joins
             await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member1).purchaseAccess();
+            await templ.connect(member1).join();
 
             let totalClaimed = 0n;
             const thirtyPercent = (ENTRY_FEE * 30n) / 100n;
@@ -425,28 +425,28 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
 
             // Member 2 joins and member 1 claims 15%
             await token.connect(member2).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member2).purchaseAccess();
-            let claimable = await templ.getClaimablePoolAmount(member1.address);
+            await templ.connect(member2).join();
+            let claimable = await templ.getClaimableMemberRewards(member1.address);
             expect(claimable).to.equal(secondJoinShare);
-            await templ.connect(member1).claimMemberPool();
+            await templ.connect(member1).claimMemberRewards();
             totalClaimed += claimable;
             expect(await templ.memberPoolClaims(member1.address)).to.equal(totalClaimed);
 
             // Member 3 joins and member 1 claims an additional 10%
             await token.connect(member3).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member3).purchaseAccess();
-            claimable = await templ.getClaimablePoolAmount(member1.address);
+            await templ.connect(member3).join();
+            claimable = await templ.getClaimableMemberRewards(member1.address);
             expect(claimable).to.equal(thirdJoinShare);
-            await templ.connect(member1).claimMemberPool();
+            await templ.connect(member1).claimMemberRewards();
             totalClaimed += claimable;
             expect(await templ.memberPoolClaims(member1.address)).to.equal(totalClaimed);
 
             // Member 4 joins and member 1 claims a final 7.5%
             await token.connect(member4).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member4).purchaseAccess();
-            claimable = await templ.getClaimablePoolAmount(member1.address);
+            await templ.connect(member4).join();
+            claimable = await templ.getClaimableMemberRewards(member1.address);
             expect(claimable).to.equal(fourthJoinShare);
-            await templ.connect(member1).claimMemberPool();
+            await templ.connect(member1).claimMemberRewards();
             totalClaimed += claimable;
             expect(await templ.memberPoolClaims(member1.address)).to.equal(totalClaimed);
         });

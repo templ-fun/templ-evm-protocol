@@ -57,7 +57,7 @@ export async function proposeVote({
     let tx;
     switch (action) {
       case 'setPaused':
-        tx = await contract.createProposalSetPaused(!!p.paused, votingPeriod, proposalTitle, proposalDescription, txOptions); break;
+        tx = await contract.createProposalSetJoinPaused(!!p.paused, votingPeriod, proposalTitle, proposalDescription, txOptions); break;
       case 'withdrawTreasury':
         tx = await contract.createProposalWithdrawTreasury(p.token, p.recipient, p.amount, p.reason || '', votingPeriod, proposalTitle, proposalDescription, txOptions); break;
       case 'changePriest':
@@ -130,9 +130,9 @@ export async function proposeVote({
       const sig = callData.slice(0, 10).toLowerCase();
       const full = new ethers.Interface(templArtifact.abi);
       const fn = full.getFunction(sig);
-      if (fn?.name === 'setPausedDAO') {
+      if (fn?.name === 'setJoinPausedDAO') {
         const [paused] = full.decodeFunctionData(fn, callData);
-        const tx = await contract.createProposalSetPaused(paused, votingPeriod, proposalTitle, proposalDescription, txOptions);
+        const tx = await contract.createProposalSetJoinPaused(paused, votingPeriod, proposalTitle, proposalDescription, txOptions);
         return await waitForProposal(tx);
       }
       if (fn?.name === 'withdrawTreasuryDAO' && fn.inputs.length === 4) {

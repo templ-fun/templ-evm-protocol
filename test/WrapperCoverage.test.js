@@ -25,7 +25,7 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
 
     await token.mint(member.address, ENTRY_FEE);
     await token.connect(member).approve(templ.target, ENTRY_FEE);
-    await templ.connect(member).purchaseAccess();
+    await templ.connect(member).join();
 
     const amount = (ENTRY_FEE * 30n) / 100n;
     const before = await token.balanceOf(recipient.address);
@@ -62,16 +62,16 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
     expect(await templ.entryFee()).to.equal(ENTRY_FEE);
 
     await templ.daoPause(true);
-    expect(await templ.paused()).to.equal(true);
+    expect(await templ.joinPaused()).to.equal(true);
     await templ.daoPause(false);
-    expect(await templ.paused()).to.equal(false);
+    expect(await templ.joinPaused()).to.equal(false);
 
     await token.mint(m1.address, ENTRY_FEE);
     await token.connect(m1).approve(templ.target, ENTRY_FEE);
-    await templ.connect(m1).purchaseAccess();
+    await templ.connect(m1).join();
     await token.mint(m2.address, ENTRY_FEE);
     await token.connect(m2).approve(templ.target, ENTRY_FEE);
-    await templ.connect(m2).purchaseAccess();
+    await templ.connect(m2).join();
 
     const treasuryBefore = await templ.treasuryBalance();
     const poolBefore = await templ.memberPoolBalance();
@@ -112,10 +112,10 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
 
     await token.mint(member.address, ENTRY_FEE);
     await token.connect(member).approve(templ.target, ENTRY_FEE);
-    await templ.connect(member).purchaseAccess();
+    await templ.connect(member).join();
     await token.mint(secondMember.address, ENTRY_FEE);
     await token.connect(secondMember).approve(templ.target, ENTRY_FEE);
-    await templ.connect(secondMember).purchaseAccess();
+    await templ.connect(secondMember).join();
 
     await templ.daoDisband(token.target);
     await expect(
@@ -145,10 +145,10 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
 
     await token.mint(memberA.address, ENTRY_FEE);
     await token.connect(memberA).approve(templ.target, ENTRY_FEE);
-    await templ.connect(memberA).purchaseAccess();
+    await templ.connect(memberA).join();
     await token.mint(memberB.address, ENTRY_FEE);
     await token.connect(memberB).approve(templ.target, ENTRY_FEE);
-    await templ.connect(memberB).purchaseAccess();
+    await templ.connect(memberB).join();
 
     await expect(templ.daoSetMaxMembers(1)).to.be.revertedWithCustomError(
       templ,
@@ -157,15 +157,15 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
 
     await templ.daoSetMaxMembers(3);
     expect(await templ.MAX_MEMBERS()).to.equal(3n);
-    expect(await templ.paused()).to.equal(true);
+    expect(await templ.joinPaused()).to.equal(true);
 
     await templ.daoPause(false);
-    expect(await templ.paused()).to.equal(false);
+    expect(await templ.joinPaused()).to.equal(false);
     expect(await templ.MAX_MEMBERS()).to.equal(3n);
 
     await token.mint(memberC.address, ENTRY_FEE);
     await token.connect(memberC).approve(templ.target, ENTRY_FEE);
-    await expect(templ.connect(memberC).purchaseAccess())
+    await expect(templ.connect(memberC).join())
       .to.be.revertedWithCustomError(templ, "MemberLimitReached");
 
     const link = "https://example.templ";
@@ -183,8 +183,8 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
 
     await templ.daoSetDictatorship(true);
 
-    await expect(templ.connect(priest).setPausedDAO(true)).to.not.be.reverted;
-    await expect(templ.connect(priest).setPausedDAO(false)).to.not.be.reverted;
+    await expect(templ.connect(priest).setJoinPausedDAO(true)).to.not.be.reverted;
+    await expect(templ.connect(priest).setJoinPausedDAO(false)).to.not.be.reverted;
 
     await expect(templ.connect(priest).setMaxMembersDAO(5)).to.not.be.reverted;
     await expect(templ.connect(priest).setTemplHomeLinkDAO("https://dictator.templ"))
@@ -192,7 +192,7 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
 
     await token.mint(member.address, ENTRY_FEE);
     await token.connect(member).approve(templ.target, ENTRY_FEE);
-    await templ.connect(member).purchaseAccess();
+    await templ.connect(member).join();
 
     await expect(templ.connect(priest).disbandTreasuryDAO(token.target)).to.not.be.reverted;
 

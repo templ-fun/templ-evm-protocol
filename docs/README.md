@@ -26,7 +26,7 @@ This folder is the canonical reference for templ. Use the sections below to pick
 
 - Templ – A deployed membership contract instance (type `TEMPL`).
 - Priest – Address with elevated governance powers.
-- Member – Wallet that purchased access in the templ’s access token.
+- Member – Wallet that joined by paying the templ’s entry fee in the access token.
 - Factory – `TemplFactory` contract that mints templ instances and locks the protocol fee share.
 - Home link – On-chain string exported by `templHomeLink` and surfaced across the app and Telegram messages.
 - Dictatorship mode – Governance flag that lets the priest execute the usual DAO actions directly.

@@ -2,7 +2,7 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
 const { mintToUsers } = require("./utils/mintAndPurchase");
-const { encodeSetPausedDAO } = require("./utils/callDataBuilders");
+const { encodeSetJoinPausedDAO } = require("./utils/callDataBuilders");
 
 describe("Uniform vote weight (no priest bonus)", function () {
   let templ;
@@ -25,7 +25,7 @@ describe("Uniform vote weight (no priest bonus)", function () {
     expect(await templ.getVoteWeight(member1.address)).to.equal(0);
 
     await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
-    await templ.connect(member1).purchaseAccess();
+    await templ.connect(member1).join();
 
     expect(await templ.getVoteWeight(priest.address)).to.equal(1);
     expect(await templ.getVoteWeight(member1.address)).to.equal(1);
@@ -34,9 +34,9 @@ describe("Uniform vote weight (no priest bonus)", function () {
 
   it("counts one vote per member and ties fail", async function () {
     await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
-    await templ.connect(member1).purchaseAccess();
+    await templ.connect(member1).join();
 
-    await templ.connect(priest).createProposalSetPaused(
+    await templ.connect(priest).createProposalSetJoinPaused(
       true,
       7 * 24 * 60 * 60
     );

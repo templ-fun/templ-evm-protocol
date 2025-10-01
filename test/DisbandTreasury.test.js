@@ -2,7 +2,7 @@ const { expect } = require("chai");
 const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
-const { mintToUsers, purchaseAccess } = require("./utils/mintAndPurchase");
+const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 
 describe("Disband Treasury", function () {
   const ENTRY_FEE = ethers.parseUnits("100", 18);
@@ -20,7 +20,7 @@ describe("Disband Treasury", function () {
     ({ templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE }));
     [owner, priest, m1, m2, m3] = accounts;
     await mintToUsers(token, [m1, m2, m3], TOKEN_SUPPLY);
-    await purchaseAccess(templ, token, [m1, m2, m3]);
+    await joinMembers(templ, token, [m1, m2, m3]);
   });
 
   async function advanceTimeBeyondVoting() {
@@ -34,9 +34,9 @@ describe("Disband Treasury", function () {
     const tBefore = await templ.treasuryBalance();
     expect(tBefore).to.be.gt(0n);
 
-    const before1 = await templ.getClaimablePoolAmount(m1.address);
-    const before2 = await templ.getClaimablePoolAmount(m2.address);
-    const before3 = await templ.getClaimablePoolAmount(m3.address);
+    const before1 = await templ.getClaimableMemberRewards(m1.address);
+    const before2 = await templ.getClaimableMemberRewards(m2.address);
+    const before3 = await templ.getClaimableMemberRewards(m3.address);
 
     await templ
       .connect(m1)
@@ -51,18 +51,18 @@ describe("Disband Treasury", function () {
     expect(await templ.treasuryBalance()).to.equal(0n);
     const perMember = tBefore / memberCount;
 
-    const after1 = await templ.getClaimablePoolAmount(m1.address);
-    const after2 = await templ.getClaimablePoolAmount(m2.address);
-    const after3 = await templ.getClaimablePoolAmount(m3.address);
+    const after1 = await templ.getClaimableMemberRewards(m1.address);
+    const after2 = await templ.getClaimableMemberRewards(m2.address);
+    const after3 = await templ.getClaimableMemberRewards(m3.address);
 
     expect(after1 - before1).to.equal(perMember);
     expect(after2 - before2).to.equal(perMember);
     expect(after3 - before3).to.equal(perMember);
 
     // members can claim now without reverts
-    await templ.connect(m1).claimMemberPool();
-    await templ.connect(m2).claimMemberPool();
-    await templ.connect(m3).claimMemberPool();
+    await templ.connect(m1).claimMemberRewards();
+    await templ.connect(m2).claimMemberRewards();
+    await templ.connect(m3).claimMemberRewards();
   });
 
   it("executes disband proposals through governance", async function () {
@@ -129,8 +129,8 @@ describe("Disband Treasury", function () {
     await templ.connect(priest).createProposalDisbandTreasury(accessToken, VOTING_PERIOD);
 
     await token.connect(joiner).approve(await templ.getAddress(), ENTRY_FEE);
-    await expect(templ.connect(joiner).purchaseAccess()).to.not.be.reverted;
-    expect(await templ.hasAccess(joiner.address)).to.equal(true);
+    await expect(templ.connect(joiner).join()).to.not.be.reverted;
+    expect(await templ.isMember(joiner.address)).to.equal(true);
   });
 
   it("allows joins while a member disband proposal is pending, even after quorum", async function () {
@@ -145,8 +145,8 @@ describe("Disband Treasury", function () {
     await templ.connect(m2).vote(0, true);
 
     await token.connect(lateJoiner).approve(await templ.getAddress(), ENTRY_FEE);
-    await expect(templ.connect(lateJoiner).purchaseAccess()).to.not.be.reverted;
-    expect(await templ.hasAccess(lateJoiner.address)).to.equal(true);
+    await expect(templ.connect(lateJoiner).join()).to.not.be.reverted;
+    expect(await templ.isMember(lateJoiner.address)).to.equal(true);
   });
 
   it("reverts when treasury is empty", async function () {
@@ -177,7 +177,7 @@ describe("Disband Treasury", function () {
 
     await mintToUsers(token, [extraMember, lateJoiner], TOKEN_SUPPLY);
     await token.connect(extraMember).approve(await templ.getAddress(), ENTRY_FEE);
-    await templ.connect(extraMember).purchaseAccess();
+    await templ.connect(extraMember).join();
 
     await templ
       .connect(m1)
@@ -198,8 +198,8 @@ describe("Disband Treasury", function () {
       .to.be.revertedWithCustomError(templ, "NoTreasuryFunds");
 
     await token.connect(lateJoiner).approve(await templ.getAddress(), ENTRY_FEE);
-    await expect(templ.connect(lateJoiner).purchaseAccess()).to.not.be.reverted;
-    expect(await templ.hasAccess(lateJoiner.address)).to.equal(true);
+    await expect(templ.connect(lateJoiner).join()).to.not.be.reverted;
+    expect(await templ.isMember(lateJoiner.address)).to.equal(true);
   });
 
   it("allows joins after executing a disband proposal", async function () {
@@ -210,7 +210,7 @@ describe("Disband Treasury", function () {
     await mintToUsers(token, [extraMember, lateJoiner], TOKEN_SUPPLY);
 
     await token.connect(extraMember).approve(await templ.getAddress(), ENTRY_FEE);
-    await templ.connect(extraMember).purchaseAccess();
+    await templ.connect(extraMember).join();
 
     await templ
       .connect(m1)
@@ -221,8 +221,8 @@ describe("Disband Treasury", function () {
     await templ.executeProposal(0);
 
     await token.connect(lateJoiner).approve(await templ.getAddress(), ENTRY_FEE);
-    await expect(templ.connect(lateJoiner).purchaseAccess()).to.not.be.reverted;
-    expect(await templ.hasAccess(lateJoiner.address)).to.equal(true);
+    await expect(templ.connect(lateJoiner).join()).to.not.be.reverted;
+    expect(await templ.isMember(lateJoiner.address)).to.equal(true);
   });
 
   it("allows joins after a disband proposal fails", async function () {
@@ -233,7 +233,7 @@ describe("Disband Treasury", function () {
     await mintToUsers(token, [extraMember, lateJoiner], TOKEN_SUPPLY);
 
     await token.connect(extraMember).approve(await templ.getAddress(), ENTRY_FEE);
-    await templ.connect(extraMember).purchaseAccess();
+    await templ.connect(extraMember).join();
 
     await templ
       .connect(m1)
@@ -248,8 +248,8 @@ describe("Disband Treasury", function () {
       .to.be.revertedWithCustomError(templ, "ProposalNotPassed");
 
     await token.connect(lateJoiner).approve(await templ.getAddress(), ENTRY_FEE);
-    await expect(templ.connect(lateJoiner).purchaseAccess()).to.not.be.reverted;
-    expect(await templ.hasAccess(lateJoiner.address)).to.equal(true);
+    await expect(templ.connect(lateJoiner).join()).to.not.be.reverted;
+    expect(await templ.isMember(lateJoiner.address)).to.equal(true);
   });
 
   it("cleans up empty external reward tokens to free registry slots", async function () {
@@ -271,10 +271,10 @@ describe("Disband Treasury", function () {
     await advanceTimeBeyondVoting();
     await templ.executeProposal(0);
 
-    await templ.connect(m1).claimExternalToken(lootToken.target);
-    await templ.connect(m2).claimExternalToken(lootToken.target);
-    await templ.connect(m3).claimExternalToken(lootToken.target);
-    await templ.connect(priest).claimExternalToken(lootToken.target);
+    await templ.connect(m1).claimExternalReward(lootToken.target);
+    await templ.connect(m2).claimExternalReward(lootToken.target);
+    await templ.connect(m3).claimExternalReward(lootToken.target);
+    await templ.connect(priest).claimExternalReward(lootToken.target);
 
     const lootState = await templ.getExternalRewardState(lootToken.target);
     expect(lootState.poolBalance).to.equal(0n);
@@ -300,10 +300,10 @@ describe("Disband Treasury", function () {
     const tokensAfterFirstCleanup = await templ.getExternalRewardTokens();
     expect(tokensAfterFirstCleanup).to.deep.equal([goldToken.target]);
 
-    await templ.connect(m1).claimExternalToken(goldToken.target);
-    await templ.connect(m2).claimExternalToken(goldToken.target);
-    await templ.connect(m3).claimExternalToken(goldToken.target);
-    await templ.connect(priest).claimExternalToken(goldToken.target);
+    await templ.connect(m1).claimExternalReward(goldToken.target);
+    await templ.connect(m2).claimExternalReward(goldToken.target);
+    await templ.connect(m3).claimExternalReward(goldToken.target);
+    await templ.connect(priest).claimExternalReward(goldToken.target);
 
     const goldState = await templ.getExternalRewardState(goldToken.target);
     expect(goldState.poolBalance).to.equal(0n);
@@ -373,11 +373,11 @@ describe("Disband Treasury", function () {
     const unknownToken = accounts[6].address;
 
     expect(
-      await templ.getClaimableExternalToken(owner.address, unknownToken)
+      await templ.getClaimableExternalReward(owner.address, unknownToken)
     ).to.equal(0n);
 
     expect(
-      await templ.getClaimableExternalToken(m1.address, unknownToken)
+      await templ.getClaimableExternalReward(m1.address, unknownToken)
     ).to.equal(0n);
   });
 
@@ -388,11 +388,11 @@ describe("Disband Treasury", function () {
     const [unevenOwner, , u1, u2, u3, donor] = unevenAccounts;
 
     await mintToUsers(unevenToken, [u1, u2, u3, donor], TOKEN_SUPPLY);
-    await purchaseAccess(unevenTempl, unevenToken, [u1, u2, u3], customEntryFee);
+    await joinMembers(unevenTempl, unevenToken, [u1, u2, u3], customEntryFee);
 
-    const before1 = await unevenTempl.getClaimablePoolAmount(u1.address);
-    const before2 = await unevenTempl.getClaimablePoolAmount(u2.address);
-    const before3 = await unevenTempl.getClaimablePoolAmount(u3.address);
+    const before1 = await unevenTempl.getClaimableMemberRewards(u1.address);
+    const before2 = await unevenTempl.getClaimableMemberRewards(u2.address);
+    const before3 = await unevenTempl.getClaimableMemberRewards(u3.address);
 
     const templAddress = await unevenTempl.getAddress();
     const poolBefore = await unevenTempl.memberPoolBalance();
@@ -418,9 +418,9 @@ describe("Disband Treasury", function () {
     await ethers.provider.send("evm_mine");
     await unevenTempl.executeProposal(0);
 
-    const after1 = await unevenTempl.getClaimablePoolAmount(u1.address);
-    const after2 = await unevenTempl.getClaimablePoolAmount(u2.address);
-    const after3 = await unevenTempl.getClaimablePoolAmount(u3.address);
+    const after1 = await unevenTempl.getClaimableMemberRewards(u1.address);
+    const after2 = await unevenTempl.getClaimableMemberRewards(u2.address);
+    const after3 = await unevenTempl.getClaimableMemberRewards(u3.address);
 
     expect(after1 - before1).to.equal(expectedIncrease);
     expect(after2 - before2).to.equal(expectedIncrease);
@@ -431,8 +431,8 @@ describe("Disband Treasury", function () {
 
     // Ensure new members start with the latest snapshot for external tokens
     await mintToUsers(unevenToken, [unevenOwner], TOKEN_SUPPLY);
-    await purchaseAccess(unevenTempl, unevenToken, [unevenOwner], customEntryFee);
-    expect(await unevenTempl.getClaimableExternalToken(unevenOwner.address, unevenToken.target)).to.equal(0n);
+    await joinMembers(unevenTempl, unevenToken, [unevenOwner], customEntryFee);
+    expect(await unevenTempl.getClaimableExternalReward(unevenOwner.address, unevenToken.target)).to.equal(0n);
   });
 
   it("distributes donated ERC20 tokens into external claim balances", async function () {
@@ -453,18 +453,18 @@ describe("Disband Treasury", function () {
     const tokens = await templ.getExternalRewardTokens();
     expect(tokens).to.include(otherToken.target);
 
-    const claimable1 = await templ.getClaimableExternalToken(m1.address, otherToken.target);
-    const claimable2 = await templ.getClaimableExternalToken(m2.address, otherToken.target);
-    const claimable3 = await templ.getClaimableExternalToken(m3.address, otherToken.target);
+    const claimable1 = await templ.getClaimableExternalReward(m1.address, otherToken.target);
+    const claimable2 = await templ.getClaimableExternalReward(m2.address, otherToken.target);
+    const claimable3 = await templ.getClaimableExternalReward(m3.address, otherToken.target);
     expect(claimable1).to.equal(claimable2);
     expect(claimable1).to.equal(claimable3);
 
     const before = await otherToken.balanceOf(m1.address);
-    await templ.connect(m1).claimExternalToken(otherToken.target);
+    await templ.connect(m1).claimExternalReward(otherToken.target);
     const after = await otherToken.balanceOf(m1.address);
     expect(after - before).to.equal(claimable1);
 
-    expect(await templ.getClaimableExternalToken(m1.address, otherToken.target)).to.equal(0n);
+    expect(await templ.getClaimableExternalReward(m1.address, otherToken.target)).to.equal(0n);
   });
 
   it("syncs external reward snapshots for new members", async function () {
@@ -488,10 +488,10 @@ describe("Disband Treasury", function () {
     expect(rewardsBefore.cumulativeRewards).to.be.gt(0n);
 
     await mintToUsers(token, [newMember], ENTRY_FEE * 2n);
-    await purchaseAccess(templ, token, [newMember]);
+    await joinMembers(templ, token, [newMember]);
 
     expect(
-      await templ.getClaimableExternalToken(newMember.address, otherToken.target)
+      await templ.getClaimableExternalReward(newMember.address, otherToken.target)
     ).to.equal(0n);
   });
 
@@ -507,11 +507,11 @@ describe("Disband Treasury", function () {
     await advanceTimeBeyondVoting();
     await templ.executeProposal(0);
 
-    const claimable = await templ.getClaimableExternalToken(m2.address, ethers.ZeroAddress);
+    const claimable = await templ.getClaimableExternalReward(m2.address, ethers.ZeroAddress);
     expect(claimable).to.be.gt(0n);
 
     const before = await ethers.provider.getBalance(m2.address);
-    const tx = await templ.connect(m2).claimExternalToken(ethers.ZeroAddress);
+    const tx = await templ.connect(m2).claimExternalReward(ethers.ZeroAddress);
     const receipt = await tx.wait();
     const gasUsed = receipt.gasUsed * receipt.gasPrice;
     const after = await ethers.provider.getBalance(m2.address);

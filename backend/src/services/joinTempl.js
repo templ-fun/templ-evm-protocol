@@ -33,7 +33,7 @@ function buildLinks(contract) {
 
 export async function joinTempl(body, context) {
   const { contractAddress, memberAddress } = body;
-  const { hasPurchased, templs, logger } = context;
+  const { hasJoined, templs, logger } = context;
 
   const contract = normaliseAddress(contractAddress, 'contractAddress');
   const member = normaliseAddress(memberAddress, 'memberAddress');
@@ -42,18 +42,18 @@ export async function joinTempl(body, context) {
   if (!record) {
     throw templError('Templ not registered', 404);
   }
-  if (!hasPurchased || typeof hasPurchased !== 'function') {
+  if (!hasJoined || typeof hasJoined !== 'function') {
     throw templError('Membership verification unavailable', 500);
   }
 
-  let purchased;
+  let joined;
   try {
-    purchased = await hasPurchased(contract, member);
+    joined = await hasJoined(contract, member);
   } catch (err) {
-    logger?.warn?.({ err: err?.message || err, contract, member }, 'hasPurchased check failed');
+    logger?.warn?.({ err: err?.message || err, contract, member }, 'hasJoined check failed');
     throw templError('Unable to verify membership', 502);
   }
-  if (!purchased) {
+  if (!joined) {
     throw templError('Membership not found', 403);
   }
 
@@ -62,7 +62,7 @@ export async function joinTempl(body, context) {
   return {
     member: {
       address: member,
-      hasAccess: true
+      isMember: true
     },
     templ: {
       contract,

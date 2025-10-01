@@ -209,12 +209,15 @@ export function createTelegramNotifier({ botToken, linkBaseUrl, logger = default
 
   return {
     isEnabled: Boolean(token),
-    async notifyAccessPurchased({ chatId, contractAddress, memberAddress, purchaseId, treasuryBalance, memberPoolBalance, timestamp, homeLink }) {
+    async notifyMemberJoined({ chatId, contractAddress, payerAddress, memberAddress, joinId, treasuryBalance, memberPoolBalance, timestamp, homeLink }) {
       await send(chatId, [
         formatBold('New member joined'),
         formatAddress('Templ:', contractAddress),
+        payerAddress && memberAddress && payerAddress.toLowerCase() !== memberAddress.toLowerCase()
+          ? formatAddress('Paid by:', payerAddress)
+          : null,
         formatAddress('Member:', memberAddress),
-        purchaseId != null ? `${formatBold('Purchase ID:')} ${escapeMarkdown(normaliseInline(purchaseId))}` : '',
+        joinId != null ? `${formatBold('Join ID:')} ${escapeMarkdown(normaliseInline(joinId))}` : '',
         formatTimestamp(timestamp),
         formatAmount('Treasury balance:', treasuryBalance),
         formatAmount('Member pool:', memberPoolBalance),
@@ -369,7 +372,7 @@ export function createTelegramNotifier({ botToken, linkBaseUrl, logger = default
         )
       ]);
     },
-    async notifyMemberPoolClaimed({ chatId, contractAddress, member, amount, timestamp, homeLink }) {
+    async notifyMemberRewardsClaimed({ chatId, contractAddress, member, amount, timestamp, homeLink }) {
       await send(chatId, [
         formatBold('Member rewards claimed'),
         formatAddress('Templ:', contractAddress),
@@ -397,7 +400,7 @@ export function createTelegramNotifier({ botToken, linkBaseUrl, logger = default
         )
       ]);
     },
-    async notifyContractPaused({ chatId, contractAddress, paused, homeLink }) {
+    async notifyJoinPauseUpdated({ chatId, contractAddress, paused, homeLink }) {
       await send(chatId, [
         paused ? formatBold('Templ paused ⏸️') : formatBold('Templ resumed ▶️'),
         formatAddress('Templ:', contractAddress),
