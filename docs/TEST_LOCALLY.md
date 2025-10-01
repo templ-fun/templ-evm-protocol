@@ -61,7 +61,7 @@ Terminal B:
 npm --prefix backend start
 ```
 
-The server listens on `http://localhost:3001`, verifies signatures, persists templ registrations in the in-memory adapter (matching the Cloudflare D1/SQLite schema), and—if a `TELEGRAM_BOT_TOKEN` is supplied—posts contract events to chat ids registered for each templ. You only need a persistent store (SQLite or D1) in production; local development stays dependency-free.
+The server listens on `http://localhost:3001`, verifies signatures, persists templ registrations in the in-memory adapter (matching the SQLite schema), and—if a `TELEGRAM_BOT_TOKEN` is supplied—posts contract events to chat ids registered for each templ. You only need a persistent store (SQLite) in production; local development stays dependency-free.
 
 ## 3) Start the frontend
 

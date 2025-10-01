@@ -65,25 +65,26 @@ Running the server requires a JSON-RPC endpoint and aligned frontend/server IDs.
 | `LOG_LEVEL` | Pino log level. | `info` |
 | `RATE_LIMIT_STORE` | `memory` or `redis`; automatically switches to Redis when `REDIS_URL` is provided. | auto |
 | `REDIS_URL` | Redis endpoint used for rate limiting when `RATE_LIMIT_STORE=redis`. | unset |
-| `LEADER_TTL_MS` | Leader election heartbeat window (milliseconds) when using D1/SQLite. Must be ≥ 15000. | `60000` |
-| `SQLITE_DB_PATH` | Optional path to a persistent SQLite database when running outside Cloudflare. Leave unset to use D1 (if bound) or the in-memory store. | unset |
-Bind a Cloudflare D1 database (or any SQLite-compatible store) in production so the service can persist templ metadata, replay protection, and leader election state. The D1 adapter automatically provisions the required tables on boot, so no manual migrations are necessary beyond providing the binding. Local development without a binding automatically uses the in-memory adapter so you can iterate without provisioning D1. Signature replay protection retains entries for ~6 hours (matching the defaults baked into the adapters).
+| `LEADER_TTL_MS` | Leader election heartbeat window (milliseconds) when using shared persistence. Must be ≥ 15000. | `60000` |
+| `SQLITE_DB_PATH` | Path to a persistent SQLite database. When unset, the server falls back to an in-memory adapter. | unset |
 
-> `npm run deploy:cloudflare` (see `scripts/cloudflare.deploy.example.env`) focuses on applying the D1 schema and deploying the frontend to Cloudflare Pages. Pass `--skip-worker` when the backend runs outside Cloudflare Workers; Worker-only env vars become optional in that mode. Make sure the deployed process can reach the same D1 database to participate in leader election.
+For production runs set `SQLITE_DB_PATH` to a directory backed by durable storage (for example a Fly volume mounted at `/var/lib/templ/templ.db`). The server automatically creates tables when the path is writable. Distributed rate limiting is optional; when Redis is unavailable the in-process `MemoryStore` enforces limits per instance and logs a warning in `NODE_ENV=production`. Signature replay protection retains entries for roughly six hours regardless of the persistence backend.
+
+`npm run deploy:cloudflare` (see `scripts/cloudflare.deploy.example.env`) builds the Vite frontend and deploys it to Cloudflare Pages. Backend deployment is handled separately (for example with the Fly workflow described in `docs/DEPLOYMENT_GUIDE.md`).
 
 ### Data model
 
-Cloudflare D1 (or SQLite when `SQLITE_DB_PATH` is set) stores:
+SQLite (referenced by `SQLITE_DB_PATH`) stores:
 
 - `templ_bindings(contract TEXT PRIMARY KEY, telegramChatId TEXT UNIQUE, priest TEXT, bindingCode TEXT)` – durable mapping between templ contracts and their optional Telegram chats plus the last-seen priest address. `bindingCode` stores any outstanding binding snippet so servers can restart without invalidating it. Rows keep `telegramChatId = NULL` until a binding completes so watchers can resume after restarts without leaking chat ids.
-- `used_signatures(signature TEXT PRIMARY KEY, expiresAt INTEGER)` – replay protection for typed requests. Entries expire automatically (6 hour retention) and fall back to the in-memory cache only when D1 is unavailable.
+- `used_signatures(signature TEXT PRIMARY KEY, expiresAt INTEGER)` – replay protection for typed requests. Entries expire automatically (6 hour retention) and fall back to the in-memory cache only when persistent storage is unavailable.
 - `leader_election(id TEXT PRIMARY KEY, owner TEXT, expiresAt INTEGER)` – coordinates which backend instance currently holds the notification lease. Only the owning instance streams Telegram events and runs interval jobs; other replicas stay idle until the lease expires.
 
 Templ home links continue to live on-chain; watchers refresh them (and priest data) from the contract whenever listeners attach so the chain remains the canonical source of truth.
 
 ### Leadership & scaling
 
-Only one backend instance should emit Telegram notifications at a time. When D1 is configured the server uses the `leader_election` table to acquire a short-lived lease (`LEADER_TTL_MS`, default 60s). The leader streams templ events, polls Telegram for binding codes, and sends daily digests; standby replicas wake up periodically to refresh the lease and take over if the active process disappears. Without D1 you should run a single instance so notifications are not duplicated.
+Only one backend instance should emit Telegram notifications at a time. When multiple replicas share the same SQLite/D1 database the server uses the `leader_election` table to acquire a short-lived lease (`LEADER_TTL_MS`, default 60s). The leader streams templ events, polls Telegram for binding codes, and sends daily digests; standby replicas wake up periodically to refresh the lease and take over if the active process disappears. When using the in-memory persistence adapter, run a single instance so notifications are not duplicated.
 
 ## Routes
 
@@ -177,7 +178,7 @@ Messages are posted with Telegram `MarkdownV2` formatting—the notifier escapes
 
 ## Contract watchers
 
-The server uses `ethers.Contract` to subscribe to templ events. Watchers are registered when a templ is stored or restored from Cloudflare D1 (or the in-memory fallback during local development).
+The server uses `ethers.Contract` to subscribe to templ events. Watchers are registered when a templ is stored or restored from persistence (SQLite or the in-memory fallback during local development).
 
 - Listener errors are caught and logged (but do not crash the process).
 - Proposal metadata is cached in-memory when events fire so follow-up notifications can include the title even if the on-chain read fails.
@@ -203,11 +204,11 @@ Coverage uses `c8`; run `npm --prefix backend run coverage` for LCOV reports.
 4. Provide `TELEGRAM_BOT_TOKEN` and confirm the bot is present in each group you care about. (Leaving it unset disables notifications.)
 5. Consider supplying `REDIS_URL` if you run multiple backend replicas and need distributed rate limiting.
 
-### Cloudflare Worker variables (using deploy helper)
+### Fly deployment quickstart
 
-The `scripts/deploy-cloudflare.js` helper injects backend env vars into a Wrangler config for the Worker. Besides first‑class vars (`BACKEND_SERVER_ID`, `APP_BASE_URL`, `TRUSTED_FACTORY_ADDRESS`, `TRUSTED_FACTORY_DEPLOYMENT_BLOCK`, `REQUIRE_CONTRACT_VERIFY`, etc.), you can pass additional values via prefixes:
+1. Copy `backend/fly.example.toml` to `backend/fly.toml` and adjust the `app` name, region, and resource sizing.
+2. Create a persistent volume (`fly volumes create templ_data --size 1 --region <region> --app <app>`).
+3. Set Fly secrets for the environment variables listed above (`RPC_URL`, `APP_BASE_URL`, `BACKEND_SERVER_ID`, `TRUSTED_FACTORY_ADDRESS`, etc.). Include `REQUIRE_CONTRACT_VERIFY=1` for production hardening.
+4. Deploy with `fly deploy --config backend/fly.toml`.
 
-- `CLOUDFLARE_BACKEND_VAR_*` → becomes a plain `[vars]` entry (e.g. `CLOUDFLARE_BACKEND_VAR_ALLOWED_ORIGINS`).
-- `CLOUDFLARE_BACKEND_SECRET_*` → put into Wrangler secrets (e.g. `CLOUDFLARE_BACKEND_SECRET_REDIS_URL`).
-
-When hosting the backend outside Cloudflare Workers, set `NODE_ENV=production` and export the same variables in your process manager (systemd, Docker, etc.).
+The Docker image defined in `backend/Dockerfile` installs production dependencies, exposes port `3001`, and stores SQLite data at `/var/lib/templ/templ.db`. Refer to `docs/DEPLOYMENT_GUIDE.md` for the full rollout checklist.
