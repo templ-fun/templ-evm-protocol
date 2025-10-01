@@ -339,18 +339,51 @@ describe("TemplFactory", function () {
         const tx = await factory.createTempl(await token.getAddress(), ENTRY_FEE);
         await tx.wait();
 
-    const templ = await ethers.getContractAt("TEMPL", templAddress);
+        const templ = await ethers.getContractAt("TEMPL", templAddress);
 
-    expect(await templ.priest()).to.equal(deployer.address);
+        expect(await templ.priest()).to.equal(deployer.address);
     expect(await templ.burnPercent()).to.equal(BigInt(pct(30)));
     expect(await templ.treasuryPercent()).to.equal(BigInt(pct(30)));
     expect(await templ.memberPoolPercent()).to.equal(BigInt(pct(30)));
     expect(await templ.protocolFeeRecipient()).to.equal(protocolRecipient.address);
     expect(await templ.protocolPercent()).to.equal(BigInt(pct(10)));
     expect(await templ.quorumPercent()).to.equal(BigInt(pct(33)));
-    expect(await templ.executionDelayAfterQuorum()).to.equal(7 * 24 * 60 * 60);
-    expect(await templ.burnAddress()).to.equal("0x000000000000000000000000000000000000dEaD");
-  });
+        expect(await templ.executionDelayAfterQuorum()).to.equal(7 * 24 * 60 * 60);
+        expect(await templ.burnAddress()).to.equal("0x000000000000000000000000000000000000dEaD");
+    });
+
+    it("allows templ creation for a delegated priest", async function () {
+        const [deployer, delegatedPriest, protocolRecipient] = await ethers.getSigners();
+        const token = await deployToken("Delegated", "DLG");
+
+        const Factory = await ethers.getContractFactory("TemplFactory");
+        const factory = await Factory.deploy(protocolRecipient.address, pct(10));
+        await factory.waitForDeployment();
+
+        const templAddress = await factory.createTemplFor.staticCall(
+            delegatedPriest.address,
+            await token.getAddress(),
+            ENTRY_FEE
+        );
+        const tx = await factory.createTemplFor(delegatedPriest.address, await token.getAddress(), ENTRY_FEE);
+        const receipt = await tx.wait();
+
+        const templ = await ethers.getContractAt("TEMPL", templAddress);
+        expect(await templ.priest()).to.equal(delegatedPriest.address);
+
+        const templCreated = receipt.logs
+            .map((log) => {
+                try {
+                    return factory.interface.parseLog(log);
+                } catch (_) {
+                    return null;
+                }
+            })
+            .find((log) => log && log.name === "TemplCreated");
+
+        expect(templCreated.args.creator).to.equal(deployer.address);
+        expect(templCreated.args.priest).to.equal(delegatedPriest.address);
+    });
 
   it("reuses the immutable protocol configuration for every templ", async function () {
     const [, priest, protocolRecipient] = await ethers.getSigners();
@@ -434,6 +467,19 @@ describe("TemplFactory", function () {
             factory,
             "InvalidRecipient"
         );
+    });
+
+    it("reverts when delegated priest address is zero", async function () {
+        const [, , protocolRecipient] = await ethers.getSigners();
+        const token = await deployToken("ZeroPriest", "ZP");
+
+        const Factory = await ethers.getContractFactory("TemplFactory");
+        const factory = await Factory.deploy(protocolRecipient.address, pct(10));
+        await factory.waitForDeployment();
+
+        await expect(
+            factory.createTemplFor(ethers.ZeroAddress, await token.getAddress(), ENTRY_FEE)
+        ).to.be.revertedWithCustomError(factory, "InvalidRecipient");
     });
 
     it("reverts when creating templ with entry fee below minimum", async function () {
