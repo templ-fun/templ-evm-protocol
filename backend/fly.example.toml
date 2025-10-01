@@ -1,0 +1,30 @@
+# Copy this file to fly.toml and update the placeholders before deploying.
+app = "templ-backend-example"
+primary_region = "iad"
+
+[build]
+  dockerfile = "backend/Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "3001"
+  SQLITE_DB_PATH = "/var/lib/templ/templ.db"
+  BACKEND_SERVER_ID = "templ-prod"
+  REQUIRE_CONTRACT_VERIFY = "1"
+
+[http_service]
+  internal_port = 3001
+  force_https = true
+  auto_start_machines = "true"
+  auto_stop_machines = "off"
+  min_machines_running = 1
+  processes = ["app"]
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory = "512m"
+
+[[mounts]]
+  source = "templ_data"
+  destination = "/var/lib/templ"

@@ -19,10 +19,17 @@ export async function createRateLimitStore() {
 
   if (shouldUseRedis) {
     try {
-      const [{ default: RedisStore }, { createClient }] = await Promise.all([
-        import('rate-limit-redis'),
-        import('redis')
+      const redisStoreModuleId = 'rate-limit-redis';
+      const redisClientModuleId = 'redis';
+      const [storeModule, redisModule] = await Promise.all([
+        import(redisStoreModuleId).catch(() => null),
+        import(redisClientModuleId).catch(() => null)
       ]);
+      if (!storeModule || !redisModule) {
+        throw new Error('redis modules unavailable');
+      }
+      const { default: RedisStore } = storeModule;
+      const { createClient } = redisModule;
       const client = createClient({ url: process.env.REDIS_URL });
       await client.connect();
       const store = new RedisStore({ sendCommand: (...args) => client.sendCommand(args) });

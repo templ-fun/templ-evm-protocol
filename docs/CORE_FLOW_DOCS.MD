@@ -8,7 +8,7 @@ Use this reference to see how the contracts, backend API, frontend, and Telegram
 - **Backend (B)** – Express server handling signatures, persistence, and Telegram notifications.
 - **Contract (C)** – On-chain templ instance.
 - **Telegram (T)** – Bot-backed delivery of templ events (optional).
-- **Cloudflare D1 (D)** – Serverless binding store (contract ↔ Telegram chat id) with an in-memory fallback for local runs.
+- **SQLite persistence (D)** – Binding store (contract ↔ Telegram chat id) with an in-memory fallback for local runs.
 - **Member (M)** / **Priest (P)** – Participants initiating actions.
 
 ## 1. Templ creation
@@ -18,7 +18,7 @@ flowchart LR
     F[Frontend];
     B[Backend];
     C[Contract];
-    D[(Cloudflare D1)];
+    D[(SQLite database)];
     F -->|"factory.createTemplWithConfig"| C;
     F -->|"POST /templs"| B;
     B -->|"verify contract/priest (optional)"| C;
@@ -33,7 +33,7 @@ sequenceDiagram
     participant F as Frontend
     participant C as Contract
     participant B as Backend
-    participant D as Cloudflare D1
+    participant D as SQLite persistence
     F->>C: createTemplWithConfig(...)
     C-->>F: templAddress
     F->>B: POST /templs {contract, priest, telegramChatId?, signature}
@@ -175,13 +175,13 @@ sequenceDiagram
 ```mermaid
 flowchart LR
     B[Backend];
-    D[(Cloudflare D1)];
+    D[(SQLite database)];
     B -->|"INSERT/UPDATE"| D;
     D -->|"rows restored on boot"| B;
 ```
 
-- `templ_bindings` keeps the templ contract ↔ optional Telegram chat mapping plus the last-seen priest address so notifications resume after restarts (NULL chat ids indicate pending bindings). When persisted in D1/SQLite the mapping survives backend restarts without extra infrastructure.
-- `used_signatures` records typed-request signatures for ~6 hours. The backend prefers D1 and only falls back to the in-memory cache when the database binding is unavailable.
+- `templ_bindings` keeps the templ contract ↔ optional Telegram chat mapping plus the last-seen priest address so notifications resume after restarts (NULL chat ids indicate pending bindings). When persisted in SQLite the mapping survives backend restarts without extra infrastructure.
+- `used_signatures` records typed-request signatures for ~6 hours. The backend prefers the persistent store and only falls back to the in-memory cache when the database is unavailable.
 - `leader_election` tracks which backend instance currently holds leadership (identified by `owner` and guarded by an `expiresAt` TTL). Multi-instance deployments refresh this row to ensure only one server keeps contract watchers and background tasks running; single-instance or in-memory setups effectively auto-elect themselves.
 
 These flows should serve as the canonical reference for the Telegram-based architecture.
