@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { sanitizeLink } from '../../../shared/linkSanitizer.js';
 import templArtifact from '../contracts/TEMPL.json';
 import templFactoryArtifact from '../contracts/TemplFactory.json';
 import { FACTORY_CONFIG } from '../config.js';
+import { BASE_TOKEN_SUGGESTIONS } from '../data/baseTokens.js';
 import { deployTempl } from '../services/deployment.js';
 import { button, form, layout, surface, text } from '../ui/theme.js';
 
@@ -46,6 +47,7 @@ export function CreateTemplPage({
   const [tokenDecimalsSource, setTokenDecimalsSource] = useState('default');
   const [tokenDecimalsError, setTokenDecimalsError] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showTokenSuggestions, setShowTokenSuggestions] = useState(false);
   const sanitizedBindingHomeLink = sanitizeLink(bindingInfo?.templHomeLink);
   const bindingStartLink = useMemo(() => {
     if (!bindingInfo?.bindingCode) return null;
@@ -57,13 +59,47 @@ export function CreateTemplPage({
   const resolvedTokenDecimals = useMemo(() => (Number.isInteger(tokenDecimals) ? tokenDecimals : 18), [tokenDecimals]);
   const tokenDecimalsHint = useMemo(() => {
     if (tokenDecimalsSource === 'chain') {
-      return `Detected ${resolvedTokenDecimals} decimals from the token contract.`;
+      return `Using ${resolvedTokenDecimals} decimals detected from the token contract.`;
+    }
+    if (tokenDecimalsSource === 'catalog') {
+      return `Using ${resolvedTokenDecimals} decimals from Base catalog data.`;
     }
     if (tokenDecimalsSource === 'fallback') {
-      return tokenDecimalsError || 'Using 18 decimals because token metadata could not be read.';
+      return tokenDecimalsError || `Using ${resolvedTokenDecimals} decimals because token metadata is unavailable.`;
     }
-    return 'Defaults to 18 decimals until the token address is detected.';
+    return `Assuming ${resolvedTokenDecimals} decimals until a token address is detected.`;
   }, [resolvedTokenDecimals, tokenDecimalsError, tokenDecimalsSource]);
+
+  const entryFeePreview = useMemo(() => {
+    const trimmed = entryFeeTokens.trim();
+    if (!trimmed || !ethers) {
+      return '';
+    }
+    try {
+      const raw = ethers.parseUnits(trimmed, resolvedTokenDecimals);
+      const remainder = raw % ENTRY_FEE_STEP;
+      const rounded = remainder === 0n ? raw : raw + (ENTRY_FEE_STEP - remainder);
+      const baseUnits = rounded.toString();
+      const roundedDisplay = ethers.formatUnits(rounded, resolvedTokenDecimals);
+      if (remainder === 0n) {
+        return `On-chain amount: ${baseUnits} (${roundedDisplay} tokens).`;
+      }
+      return `On-chain amount rounds to ${baseUnits} (${roundedDisplay} tokens) to satisfy 10-wei steps.`;
+    } catch {
+      return 'Entry fee must be a valid number.';
+    }
+  }, [entryFeeTokens, ethers, resolvedTokenDecimals]);
+
+  const handleSelectTokenSuggestion = useCallback((token) => {
+    if (!token?.address) return;
+    setTokenAddress(token.address);
+    setShowTokenSuggestions(false);
+    if (typeof token.decimals === 'number' && Number.isInteger(token.decimals)) {
+      setTokenDecimals(token.decimals);
+      setTokenDecimalsSource('catalog');
+      setTokenDecimalsError('');
+    }
+  }, []);
   const trimmedFactoryAddress = factoryAddress?.trim?.() ?? '';
   const showFactoryInput = showAdvanced || !FACTORY_CONFIG.address;
 
@@ -325,6 +361,31 @@ export function CreateTemplPage({
             required
           />
         </label>
+        <div className="flex flex-col gap-3">
+          <button
+            type="button"
+            className={button.base}
+            onClick={() => setShowTokenSuggestions((prev) => !prev)}
+          >
+            {showTokenSuggestions ? 'Hide Base token catalog' : 'Browse Base token catalog'}
+          </button>
+          {showTokenSuggestions ? (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {BASE_TOKEN_SUGGESTIONS.map((token) => (
+                <button
+                  key={token.address}
+                  type="button"
+                  className="flex w-full flex-col items-start gap-1 rounded-lg border border-slate-200 bg-white px-4 py-3 text-left text-sm text-slate-900 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                  onClick={() => handleSelectTokenSuggestion(token)}
+                >
+                  <span className="text-sm font-semibold text-slate-900">{token.symbol}</span>
+                  <span className="text-xs text-slate-600">{token.name}</span>
+                  <span className={`${text.mono} text-xs text-slate-500`}>{token.address}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
         <label className={form.label}>
           Entry fee (token amount)
           <input
@@ -337,10 +398,8 @@ export function CreateTemplPage({
           />
         </label>
         <div className="flex flex-col gap-1">
-          <span className={text.hint}>
-            Converted with {resolvedTokenDecimals} decimals and rounded up to 10-wei increments to satisfy templ requirements.
-          </span>
-          {tokenDecimalsHint ? <span className={text.hint}>{tokenDecimalsHint}</span> : null}
+          {entryFeePreview ? <span className={text.hint}>{entryFeePreview}</span> : null}
+          <span className={text.hint}>{tokenDecimalsHint}</span>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <button

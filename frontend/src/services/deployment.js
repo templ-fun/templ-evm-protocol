@@ -84,12 +84,48 @@ async function deployContract({
     homeLink: templHomeLink || ''
   };
 
-  const templAddress = await factory.createTemplWithConfig.staticCall(config);
+  let templAddress;
+  try {
+    templAddress = await factory.createTemplWithConfig.staticCall(config);
+  } catch (err) {
+    if (err?.code !== 'BAD_DATA') {
+      throw err;
+    }
+    console.warn('[templ] Failed to preview templ address via staticCall, falling back to receipt parsing', err);
+  }
   const tx = await factory.createTemplWithConfig(config, txOptions);
-  await tx.wait();
-  dlog('deployContract: templ deployed', templAddress);
-  addToTestRegistry?.(templAddress);
-  return templAddress;
+  const receipt = await tx.wait();
+
+  if (!templAddress) {
+    const iface = factory.interface || new ethers.Interface(factoryArtifact.abi);
+    for (const log of receipt.logs || []) {
+      try {
+        const parsed = iface.parseLog(log);
+        if (parsed?.name === 'TemplCreated' && parsed.args?.templ) {
+          templAddress = parsed.args.templ;
+          break;
+        }
+      } catch {
+        /* ignore unrelated logs */
+      }
+    }
+  }
+
+  if (!templAddress) {
+    throw new Error('Templ deployment succeeded but the contract address was not returned. Check the transaction receipt for TemplCreated.');
+  }
+
+  let normalized = templAddress;
+  if (typeof templAddress === 'string') {
+    try {
+      normalized = ethers.getAddress ? ethers.getAddress(templAddress) : templAddress;
+    } catch {
+      normalized = templAddress;
+    }
+  }
+  dlog('deployContract: templ deployed', normalized);
+  addToTestRegistry?.(normalized);
+  return normalized;
 }
 
 export async function registerTemplBackend({
