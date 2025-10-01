@@ -12,7 +12,7 @@ Use this doc to navigate the Vite + React app in `frontend/` and understand the 
 | `/templs/:address/proposals/:id/vote` | YES/NO voting form. |
 | `/templs/:address/claim` | Claim member pool rewards and inspect raw balances. |
 
-After deploying, the UI surfaces a one-time Telegram binding code. Invite `@templfunbot` to your group and post `templ <bindingCode>` so the backend can link the templ to that chat automatically.
+After deploying, the UI surfaces a one-time Telegram binding code. Invite `@templfunbot` to your group and either tap the generated `https://t.me/templfunbot?startgroup=<bindingCode>` link or send `/templ <bindingCode>` in the chat so the backend can link the templ without requesting admin privileges.
 
 The app focuses on templ lifecycle flows while Telegram handles coordination through backend-triggered notifications.
 

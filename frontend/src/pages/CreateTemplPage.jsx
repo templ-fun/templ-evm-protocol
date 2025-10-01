@@ -39,6 +39,12 @@ export function CreateTemplPage({
   const [bindingInfo, setBindingInfo] = useState(null);
   const [autoBalanceSplit, setAutoBalanceSplit] = useState(true);
   const sanitizedBindingHomeLink = sanitizeLink(bindingInfo?.templHomeLink);
+  const bindingStartLink = useMemo(() => {
+    if (!bindingInfo?.bindingCode) return null;
+    const trimmedCode = String(bindingInfo.bindingCode).trim();
+    if (!trimmedCode) return null;
+    return `https://t.me/templfunbot?startgroup=${encodeURIComponent(trimmedCode)}`;
+  }, [bindingInfo?.bindingCode]);
 
   const protocolPercentValue = useMemo(() => {
     const parsed = Number(protocolPercent);
@@ -385,9 +391,22 @@ export function CreateTemplPage({
                 <p>
                   Invite{' '}
                   <a className="text-primary underline" href="https://t.me/templfunbot" target="_blank" rel="noreferrer">@templfunbot</a>{' '}
-                  to your Telegram group and send the following message inside the group to confirm ownership.
+                  to your Telegram group. After it joins, either tap the start link or send the highlighted command—both approaches let the bot read the binding code without requesting admin rights.
                 </p>
-                <pre className={surface.codeBlock}><code>{`templ ${bindingInfo.bindingCode}`}</code></pre>
+                <div className="space-y-3">
+                  <a
+                    className="inline-flex items-center gap-2 rounded border border-primary px-3 py-2 text-primary hover:bg-primary/10"
+                    href={bindingStartLink || undefined}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Use start link in Telegram
+                  </a>
+                  <div>
+                    <p className="mb-1">Or post this command in the group:</p>
+                    <pre className={surface.codeBlock}><code>{`/templ ${bindingInfo.bindingCode}`}</code></pre>
+                  </div>
+                </div>
                 <p>
                   The bot will acknowledge the binding and start relaying contract events for{' '}
                   <code className={`${text.mono} text-xs`}>{bindingInfo.templAddress}</code>.

@@ -99,7 +99,7 @@ The backend (`backend/src`) is a Node 22 Express app designed to run as a long-l
 
 - Providing `TELEGRAM_BOT_TOKEN` enables delivery. Omitting it keeps all contract flows operational while disabling notifications.
 - Chat IDs (positive for direct chats, negative for supergroups) live in persistence; only the backend sees them. Clients receive binding codes instead of raw IDs.
-- Rebinding requires the current priest to sign a typed request. The backend revokes the previous binding immediately and listens for the new chat to post `templ <code>`.
+- Rebinding requires the current priest to sign a typed request. The backend revokes the previous binding immediately and listens for the new chat to issue `/templ <code>` or trigger the `startgroup` deep link.
 - Messages use MarkdownV2 formatting, include deep links derived from `APP_BASE_URL`, and are resilient to transient Telegram errors (failures are logged, not fatal).
 
 ---

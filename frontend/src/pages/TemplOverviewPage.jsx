@@ -222,7 +222,7 @@ export function TemplOverviewPage({
       if (result?.priest) {
         setCurrentPriest(String(result.priest).toLowerCase());
       }
-      pushMessage?.('Binding code issued. Post it in your Telegram group to finish the rebind.');
+      pushMessage?.('Binding code issued. Use the start link or /templ command in your Telegram group to finish the rebind.');
       refreshTempls?.();
     } catch (err) {
       const message = err?.message || 'Failed to request binding code';
@@ -234,6 +234,12 @@ export function TemplOverviewPage({
   };
 
   const sanitizedHomeLink = sanitizeLink(templRecord?.templHomeLink);
+  const bindingStartLink = useMemo(() => {
+    if (!bindingCode) return null;
+    const trimmedCode = String(bindingCode).trim();
+    if (!trimmedCode) return null;
+    return `https://t.me/templfunbot?startgroup=${encodeURIComponent(trimmedCode)}`;
+  }, [bindingCode]);
   const nowSeconds = Math.floor(Date.now() / 1000);
 
   const handleQuickVote = useCallback(async (proposalId, support) => {
@@ -377,10 +383,23 @@ export function TemplOverviewPage({
               <p>
                 Invite{' '}
                 <a className="text-primary underline" href="https://t.me/templfunbot" target="_blank" rel="noreferrer">@templfunbot</a>{' '}
-                to your Telegram group and post this message to confirm the new chat.
+                to your Telegram group. After it joins, either tap the start link below or send the highlighted command so the bot can read the binding code without needing admin access.
               </p>
-              <pre className={surface.codeBlock}><code>{`templ ${bindingCode}`}</code></pre>
-              <p>The bot will acknowledge the binding and resume notifications in the new chat.</p>
+              <div className="space-y-3">
+                <a
+                  className="inline-flex items-center gap-2 rounded border border-primary px-3 py-2 text-primary hover:bg-primary/10"
+                  href={bindingStartLink || undefined}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Use start link in Telegram
+                </a>
+                <div>
+                  <p className="mb-1">Or post this command in the group:</p>
+                  <pre className={surface.codeBlock}><code>{`/templ ${bindingCode}`}</code></pre>
+                </div>
+              </div>
+              <p>The bot replies once the bridge is active.</p>
             </>
           ) : (
             <p>This templ is not linked to a Telegram chat. Request a binding code to connect one.</p>

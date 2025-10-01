@@ -132,11 +132,11 @@ This guide walks through the production deployment of templ on Cloudflare. The b
 
 ## 7. Bind Telegram notifications
 
-1. Invite `@templfunbot` to the production chat and grant it permission to read messages and send posts.
-2. Send the binding code provided by the backend in the chat:
+1. Invite `@templfunbot` to the production chat (no admin privileges required). Ensure members can mention bots or send commands.
+2. Inside the chat, either tap the generated `https://t.me/templfunbot?startgroup=<code>` link or send the binding command:
 
    ```
-   templ <code>
+   /templ <code>
    ```
 
 3. The Worker links the templ to the chat and replies “Telegram bridge active”. Repeat for every templ you control. Regenerate a code from the frontend whenever governance appoints a new priest or the community migrates to another chat.

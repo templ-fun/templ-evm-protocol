@@ -18,6 +18,7 @@ test.describe('Templ core workflows', () => {
     const templFactory = await factoryFactory.deploy(protocolRecipient, 1000);
     await templFactory.waitForDeployment();
     const templFactoryAddress = await templFactory.getAddress();
+    await templFactory.connect(factoryDeployer).setPermissionless(true);
 
     const tokenDeployer = await provider.getSigner(2);
     const tokenFactory = new ethers.ContractFactory(TestToken.abi, TestToken.bytecode, tokenDeployer);

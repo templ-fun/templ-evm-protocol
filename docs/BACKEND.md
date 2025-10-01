@@ -124,7 +124,7 @@ Registers a templ. Requires an EIP-712 typed signature from the priest (`buildCr
 ```
 
 When `REQUIRE_CONTRACT_VERIFY=1`, the server confirms that the address hosts bytecode and that `priest()` matches the signed address before persisting anything.
-If `telegramChatId` is omitted the response contains a `bindingCode` together with the templ metadata (including the stored `templHomeLink`). Invite `@templfunbot` to your group and post `templ <bindingCode>` once—the backend polls Telegram until it observes the code and then stores the resolved chat id.
+If `telegramChatId` is omitted the response contains a `bindingCode` together with the templ metadata (including the stored `templHomeLink`). Invite `@templfunbot` to your group and either tap the generated `https://t.me/templfunbot?startgroup=<bindingCode>` link or send `/templ <bindingCode>` once—the backend polls Telegram until it observes the command and then stores the resolved chat id.
 
 ### `POST /templs/rebind`
 
@@ -171,9 +171,9 @@ When `TELEGRAM_BOT_TOKEN` is provided, the backend creates a notifier that emits
 - `DictatorshipModeChanged` – signals when the priest gains (or relinquishes) direct execution powers.
 - `MaxMembersUpdated` – highlights membership cap changes with a call-to-action to invite new members when the limit increases.
 - Daily digest – once every 24 hours each templ receives a "gm" message summarising treasury + unclaimed member pool totals with a call-to-action to claim.
-- Binding acknowledgements – after a user posts the binding code (`templ <hash>`) in their Telegram group, the bot confirms the bridge is active.
+- Binding acknowledgements – after a user triggers the start-group link or sends `/templ <hash>` in their Telegram group, the bot confirms the bridge is active.
 
-Messages are posted with Telegram `MarkdownV2` formatting—the notifier escapes links, addresses, and labels before calling the API with `parse_mode=MarkdownV2`—so alerts can mix bold headings, monospace addresses, and deep links back to the app. If no bot token exists the backend skips delivery gracefully. When a templ is registered without a chat id, the backend issues a binding code; invite `@templfunbot` to the group and post the code once to finish the handshake.
+Messages are posted with Telegram `MarkdownV2` formatting—the notifier escapes links, addresses, and labels before calling the API with `parse_mode=MarkdownV2`—so alerts can mix bold headings, monospace addresses, and deep links back to the app. If no bot token exists the backend skips delivery gracefully. When a templ is registered without a chat id, the backend issues a binding code; invite `@templfunbot` to the group and trigger the start link or `/templ <code>` command once to finish the handshake.
 
 ## Contract watchers
 
