@@ -45,7 +45,7 @@ test.describe('Templ core workflows', () => {
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'TEMPL Control Center' })).toBeVisible();
 
-    const connectButton = page.getByRole('button', { name: 'Connect Wallet' });
+    const connectButton = page.getByRole('navigation').getByRole('button', { name: 'Connect Wallet' });
     await expect(connectButton).toBeVisible();
     await connectButton.click();
     await expect(page.getByText(/Wallet connected:/)).toBeVisible();
