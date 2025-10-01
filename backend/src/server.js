@@ -1265,3 +1265,5 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     logger.info({ port }, 'TEMPL backend listening');
   });
 }
+
+export default {};

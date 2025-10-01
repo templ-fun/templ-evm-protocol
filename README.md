@@ -10,7 +10,7 @@ Templ lets any ERC-20 community spin up a gated club with transparent economics,
 | --- | --- |
 | On-chain | `TemplFactory` deployments with configurable priest, entry fee, burn/treasury/member splits, quorum, execution delay, optional caps, and home links. Each templ wires membership, treasury, and typed-governance modules together so communities can join, vote, withdraw, or disband without bespoke code. |
 | Frontend | Static Vite + React SPA that handles templ creation, join + gifting flows, proposal creation/voting/execution, reward claims, and Telegram rebinding. |
-| Backend | Node 22 Express service that verifies typed signatures, persists templ ↔ Telegram bindings, streams contract events, and emits MarkdownV2 Telegram notifications. |
+| Backend | Node 22 Express service that verifies typed signatures, persists templ ↔ Telegram bindings in SQLite, streams contract events, and emits MarkdownV2 Telegram notifications. Designed to run as a long-lived process (Fly, Render, Railway, bare metal) with optional Redis-backed rate limiting. |
 | Shared utilities | Signing helpers, factories for typed data, and Hardhat/Vitest/Playwright harnesses that keep the stack coherent. |
 
 ## Architecture snapshot

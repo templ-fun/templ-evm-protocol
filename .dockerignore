@@ -1,10 +1,28 @@
+# General
+.git
 node_modules
 npm-debug.log
-.env
-.git
-.gitignore
-README.md
-.vscode
-.idea
-*.log
+
+# Package-specific
+backend/node_modules
+frontend/node_modules
+contracts/cache
+contracts/artifacts
+artifacts
+coverage
+coverage.json
+test-results
+cache
+backend/coverage
+frontend/coverage
+backend-test.log
+backend.test.log
+frontend/dist
+frontend/.vite-cache
+backend/e2e-groups.db
+backend/groups.db
+
+# Local env/config
+*.env
+*.local
 .DS_Store
