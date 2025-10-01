@@ -39,6 +39,8 @@ contract TemplFactory {
 
     address public immutable protocolFeeRecipient;
     uint256 public immutable protocolPercent;
+    address public immutable factoryDeployer;
+    bool public permissionless;
     address internal immutable templInitCodePointer;
 
     event TemplCreated(
@@ -58,6 +60,8 @@ contract TemplFactory {
         string homeLink
     );
 
+    event PermissionlessModeUpdated(bool enabled);
+
     /// @notice Initializes factory-wide protocol recipient and fee percent.
     /// @param _protocolFeeRecipient Address receiving the protocol share for every templ deployed.
     /// @param _protocolPercent Fee percent reserved for the protocol across all templs.
@@ -66,7 +70,18 @@ contract TemplFactory {
         if (_protocolPercent > TOTAL_PERCENT) revert TemplErrors.InvalidPercentageSplit();
         protocolFeeRecipient = _protocolFeeRecipient;
         protocolPercent = _protocolPercent;
+        factoryDeployer = msg.sender;
+        permissionless = false;
         templInitCodePointer = SSTORE2.write(type(TEMPL).creationCode);
+    }
+
+    /// @notice Toggles permissionless mode for templ creation.
+    /// @param enabled When true any address may deploy templs, otherwise only the factory deployer may do so.
+    function setPermissionless(bool enabled) external {
+        if (msg.sender != factoryDeployer) revert TemplErrors.NotFactoryDeployer();
+        if (permissionless == enabled) revert TemplErrors.PermissionlessUnchanged();
+        permissionless = enabled;
+        emit PermissionlessModeUpdated(enabled);
     }
 
     /// @notice Deploys a templ using default fee splits and quorum settings.
@@ -74,8 +89,22 @@ contract TemplFactory {
     /// @param _entryFee Entry fee denominated in `_token`.
     /// @return templAddress Address of the deployed templ.
     function createTempl(address _token, uint256 _entryFee) external returns (address templAddress) {
+        return createTemplFor(msg.sender, _token, _entryFee);
+    }
+
+    /// @notice Deploys a templ on behalf of an explicit priest using default configuration.
+    /// @param _priest Wallet that will assume the templ priest role after deployment.
+    /// @param _token ERC-20 access token for the templ.
+    /// @param _entryFee Entry fee denominated in `_token`.
+    /// @return templAddress Address of the deployed templ.
+    function createTemplFor(address _priest, address _token, uint256 _entryFee)
+        public
+        returns (address templAddress)
+    {
+        _enforceCreationAccess();
+        if (_priest == address(0)) revert TemplErrors.InvalidRecipient();
         CreateConfig memory cfg = CreateConfig({
-            priest: msg.sender,
+            priest: _priest,
             token: _token,
             entryFee: _entryFee,
             burnPercent: int256(DEFAULT_BURN_PERCENT),
@@ -95,6 +124,7 @@ contract TemplFactory {
     /// @param config Struct containing fee splits, governance settings, and defaults.
     /// @return templAddress Address of the deployed templ.
     function createTemplWithConfig(CreateConfig calldata config) external returns (address templAddress) {
+        _enforceCreationAccess();
         CreateConfig memory cfg = config;
         if (cfg.priest == address(0)) {
             cfg.priest = msg.sender;
@@ -115,7 +145,7 @@ contract TemplFactory {
     /// @param cfg Struct containing the templ deployment parameters.
     /// @return templAddress Address of the deployed templ.
     function _deploy(CreateConfig memory cfg) internal returns (address templAddress) {
-        if (cfg.token == address(0)) revert TemplErrors.InvalidRecipient();
+        if (cfg.priest == address(0) || cfg.token == address(0)) revert TemplErrors.InvalidRecipient();
         if (cfg.entryFee < 10) revert TemplErrors.EntryFeeTooSmall();
         if (cfg.entryFee % 10 != 0) revert TemplErrors.InvalidEntryFee();
         if (cfg.quorumPercent > TOTAL_PERCENT) revert TemplErrors.InvalidPercentage();
@@ -190,6 +220,13 @@ contract TemplFactory {
     ) internal view {
         if (_burnPercent + _treasuryPercent + _memberPoolPercent + protocolPercent != TOTAL_PERCENT) {
             revert TemplErrors.InvalidPercentageSplit();
+        }
+    }
+
+    /// @dev Ensures templ creation calls respect the permissionless flag.
+    function _enforceCreationAccess() internal view {
+        if (!permissionless && msg.sender != factoryDeployer) {
+            revert TemplErrors.FactoryAccessRestricted();
         }
     }
 }

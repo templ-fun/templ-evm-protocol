@@ -56,7 +56,8 @@ This guide walks through the production deployment of templ on Cloudflare. The b
    ```
 
    The deployment helper prints the protocol share in basis points—reuse that exact value when calling `hardhat verify`.
-5. All future templ instances should be minted through the app (section 6). The frontend prompts the connected wallet for token, entry-fee, and split details, then routes the deployment through the trusted factory so every templ inherits the verified bytecode.
+5. By default the factory only accepts templ creations from the deployer. When you are ready to open deployments to any wallet, call `setPermissionless(true)` from the deployer account; the transaction emits `PermissionlessModeUpdated(true)` and flips the flag permanently until you send another transaction to disable it. Every templ minted through the factory inherits the deploy-time protocol recipient and fee percent—those values are immutable for the lifetime of the factory and all templs it spawns, so creators cannot override them when calling `createTemplFor`/`createTempl`/`createTemplWithConfig`. Use `createTemplFor(priest, token, entryFee)` when the deployer is minting a templ on behalf of another wallet; the convenience wrapper `createTempl(token, entryFee)` simply forwards the caller as the priest.
+6. All future templ instances should be minted through the app (section 6). The frontend prompts the connected wallet for token, entry-fee, and split details, then routes the deployment through the trusted factory so every templ inherits the verified bytecode.
 
 ## 3. Provision Cloudflare resources
 

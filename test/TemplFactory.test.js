@@ -342,14 +342,103 @@ describe("TemplFactory", function () {
         const templ = await ethers.getContractAt("TEMPL", templAddress);
 
         expect(await templ.priest()).to.equal(deployer.address);
-        expect(await templ.burnPercent()).to.equal(BigInt(pct(30)));
-        expect(await templ.treasuryPercent()).to.equal(BigInt(pct(30)));
-        expect(await templ.memberPoolPercent()).to.equal(BigInt(pct(30)));
-        expect(await templ.protocolPercent()).to.equal(BigInt(pct(10)));
-        expect(await templ.quorumPercent()).to.equal(BigInt(pct(33)));
+    expect(await templ.burnPercent()).to.equal(BigInt(pct(30)));
+    expect(await templ.treasuryPercent()).to.equal(BigInt(pct(30)));
+    expect(await templ.memberPoolPercent()).to.equal(BigInt(pct(30)));
+    expect(await templ.protocolFeeRecipient()).to.equal(protocolRecipient.address);
+    expect(await templ.protocolPercent()).to.equal(BigInt(pct(10)));
+    expect(await templ.quorumPercent()).to.equal(BigInt(pct(33)));
         expect(await templ.executionDelayAfterQuorum()).to.equal(7 * 24 * 60 * 60);
         expect(await templ.burnAddress()).to.equal("0x000000000000000000000000000000000000dEaD");
     });
+
+    it("allows templ creation for a delegated priest", async function () {
+        const [deployer, delegatedPriest, protocolRecipient] = await ethers.getSigners();
+        const token = await deployToken("Delegated", "DLG");
+
+        const Factory = await ethers.getContractFactory("TemplFactory");
+        const factory = await Factory.deploy(protocolRecipient.address, pct(10));
+        await factory.waitForDeployment();
+
+        const templAddress = await factory.createTemplFor.staticCall(
+            delegatedPriest.address,
+            await token.getAddress(),
+            ENTRY_FEE
+        );
+        const tx = await factory.createTemplFor(delegatedPriest.address, await token.getAddress(), ENTRY_FEE);
+        const receipt = await tx.wait();
+
+        const templ = await ethers.getContractAt("TEMPL", templAddress);
+        expect(await templ.priest()).to.equal(delegatedPriest.address);
+
+        const templCreated = receipt.logs
+            .map((log) => {
+                try {
+                    return factory.interface.parseLog(log);
+                } catch (_) {
+                    return null;
+                }
+            })
+            .find((log) => log && log.name === "TemplCreated");
+
+        expect(templCreated.args.creator).to.equal(deployer.address);
+        expect(templCreated.args.priest).to.equal(delegatedPriest.address);
+    });
+
+  it("reuses the immutable protocol configuration for every templ", async function () {
+    const [, priest, protocolRecipient] = await ethers.getSigners();
+    const tokenA = await deployToken("Immutable", "IMM");
+    const tokenB = await deployToken("ImmutableTwo", "IM2");
+
+    const Factory = await ethers.getContractFactory("TemplFactory");
+    const protocolPercent = pct(12);
+    const factory = await Factory.deploy(protocolRecipient.address, protocolPercent);
+    await factory.waitForDeployment();
+
+    const firstConfig = {
+      priest: priest.address,
+      token: await tokenA.getAddress(),
+      entryFee: ENTRY_FEE,
+      burnPercent: pct(24),
+      treasuryPercent: pct(36),
+      memberPoolPercent: pct(28),
+      quorumPercent: pct(40),
+      executionDelaySeconds: 5 * 24 * 60 * 60,
+      burnAddress: ethers.ZeroAddress,
+      priestIsDictator: false,
+      maxMembers: 0,
+      homeLink: "",
+    };
+
+    const secondConfig = {
+      priest: priest.address,
+      token: await tokenB.getAddress(),
+      entryFee: ENTRY_FEE * 2n,
+      burnPercent: pct(26),
+      treasuryPercent: pct(34),
+      memberPoolPercent: pct(28),
+      quorumPercent: pct(35),
+      executionDelaySeconds: 9 * 24 * 60 * 60,
+      burnAddress: ethers.ZeroAddress,
+      priestIsDictator: true,
+      maxMembers: 50,
+      homeLink: "https://templ.fun/immutability",
+    };
+
+    const firstTemplAddress = await factory.createTemplWithConfig.staticCall(firstConfig);
+    await (await factory.createTemplWithConfig(firstConfig)).wait();
+
+    const secondTemplAddress = await factory.createTemplWithConfig.staticCall(secondConfig);
+    await (await factory.createTemplWithConfig(secondConfig)).wait();
+
+    const firstTempl = await ethers.getContractAt("TEMPL", firstTemplAddress);
+    const secondTempl = await ethers.getContractAt("TEMPL", secondTemplAddress);
+
+    expect(await firstTempl.protocolFeeRecipient()).to.equal(protocolRecipient.address);
+    expect(await secondTempl.protocolFeeRecipient()).to.equal(protocolRecipient.address);
+    expect(await firstTempl.protocolPercent()).to.equal(BigInt(protocolPercent));
+    expect(await secondTempl.protocolPercent()).to.equal(BigInt(protocolPercent));
+  });
 
     it("reverts when deployed with zero protocol recipient", async function () {
         const Factory = await ethers.getContractFactory("TemplFactory");
@@ -378,6 +467,19 @@ describe("TemplFactory", function () {
             factory,
             "InvalidRecipient"
         );
+    });
+
+    it("reverts when delegated priest address is zero", async function () {
+        const [, , protocolRecipient] = await ethers.getSigners();
+        const token = await deployToken("ZeroPriest", "ZP");
+
+        const Factory = await ethers.getContractFactory("TemplFactory");
+        const factory = await Factory.deploy(protocolRecipient.address, pct(10));
+        await factory.waitForDeployment();
+
+        await expect(
+            factory.createTemplFor(ethers.ZeroAddress, await token.getAddress(), ENTRY_FEE)
+        ).to.be.revertedWithCustomError(factory, "InvalidRecipient");
     });
 
     it("reverts when creating templ with entry fee below minimum", async function () {
@@ -520,5 +622,65 @@ describe("TemplFactory", function () {
             .to.be.revertedWithCustomError(factory, "DeploymentFailed");
 
         await ethers.provider.send("hardhat_setCode", [pointer, originalCode]);
+    });
+
+    it("restricts templ creation to the deployer until permissionless mode is enabled", async function () {
+        const [deployer, outsider, protocolRecipient] = await ethers.getSigners();
+        const token = await deployToken("Access", "ACC");
+        const Factory = await ethers.getContractFactory("TemplFactory");
+        const factory = await Factory.deploy(protocolRecipient.address, pct(10));
+        await factory.waitForDeployment();
+
+        const tokenAddress = await token.getAddress();
+        await expect(
+            factory.connect(outsider).createTempl(tokenAddress, ENTRY_FEE)
+        ).to.be.revertedWithCustomError(factory, "FactoryAccessRestricted");
+
+        const config = {
+            priest: deployer.address,
+            token: tokenAddress,
+            entryFee: ENTRY_FEE,
+            burnPercent: pct(30),
+            treasuryPercent: pct(30),
+            memberPoolPercent: pct(30),
+            quorumPercent: pct(33),
+            executionDelaySeconds: 7 * 24 * 60 * 60,
+            burnAddress: ethers.ZeroAddress,
+            priestIsDictator: false,
+            maxMembers: 0,
+            homeLink: "",
+        };
+
+        await expect(
+            factory.connect(outsider).createTemplWithConfig(config)
+        ).to.be.revertedWithCustomError(factory, "FactoryAccessRestricted");
+
+        await expect(factory.connect(outsider).setPermissionless(true)).to.be.revertedWithCustomError(
+            factory,
+            "NotFactoryDeployer"
+        );
+
+        await expect(factory.setPermissionless(true))
+            .to.emit(factory, "PermissionlessModeUpdated")
+            .withArgs(true);
+
+        expect(await factory.permissionless()).to.equal(true);
+
+        const templAddress = await factory
+            .connect(outsider)
+            .createTemplWithConfig.staticCall(config);
+        await factory.connect(outsider).createTemplWithConfig(config);
+
+        const templ = await ethers.getContractAt("TEMPL", templAddress);
+        expect(await templ.priest()).to.equal(deployer.address);
+
+        await expect(factory.setPermissionless(true)).to.be.revertedWithCustomError(
+            factory,
+            "PermissionlessUnchanged"
+        );
+
+        await expect(factory.setPermissionless(false))
+            .to.emit(factory, "PermissionlessModeUpdated")
+            .withArgs(false);
     });
 });
