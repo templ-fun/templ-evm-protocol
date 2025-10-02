@@ -216,7 +216,18 @@ export async function deployTempl({
     txOptions
   });
 
-  return { templAddress };
+  let registration = null;
+  try {
+    registration = await autoRegisterTemplBackend({
+      templAddress,
+      backendUrl,
+      templHomeLink
+    });
+  } catch (err) {
+    console.warn('[templ] Auto registration failed', err);
+  }
+
+  return { templAddress, registration };
 }
 
 export async function requestTemplRebindBackend({
@@ -269,6 +280,21 @@ export async function requestTemplRebindBackend({
   if (!res.ok) {
     const body = await res.text().catch(() => '');
     throw new Error(`Rebind failed: ${res.status} ${res.statusText} ${body}`.trim());
+  }
+  return res.json();
+}
+
+export async function autoRegisterTemplBackend({ templAddress, backendUrl = BACKEND_URL }) {
+  if (!templAddress) {
+    throw new Error('autoRegisterTemplBackend requires templAddress');
+  }
+  const payload = {
+    contractAddress: templAddress
+  };
+  const res = await postJson(`${backendUrl}/templs/auto`, payload);
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Templ auto registration failed: ${res.status} ${res.statusText} ${body}`.trim());
   }
   return res.json();
 }

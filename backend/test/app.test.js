@@ -45,7 +45,8 @@ function ensureContractState(contractState, key) {
   const state = {
     priestAddress: typeof existing === 'string' ? existing : null,
     activeProposals: new Map(),
-    snapshots: new Map()
+    snapshots: new Map(),
+    homeLink: ''
   };
   contractState.set(key, state);
   return state;
@@ -65,6 +66,10 @@ function createTestConnectContract(handlerRegistry, contractState = new Map()) {
             const nextPriest = newPriest ? String(newPriest).toLowerCase() : null;
             entry.priestAddress = nextPriest;
             state.priestAddress = nextPriest;
+          }
+          if (event === 'TemplHomeLinkUpdated') {
+            const [, newLink] = args;
+            state.homeLink = newLink ? String(newLink) : state.homeLink;
           }
           if (event === 'ProposalCreated') {
             const [id,, endTime, titleArg, descriptionArg] = args;
@@ -96,6 +101,9 @@ function createTestConnectContract(handlerRegistry, contractState = new Map()) {
       },
       async priest() {
         return state.priestAddress;
+      },
+      async templHomeLink() {
+        return state.homeLink || '';
       },
       async getProposal(id) {
         const keyStr = String(id);
@@ -132,20 +140,37 @@ function createTestConnectContract(handlerRegistry, contractState = new Map()) {
 }
 
 function createTestProvider(contractState) {
-  const iface = new Interface(['function priest() view returns (address)']);
-  const encodedPriestCall = iface.encodeFunctionData('priest');
+  const iface = new Interface([
+    'function priest() view returns (address)',
+    'function templHomeLink() view returns (string)'
+  ]);
   return {
     async call({ to, data }) {
-      if (data !== encodedPriestCall) {
+      let parsed;
+      try {
+        parsed = iface.parseTransaction({ data });
+      } catch {
         return '0x';
       }
       const key = String(to || '').toLowerCase();
       const stored = contractState.get(key);
-      const priestAddress = stored && typeof stored === 'object' && stored !== null
-        ? stored.priestAddress
-        : stored;
-      const response = priestAddress ? getAddress(priestAddress) : ZeroAddress;
-      return iface.encodeFunctionResult('priest', [response]);
+      if (!stored || typeof stored !== 'object') {
+        if (parsed?.name === 'priest') {
+          return iface.encodeFunctionResult('priest', [ZeroAddress]);
+        }
+        if (parsed?.name === 'templHomeLink') {
+          return iface.encodeFunctionResult('templHomeLink', ['']);
+        }
+        return '0x';
+      }
+      if (parsed?.name === 'priest') {
+        const priestAddress = stored.priestAddress ? getAddress(stored.priestAddress) : ZeroAddress;
+        return iface.encodeFunctionResult('priest', [priestAddress]);
+      }
+      if (parsed?.name === 'templHomeLink') {
+        return iface.encodeFunctionResult('templHomeLink', [stored.homeLink || '']);
+      }
+      return '0x';
     },
     async getNetwork() {
       return { chainId: 1337 };
@@ -173,6 +198,13 @@ async function registerTempl(app, wallet, { telegramChatId = '12345', templHomeL
   const contractAddress = wallet.address;
   const typed = buildCreateTypedData({ chainId: 1337, contractAddress: contractAddress.toLowerCase() });
   const signature = await wallet.signTypedData(typed.domain, typed.types, typed.message);
+  if (options.contractState) {
+    const state = ensureContractState(options.contractState, contractAddress.toLowerCase());
+    state.priestAddress = wallet.address.toLowerCase();
+    if (templHomeLink) {
+      state.homeLink = templHomeLink;
+    }
+  }
   const res = await request(app)
     .post('/templs')
     .send({
@@ -188,10 +220,6 @@ async function registerTempl(app, wallet, { telegramChatId = '12345', templHomeL
     });
   assert.equal(res.status, 200);
   const contractKey = contractAddress.toLowerCase();
-  if (options.contractState) {
-    const state = ensureContractState(options.contractState, contractKey);
-    state.priestAddress = wallet.address.toLowerCase();
-  }
   return { contractAddress: contractAddress.toLowerCase(), response: res.body };
 }
 
@@ -433,6 +461,31 @@ test('register templ without chat id issues binding code', async (t) => {
   assert.ok(mappingRow, 'templ persisted without chat');
   assert.equal(mappingRow.telegramChatId, null);
   assert.equal(mappingRow.bindingCode, response.bindingCode);
+});
+
+test('auto registration persists templ without requiring signature', async (t) => {
+  const { app, persistence, contractState } = await makeApp();
+  t.after(async () => {
+    await app.close?.();
+  });
+
+  const wallet = Wallet.createRandom();
+  const contractKey = wallet.address.toLowerCase();
+  const state = ensureContractState(contractState, contractKey);
+  state.priestAddress = contractKey;
+  state.homeLink = 'https://auto.link';
+
+  const res = await request(app)
+    .post('/templs/auto')
+    .send({ contractAddress: wallet.address });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.contract, contractKey);
+  assert.equal(res.body.priest, contractKey);
+  assert.equal(res.body.templHomeLink, 'https://auto.link');
+
+  const bindings = await persistence.listBindings();
+  const row = bindings.find((item) => item.contract === contractKey);
+  assert.ok(row, 'templ persisted after auto registration');
 });
 
 test('signature replay rejected after restart with shared store', async (t) => {

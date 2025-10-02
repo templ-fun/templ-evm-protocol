@@ -1,4 +1,5 @@
 import express from 'express';
+import { ethers } from 'ethers';
 import { requireAddresses, verifyTypedSignature } from '../middleware/validate.js';
 import { buildCreateTypedData, buildRebindTypedData } from '../../../shared/signing.js';
 import { logger } from '../logger.js';
@@ -142,5 +143,76 @@ export default function templsRouter({ templs, persist, provider, watchContract,
     }
   );
 
+  router.post(
+    '/templs/auto',
+    requireAddresses(['contractAddress']),
+    async (req, res) => {
+      try {
+        if (!provider) {
+          return res.status(500).json({ error: 'Backend provider unavailable' });
+        }
+
+        const contractAddress = normaliseAddress(req.body.contractAddress);
+
+        const contract = new ethers.Contract(
+          contractAddress,
+          ['function priest() view returns (address)', 'function templHomeLink() view returns (string)'],
+          provider
+        );
+        let priestAddress;
+        try {
+          priestAddress = await contract.priest();
+        } catch (err) {
+          logger.error({ err, contractAddress }, 'Failed to load priest() from templ during auto registration');
+          return res.status(400).json({ error: 'Unable to resolve templ priest on-chain' });
+        }
+
+        let homeLink = '';
+        try {
+          homeLink = await contract.templHomeLink();
+        } catch (err) {
+          logger.warn({ err, contractAddress }, 'templHomeLink() unavailable on templ');
+        }
+
+        const chain = await provider.getNetwork?.();
+        const chainId = chain?.chainId != null ? Number(chain.chainId) : undefined;
+
+        const result = await registerTempl(
+          {
+            contractAddress,
+            priestAddress,
+            templHomeLink: homeLink,
+            chainId
+          },
+          {
+            provider,
+            logger,
+            templs,
+            persist,
+            watchContract,
+            findBinding
+          }
+        );
+
+        const { templ, bindingCode } = result;
+        res.json({
+          contract: templ.contract,
+          priest: templ.priest,
+          telegramChatId: templ.telegramChatId,
+          templHomeLink: homeLink,
+          bindingCode
+        });
+      } catch (err) {
+        const status = err?.statusCode && Number.isInteger(err.statusCode) ? err.statusCode : 500;
+        logger.error({ err, body: req.body }, 'Failed to auto-register templ');
+        res.status(status).json({ error: err?.message || 'Failed to register templ' });
+      }
+    }
+  );
+
   return router;
+}
+
+function normaliseAddress(value) {
+  return value ? String(value).toLowerCase() : '';
 }

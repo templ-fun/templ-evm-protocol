@@ -341,7 +341,7 @@ export function CreateTemplPage({
     setSubmitting(true);
     pushMessage?.('Deploying templ…');
     try {
-      const { templAddress } = await deployTempl({
+      const { templAddress, registration } = await deployTempl({
         ethers,
         signer,
         walletAddress,
@@ -360,13 +360,15 @@ export function CreateTemplPage({
         templHomeLink: homeLink || undefined
       });
       pushMessage?.(`Templ deployed at ${templAddress}`);
-      pushMessage?.('Backend is syncing the new templ. This typically finishes within a few seconds.');
+      if (!registration) {
+        pushMessage?.('Templ registered. Telegram binding becomes available once the backend finishes syncing.');
+      }
       setBindingInfo({
         templAddress,
-        bindingCode: null,
-        telegramChatId: null,
-        templHomeLink: homeLink || '',
-        priest: walletAddress
+        bindingCode: registration?.bindingCode || null,
+        telegramChatId: registration?.telegramChatId || null,
+        templHomeLink: registration?.templHomeLink || homeLink || '',
+        priest: registration?.priest || walletAddress
       });
       refreshTempls?.();
     } catch (err) {
