@@ -29,7 +29,7 @@ async function ensureRecordLoaded(contract, context) {
   }
   record = {
     telegramChatId: persisted.telegramChatId ?? null,
-    priest: persisted.priest ? String(persisted.priest).toLowerCase() : null,
+    priest: null,
     templHomeLink: '',
     proposalsMeta: new Map(),
     lastDigestAt: 0,

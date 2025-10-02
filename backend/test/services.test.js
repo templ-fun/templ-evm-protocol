@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import { Interface } from 'ethers';
 import { registerTempl } from '../src/services/registerTempl.js';
 import { joinTempl } from '../src/services/joinTempl.js';
 import { requestTemplRebind } from '../src/services/requestTemplRebind.js';
@@ -147,7 +148,20 @@ test('requestTemplRebind restores templs with zeroed lastDigestAt by default', a
       return { contract, priest, telegramChatId: null, bindingCode: null };
     },
     persist: async () => {},
-    logger: { info: () => {}, warn: () => {}, error: () => {} }
+    logger: { info: () => {}, warn: () => {}, error: () => {} },
+    provider: {
+      async getNetwork() {
+        return { chainId: 1337 };
+      },
+      async call({ to, data }) {
+        const iface = new Interface(['function priest() view returns (address)']);
+        const key = String(to || '').toLowerCase();
+        if (key !== contract) return '0x';
+        const decoded = iface.decodeFunctionData('priest', data);
+        if (!decoded) return '0x';
+        return iface.encodeFunctionResult('priest', [priest]);
+      }
+    }
   };
 
   await requestTemplRebind(

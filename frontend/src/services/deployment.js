@@ -193,6 +193,7 @@ export async function deployTempl({
   quorumPercent,
   maxMembers,
   priestIsDictator,
+  backendUrl = BACKEND_URL,
   templHomeLink,
   txOptions = {}
 }) {
@@ -220,8 +221,7 @@ export async function deployTempl({
   try {
     registration = await autoRegisterTemplBackend({
       templAddress,
-      backendUrl,
-      templHomeLink
+      backendUrl
     });
   } catch (err) {
     console.warn('[templ] Auto registration failed', err);

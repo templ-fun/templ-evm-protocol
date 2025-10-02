@@ -77,7 +77,7 @@ For production runs set `SQLITE_DB_PATH` to a directory backed by durable storag
 
 SQLite (referenced by `SQLITE_DB_PATH`) stores:
 
-- `templ_bindings(contract TEXT PRIMARY KEY, telegramChatId TEXT, priest TEXT, bindingCode TEXT)` – durable mapping between templ contracts and their optional Telegram chats plus the last-seen priest address. Multiple templs may point at the same `telegramChatId` when a community prefers a shared announcement channel. `bindingCode` stores any outstanding binding snippet so servers can restart without invalidating it. Rows keep `telegramChatId = NULL` until a binding completes so watchers can resume after restarts without leaking chat ids.
+- `templ_bindings(contract TEXT PRIMARY KEY, telegramChatId TEXT, bindingCode TEXT)` – durable mapping between templ contracts and their optional Telegram chats. Multiple templs may point at the same `telegramChatId` when a community prefers a shared announcement channel. `bindingCode` stores any outstanding binding snippet so servers can restart without invalidating it. Rows keep `telegramChatId = NULL` until a binding completes so watchers can resume after restarts without leaking chat ids.
 - `used_signatures(signature TEXT PRIMARY KEY, expiresAt INTEGER)` – replay protection for typed requests. Entries expire automatically (6 hour retention) and fall back to the in-memory cache only when persistent storage is unavailable.
 - `leader_election(id TEXT PRIMARY KEY, owner TEXT, expiresAt INTEGER)` – coordinates which backend instance currently holds the notification lease. Only the owning instance streams Telegram events and runs interval jobs; other replicas stay idle until the lease expires.
 
@@ -95,7 +95,7 @@ Providing both `RPC_URL` and `TRUSTED_FACTORY_ADDRESS` enables an indexer that t
 
 ### `GET /templs`
 
-Returns the list of registered templs. Chat identifiers are never exposed; requests with `?include=chatId`/`groupId` return `403` to deter scraping. Provide `?include=homeLink` (or `links`) to surface the stored templ home link alongside contract/priest metadata.
+Returns the list of registered templs. Chat identifiers are never exposed; requests with `?include=chatId`/`groupId` return `403` to deter scraping. Provide `?include=homeLink` (or `links`) to surface the on-chain `templHomeLink` alongside contract/priest metadata.
 
 ```json
 {
@@ -113,16 +113,15 @@ Returns the list of registered templs. Chat identifiers are never exposed; reque
 
 ### `POST /templs`
 
-Manually registers a templ. Requires an EIP-712 typed signature from the priest (`buildCreateTypedData`). Optional `telegramChatId` seeds an existing Telegram binding and `templHomeLink` lets deployers publish the canonical landing page immediately.
+Manually registers a templ. Requires an EIP-712 typed signature from the priest (`buildCreateTypedData`). Optional `telegramChatId` seeds an existing Telegram binding. The backend queries the contract for the current priest and canonical home link before persisting anything, so no additional metadata is required.
 
-When `TRUSTED_FACTORY_ADDRESS` is set, the backend already listens for `TemplCreated` events and calls this service internally, so deployers do not need to hit this endpoint after creating a templ. Keep the route enabled for advanced recovery scenarios (for example, backfilling templs deployed before the indexer was configured).
+When `TRUSTED_FACTORY_ADDRESS` is set, the backend already listens for `TemplCreated` events. Deployment tooling can also call [`POST /templs/auto`](#post-templsauto) to register without an extra wallet prompt. Keep the signed route enabled for advanced recovery scenarios (for example, backfilling templs deployed before the indexer was configured).
 
 ```json
 {
   "contractAddress": "0xabc…",
   "priestAddress": "0xdef…",
   "telegramChatId": "-100123456",
-  "templHomeLink": "https://example.com",
   "chainId": 8453,
   "signature": "0x…",
   "nonce": 1700000000000,
@@ -132,7 +131,11 @@ When `TRUSTED_FACTORY_ADDRESS` is set, the backend already listens for `TemplCre
 ```
 
 When `REQUIRE_CONTRACT_VERIFY=1`, the server confirms that the address hosts bytecode and that `priest()` matches the signed address before persisting anything.
-If `telegramChatId` is omitted the response contains a `bindingCode` together with the templ metadata (including the stored `templHomeLink`). Invite `@templfunbot` to your group and either tap the generated `https://t.me/templfunbot?startgroup=<bindingCode>` link or send `/templ <bindingCode>` once—the backend polls Telegram until it observes the command and then stores the resolved chat id.
+If `telegramChatId` is omitted the response contains a `bindingCode` together with the templ metadata. Invite `@templfunbot` to your group and either tap the generated `https://t.me/templfunbot?startgroup=<bindingCode>` link or send `/templ <bindingCode>` once—the backend polls Telegram until it observes the command and then stores the resolved chat id.
+
+### `POST /templs/auto`
+
+Registers a templ without requesting a new wallet signature. The backend resolves `priest()` and `templHomeLink()` from the contract, persists the Telegram binding (plus any pending `bindingCode`), and returns the same payload shape as the signed route. Use this from deployment flows immediately after a successful `createTempl` transaction.
 
 ### `POST /templs/rebind`
 

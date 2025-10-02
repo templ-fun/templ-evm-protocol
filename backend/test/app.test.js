@@ -219,7 +219,6 @@ async function registerTempl(app, wallet, { telegramChatId = '12345', templHomeL
       expiry: typed.message.expiry
     });
   assert.equal(res.status, 200);
-  const contractKey = contractAddress.toLowerCase();
   return { contractAddress: contractAddress.toLowerCase(), response: res.body };
 }
 
