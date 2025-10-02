@@ -77,7 +77,7 @@ For production runs set `SQLITE_DB_PATH` to a directory backed by durable storag
 
 SQLite (referenced by `SQLITE_DB_PATH`) stores:
 
-- `templ_bindings(contract TEXT PRIMARY KEY, telegramChatId TEXT UNIQUE, priest TEXT, bindingCode TEXT)` – durable mapping between templ contracts and their optional Telegram chats plus the last-seen priest address. `bindingCode` stores any outstanding binding snippet so servers can restart without invalidating it. Rows keep `telegramChatId = NULL` until a binding completes so watchers can resume after restarts without leaking chat ids.
+- `templ_bindings(contract TEXT PRIMARY KEY, telegramChatId TEXT, priest TEXT, bindingCode TEXT)` – durable mapping between templ contracts and their optional Telegram chats plus the last-seen priest address. Multiple templs may point at the same `telegramChatId` when a community prefers a shared announcement channel. `bindingCode` stores any outstanding binding snippet so servers can restart without invalidating it. Rows keep `telegramChatId = NULL` until a binding completes so watchers can resume after restarts without leaking chat ids.
 - `used_signatures(signature TEXT PRIMARY KEY, expiresAt INTEGER)` – replay protection for typed requests. Entries expire automatically (6 hour retention) and fall back to the in-memory cache only when persistent storage is unavailable.
 - `leader_election(id TEXT PRIMARY KEY, owner TEXT, expiresAt INTEGER)` – coordinates which backend instance currently holds the notification lease. Only the owning instance streams Telegram events and runs interval jobs; other replicas stay idle until the lease expires.
 
