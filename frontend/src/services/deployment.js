@@ -1,6 +1,6 @@
 // @ts-check
 import { BACKEND_URL } from '../config.js';
-import { buildCreateTypedData, buildRebindTypedData } from '../../../shared/signing.js';
+import { buildRebindTypedData } from '../../../shared/signing.js';
 import { addToTestRegistry, dlog } from './utils.js';
 import { postJson } from './http.js';
 
@@ -97,22 +97,71 @@ async function deployContract({
   const receipt = await tx.wait();
 
   if (!templAddress) {
-    const iface = factory.interface || new ethers.Interface(factoryArtifact.abi);
-    for (const log of receipt.logs || []) {
-      try {
-        const parsed = iface.parseLog(log);
-        if (parsed?.name === 'TemplCreated' && parsed.args?.templ) {
-          templAddress = parsed.args.templ;
-          break;
+    const templCreatedTopics = [
+      'TemplCreated(address,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,address,bool,uint256,string)',
+      'TemplCreated(address,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,address,bool,uint256)'
+    ].map((signature) => ethers.id(signature).toLowerCase());
+
+    const factoryAddressLower = factoryAddress?.toLowerCase?.() ?? '';
+
+    const topicToAddress = (topic) => {
+      if (typeof topic !== 'string' || topic.length !== 66) {
+        throw new Error('invalid topic');
+      }
+      return ethers.getAddress(`0x${topic.slice(26)}`);
+    };
+
+    const parseLogs = (logs = []) => {
+      for (const log of logs) {
+        if (!log) continue;
+        const logAddress = (log.address || '').toLowerCase();
+        if (factoryAddressLower && logAddress !== factoryAddressLower) {
+          continue;
         }
-      } catch {
-        /* ignore unrelated logs */
+        const topics = Array.isArray(log.topics) ? log.topics : [];
+        if (topics.length < 2) {
+          continue;
+        }
+        const topic0 = (topics[0] || '').toLowerCase();
+        const matchesKnownSignature = templCreatedTopics.includes(topic0);
+        if (!matchesKnownSignature && topics.length < 2) {
+          continue;
+        }
+        try {
+          const candidate = topicToAddress(topics[1]);
+          templAddress = candidate;
+          return true;
+        } catch {
+          /* ignore parse errors */
+        }
+      }
+      return false;
+    };
+
+    if (!parseLogs(receipt?.logs || [])) {
+      try {
+        const provider = signer?.provider;
+        const blockHash = receipt?.blockHash;
+        if (provider?.getLogs && blockHash) {
+          const fallbackLogs = await provider.getLogs({
+            address: factoryAddress,
+            blockHash
+          });
+          parseLogs(
+            fallbackLogs.filter((log) => !log?.transactionHash || log.transactionHash === tx.hash)
+          );
+        }
+      } catch (err) {
+        console.warn('[templ] Failed to recover templ address from provider logs', err);
       }
     }
   }
 
   if (!templAddress) {
-    throw new Error('Templ deployment succeeded but the contract address was not returned. Check the transaction receipt for TemplCreated.');
+    const txHash = tx?.hash || receipt?.transactionHash || 'unknown';
+    throw new Error(
+      `Templ deployment succeeded but the contract address was not returned. Check the transaction receipt for TemplCreated (tx: ${txHash}).`
+    );
   }
 
   let normalized = templAddress;
@@ -126,67 +175,6 @@ async function deployContract({
   dlog('deployContract: templ deployed', normalized);
   addToTestRegistry?.(normalized);
   return normalized;
-}
-
-export async function registerTemplBackend({
-  signer,
-  walletAddress,
-  templAddress,
-  backendUrl = BACKEND_URL,
-  telegramChatId,
-  templHomeLink
-}) {
-  if (!templAddress) {
-    throw new Error('registerTemplBackend requires templAddress');
-  }
-  let priest = walletAddress;
-  if (!priest && signer?.getAddress) {
-    priest = await signer.getAddress();
-  }
-  if (!priest) {
-    throw new Error('registerTemplBackend requires priest wallet address');
-  }
-  const chain = await signer.provider?.getNetwork?.();
-  const chainId = Number(chain?.chainId || 1337);
-  const typed = buildCreateTypedData({ chainId, contractAddress: templAddress.toLowerCase() });
-  const signature = await signer.signTypedData(typed.domain, typed.types, typed.message);
-  const payload = {
-    contractAddress: templAddress,
-    priestAddress: priest,
-    signature,
-    chainId,
-    nonce: typed.message.nonce,
-    issuedAt: typed.message.issuedAt,
-    expiry: typed.message.expiry,
-    telegramChatId: telegramChatId || undefined,
-    templHomeLink: templHomeLink || undefined
-  };
-  const res = await postJson(`${backendUrl}/templs`, payload);
-  if (res.status === 409) {
-    const retryTyped = buildCreateTypedData({ chainId, contractAddress: templAddress.toLowerCase(), nonce: Date.now() });
-    const retrySig = await signer.signTypedData(retryTyped.domain, retryTyped.types, retryTyped.message);
-    const retryPayload = {
-      contractAddress: templAddress,
-      priestAddress: priest,
-      signature: retrySig,
-      chainId,
-      nonce: retryTyped.message.nonce,
-      issuedAt: retryTyped.message.issuedAt,
-      expiry: retryTyped.message.expiry,
-      telegramChatId: telegramChatId || undefined,
-      templHomeLink: templHomeLink || undefined
-    };
-    const retryRes = await postJson(`${backendUrl}/templs`, retryPayload);
-    if (!retryRes.ok) {
-      throw new Error(`Templ registration failed: ${retryRes.status} ${retryRes.statusText}`);
-    }
-    return retryRes.json();
-  }
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`Templ registration failed: ${res.status} ${res.statusText} ${body}`.trim());
-  }
-  return res.json();
 }
 
 export async function deployTempl({
@@ -206,7 +194,6 @@ export async function deployTempl({
   maxMembers,
   priestIsDictator,
   backendUrl = BACKEND_URL,
-  telegramChatId,
   templHomeLink,
   txOptions = {}
 }) {
@@ -230,14 +217,15 @@ export async function deployTempl({
     txOptions
   });
 
-  const registration = await registerTemplBackend({
-    signer,
-    walletAddress,
-    templAddress,
-    backendUrl,
-    telegramChatId,
-    templHomeLink
-  });
+  let registration = null;
+  try {
+    registration = await autoRegisterTemplBackend({
+      templAddress,
+      backendUrl
+    });
+  } catch (err) {
+    console.warn('[templ] Auto registration failed', err);
+  }
 
   return { templAddress, registration };
 }
@@ -292,6 +280,21 @@ export async function requestTemplRebindBackend({
   if (!res.ok) {
     const body = await res.text().catch(() => '');
     throw new Error(`Rebind failed: ${res.status} ${res.statusText} ${body}`.trim());
+  }
+  return res.json();
+}
+
+export async function autoRegisterTemplBackend({ templAddress, backendUrl = BACKEND_URL }) {
+  if (!templAddress) {
+    throw new Error('autoRegisterTemplBackend requires templAddress');
+  }
+  const payload = {
+    contractAddress: templAddress
+  };
+  const res = await postJson(`${backendUrl}/templs/auto`, payload);
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Templ auto registration failed: ${res.status} ${res.statusText} ${body}`.trim());
   }
   return res.json();
 }

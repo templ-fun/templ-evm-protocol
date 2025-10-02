@@ -1,5 +1,5 @@
 import { randomBytes } from 'crypto';
-import { getAddress } from 'ethers';
+import { ethers, getAddress } from 'ethers';
 import { ensureContractDeployed, ensurePriestMatchesOnChain, ensureTemplFromFactory } from './contractValidation.js';
 
 function templError(message, statusCode) {
@@ -37,15 +37,11 @@ function normaliseChatId(value) {
 
 export async function registerTempl(body, context) {
   const { contractAddress, priestAddress } = body;
-  const { provider, logger, templs, persist, watchContract, findBinding } = context;
+  const { provider, logger, templs, persist, watchContract, findBinding, skipFactoryValidation } = context;
 
   const contract = normaliseAddress(contractAddress, 'contractAddress');
   const priest = normaliseAddress(priestAddress, 'priestAddress');
   const telegramChatId = normaliseChatId(body.telegramChatId ?? body.groupId ?? body.chatId);
-  const requestedHomeLink = typeof body.templHomeLink === 'string'
-    ? body.templHomeLink
-    : (typeof body.homeLink === 'string' ? body.homeLink : '');
-
   logger?.info?.({ contract, priest, telegramChatId }, 'Register templ request received');
 
   if (shouldVerifyContracts()) {
@@ -54,7 +50,7 @@ export async function registerTempl(body, context) {
   }
 
   const trustedFactory = process.env.TRUSTED_FACTORY_ADDRESS?.trim();
-  if (trustedFactory) {
+  if (trustedFactory && !skipFactoryValidation) {
     await ensureTemplFromFactory({ provider, contractAddress: contract, factoryAddress: trustedFactory });
   }
 
@@ -83,9 +79,19 @@ export async function registerTempl(body, context) {
   existing.priest = priest;
   existing.telegramChatId = telegramChatId ?? existing.telegramChatId ?? null;
   existing.contractAddress = contract;
-  if (requestedHomeLink && requestedHomeLink !== existing.templHomeLink) {
-    existing.templHomeLink = requestedHomeLink;
+  let resolvedHomeLink = existing.templHomeLink || '';
+  if (provider) {
+    try {
+      const reader = new ethers.Contract(contract, ['function templHomeLink() view returns (string)'], provider);
+      const onchainLink = await reader.templHomeLink();
+      if (typeof onchainLink === 'string') {
+        resolvedHomeLink = onchainLink;
+      }
+    } catch (err) {
+      logger?.warn?.({ err, contract }, 'templHomeLink() unavailable during registration');
+    }
   }
+  existing.templHomeLink = resolvedHomeLink;
 
   let bindingCode = existing.bindingCode || null;
   if (!existing.telegramChatId) {
@@ -108,7 +114,7 @@ export async function registerTempl(body, context) {
       contract,
       priest,
       telegramChatId: existing.telegramChatId,
-      templHomeLink: existing.templHomeLink || ''
+      templHomeLink: resolvedHomeLink
     },
     bindingCode
   };

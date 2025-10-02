@@ -137,9 +137,9 @@ This guide promotes templ to production with a Fly-hosted backend and a Cloudfla
    # -> {"templs": []}
    ```
 
-2. Visit the production frontend, connect the priest wallet, and create a templ. The UI deploys through the trusted factory, signs the backend payload, and registers the templ immediately.
+2. Visit the production frontend, connect the priest wallet, and create a templ. When `TRUSTED_FACTORY_ADDRESS` and `RPC_URL` are configured the backend consumes the factory event and registers the templ automatically, so the deployer only signs again if they choose to bind Telegram.
 
-3. If necessary, register templs manually:
+3. If necessary (for example when backfilling historical templs or running without the factory indexer), register templs manually:
 
    ```bash
    export BACKEND_URL=https://api.templ.example
@@ -164,7 +164,33 @@ This guide promotes templ to production with a Fly-hosted backend and a Cloudfla
   npm --prefix frontend run test:e2e
   ```
 
-## 7. Final checklist
+## 7. Quick redeploy commands
+
+Keep these snippets handy for routine updates:
+
+- **Run database migrations** (before rolling out backend changes):
+
+  ```bash
+  fly ssh console -C "npm --prefix backend run migrate -- --db /var/lib/templ/templ.db"
+  ```
+
+  The migration runner executes every SQL file under `backend/migrations/` (for example `001_drop_telegram_unique.sql`) that has not been recorded in `schema_migrations`.
+
+- **Deploy the backend container** (after migrations succeed):
+
+  ```bash
+  fly deploy --config backend/fly.toml
+  ```
+
+- **Publish the frontend** (Cloudflare Pages):
+
+  ```bash
+  npm run deploy:cloudflare -- --env-file .cloudflare.env --skip-worker
+  ```
+
+Run the trio in that order whenever a release touches the schema, API, or UI.
+
+## 8. Final checklist
 
 - Contracts deployed (and optionally verified) on the target network.
 - Fly backend healthy with SQLite volume attached and required secrets set (`RPC_URL`, `APP_BASE_URL`, `BACKEND_SERVER_ID`, `TRUSTED_FACTORY_ADDRESS`, etc.).

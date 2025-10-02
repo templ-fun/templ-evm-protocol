@@ -35,8 +35,6 @@ phase "Phase 0: cloudflare deploy smoke (--skip-worker)"
 WRANGLER_BIN=./scripts/__mocks__/wrangler-success.js \
   CLOUDFLARE_API_TOKEN=test-token \
   CLOUDFLARE_ACCOUNT_ID=test-account \
-  CF_D1_DATABASE_NAME=test-d1 \
-  CF_D1_DATABASE_ID=test-d1-id \
   APP_BASE_URL=https://templ.example \
   TRUSTED_FACTORY_ADDRESS=0x0000000000000000000000000000000000000001 \
   VITE_BACKEND_URL=https://api.templ.example \
