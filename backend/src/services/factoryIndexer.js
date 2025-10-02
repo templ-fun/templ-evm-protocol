@@ -1,7 +1,7 @@
 import { ethers } from 'ethers';
 
 const FACTORY_EVENT_ABI = [
-  'event TemplCreated(address indexed templ, address indexed creator, address indexed priest, address token, uint256 entryFee, uint256 burnPercent, uint256 treasuryPercent, uint256 memberPoolPercent, uint256 quorumPercent, uint256 executionDelaySeconds, address burnAddress, bool priestIsDictator, uint256 maxMembers, string homeLink)'
+  'event TemplCreated(address indexed templ, address indexed creator, address indexed priest, address token, uint256 entryFee, uint256 burnPercent, uint256 treasuryPercent, uint256 memberPoolPercent, uint256 quorumPercent, uint256 executionDelaySeconds, address burnAddress, bool priestIsDictator, uint256 maxMembers, uint8 curvePrimaryStyle, uint32 curvePrimaryRateBps, uint8 curveSecondaryStyle, uint32 curveSecondaryRateBps, uint16 curvePivotPercentOfMax, string homeLink)'
 ];
 
 const FACTORY_INTERFACE = new ethers.Interface(FACTORY_EVENT_ABI);
@@ -136,6 +136,13 @@ export function createFactoryIndexer(options = {}) {
         templAddress,
         priestAddress: parsed?.args?.priest,
         homeLink: parsed?.args?.homeLink ?? '',
+        curve: {
+          primaryStyle: Number(parsed?.args?.curvePrimaryStyle ?? 0),
+          primaryRateBps: BigInt(parsed?.args?.curvePrimaryRateBps ?? 0),
+          secondaryStyle: Number(parsed?.args?.curveSecondaryStyle ?? 0),
+          secondaryRateBps: BigInt(parsed?.args?.curveSecondaryRateBps ?? 0),
+          pivotPercentOfMax: Number(parsed?.args?.curvePivotPercentOfMax ?? 0)
+        },
         event: parsed,
         log
       });

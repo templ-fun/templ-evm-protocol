@@ -6,6 +6,16 @@ import { button, form, layout, surface, text } from '../ui/theme.js';
 import { formatDuration } from '../ui/format.js';
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+const CURVE_STYLE_INDEX = {
+  static: 0,
+  linear: 1,
+  exponential: 2
+};
+const CURVE_STYLE_OPTIONS = [
+  { value: 'static', label: 'Static (no change)' },
+  { value: 'linear', label: 'Linear' },
+  { value: 'exponential', label: 'Exponential' }
+];
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const ACTIONS = [
@@ -18,7 +28,8 @@ export const ACTIONS = [
   { value: 'withdrawTreasury', label: 'Withdraw treasury funds' },
   { value: 'disbandTreasury', label: 'Disband treasury' },
   { value: 'updateConfig', label: 'Update templ config' },
-  { value: 'updateHomeLink', label: 'Update templ home link' }
+  { value: 'updateHomeLink', label: 'Update templ home link' },
+  { value: 'setEntryFeeCurve', label: 'Update entry fee curve' }
 ];
 
 function normalizeAddress(value, label, ethersLib) {
@@ -73,6 +84,34 @@ export function buildActionConfig(kind, params, helpers = {}) {
   const resolvedProtocolPercent = Number.isFinite(Number(protocolPercentRaw))
     ? Number(protocolPercentRaw)
     : null;
+  const resolveCurveStyleValue = (styleKey) => {
+    switch (styleKey) {
+      case 'linear':
+        return CURVE_STYLE_INDEX.linear;
+      case 'exponential':
+        return CURVE_STYLE_INDEX.exponential;
+      default:
+        return CURVE_STYLE_INDEX.static;
+    }
+  };
+  const parseCurveRate = (value, styleKey) => {
+    const parsed = Number.parseInt(String(value ?? '0'), 10);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      return 0;
+    }
+    if (styleKey === 'static') {
+      return 0;
+    }
+    return Math.min(parsed, 1_000_000);
+  };
+  const parsePivotPercent = (value) => {
+    const parsed = Number.parseFloat(String(value ?? '0'));
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return 0;
+    }
+    const clamped = Math.min(Math.max(parsed, 0), 100);
+    return Math.round(clamped * 100);
+  };
   switch (kind) {
     case 'pause':
       return { action: 'setJoinPaused', params: { paused: true } };
@@ -151,6 +190,27 @@ export function buildActionConfig(kind, params, helpers = {}) {
     case 'updateHomeLink':
       if (!params.homeLink) throw new Error('Home link is required');
       return { action: 'setHomeLink', params: { newHomeLink: params.homeLink } };
+    case 'setEntryFeeCurve': {
+      const baseEntryFee = parseBigInt(params.curveBaseEntryFee, 'base entry fee', { allowZero: false });
+      const curve = {
+        primary: {
+          style: resolveCurveStyleValue(params.curvePrimaryStyle),
+          rateBps: parseCurveRate(params.curvePrimaryRateBps, params.curvePrimaryStyle)
+        },
+        secondary: {
+          style: resolveCurveStyleValue(params.curveSecondaryStyle),
+          rateBps: parseCurveRate(params.curveSecondaryRateBps, params.curveSecondaryStyle)
+        },
+        pivotPercentOfMax: parsePivotPercent(params.curvePivotPercentOfMax)
+      };
+      return {
+        action: 'setEntryFeeCurve',
+        params: {
+          curve,
+          baseEntryFee
+        }
+      };
+    }
     default:
       throw new Error('Unsupported proposal type');
   }
@@ -184,6 +244,13 @@ export function NewProposalPage({
   const [updateBurnPercent, setUpdateBurnPercent] = useState('');
   const [updateTreasuryPercent, setUpdateTreasuryPercent] = useState('');
   const [updateMemberPercent, setUpdateMemberPercent] = useState('');
+  const [curvePrimaryStyle, setCurvePrimaryStyle] = useState('exponential');
+  const [curvePrimaryRateBps, setCurvePrimaryRateBps] = useState('11000');
+  const [curveSecondaryStyle, setCurveSecondaryStyle] = useState('static');
+  const [curveSecondaryRateBps, setCurveSecondaryRateBps] = useState('0');
+  const [curvePivotPercentOfMax, setCurvePivotPercentOfMax] = useState('0');
+  const [curveUpdateBase, setCurveUpdateBase] = useState(false);
+  const [curveBaseEntryFee, setCurveBaseEntryFee] = useState('0');
   const [submitting, setSubmitting] = useState(false);
   const [protocolPercent, setProtocolPercent] = useState(null);
   const [treasurySnapshot, setTreasurySnapshot] = useState({
@@ -198,7 +265,8 @@ export function NewProposalPage({
     minVotingPeriod: 7 * 24 * 60 * 60,
     maxVotingPeriod: 30 * 24 * 60 * 60,
     quorumPercent: 0,
-    executionDelay: 0
+    executionDelay: 0,
+    baseEntryFee: null
   });
 
   const requiresPriest = useMemo(() => proposalType === 'changePriest', [proposalType]);
@@ -207,6 +275,7 @@ export function NewProposalPage({
   const requiresWithdrawal = useMemo(() => proposalType === 'withdrawTreasury', [proposalType]);
   const requiresDisband = useMemo(() => proposalType === 'disbandTreasury', [proposalType]);
   const requiresConfigUpdate = useMemo(() => proposalType === 'updateConfig', [proposalType]);
+  const requiresCurveUpdate = useMemo(() => proposalType === 'setEntryFeeCurve', [proposalType]);
   const protocolPercentNumber = useMemo(() => {
     if (protocolPercent === null || protocolPercent === undefined) {
       return null;
@@ -321,6 +390,9 @@ export function NewProposalPage({
             ...prev,
             ...params
           }));
+          if (params.baseEntryFee) {
+            setCurveBaseEntryFee((prev) => (prev && prev !== '0' ? prev : params.baseEntryFee));
+          }
         }
       } catch (err) {
         console.warn('[templ] Failed to load templ governance config', err);
@@ -380,6 +452,12 @@ export function NewProposalPage({
     setSubmitting(true);
     pushMessage?.('Submitting proposal…');
     try {
+      const baseEntryFeeValue = (() => {
+        const raw = String(curveBaseEntryFee ?? '').trim();
+        if (raw) return raw;
+        const fallback = governanceInfo.baseEntryFee;
+        return fallback ? String(fallback) : '0';
+      })();
       const { action, params } = buildActionConfig(proposalType, {
         newPriest,
         maxMembers,
@@ -394,7 +472,13 @@ export function NewProposalPage({
         updateFeeSplit,
         burnPercent: updateBurnPercent,
         treasuryPercent: updateTreasuryPercent,
-        memberPercent: updateMemberPercent
+        memberPercent: updateMemberPercent,
+        curvePrimaryStyle,
+        curvePrimaryRateBps,
+        curveSecondaryStyle,
+        curveSecondaryRateBps,
+        curvePivotPercentOfMax,
+        curveBaseEntryFee: baseEntryFeeValue
       }, { ethers, protocolPercent: protocolPercentNumber });
       const votingPeriodValue = Number(votingPeriod || '0');
       const result = await proposeVote({
@@ -688,6 +772,120 @@ export function NewProposalPage({
                 {protocolPercentNumber !== null ? ` (protocol keeps ${protocolPercentNumber}%)` : ''}.
               </p>
             )}
+          </div>
+        )}
+        {requiresCurveUpdate && (
+          <div className="space-y-4">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+              <p>
+                Define how the entry fee should evolve. Enable "Update base entry fee" to recalibrate the curve using a new
+                anchor. When disabled, the existing base entry fee is preserved.
+              </p>
+            </div>
+            <label className={form.checkbox}>
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary"
+                checked={curveUpdateBase}
+                onChange={(event) => setCurveUpdateBase(event.target.checked)}
+              />
+              Update base entry fee
+            </label>
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className={form.label}>
+                Base entry fee (wei)
+                <input
+                  type="text"
+                  className={form.input}
+                  value={curveBaseEntryFee}
+                  onChange={(event) => setCurveBaseEntryFee(event.target.value.trim())}
+                  disabled={!curveUpdateBase}
+                />
+                <span className={text.hint}>
+                  Defaulted to the current base entry fee. Enable editing to recalibrate the curve anchor.
+                </span>
+              </label>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className={form.label}>
+                Primary style
+                <select
+                  className={form.input}
+                  value={curvePrimaryStyle}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    setCurvePrimaryStyle(next);
+                    if (next === 'static') {
+                      setCurvePrimaryRateBps('0');
+                    } else if (curvePrimaryRateBps === '0') {
+                      setCurvePrimaryRateBps(next === 'exponential' ? '11000' : '500');
+                    }
+                  }}
+                >
+                  {CURVE_STYLE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className={form.label}>
+                Primary rate (basis points)
+                <input
+                  type="number"
+                  min="0"
+                  className={form.input}
+                  value={curvePrimaryRateBps}
+                  onChange={(event) => setCurvePrimaryRateBps(event.target.value)}
+                  disabled={curvePrimaryStyle === 'static'}
+                />
+              </label>
+              <label className={form.label}>
+                Secondary style
+                <select
+                  className={form.input}
+                  value={curveSecondaryStyle}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    setCurveSecondaryStyle(next);
+                    if (next === 'static') {
+                      setCurveSecondaryRateBps('0');
+                    } else if (curveSecondaryRateBps === '0') {
+                      setCurveSecondaryRateBps(next === 'exponential' ? '12000' : '500');
+                    }
+                  }}
+                >
+                  {CURVE_STYLE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className={form.label}>
+                Secondary rate (basis points)
+                <input
+                  type="number"
+                  min="0"
+                  className={form.input}
+                  value={curveSecondaryRateBps}
+                  onChange={(event) => setCurveSecondaryRateBps(event.target.value)}
+                  disabled={curveSecondaryStyle === 'static'}
+                />
+              </label>
+              <label className={form.label}>
+                Pivot at % of max members
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  className={form.input}
+                  value={curvePivotPercentOfMax}
+                  onChange={(event) => setCurvePivotPercentOfMax(event.target.value)}
+                />
+              </label>
+            </div>
           </div>
         )}
         <label className={form.label}>

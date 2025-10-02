@@ -46,6 +46,8 @@ async function deployContract({
   maxMembers = 0,
   priestIsDictator = false,
   templHomeLink = '',
+  curveProvided = false,
+  curveConfig,
   txOptions = {}
 }) {
   if (!ethers || !signer || !walletAddress) {
@@ -69,6 +71,11 @@ async function deployContract({
     return Math.round(resolved * 100);
   })();
   const factory = new ethers.Contract(factoryAddress, factoryArtifact.abi, signer);
+  const defaultCurve = {
+    primary: { style: 0, rateBps: 0 },
+    secondary: { style: 0, rateBps: 0 },
+    pivotPercentOfMax: 0
+  };
   const config = {
     priest: walletAddress,
     token: tokenAddress,
@@ -81,6 +88,8 @@ async function deployContract({
     burnAddress: ethers.ZeroAddress ?? '0x0000000000000000000000000000000000000000',
     priestIsDictator: priestIsDictator === true,
     maxMembers: normalizedMaxMembers,
+    curveProvided: curveProvided === true,
+    curve: curveConfig ?? defaultCurve,
     homeLink: templHomeLink || ''
   };
 
@@ -98,8 +107,8 @@ async function deployContract({
 
   if (!templAddress) {
     const templCreatedTopics = [
-      'TemplCreated(address,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,address,bool,uint256,string)',
-      'TemplCreated(address,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,address,bool,uint256)'
+      'TemplCreated(address,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,address,bool,uint256,uint8,uint32,uint8,uint32,uint16,string)',
+      'TemplCreated(address,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,address,bool,uint256,uint8,uint32,uint8,uint32,uint16)'
     ].map((signature) => ethers.id(signature).toLowerCase());
 
     const factoryAddressLower = factoryAddress?.toLowerCase?.() ?? '';
@@ -195,6 +204,8 @@ export async function deployTempl({
   priestIsDictator,
   backendUrl = BACKEND_URL,
   templHomeLink,
+  curveProvided,
+  curveConfig,
   txOptions = {}
 }) {
   const templAddress = await deployContract({
@@ -214,6 +225,8 @@ export async function deployTempl({
     maxMembers,
     priestIsDictator,
     templHomeLink,
+    curveProvided,
+    curveConfig,
     txOptions
   });
 

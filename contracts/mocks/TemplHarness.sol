@@ -2,6 +2,7 @@
 pragma solidity ^0.8.23;
 
 import {TEMPL} from "../TEMPL.sol";
+import {CurveConfig, CurveSegment, CurveStyle} from "../TemplCurve.sol";
 
 /// @title TemplHarness
 /// @dev Testing harness that exposes internal helpers for coverage-only assertions
@@ -36,7 +37,12 @@ contract TemplHarness is TEMPL {
             _burnAddress,
             _priestIsDictator,
             _maxMembers,
-            _homeLink
+            _homeLink,
+            CurveConfig({
+                primary: CurveSegment({style: CurveStyle.Static, rateBps: 0}),
+                secondary: CurveSegment({style: CurveStyle.Static, rateBps: 0}),
+                pivotPercentOfMax: 0
+            })
         )
     {}
 

@@ -6,7 +6,7 @@ function templError(message, statusCode) {
 
 const factoryValidationCache = new Map();
 const TEMPL_CREATED_TOPIC = ethers.id(
-  'TemplCreated(address,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,address,bool,uint256,string)'
+  'TemplCreated(address,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,address,bool,uint256,uint8,uint32,uint8,uint32,uint16,string)'
 );
 const DEFAULT_LOG_CHUNK_SIZE = 100_000;
 

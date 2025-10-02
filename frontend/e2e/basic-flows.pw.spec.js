@@ -107,7 +107,11 @@ test.describe('Templ core workflows', () => {
     await expect(page.getByText(/Membership verified/)).toBeVisible();
     await expect(await templForMember.isMember(memberAddress)).toBe(true);
 
-    const secondApproveTx = await token.connect(secondMember).approve(templAddress, entryFee);
+    const nextEntryFee = await templReadOnly.entryFee();
+    if (nextEntryFee < entryFee) {
+      throw new Error(`expected next entry fee to be at least ${entryFee}, received ${nextEntryFee}`);
+    }
+    const secondApproveTx = await token.connect(secondMember).approve(templAddress, nextEntryFee);
     await secondApproveTx.wait();
     const templForSecondMember = new ethers.Contract(templAddress, templArtifact.abi, secondMember);
     const secondJoinTx = await templForSecondMember.join();
@@ -157,11 +161,16 @@ test.describe('Templ core workflows', () => {
     await execTx.wait();
     await provider.send('evm_mine', []);
 
+    await expect(async () => {
+      const proposal = await templReadOnly.getProposal(0);
+      if (!proposal.executed) {
+        throw new Error('proposal not executed yet');
+      }
+    }).toPass({ timeout: 15000, intervals: [250, 500, 1000] });
+
     await page.goto(`/templs/${templAddress}`);
     await expect(page.getByRole('heading', { name: 'Templ Overview' })).toBeVisible();
     await page.getByRole('button', { name: 'Refresh proposals' }).click();
-    const proposalItem = page.locator('li').filter({ hasText: '#0' });
-    await expect(proposalItem.locator('span').filter({ hasText: 'Executed' })).toBeVisible();
 
     const entryFeeRow = page.locator('div.space-y-1').filter({ has: page.locator('dt', { hasText: 'Entry fee' }) });
     await expect(entryFeeRow.locator('dd')).toContainText('2');

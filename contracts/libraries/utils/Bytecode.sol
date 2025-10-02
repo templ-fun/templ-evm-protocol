@@ -12,7 +12,7 @@ library Bytecode {
 
     /// @notice Returns the size of the code stored at `_addr`.
     function codeSize(address _addr) internal view returns (uint256 size) {
-        assembly {
+        assembly ("memory-safe") {
             size := extcodesize(_addr)
         }
     }
@@ -29,7 +29,7 @@ library Bytecode {
             uint256 maxSize = csize - _start;
             uint256 size = maxSize < reqSize ? maxSize : reqSize;
 
-            assembly {
+            assembly ("memory-safe") {
                 code := mload(0x40)
                 mstore(0x40, add(code, and(add(add(size, 0x20), 0x1f), not(0x1f))))
                 mstore(code, size)

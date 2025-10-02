@@ -3,6 +3,7 @@ pragma solidity ^0.8.23;
 
 import {TemplBase} from "./TemplBase.sol";
 import {TemplErrors} from "./TemplErrors.sol";
+import {CurveConfig} from "./TemplCurve.sol";
 
 /// @title templ governance module
 /// @notice Adds proposal creation, voting, and execution flows on top of treasury + membership logic.
@@ -43,6 +44,9 @@ abstract contract TemplGovernance is TemplBase {
 
     /// @notice Hook executed when governance updates the templ home link.
     function _governanceSetHomeLink(string memory newLink) internal virtual;
+
+    /// @notice Hook executed when governance updates the pricing curve configuration.
+    function _governanceSetEntryFeeCurve(CurveConfig memory curve, uint256 baseEntryFee) internal virtual;
 
     /// @notice Opens a proposal to pause or resume new member joins.
     /// @param _paused Desired join pause state.
@@ -139,6 +143,33 @@ abstract contract TemplGovernance is TemplBase {
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
         p.action = Action.SetHomeLink;
         p.newHomeLink = _newLink;
+        return id;
+    }
+
+    /// @notice Opens a proposal to update the entry fee curve configuration.
+    /// @param _curve New curve configuration to apply.
+    /// @param _baseEntryFee Optional replacement base entry fee anchor (0 keeps the current base).
+    /// @param _votingPeriod Optional custom voting duration (seconds).
+    /// @param _title On-chain title for the proposal.
+    /// @param _description On-chain description for the proposal.
+    /// @return proposalId Newly created proposal identifier.
+    function createProposalSetEntryFeeCurve(
+        CurveConfig calldata _curve,
+        uint256 _baseEntryFee,
+        uint256 _votingPeriod,
+        string calldata _title,
+        string calldata _description
+    ) external returns (uint256) {
+        if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
+        CurveConfig memory curve = _curve;
+        _validateCurveConfig(curve);
+        if (_baseEntryFee != 0) {
+            _validateEntryFeeAmount(_baseEntryFee);
+        }
+        (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
+        p.action = Action.SetEntryFeeCurve;
+        p.curveConfig = curve;
+        p.curveBaseEntryFee = _baseEntryFee;
         return id;
     }
 
@@ -361,6 +392,9 @@ abstract contract TemplGovernance is TemplBase {
             _governanceSetMaxMembers(proposal.newMaxMembers);
         } else if (proposal.action == Action.SetHomeLink) {
             _governanceSetHomeLink(proposal.newHomeLink);
+        } else if (proposal.action == Action.SetEntryFeeCurve) {
+            CurveConfig memory curve = proposal.curveConfig;
+            _governanceSetEntryFeeCurve(curve, proposal.curveBaseEntryFee);
         } else {
             revert TemplErrors.InvalidCallData();
         }

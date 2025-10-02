@@ -6,6 +6,7 @@ import {TemplMembership} from "./TemplMembership.sol";
 import {TemplTreasury} from "./TemplTreasury.sol";
 import {TemplGovernance} from "./TemplGovernance.sol";
 import {TemplErrors} from "./TemplErrors.sol";
+import {CurveConfig} from "./TemplCurve.sol";
 
 /// @title templ.fun core templ implementation
 /// @notice Wires governance, treasury, and membership modules for a single templ instance.
@@ -25,6 +26,7 @@ contract TEMPL is TemplBase, TemplMembership, TemplTreasury, TemplGovernance {
     /// @param _priestIsDictator Whether the templ starts in priest-only governance mode.
     /// @param _maxMembers Optional membership cap (0 keeps membership uncapped).
     /// @param _homeLink Canonical URL for the templ surfaced in frontends and notifications.
+    /// @param _curve Pricing curve configuration applied to future joins.
     constructor(
         address _priest,
         address _protocolFeeRecipient,
@@ -39,7 +41,8 @@ contract TEMPL is TemplBase, TemplMembership, TemplTreasury, TemplGovernance {
         address _burnAddress,
         bool _priestIsDictator,
         uint256 _maxMembers,
-        string memory _homeLink
+        string memory _homeLink,
+        CurveConfig memory _curve
     )
         TemplBase(
             _protocolFeeRecipient,
@@ -63,7 +66,6 @@ contract TEMPL is TemplBase, TemplMembership, TemplTreasury, TemplGovernance {
         if (_entryFee % 10 != 0) revert TemplErrors.InvalidEntryFee();
 
         priest = _priest;
-        entryFee = _entryFee;
         joinPaused = false;
         Member storage priestMember = members[_priest];
         priestMember.joined = true;
@@ -74,6 +76,8 @@ contract TEMPL is TemplBase, TemplMembership, TemplTreasury, TemplGovernance {
         if (_maxMembers != 0) {
             _setMaxMembers(_maxMembers);
         }
+
+        _configureEntryFeeCurve(_entryFee, _curve);
     }
 
     /// @notice Accepts ETH so proposals can later disburse it as external rewards.
@@ -130,6 +134,14 @@ contract TEMPL is TemplBase, TemplMembership, TemplTreasury, TemplGovernance {
     /// @inheritdoc TemplGovernance
     function _governanceSetHomeLink(string memory newLink) internal override {
         _setTemplHomeLink(newLink);
+    }
+
+    /// @inheritdoc TemplGovernance
+    function _governanceSetEntryFeeCurve(
+        CurveConfig memory curve,
+        uint256 baseEntryFeeValue
+    ) internal override {
+        _applyCurveUpdate(curve, baseEntryFeeValue);
     }
 
 }

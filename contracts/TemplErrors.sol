@@ -50,6 +50,8 @@ library TemplErrors {
     error EntryFeeTooSmall();
     /// @notice Thrown when the entry fee is not a multiple of ten.
     error InvalidEntryFee();
+    /// @notice Thrown when an entry fee curve configuration is invalid.
+    error InvalidCurveConfig();
     /// @notice Thrown when fee percentages do not sum correctly or exceed limits.
     error InvalidPercentageSplit();
     /// @notice Thrown when there are no rewards available to claim.

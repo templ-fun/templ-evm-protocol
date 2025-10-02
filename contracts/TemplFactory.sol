@@ -3,6 +3,7 @@ pragma solidity ^0.8.23;
 
 import {TEMPL} from "./TEMPL.sol";
 import {TemplErrors} from "./TemplErrors.sol";
+import {CurveConfig, CurveSegment, CurveStyle} from "./TemplCurve.sol";
 import {SSTORE2} from "./libraries/SSTORE2.sol";
 
 /// @title Factory for deploying templ instances
@@ -21,6 +22,8 @@ contract TemplFactory {
     uint256 internal constant DEFAULT_EXECUTION_DELAY = 7 days;
     address internal constant DEFAULT_BURN_ADDRESS = 0x000000000000000000000000000000000000dEaD;
     int256 internal constant USE_DEFAULT_PERCENT = -1;
+    uint256 internal constant DEFAULT_MAX_MEMBERS = 249;
+    uint32 internal constant DEFAULT_CURVE_EXP_RATE_BPS = 11_000;
 
     struct CreateConfig {
         address priest;
@@ -34,6 +37,8 @@ contract TemplFactory {
         address burnAddress;
         bool priestIsDictator;
         uint256 maxMembers;
+        bool curveProvided;
+        CurveConfig curve;
         string homeLink;
     }
 
@@ -57,10 +62,25 @@ contract TemplFactory {
         address burnAddress,
         bool priestIsDictator,
         uint256 maxMembers,
+        uint8 curvePrimaryStyle,
+        uint32 curvePrimaryRateBps,
+        uint8 curveSecondaryStyle,
+        uint32 curveSecondaryRateBps,
+        uint16 curvePivotPercentOfMax,
         string homeLink
     );
 
     event PermissionlessModeUpdated(bool enabled);
+
+    function _defaultCurveConfig() internal pure returns (CurveConfig memory) {
+        CurveSegment memory primary = CurveSegment({style: CurveStyle.Exponential, rateBps: DEFAULT_CURVE_EXP_RATE_BPS});
+        CurveSegment memory secondary = CurveSegment({style: CurveStyle.Static, rateBps: 0});
+        return CurveConfig({
+            primary: primary,
+            secondary: secondary,
+            pivotPercentOfMax: 0
+        });
+    }
 
     /// @notice Initializes factory-wide protocol recipient and fee percent.
     /// @param _protocolFeeRecipient Address receiving the protocol share for every templ deployed.
@@ -114,7 +134,9 @@ contract TemplFactory {
             executionDelaySeconds: DEFAULT_EXECUTION_DELAY,
             burnAddress: DEFAULT_BURN_ADDRESS,
             priestIsDictator: false,
-            maxMembers: 0,
+            maxMembers: DEFAULT_MAX_MEMBERS,
+            curveProvided: true,
+            curve: _defaultCurveConfig(),
             homeLink: ""
         });
         return _deploy(cfg);
@@ -137,6 +159,9 @@ contract TemplFactory {
         }
         if (cfg.burnAddress == address(0)) {
             cfg.burnAddress = DEFAULT_BURN_ADDRESS;
+        }
+        if (!cfg.curveProvided) {
+            cfg.curve = _defaultCurveConfig();
         }
         return _deploy(cfg);
     }
@@ -168,14 +193,15 @@ contract TemplFactory {
             cfg.burnAddress,
             cfg.priestIsDictator,
             cfg.maxMembers,
-            cfg.homeLink
+            cfg.homeLink,
+            cfg.curve
         );
         bytes memory templInitCode = SSTORE2.read(templInitCodePointer);
         if (templInitCode.length == 0) revert TemplErrors.DeploymentFailed();
         bytes memory initCode = abi.encodePacked(templInitCode, constructorArgs);
 
         address deployed;
-        assembly {
+        assembly ("memory-safe") {
             let dataPtr := add(initCode, 0x20)
             let dataLen := mload(initCode)
             deployed := create(0, dataPtr, dataLen)
@@ -196,6 +222,11 @@ contract TemplFactory {
             cfg.burnAddress,
             cfg.priestIsDictator,
             cfg.maxMembers,
+            uint8(cfg.curve.primary.style),
+            cfg.curve.primary.rateBps,
+            uint8(cfg.curve.secondary.style),
+            cfg.curve.secondary.rateBps,
+            cfg.curve.pivotPercentOfMax,
             cfg.homeLink
         );
     }

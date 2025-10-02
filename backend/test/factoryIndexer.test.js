@@ -5,7 +5,7 @@ import { ethers } from 'ethers';
 import { createFactoryIndexer } from '../src/services/factoryIndexer.js';
 
 const FACTORY_EVENT_ABI = [
-  'event TemplCreated(address indexed templ, address indexed creator, address indexed priest, address token, uint256 entryFee, uint256 burnPercent, uint256 treasuryPercent, uint256 memberPoolPercent, uint256 quorumPercent, uint256 executionDelaySeconds, address burnAddress, bool priestIsDictator, uint256 maxMembers, string homeLink)'
+  'event TemplCreated(address indexed templ, address indexed creator, address indexed priest, address token, uint256 entryFee, uint256 burnPercent, uint256 treasuryPercent, uint256 memberPoolPercent, uint256 quorumPercent, uint256 executionDelaySeconds, address burnAddress, bool priestIsDictator, uint256 maxMembers, uint8 curvePrimaryStyle, uint32 curvePrimaryRateBps, uint8 curveSecondaryStyle, uint32 curveSecondaryRateBps, uint16 curvePivotPercentOfMax, string homeLink)'
 ];
 
 const iface = new ethers.Interface(FACTORY_EVENT_ABI);
@@ -118,6 +118,11 @@ function buildTemplCreatedLog({
   const burnAddress = '0x000000000000000000000000000000000000dEaD';
   const priestIsDictator = false;
   const maxMembers = 0n;
+  const curvePrimaryStyle = 2;
+  const curvePrimaryRate = 11_000n;
+  const curveSecondaryStyle = 0;
+  const curveSecondaryRate = 0n;
+  const curvePivotPercentOfMax = 0;
 
   const { topics, data } = iface.encodeEventLog('TemplCreated', [
     canonicalTempl,
@@ -133,6 +138,11 @@ function buildTemplCreatedLog({
     burnAddress,
     priestIsDictator,
     maxMembers,
+    curvePrimaryStyle,
+    curvePrimaryRate,
+    curveSecondaryStyle,
+    curveSecondaryRate,
+    curvePivotPercentOfMax,
     homeLink
   ]);
 

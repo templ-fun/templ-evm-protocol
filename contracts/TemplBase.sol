@@ -4,7 +4,9 @@ pragma solidity ^0.8.23;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {TemplErrors} from "./TemplErrors.sol";
+import {CurveConfig, CurveSegment, CurveStyle} from "./TemplCurve.sol";
 
 /// @title Base templ storage and shared helpers
 /// @notice Hosts shared state, events, and internal helpers used by membership, treasury, and governance modules.
@@ -42,6 +44,10 @@ abstract contract TemplBase is ReentrancyGuard {
     bool public priestIsDictator;
     /// @notice Current entry fee denominated in the access token.
     uint256 public entryFee;
+    /// @notice Entry fee recorded when zero paid joins have occurred.
+    uint256 public baseEntryFee;
+    /// @notice Pricing curve configuration that governs how entry fees scale with membership.
+    CurveConfig public entryFeeCurve;
     /// @notice Treasury-held balance denominated in the access token.
     uint256 public treasuryBalance;
     /// @notice Member pool balance denominated in the access token.
@@ -106,6 +112,8 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 newMemberPoolPercent;
         string newHomeLink;
         uint256 newMaxMembers;
+        CurveConfig curveConfig;
+        uint256 curveBaseEntryFee;
         uint256 yesVotes;
         uint256 noVotes;
         uint256 endTime;
@@ -142,6 +150,7 @@ abstract contract TemplBase is ReentrancyGuard {
         SetDictatorship,
         SetMaxMembers,
         SetHomeLink,
+        SetEntryFeeCurve,
         Undefined
     }
 
@@ -200,6 +209,13 @@ abstract contract TemplBase is ReentrancyGuard {
 
     event JoinPauseUpdated(bool joinPaused);
     event MaxMembersUpdated(uint256 maxMembers);
+    event EntryFeeCurveUpdated(
+        uint8 primaryStyle,
+        uint32 primaryRateBps,
+        uint8 secondaryStyle,
+        uint32 secondaryRateBps,
+        uint16 pivotPercentOfMax
+    );
     event PriestChanged(address indexed oldPriest, address indexed newPriest);
     event TreasuryDisbanded(
         uint256 indexed proposalId,
@@ -379,6 +395,222 @@ abstract contract TemplBase is ReentrancyGuard {
         }
     }
 
+    /// @dev Configures the entry fee curve anchor and growth profile.
+    function _configureEntryFeeCurve(uint256 newBaseEntryFee, CurveConfig memory newCurve) internal {
+        _validateEntryFeeAmount(newBaseEntryFee);
+        _validateCurveConfig(newCurve);
+        baseEntryFee = newBaseEntryFee;
+        entryFeeCurve = newCurve;
+        _refreshEntryFeeFromState();
+        _emitEntryFeeCurveUpdated();
+    }
+
+    /// @dev Updates the entry fee curve without altering the base anchor.
+    function _updateEntryFeeCurve(CurveConfig memory newCurve) internal {
+        _validateCurveConfig(newCurve);
+        entryFeeCurve = newCurve;
+        _refreshEntryFeeFromState();
+        _emitEntryFeeCurveUpdated();
+    }
+
+    /// @dev Sets the current entry fee target while preserving the existing curve shape.
+    function _setCurrentEntryFee(uint256 targetEntryFee) internal {
+        _validateEntryFeeAmount(targetEntryFee);
+        uint256 paidJoins = _currentPaidJoins();
+        CurveConfig memory curve = entryFeeCurve;
+        if (paidJoins == 0 || !_curveHasGrowth(curve)) {
+            baseEntryFee = targetEntryFee;
+            entryFee = targetEntryFee;
+        } else {
+            uint256 newBase = _solveBaseEntryFee(targetEntryFee, curve, paidJoins, MAX_MEMBERS);
+            baseEntryFee = newBase;
+            entryFee = targetEntryFee;
+        }
+        _emitEntryFeeCurveUpdated();
+    }
+
+    /// @dev Applies a curve update driven by governance or DAO actions.
+    function _applyCurveUpdate(CurveConfig memory newCurve, uint256 baseEntryFeeValue) internal {
+        if (baseEntryFeeValue == 0) {
+            _updateEntryFeeCurve(newCurve);
+        } else {
+            _configureEntryFeeCurve(baseEntryFeeValue, newCurve);
+        }
+    }
+
+    /// @dev Recomputes the entry fee for the next join in response to membership changes.
+    function _advanceEntryFeeAfterJoin() internal {
+        _refreshEntryFeeFromState();
+    }
+
+    /// @dev Recomputes the entry fee based on the current membership count and stored curve.
+    function _refreshEntryFeeFromState() internal {
+        if (baseEntryFee == 0) {
+            return;
+        }
+        entryFee = _priceForPaidJoins(baseEntryFee, entryFeeCurve, _currentPaidJoins(), MAX_MEMBERS);
+    }
+
+    /// @dev Returns the number of paid joins that have occurred (excludes the auto-enrolled priest).
+    function _currentPaidJoins() internal view returns (uint256) {
+        if (memberCount == 0) {
+            return 0;
+        }
+        return memberCount - 1;
+    }
+
+    /// @dev Reports whether any curve segment introduces dynamic pricing.
+    function _curveHasGrowth(CurveConfig memory curve) internal pure returns (bool) {
+        return curve.primary.style != CurveStyle.Static || curve.secondary.style != CurveStyle.Static;
+    }
+
+    /// @dev Computes the entry fee for a given number of completed paid joins.
+    function _priceForPaidJoins(
+        uint256 baseFee,
+        CurveConfig memory curve,
+        uint256 paidJoins,
+        uint256 maxMembers
+    ) internal pure returns (uint256) {
+        if (paidJoins == 0) {
+            return baseFee;
+        }
+
+        uint256 pivot = _resolvePivot(curve, maxMembers);
+
+        if (curve.secondary.style == CurveStyle.Static || pivot == 0 || paidJoins <= pivot) {
+            return _applySegment(baseFee, curve.primary, paidJoins, true);
+        }
+
+        uint256 priceAtPivot = _applySegment(baseFee, curve.primary, pivot, true);
+        uint256 additionalJoins = paidJoins - pivot;
+        return _applySegment(priceAtPivot, curve.secondary, additionalJoins, true);
+    }
+
+    /// @dev Derives the base entry fee that produces a target price after `paidJoins` joins.
+    function _solveBaseEntryFee(
+        uint256 targetPrice,
+        CurveConfig memory curve,
+        uint256 paidJoins,
+        uint256 maxMembers
+    ) internal pure returns (uint256) {
+        if (paidJoins == 0) {
+            return targetPrice;
+        }
+
+        uint256 pivot = _resolvePivot(curve, maxMembers);
+
+        if (curve.secondary.style == CurveStyle.Static || pivot == 0 || paidJoins <= pivot) {
+            return _applySegment(targetPrice, curve.primary, paidJoins, false);
+        }
+
+        uint256 additionalJoins = paidJoins - pivot;
+        uint256 priceAtPivot = _applySegment(targetPrice, curve.secondary, additionalJoins, false);
+        return _applySegment(priceAtPivot, curve.primary, pivot, false);
+    }
+
+    /// @dev Applies a curve segment forward or inverse for the specified number of steps.
+    function _applySegment(
+        uint256 amount,
+        CurveSegment memory segment,
+        uint256 steps,
+        bool forward
+    ) internal pure returns (uint256) {
+        if (steps == 0 || segment.style == CurveStyle.Static) {
+            return amount;
+        }
+        if (segment.style == CurveStyle.Linear) {
+            uint256 scaled = uint256(segment.rateBps) * steps;
+            uint256 offset = TOTAL_PERCENT + scaled;
+            if (forward) {
+                return Math.mulDiv(amount, offset, TOTAL_PERCENT);
+            }
+            if (offset == 0) revert TemplErrors.InvalidCurveConfig();
+            return Math.mulDiv(amount, TOTAL_PERCENT, offset);
+        }
+        if (segment.style == CurveStyle.Exponential) {
+            uint256 factor = _powBps(segment.rateBps, steps);
+            if (forward) {
+                return Math.mulDiv(amount, factor, TOTAL_PERCENT);
+            }
+            if (factor == 0) revert TemplErrors.InvalidCurveConfig();
+            return Math.mulDiv(amount, TOTAL_PERCENT, factor);
+        }
+        revert TemplErrors.InvalidCurveConfig();
+    }
+
+    /// @dev Computes a basis-point scaled exponent using exponentiation by squaring.
+    function _powBps(uint256 factorBps, uint256 exponent) internal pure returns (uint256) {
+        if (exponent == 0) {
+            return TOTAL_PERCENT;
+        }
+        uint256 result = TOTAL_PERCENT;
+        uint256 baseFactor = factorBps;
+        uint256 remaining = exponent;
+        while (remaining > 0) {
+            if (remaining & 1 == 1) {
+                result = Math.mulDiv(result, baseFactor, TOTAL_PERCENT);
+            }
+            remaining >>= 1;
+            if (remaining > 0) {
+                baseFactor = Math.mulDiv(baseFactor, baseFactor, TOTAL_PERCENT);
+            }
+        }
+        return result;
+    }
+
+    /// @dev Resolves the pivot join threshold based on explicit and percentage inputs.
+    function _resolvePivot(CurveConfig memory curve, uint256 maxMembers) internal pure returns (uint256) {
+        if (curve.pivotPercentOfMax == 0 || maxMembers <= 1) {
+            return 0;
+        }
+        uint256 joinCapacity = maxMembers - 1;
+        uint256 derived = Math.mulDiv(joinCapacity, curve.pivotPercentOfMax, TOTAL_PERCENT);
+        if (derived == 0) {
+            return 1;
+        }
+        return derived;
+    }
+
+    /// @dev Validates curve configuration input.
+    function _validateCurveConfig(CurveConfig memory curve) internal pure {
+        _validateCurveSegment(curve.primary);
+        _validateCurveSegment(curve.secondary);
+    }
+
+    /// @dev Validates a single curve segment.
+    function _validateCurveSegment(CurveSegment memory segment) internal pure {
+        if (segment.style == CurveStyle.Static) {
+            if (segment.rateBps != 0) revert TemplErrors.InvalidCurveConfig();
+            return;
+        }
+        if (segment.style == CurveStyle.Linear) {
+            return;
+        }
+        if (segment.style == CurveStyle.Exponential) {
+            if (segment.rateBps == 0) revert TemplErrors.InvalidCurveConfig();
+            return;
+        }
+        revert TemplErrors.InvalidCurveConfig();
+    }
+
+    /// @dev Ensures entry fee amounts satisfy templ invariants.
+    function _validateEntryFeeAmount(uint256 amount) internal pure {
+        if (amount < 10) revert TemplErrors.EntryFeeTooSmall();
+        if (amount % 10 != 0) revert TemplErrors.InvalidEntryFee();
+    }
+
+    /// @dev Emits the standardized curve update event with the current configuration.
+    function _emitEntryFeeCurveUpdated() internal {
+        CurveConfig memory cfg = entryFeeCurve;
+        emit EntryFeeCurveUpdated(
+            uint8(cfg.primary.style),
+            cfg.primary.rateBps,
+            uint8(cfg.secondary.style),
+            cfg.secondary.rateBps,
+            cfg.pivotPercentOfMax
+        );
+    }
+
     /// @dev Toggles dictatorship governance mode, emitting an event when the state changes.
     function _updateDictatorship(bool _enabled) internal {
         if (priestIsDictator == _enabled) revert TemplErrors.DictatorshipUnchanged();
@@ -394,6 +626,7 @@ abstract contract TemplBase is ReentrancyGuard {
         }
         MAX_MEMBERS = newMaxMembers;
         emit MaxMembersUpdated(newMaxMembers);
+        _refreshEntryFeeFromState();
         _autoPauseIfLimitReached();
     }
 
