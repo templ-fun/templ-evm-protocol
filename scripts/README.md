@@ -11,7 +11,7 @@ Run each script from the repo root unless noted. All commands assume dependencie
 
 ## At a glance
 - `deploy.js` - stand up a factory/templ pair with environment-driven configuration and save deployment metadata (accepts percentages that the script converts to the 10_000 basis-point scale used on-chain).
-- `deploy-cloudflare.js` - apply the D1 schema (optional), build the SPA with production env vars, and push the site to Cloudflare Pages from a single env file. The backend deploys separately, so pass `--skip-worker` when you only need database prep + Pages.
+- `deploy-cloudflare.js` - build the SPA with production env vars and push the site to Cloudflare Pages from a single env file. The backend deploys separately, so pass `--skip-worker` when you only need the static asset upload.
 - `register-templ.js` - register an already-deployed templ with the backend API so the UI/alerts can discover it.
 - `gen-wallets.js` - mint fresh Hardhat wallets (and optional ERC-20 balances) for local integration or e2e runs.
 - `test-all.sh` - replicate CI locally in four phases so regressions surface before pushing.
@@ -27,9 +27,9 @@ Run each script from the repo root unless noted. All commands assume dependencie
 **Run:** `npx hardhat run scripts/deploy.js --network <network>`
 
 ## deploy-cloudflare.js
-- Consumes a `.env` (see `cloudflare.deploy.example.env`) to fill database vars/secrets, point the frontend build at your backend URL, and name the Cloudflare Pages project.
-- Generates `backend/wrangler.deployment.toml`, applies the D1 schema, and deploys the static frontend to Pages. Pass `--skip-worker` when the backend runs outside Cloudflare Workers (Worker-only env vars become optional in that mode).
-- Supports `--skip-pages` when you only need to prepare the database schema.
+- Consumes a `.env` (see `cloudflare.deploy.example.env`) to point the frontend build at your backend URL and name the Cloudflare Pages project.
+- Generates `backend/wrangler.deployment.toml` and deploys the static frontend to Pages. Pass `--skip-worker` when the backend runs outside Cloudflare Workers (Worker-only env vars become optional in that mode).
+- Supports `--skip-pages` when you only need to refresh the deployment config without pushing a new build.
 
 **Run:**
 ```bash

@@ -104,8 +104,8 @@ Commonly used accounts (private keys are from Hardhat defaults—never use them 
    - Access token address: any ERC-20 you control on the local chain (deploy `TestToken` via `npx hardhat console` if needed).
    - Entry fee / fee split / limits: pick values that satisfy on-chain validations (entry fee ≥ 10 wei and divisible by 10, fee split sums to 100).
    - Telegram chat id: optional numeric id; omit it if you don’t want Telegram alerts yet.
-3. Submit—the frontend deploys the contract via the factory and immediately calls the backend `/templs` endpoint to persist the registry entry.
-4. After success you land on `/templs/:address` where the overview reflects the registered priest, home link, and chat id. If you left the chat id blank, the confirmation card shows a one-time binding code together with a `https://t.me/templfunbot?startgroup=<bindingCode>` deep link and the `/templ <bindingCode>` command—invite `@templfunbot` and trigger either option in the group to finish the binding.
+3. Submit—the frontend deploys the contract via the factory. When `TRUSTED_FACTORY_ADDRESS` and `RPC_URL` are set the backend observes the `TemplCreated` event and registers the templ automatically, so there is no extra signature prompt during creation.
+4. After success you land on `/templs/:address` where the overview reflects the on-chain priest and home link once the backend syncs. Use the “Generate binding code” action (it triggers the priest signature) if you want Telegram alerts; the response yields a `/templ <bindingCode>` command together with the `https://t.me/templfunbot?startgroup=<bindingCode>` deep link. Invite `@templfunbot` and trigger either option in the group to finish the binding.
 
 ## 6) Join and verify membership
 

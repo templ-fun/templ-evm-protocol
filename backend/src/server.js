@@ -15,6 +15,8 @@ import { logger } from './logger.js';
 import { createTelegramNotifier } from './telegram.js';
 import { createSignatureStore } from './middleware/validate.js';
 import { ensureTemplFromFactory } from './services/contractValidation.js';
+import { createFactoryIndexer } from './services/factoryIndexer.js';
+import { registerTempl } from './services/registerTempl.js';
 
 import { createPersistence } from './persistence/index.js';
 
@@ -171,25 +173,23 @@ function updateMetaFromSnapshots(meta, snapshots) {
  *     signatureStore?: { consume?: Function, prune?: Function },
  *     dispose?: Function
  *   } | null,
- *   d1?: D1Database,
  *   retentionMs?: number
  * }} [opts]
  */
 /**
  * @param {{
  *   persistence?: import('./persistence/index.js').PersistenceAdapter,
- *   d1?: any,
  *   retentionMs?: number,
  *   sqlitePath?: string
  * }} [opts]
  * @returns {Promise<import('./persistence/index.js').PersistenceAdapter>}
  */
 async function initializePersistence(opts = {}) {
-  const { persistence, d1, retentionMs, sqlitePath } = opts;
+  const { persistence, retentionMs, sqlitePath } = opts;
   if (persistence) {
     return persistence;
   }
-  return createPersistence({ d1, retentionMs, sqlitePath });
+  return createPersistence({ retentionMs, sqlitePath });
 }
 
 async function maybeNotifyQuorum({ record, contractAddress, proposalId, meta, notifier, logger }) {
@@ -987,7 +987,6 @@ export async function createApp(opts) {
     enableBackgroundTasks = process.env.NODE_ENV !== 'test',
     signatureStore: providedSignatureStore,
     persistence,
-    d1,
     signatureRetentionMs
   } = opts || {};
 
@@ -1029,7 +1028,7 @@ export async function createApp(opts) {
 
   const sqlitePath = process.env.SQLITE_DB_PATH?.trim() || null;
   /** @type {import('./persistence/index.js').PersistenceAdapter} */
-  const persistenceAdapter = await initializePersistence({ persistence, d1, retentionMs: signatureRetentionMs, sqlitePath });
+  const persistenceAdapter = await initializePersistence({ persistence, retentionMs: signatureRetentionMs, sqlitePath });
   const persist = persistenceAdapter?.persistBinding
     ? async (contract, record) => persistenceAdapter.persistBinding(contract, record)
     : async () => {};
@@ -1052,6 +1051,59 @@ export async function createApp(opts) {
   contractWatcher.pauseWatching();
   const watchContract = contractWatcher.watchContract;
   app.locals.backgroundTasks = null;
+
+  let cachedChainId = null;
+  const getChainId = async () => {
+    if (cachedChainId !== null) {
+      return cachedChainId;
+    }
+    if (!provider) {
+      cachedChainId = undefined;
+      return cachedChainId;
+    }
+    try {
+      const network = await provider.getNetwork();
+      cachedChainId = Number(network?.chainId);
+      if (!Number.isFinite(cachedChainId)) {
+        cachedChainId = undefined;
+      }
+    } catch {
+      cachedChainId = undefined;
+    }
+    return cachedChainId;
+  };
+
+  const factoryIndexer = createFactoryIndexer({
+    provider,
+    templs,
+    logger,
+    fromBlock: process.env.TRUSTED_FACTORY_DEPLOYMENT_BLOCK,
+    onTemplDiscovered: async ({ templAddress, priestAddress, homeLink }) => {
+      if (!templAddress || !priestAddress) return;
+      const chainId = await getChainId();
+      try {
+        await registerTempl(
+          {
+            contractAddress: templAddress,
+            priestAddress,
+            templHomeLink: typeof homeLink === 'string' ? homeLink : '',
+            chainId
+          },
+          {
+            provider,
+            logger,
+            templs,
+            persist,
+            watchContract,
+            findBinding,
+            skipFactoryValidation: true
+          }
+        );
+      } catch (err) {
+        logger?.warn?.({ err: String(err?.message || err), contract: templAddress }, 'Factory auto-registration failed');
+      }
+    }
+  });
 
   const restorationPromise = restoreGroupsFromPersistence({
     listBindings,
@@ -1117,6 +1169,13 @@ export async function createApp(opts) {
       /* ignore */
     }
     await contractWatcher.resumeWatching();
+    if (factoryIndexer?.start) {
+      try {
+        await factoryIndexer.start();
+      } catch (err) {
+        logger?.warn?.({ err: String(err?.message || err) }, 'Failed to start factory indexer');
+      }
+    }
     if (enableBackgroundTasks && !backgroundTasks) {
       backgroundTasks = createBackgroundTasks({ templs, notifier, logger, persist });
       app.locals.backgroundTasks = backgroundTasks;
@@ -1127,6 +1186,11 @@ export async function createApp(opts) {
   const stopLeaderServices = () => {
     if (!leaderServicesActive) return;
     leaderServicesActive = false;
+    if (factoryIndexer?.stop) {
+      factoryIndexer.stop().catch((err) => {
+        logger?.warn?.({ err: String(err?.message || err) }, 'Failed to stop factory indexer');
+      });
+    }
     contractWatcher.pauseWatching();
     if (backgroundTasks) {
       backgroundTasks.stop();
