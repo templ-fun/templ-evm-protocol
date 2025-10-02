@@ -215,10 +215,17 @@ export function JoinTemplPage({
       const data = await verifyMembership({
         signer,
         templAddress,
-        walletAddress
+        walletAddress,
+        ethers,
+        templArtifact,
+        readProvider
       });
       setVerification(data);
-      pushMessage?.('Membership verified');
+      if (data?.mode === 'onchain') {
+        pushMessage?.('Membership verified. Telegram updates activate after the priest generates a binding code.');
+      } else {
+        pushMessage?.('Membership verified');
+      }
     } catch (err) {
       pushMessage?.(`Verification failed: ${err?.message || err}`);
     } finally {

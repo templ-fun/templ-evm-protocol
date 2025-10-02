@@ -4,7 +4,7 @@ import templArtifact from '../contracts/TEMPL.json';
 import templFactoryArtifact from '../contracts/TemplFactory.json';
 import { FACTORY_CONFIG } from '../config.js';
 import { BASE_TOKEN_SUGGESTIONS } from '../data/baseTokens.js';
-import { deployTempl } from '../services/deployment.js';
+import { deployTempl, registerTemplBackend } from '../services/deployment.js';
 import { button, form, layout, surface, text } from '../ui/theme.js';
 
 const DEFAULT_PERCENT = 30;
@@ -42,6 +42,7 @@ export function CreateTemplPage({
   const [factoryAddress, setFactoryAddress] = useState(() => FACTORY_CONFIG.address || '');
   const [submitting, setSubmitting] = useState(false);
   const [bindingInfo, setBindingInfo] = useState(null);
+  const [registeringBinding, setRegisteringBinding] = useState(false);
   const [autoBalanceSplit, setAutoBalanceSplit] = useState(true);
   const [tokenDecimals, setTokenDecimals] = useState(18);
   const [tokenDecimalsSource, setTokenDecimalsSource] = useState('default');
@@ -171,6 +172,49 @@ export function CreateTemplPage({
     const clamped = parsed > feeSplitTarget ? feeSplitTarget : parsed;
     setMemberPercent(String(clamped));
   };
+
+  const handleGenerateBindingCode = useCallback(async () => {
+    if (!signer) {
+      onConnectWallet?.();
+      return;
+    }
+    if (!bindingInfo?.templAddress) {
+      pushMessage?.('Deploy a templ before generating a binding code.');
+      return;
+    }
+    const templAddress = bindingInfo.templAddress;
+    const templLink = bindingInfo.templHomeLink || homeLink || '';
+    setRegisteringBinding(true);
+    pushMessage?.('Generating Telegram binding code…');
+    try {
+      const registration = await registerTemplBackend({
+        signer,
+        walletAddress,
+        templAddress,
+        templHomeLink: templLink || undefined
+      });
+      setBindingInfo((prev) => {
+        const base = prev ?? {
+          templAddress,
+          templHomeLink: templLink,
+          priest: walletAddress
+        };
+        return {
+          templAddress: base.templAddress,
+          bindingCode: registration?.bindingCode || null,
+          telegramChatId: registration?.templ?.telegramChatId || null,
+          templHomeLink: registration?.templ?.templHomeLink || base.templHomeLink || '',
+          priest: registration?.templ?.priest || base.priest || walletAddress
+        };
+      });
+      refreshTempls?.();
+      pushMessage?.('Binding code ready. Invite the bot to your group to finish setup.');
+    } catch (err) {
+      pushMessage?.(`Telegram binding failed: ${err?.message || err}`);
+    } finally {
+      setRegisteringBinding(false);
+    }
+  }, [bindingInfo, homeLink, onConnectWallet, pushMessage, refreshTempls, signer, walletAddress]);
 
   useEffect(() => {
     let cancelled = false;
@@ -537,7 +581,7 @@ export function CreateTemplPage({
                 Telegram chat <code className={`${text.mono} text-xs`}>{bindingInfo.telegramChatId}</code> is already linked. Invite{' '}
                 <a className="text-primary underline" href="https://t.me/templfunbot" target="_blank" rel="noreferrer">@templfunbot</a> if it is not in the group yet.
               </p>
-            ) : (
+            ) : bindingInfo.bindingCode ? (
               <>
                 <p>
                   Invite{' '}
@@ -563,6 +607,27 @@ export function CreateTemplPage({
                   <code className={`${text.mono} text-xs`}>{bindingInfo.templAddress}</code>.
                 </p>
               </>
+            ) : (
+              <>
+                <p>
+                  Generate a binding code when you are ready to connect Telegram notifications. This step asks for a wallet
+                  signature so the bot can verify you control the templ priest address.
+                </p>
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <button
+                    type="button"
+                    className={button.primary}
+                    onClick={handleGenerateBindingCode}
+                    disabled={registeringBinding}
+                  >
+                    {registeringBinding ? 'Requesting signature…' : 'Generate binding code'}
+                  </button>
+                  <button type="button" className={button.base} onClick={refreshTempls}>
+                    Refresh templ list
+                  </button>
+                </div>
+                <p className={text.hint}>You can also trigger this later from the templ overview page.</p>
+              </>
             )}
             {sanitizedBindingHomeLink.text ? (
               <p>
@@ -578,9 +643,11 @@ export function CreateTemplPage({
             ) : null}
           </div>
           <div className={`${layout.cardActions} mt-6`}>
-            <button type="button" className={button.base} onClick={refreshTempls}>
-              Refresh templ list
-            </button>
+            {bindingInfo.bindingCode || bindingInfo.telegramChatId ? (
+              <button type="button" className={button.base} onClick={refreshTempls}>
+                Refresh templ list
+              </button>
+            ) : null}
             <button
               type="button"
               className={button.primary}

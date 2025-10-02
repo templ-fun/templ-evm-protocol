@@ -257,7 +257,8 @@ export async function deployTempl({
   backendUrl = BACKEND_URL,
   telegramChatId,
   templHomeLink,
-  txOptions = {}
+  txOptions = {},
+  autoRegister
 }) {
   const templAddress = await deployContract({
     ethers,
@@ -279,14 +280,18 @@ export async function deployTempl({
     txOptions
   });
 
-  const registration = await registerTemplBackend({
-    signer,
-    walletAddress,
-    templAddress,
-    backendUrl,
-    telegramChatId,
-    templHomeLink
-  });
+  const shouldRegister = autoRegister ?? Boolean(telegramChatId);
+  let registration = null;
+  if (shouldRegister) {
+    registration = await registerTemplBackend({
+      signer,
+      walletAddress,
+      templAddress,
+      backendUrl,
+      telegramChatId,
+      templHomeLink
+    });
+  }
 
   return { templAddress, registration };
 }

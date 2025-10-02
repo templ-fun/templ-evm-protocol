@@ -294,7 +294,10 @@ export async function verifyMembership({
   signer,
   templAddress,
   walletAddress,
-  backendUrl = BACKEND_URL
+  backendUrl = BACKEND_URL,
+  ethers,
+  templArtifact,
+  readProvider
 }) {
   if (!templAddress) {
     throw new Error('verifyMembership requires templ address');
@@ -320,6 +323,48 @@ export async function verifyMembership({
     expiry: typed.message.expiry
   };
   const res = await postJson(`${backendUrl}/join`, payload);
+  if (res.status === 404 && ethers && templArtifact?.abi) {
+    const provider = signer?.provider ?? readProvider;
+    if (!provider) {
+      throw new Error('Templ not registered. Ask the priest to generate a binding code before verifying membership.');
+    }
+    const normalizedContract = (() => {
+      try {
+        return ethers.getAddress(templAddress).toLowerCase();
+      } catch {
+        return templAddress.toLowerCase();
+      }
+    })();
+    const normalizedMember = (() => {
+      try {
+        return ethers.getAddress(member).toLowerCase();
+      } catch {
+        return member.toLowerCase();
+      }
+    })();
+    try {
+      const contract = new ethers.Contract(normalizedContract, templArtifact.abi, provider);
+      const joined = await contract.isMember(normalizedMember);
+      if (!joined) {
+        throw new Error('Membership not found on-chain.');
+      }
+      return {
+        mode: 'onchain',
+        member: {
+          address: normalizedMember,
+          isMember: true
+        },
+        templ: {
+          contract: normalizedContract,
+          telegramChatId: null,
+          priest: null,
+          templHomeLink: ''
+        }
+      };
+    } catch (err) {
+      throw new Error(`Membership verification requires backend registration: ${err?.message || err}`);
+    }
+  }
   if (!res.ok) {
     const body = await res.text().catch(() => '');
     throw new Error(`Join failed: ${res.status} ${res.statusText} ${body}`.trim());
