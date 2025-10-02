@@ -8,6 +8,7 @@ This guide covers the Node 22 + Express app in `backend/`. Run it as a long-live
 - Persist templ ↔ Telegram bindings so alerts survive restarts (no wallet-to-chat mapping is stored).
 - Confirm membership directly against the chain instead of keeping local member lists.
 - Stream templ events into Telegram with MarkdownV2 notifications.
+- Index templ deployments emitted by the trusted factory so deployers are registered automatically.
 
 Start the service in development with `npm --prefix backend start`.
 
@@ -16,7 +17,7 @@ Start the service in development with `npm --prefix backend start`.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/templs` | List known templs. Optional `?include=homelink` adds `templHomeLink` to each row. Chat ids are never returned. |
-| `POST` | `/templs` | Register a templ. Requires typed signature from the priest. Body fields: `contractAddress`, `priestAddress`, optional `telegramChatId`, optional `templHomeLink`, plus `chainId/nonce/issuedAt/expiry/signature`. Returns `{ contract, priest, templHomeLink, telegramChatId?, bindingCode? }`. |
+| `POST` | `/templs` | Manually register a templ. Requires typed signature from the priest. Usually unnecessary when `TRUSTED_FACTORY_ADDRESS` is configured because factory events register templs automatically. |
 | `POST` | `/templs/rebind` | Request a new binding code to rotate Telegram chats. Requires typed signature from the current priest. Returns `{ contract, bindingCode, telegramChatId?, priest }`. |
 | `POST` | `/join` | Verify membership. Requires typed signature from the member. Body fields: `contractAddress`, `memberAddress`, plus `chainId/nonce/issuedAt/expiry/signature`. Returns `{ member:{isMember}, templ:{...}, links:{...} }`. |
 
@@ -86,6 +87,10 @@ Templ home links continue to live on-chain; watchers refresh them (and priest da
 
 Only one backend instance should emit Telegram notifications at a time. When multiple replicas share the same SQLite/D1 database the server uses the `leader_election` table to acquire a short-lived lease (`LEADER_TTL_MS`, default 60s). The leader streams templ events, polls Telegram for binding codes, and sends daily digests; standby replicas wake up periodically to refresh the lease and take over if the active process disappears. When using the in-memory persistence adapter, run a single instance so notifications are not duplicated.
 
+### Trusted factory indexing
+
+Providing both `RPC_URL` and `TRUSTED_FACTORY_ADDRESS` enables an indexer that tails the factory's `TemplCreated` events. The server registers new templs automatically (re-using the same validation path as manual `/templs` calls) and attaches contract watchers as soon as the factory log lands. Set `TRUSTED_FACTORY_DEPLOYMENT_BLOCK` so the historical scan stays within provider limits. With this configuration, deployers only sign when requesting Telegram bindings or later rebinds—the creation flow no longer surfaces the registration signature prompt in the frontend.
+
 ## Routes
 
 ### `GET /templs`
@@ -108,7 +113,9 @@ Returns the list of registered templs. Chat identifiers are never exposed; reque
 
 ### `POST /templs`
 
-Registers a templ. Requires an EIP-712 typed signature from the priest (`buildCreateTypedData`). Optional `telegramChatId` seeds an existing Telegram binding and `templHomeLink` lets deployers publish the canonical landing page immediately.
+Manually registers a templ. Requires an EIP-712 typed signature from the priest (`buildCreateTypedData`). Optional `telegramChatId` seeds an existing Telegram binding and `templHomeLink` lets deployers publish the canonical landing page immediately.
+
+When `TRUSTED_FACTORY_ADDRESS` is set, the backend already listens for `TemplCreated` events and calls this service internally, so deployers do not need to hit this endpoint after creating a templ. Keep the route enabled for advanced recovery scenarios (for example, backfilling templs deployed before the indexer was configured).
 
 ```json
 {

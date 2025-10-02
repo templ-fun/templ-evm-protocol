@@ -1,6 +1,6 @@
 // @ts-check
 import { BACKEND_URL } from '../config.js';
-import { buildCreateTypedData, buildRebindTypedData } from '../../../shared/signing.js';
+import { buildRebindTypedData } from '../../../shared/signing.js';
 import { addToTestRegistry, dlog } from './utils.js';
 import { postJson } from './http.js';
 
@@ -177,67 +177,6 @@ async function deployContract({
   return normalized;
 }
 
-export async function registerTemplBackend({
-  signer,
-  walletAddress,
-  templAddress,
-  backendUrl = BACKEND_URL,
-  telegramChatId,
-  templHomeLink
-}) {
-  if (!templAddress) {
-    throw new Error('registerTemplBackend requires templAddress');
-  }
-  let priest = walletAddress;
-  if (!priest && signer?.getAddress) {
-    priest = await signer.getAddress();
-  }
-  if (!priest) {
-    throw new Error('registerTemplBackend requires priest wallet address');
-  }
-  const chain = await signer.provider?.getNetwork?.();
-  const chainId = Number(chain?.chainId || 1337);
-  const typed = buildCreateTypedData({ chainId, contractAddress: templAddress.toLowerCase() });
-  const signature = await signer.signTypedData(typed.domain, typed.types, typed.message);
-  const payload = {
-    contractAddress: templAddress,
-    priestAddress: priest,
-    signature,
-    chainId,
-    nonce: typed.message.nonce,
-    issuedAt: typed.message.issuedAt,
-    expiry: typed.message.expiry,
-    telegramChatId: telegramChatId || undefined,
-    templHomeLink: templHomeLink || undefined
-  };
-  const res = await postJson(`${backendUrl}/templs`, payload);
-  if (res.status === 409) {
-    const retryTyped = buildCreateTypedData({ chainId, contractAddress: templAddress.toLowerCase(), nonce: Date.now() });
-    const retrySig = await signer.signTypedData(retryTyped.domain, retryTyped.types, retryTyped.message);
-    const retryPayload = {
-      contractAddress: templAddress,
-      priestAddress: priest,
-      signature: retrySig,
-      chainId,
-      nonce: retryTyped.message.nonce,
-      issuedAt: retryTyped.message.issuedAt,
-      expiry: retryTyped.message.expiry,
-      telegramChatId: telegramChatId || undefined,
-      templHomeLink: templHomeLink || undefined
-    };
-    const retryRes = await postJson(`${backendUrl}/templs`, retryPayload);
-    if (!retryRes.ok) {
-      throw new Error(`Templ registration failed: ${retryRes.status} ${retryRes.statusText}`);
-    }
-    return retryRes.json();
-  }
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`Templ registration failed: ${res.status} ${res.statusText} ${body}`.trim());
-  }
-  return res.json();
-}
-
 export async function deployTempl({
   ethers,
   signer,
@@ -254,11 +193,8 @@ export async function deployTempl({
   quorumPercent,
   maxMembers,
   priestIsDictator,
-  backendUrl = BACKEND_URL,
-  telegramChatId,
   templHomeLink,
-  txOptions = {},
-  autoRegister
+  txOptions = {}
 }) {
   const templAddress = await deployContract({
     ethers,
@@ -280,20 +216,7 @@ export async function deployTempl({
     txOptions
   });
 
-  const shouldRegister = autoRegister ?? Boolean(telegramChatId);
-  let registration = null;
-  if (shouldRegister) {
-    registration = await registerTemplBackend({
-      signer,
-      walletAddress,
-      templAddress,
-      backendUrl,
-      telegramChatId,
-      templHomeLink
-    });
-  }
-
-  return { templAddress, registration };
+  return { templAddress };
 }
 
 export async function requestTemplRebindBackend({

@@ -37,7 +37,7 @@ function normaliseChatId(value) {
 
 export async function registerTempl(body, context) {
   const { contractAddress, priestAddress } = body;
-  const { provider, logger, templs, persist, watchContract, findBinding } = context;
+  const { provider, logger, templs, persist, watchContract, findBinding, skipFactoryValidation } = context;
 
   const contract = normaliseAddress(contractAddress, 'contractAddress');
   const priest = normaliseAddress(priestAddress, 'priestAddress');
@@ -54,7 +54,7 @@ export async function registerTempl(body, context) {
   }
 
   const trustedFactory = process.env.TRUSTED_FACTORY_ADDRESS?.trim();
-  if (trustedFactory) {
+  if (trustedFactory && !skipFactoryValidation) {
     await ensureTemplFromFactory({ provider, contractAddress: contract, factoryAddress: trustedFactory });
   }
 

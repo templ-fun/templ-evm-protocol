@@ -4,7 +4,7 @@ import templArtifact from '../contracts/TEMPL.json';
 import templFactoryArtifact from '../contracts/TemplFactory.json';
 import { FACTORY_CONFIG } from '../config.js';
 import { BASE_TOKEN_SUGGESTIONS } from '../data/baseTokens.js';
-import { deployTempl, registerTemplBackend } from '../services/deployment.js';
+import { deployTempl, requestTemplRebindBackend } from '../services/deployment.js';
 import { button, form, layout, surface, text } from '../ui/theme.js';
 
 const DEFAULT_PERCENT = 30;
@@ -187,11 +187,10 @@ export function CreateTemplPage({
     setRegisteringBinding(true);
     pushMessage?.('Generating Telegram binding code…');
     try {
-      const registration = await registerTemplBackend({
+      const rebind = await requestTemplRebindBackend({
         signer,
         walletAddress,
-        templAddress,
-        templHomeLink: templLink || undefined
+        templAddress
       });
       setBindingInfo((prev) => {
         const base = prev ?? {
@@ -201,16 +200,21 @@ export function CreateTemplPage({
         };
         return {
           templAddress: base.templAddress,
-          bindingCode: registration?.bindingCode || null,
-          telegramChatId: registration?.templ?.telegramChatId || null,
-          templHomeLink: registration?.templ?.templHomeLink || base.templHomeLink || '',
-          priest: registration?.templ?.priest || base.priest || walletAddress
+          bindingCode: rebind?.bindingCode || null,
+          telegramChatId: rebind?.telegramChatId || null,
+          templHomeLink: base.templHomeLink || '',
+          priest: rebind?.priest || base.priest || walletAddress
         };
       });
       refreshTempls?.();
       pushMessage?.('Binding code ready. Invite the bot to your group to finish setup.');
     } catch (err) {
-      pushMessage?.(`Telegram binding failed: ${err?.message || err}`);
+      const message = String(err?.message || err || '');
+      if (message.includes('404') || message.toLowerCase().includes('not registered')) {
+        pushMessage?.('Templ is still syncing with the backend. Wait a few seconds and try again.');
+      } else {
+        pushMessage?.(`Telegram binding failed: ${message}`);
+      }
     } finally {
       setRegisteringBinding(false);
     }
@@ -337,7 +341,7 @@ export function CreateTemplPage({
     setSubmitting(true);
     pushMessage?.('Deploying templ…');
     try {
-      const result = await deployTempl({
+      const { templAddress } = await deployTempl({
         ethers,
         signer,
         walletAddress,
@@ -355,13 +359,14 @@ export function CreateTemplPage({
         priestIsDictator: dictatorship,
         templHomeLink: homeLink || undefined
       });
-      pushMessage?.(`Templ deployed at ${result.templAddress}`);
+      pushMessage?.(`Templ deployed at ${templAddress}`);
+      pushMessage?.('Backend is syncing the new templ. This typically finishes within a few seconds.');
       setBindingInfo({
-        templAddress: result.templAddress,
-        bindingCode: result.registration?.bindingCode || null,
-        telegramChatId: result.registration?.templ?.telegramChatId || null,
-        templHomeLink: result.registration?.templ?.templHomeLink || homeLink || '',
-        priest: result.registration?.templ?.priest || walletAddress
+        templAddress,
+        bindingCode: null,
+        telegramChatId: null,
+        templHomeLink: homeLink || '',
+        priest: walletAddress
       });
       refreshTempls?.();
     } catch (err) {
@@ -612,6 +617,10 @@ export function CreateTemplPage({
                 <p>
                   Generate a binding code when you are ready to connect Telegram notifications. This step asks for a wallet
                   signature so the bot can verify you control the templ priest address.
+                </p>
+                <p className={text.hint}>
+                  New templs appear in the backend automatically shortly after deployment. If the request fails, wait a few
+                  seconds and try again.
                 </p>
                 <div className="flex flex-col gap-3 sm:flex-row">
                   <button

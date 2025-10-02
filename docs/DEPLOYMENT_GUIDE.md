@@ -137,9 +137,9 @@ This guide promotes templ to production with a Fly-hosted backend and a Cloudfla
    # -> {"templs": []}
    ```
 
-2. Visit the production frontend, connect the priest wallet, and create a templ. The UI deploys through the trusted factory, signs the backend payload, and registers the templ immediately.
+2. Visit the production frontend, connect the priest wallet, and create a templ. When `TRUSTED_FACTORY_ADDRESS` and `RPC_URL` are configured the backend consumes the factory event and registers the templ automatically, so the deployer only signs again if they choose to bind Telegram.
 
-3. If necessary, register templs manually:
+3. If necessary (for example when backfilling historical templs or running without the factory indexer), register templs manually:
 
    ```bash
    export BACKEND_URL=https://api.templ.example

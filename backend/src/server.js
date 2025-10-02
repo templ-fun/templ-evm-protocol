@@ -15,6 +15,8 @@ import { logger } from './logger.js';
 import { createTelegramNotifier } from './telegram.js';
 import { createSignatureStore } from './middleware/validate.js';
 import { ensureTemplFromFactory } from './services/contractValidation.js';
+import { createFactoryIndexer } from './services/factoryIndexer.js';
+import { registerTempl } from './services/registerTempl.js';
 
 import { createPersistence } from './persistence/index.js';
 
@@ -1053,6 +1055,59 @@ export async function createApp(opts) {
   const watchContract = contractWatcher.watchContract;
   app.locals.backgroundTasks = null;
 
+  let cachedChainId = null;
+  const getChainId = async () => {
+    if (cachedChainId !== null) {
+      return cachedChainId;
+    }
+    if (!provider) {
+      cachedChainId = undefined;
+      return cachedChainId;
+    }
+    try {
+      const network = await provider.getNetwork();
+      cachedChainId = Number(network?.chainId);
+      if (!Number.isFinite(cachedChainId)) {
+        cachedChainId = undefined;
+      }
+    } catch {
+      cachedChainId = undefined;
+    }
+    return cachedChainId;
+  };
+
+  const factoryIndexer = createFactoryIndexer({
+    provider,
+    templs,
+    logger,
+    fromBlock: process.env.TRUSTED_FACTORY_DEPLOYMENT_BLOCK,
+    onTemplDiscovered: async ({ templAddress, priestAddress, homeLink }) => {
+      if (!templAddress || !priestAddress) return;
+      const chainId = await getChainId();
+      try {
+        await registerTempl(
+          {
+            contractAddress: templAddress,
+            priestAddress,
+            templHomeLink: typeof homeLink === 'string' ? homeLink : '',
+            chainId
+          },
+          {
+            provider,
+            logger,
+            templs,
+            persist,
+            watchContract,
+            findBinding,
+            skipFactoryValidation: true
+          }
+        );
+      } catch (err) {
+        logger?.warn?.({ err: String(err?.message || err), contract: templAddress }, 'Factory auto-registration failed');
+      }
+    }
+  });
+
   const restorationPromise = restoreGroupsFromPersistence({
     listBindings,
     templs,
@@ -1117,6 +1172,13 @@ export async function createApp(opts) {
       /* ignore */
     }
     await contractWatcher.resumeWatching();
+    if (factoryIndexer?.start) {
+      try {
+        await factoryIndexer.start();
+      } catch (err) {
+        logger?.warn?.({ err: String(err?.message || err) }, 'Failed to start factory indexer');
+      }
+    }
     if (enableBackgroundTasks && !backgroundTasks) {
       backgroundTasks = createBackgroundTasks({ templs, notifier, logger, persist });
       app.locals.backgroundTasks = backgroundTasks;
@@ -1127,6 +1189,11 @@ export async function createApp(opts) {
   const stopLeaderServices = () => {
     if (!leaderServicesActive) return;
     leaderServicesActive = false;
+    if (factoryIndexer?.stop) {
+      factoryIndexer.stop().catch((err) => {
+        logger?.warn?.({ err: String(err?.message || err) }, 'Failed to stop factory indexer');
+      });
+    }
     contractWatcher.pauseWatching();
     if (backgroundTasks) {
       backgroundTasks.stop();
