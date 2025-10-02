@@ -67,14 +67,11 @@ async function main() {
 
       const sql = await readFile(path.join(migrationsDir, migrationFile), 'utf8');
       console.log(`Applying ${version}...`);
-      db.exec('BEGIN');
       try {
         db.exec(sql);
         insertStmt.run(version, Date.now());
-        db.exec('COMMIT');
         console.log(`Applied ${version}`);
       } catch (err) {
-        db.exec('ROLLBACK');
         console.error(`Migration ${version} failed:`, err?.message || err);
         process.exit(1);
       }
