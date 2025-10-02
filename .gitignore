@@ -51,6 +51,8 @@ frontend/.vite-cache/
 frontend/npm-cache/
 frontend/pw-dist/
 frontend/pw-results/
+frontend/.pw-results/
+.pw-results/
 
 # Root coverage artifact
 coverage.json
