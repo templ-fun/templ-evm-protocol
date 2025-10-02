@@ -6,6 +6,16 @@ const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 const ENTRY_FEE = ethers.parseUnits("100", 18);
 const DAY = 24 * 60 * 60;
 const VOTING_PERIOD = 7 * DAY;
+const computeJoinFee = async (templ, prospectiveCount) => {
+  const entry = await templ.entryFee();
+  const curve = await templ.feeCurve();
+  const formula = Number(curve[0]);
+  if (formula === 0) {
+    return entry;
+  }
+  const count = typeof prospectiveCount === "bigint" ? prospectiveCount : BigInt(prospectiveCount);
+  return entry + (curve[1] * count) / curve[2];
+};
 
 async function findMemberPoolSlot(templ, contractAddress, maxSlots = 200) {
   const expected = await templ.memberPoolBalance();
@@ -115,6 +125,75 @@ describe("Membership coverage extras", function () {
     await expect(
       templ.connect(payer).joinFor(recipient.address)
     ).to.be.revertedWithCustomError(templ, "MemberAlreadyJoined");
+  });
+
+  it("applies linear fee curves to join costs", async function () {
+    const slope = ethers.parseUnits("1", 18);
+    const scale = 1n;
+    const { templ, token, accounts, priest } = await deployTempl({ entryFee: ENTRY_FEE });
+    const [, , memberA, memberB] = accounts;
+
+    await templ
+      .connect(priest)
+      .createProposalSetFeeCurve(
+        1,
+        slope,
+        scale,
+        7 * 24 * 60 * 60,
+        "Set linear fee curve",
+        "Increase join cost linearly"
+      );
+    await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
+    await ethers.provider.send("evm_mine", []);
+    await templ.executeProposal(0);
+
+    const templAddress = await templ.getAddress();
+    const initialMembers = await templ.memberCount();
+    const firstFee = await computeJoinFee(templ, initialMembers);
+    expect(firstFee).to.equal(ENTRY_FEE + slope);
+
+    await token.mint(memberA.address, firstFee);
+    await token.connect(memberA).approve(templAddress, firstFee);
+    const firstJoin = await templ.connect(memberA).join();
+    const firstReceipt = await firstJoin.wait();
+    const firstEvent = firstReceipt.logs
+      .map((log) => {
+        try {
+          return templ.interface.parseLog(log);
+        } catch (_) {
+          return null;
+        }
+      })
+      .find((log) => log && log.name === "MemberJoined");
+
+    expect(firstEvent).to.not.equal(undefined);
+    expect(firstEvent.args.totalAmount).to.equal(firstFee);
+
+    const postJoinMembers = await templ.memberCount();
+    const secondFee = await computeJoinFee(templ, postJoinMembers);
+    expect(secondFee).to.equal(ENTRY_FEE + (slope * 2n) / scale);
+
+    await token.mint(memberB.address, secondFee);
+    await token.connect(memberB).approve(templAddress, secondFee);
+    const secondJoin = await templ.connect(memberB).join();
+    const secondReceipt = await secondJoin.wait();
+    const secondEvent = secondReceipt.logs
+      .map((log) => {
+        try {
+          return templ.interface.parseLog(log);
+        } catch (_) {
+          return null;
+        }
+      })
+      .find((log) => log && log.name === "MemberJoined");
+
+    expect(secondEvent).to.not.equal(undefined);
+    expect(secondEvent.args.totalAmount).to.equal(secondFee);
+
+    const curveState = await templ.feeCurve();
+    expect(curveState[0]).to.equal(1);
+    expect(curveState[1]).to.equal(slope);
+    expect(curveState[2]).to.equal(scale);
   });
 
   it("rejects external reward claims using the access token", async function () {

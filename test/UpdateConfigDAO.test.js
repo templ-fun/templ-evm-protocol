@@ -8,6 +8,16 @@ describe("updateConfigDAO", function () {
     const TOKEN_SUPPLY = ethers.parseUnits("10000", 18);
     const BPS_DENOMINATOR = 10_000n;
     const pct = (value) => value * 100;
+    const computeJoinFee = async (templ, prospectiveCount) => {
+        const entry = await templ.entryFee();
+        const curve = await templ.feeCurve();
+        const formula = Number(curve[0]);
+        if (formula === 0) {
+            return entry;
+        }
+        const count = typeof prospectiveCount === "bigint" ? prospectiveCount : BigInt(prospectiveCount);
+        return entry + (curve[1] * count) / curve[2];
+    };
 
     let templ;
     let token;
@@ -125,8 +135,80 @@ describe("updateConfigDAO", function () {
         const protocolBalanceAfter = await token.balanceOf(protocolRecipient);
 
         expect(burnBalanceAfter - burnBalanceBefore).to.equal(burnAmount);
-        expect(memberPoolAfter - memberPoolBefore).to.equal(memberPoolAmount);
-        expect(protocolBalanceAfter - protocolBalanceBefore).to.equal(protocolAmount);
-        expect(treasuryAfter - treasuryBefore).to.equal(treasuryAmount);
+    expect(memberPoolAfter - memberPoolBefore).to.equal(memberPoolAmount);
+    expect(protocolBalanceAfter - protocolBalanceBefore).to.equal(protocolAmount);
+    expect(treasuryAfter - treasuryBefore).to.equal(treasuryAmount);
+  });
+
+    it("updates the fee curve when governance approves", async function () {
+        const slope = ethers.parseUnits("2", 18);
+        const scale = 1n;
+
+        expect(await computeJoinFee(templ, await templ.memberCount())).to.equal(ENTRY_FEE);
+
+        await templ.connect(member).createProposalSetFeeCurve(
+            1,
+            slope,
+            scale,
+            7 * 24 * 60 * 60,
+            "Linear fee curve",
+            "Increase join cost by 2 tokens per member"
+        );
+        await templ.connect(member).vote(0, true);
+        await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
+        await ethers.provider.send("evm_mine");
+        await templ.executeProposal(0);
+
+        const curve = await templ.feeCurve();
+        expect(curve[0]).to.equal(1);
+        expect(curve[1]).to.equal(slope);
+        expect(curve[2]).to.equal(scale);
+
+        const expectedNextFee = ENTRY_FEE + (slope * 2n) / scale;
+        expect(await computeJoinFee(templ, await templ.memberCount())).to.equal(expectedNextFee);
+
+        const templAddress = await templ.getAddress();
+        await token.connect(secondMember).approve(templAddress, expectedNextFee);
+        const joinTx = await templ.connect(secondMember).join();
+        const joinReceipt = await joinTx.wait();
+        const memberJoined = joinReceipt.logs
+            .map((log) => {
+                try {
+                    return templ.interface.parseLog(log);
+                } catch (_) {
+                    return null;
+                }
+            })
+            .find((log) => log && log.name === "MemberJoined");
+
+        expect(memberJoined).to.not.equal(undefined);
+        expect(memberJoined.args.totalAmount).to.equal(expectedNextFee);
+
+        const futureFee = await computeJoinFee(templ, await templ.memberCount());
+        expect(futureFee).to.equal(ENTRY_FEE + (slope * 3n) / scale);
+    });
+
+    it("validates scale and slope when creating fee curve proposals", async function () {
+        await expect(
+            templ.connect(member).createProposalSetFeeCurve(
+                1,
+                1n,
+                0,
+                7 * 24 * 60 * 60,
+                "Bad",
+                "Zero scale"
+            )
+        ).to.be.revertedWithCustomError(templ, "InvalidFeeCurve");
+
+        await expect(
+            templ.connect(member).createProposalSetFeeCurve(
+                0,
+                1n,
+                ethers.parseUnits("1", 18),
+                7 * 24 * 60 * 60,
+                "Bad",
+                "Constant with slope"
+            )
+        ).to.be.revertedWithCustomError(templ, "InvalidFeeCurve");
     });
 });

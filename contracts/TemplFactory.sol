@@ -21,6 +21,7 @@ contract TemplFactory {
     uint256 internal constant DEFAULT_EXECUTION_DELAY = 7 days;
     address internal constant DEFAULT_BURN_ADDRESS = 0x000000000000000000000000000000000000dEaD;
     int256 internal constant USE_DEFAULT_PERCENT = -1;
+    uint256 internal constant DEFAULT_MAX_MEMBERS = 250;
 
     struct CreateConfig {
         address priest;
@@ -41,7 +42,8 @@ contract TemplFactory {
     uint256 public immutable protocolPercent;
     address public immutable factoryDeployer;
     bool public permissionless;
-    address internal immutable templInitCodePointer;
+    address[] internal templInitCodePointers;
+    uint256 internal constant TEMPL_INIT_CHUNK_SIZE = 24_500;
 
     event TemplCreated(
         address indexed templ,
@@ -72,7 +74,20 @@ contract TemplFactory {
         protocolPercent = _protocolPercent;
         factoryDeployer = msg.sender;
         permissionless = false;
-        templInitCodePointer = SSTORE2.write(type(TEMPL).creationCode);
+
+        bytes memory templInitCode = type(TEMPL).creationCode;
+        uint256 totalLength = templInitCode.length;
+        uint256 offset = 0;
+        while (offset < totalLength) {
+            uint256 remaining = totalLength - offset;
+            uint256 chunkSize = remaining > TEMPL_INIT_CHUNK_SIZE ? TEMPL_INIT_CHUNK_SIZE : remaining;
+            bytes memory chunk = new bytes(chunkSize);
+            for (uint256 i = 0; i < chunkSize; i++) {
+                chunk[i] = templInitCode[offset + i];
+            }
+            templInitCodePointers.push(SSTORE2.write(chunk));
+            offset += chunkSize;
+        }
     }
 
     /// @notice Toggles permissionless mode for templ creation.
@@ -114,7 +129,7 @@ contract TemplFactory {
             executionDelaySeconds: DEFAULT_EXECUTION_DELAY,
             burnAddress: DEFAULT_BURN_ADDRESS,
             priestIsDictator: false,
-            maxMembers: 0,
+            maxMembers: DEFAULT_MAX_MEMBERS,
             homeLink: ""
         });
         return _deploy(cfg);
@@ -154,15 +169,13 @@ contract TemplFactory {
         uint256 memberPoolPercent = _resolvePercent(cfg.memberPoolPercent, DEFAULT_MEMBER_POOL_PERCENT);
         _validatePercentSplit(burnPercent, treasuryPercent, memberPoolPercent);
 
-        bytes memory constructorArgs = abi.encode(
+        bytes memory constructorArgs = _encodeConstructorArgs(
             cfg.priest,
-            protocolFeeRecipient,
             cfg.token,
             cfg.entryFee,
             burnPercent,
             treasuryPercent,
             memberPoolPercent,
-            protocolPercent,
             cfg.quorumPercent,
             cfg.executionDelaySeconds,
             cfg.burnAddress,
@@ -170,7 +183,7 @@ contract TemplFactory {
             cfg.maxMembers,
             cfg.homeLink
         );
-        bytes memory templInitCode = SSTORE2.read(templInitCodePointer);
+        bytes memory templInitCode = _loadTemplInitCode();
         if (templInitCode.length == 0) revert TemplErrors.DeploymentFailed();
         bytes memory initCode = abi.encodePacked(templInitCode, constructorArgs);
 
@@ -220,6 +233,62 @@ contract TemplFactory {
     ) internal view {
         if (_burnPercent + _treasuryPercent + _memberPoolPercent + protocolPercent != TOTAL_PERCENT) {
             revert TemplErrors.InvalidPercentageSplit();
+        }
+    }
+
+    function _encodeConstructorArgs(
+        address priest,
+        address token,
+        uint256 entryFee,
+        uint256 burnPercent,
+        uint256 treasuryPercent,
+        uint256 memberPoolPercent,
+        uint256 quorumPercent,
+        uint256 executionDelaySeconds,
+        address burnAddress,
+        bool priestIsDictator,
+        uint256 maxMembers,
+        string memory homeLink
+    ) internal view returns (bytes memory) {
+        return abi.encode(
+            priest,
+            protocolFeeRecipient,
+            token,
+            entryFee,
+            burnPercent,
+            treasuryPercent,
+            memberPoolPercent,
+            protocolPercent,
+            quorumPercent,
+            executionDelaySeconds,
+            burnAddress,
+            priestIsDictator,
+            maxMembers,
+            homeLink
+        );
+    }
+
+    function _loadTemplInitCode() internal view returns (bytes memory code) {
+        uint256 pointerCount = templInitCodePointers.length;
+        if (pointerCount == 0) {
+            return bytes("");
+        }
+        bytes[] memory chunks = new bytes[](pointerCount);
+        uint256 totalLength = 0;
+        for (uint256 i = 0; i < pointerCount; i++) {
+            bytes memory chunk = SSTORE2.read(templInitCodePointers[i]);
+            chunks[i] = chunk;
+            totalLength += chunk.length;
+        }
+        code = new bytes(totalLength);
+        uint256 offset = 0;
+        for (uint256 i = 0; i < pointerCount; i++) {
+            bytes memory chunk = chunks[i];
+            uint256 chunkLen = chunk.length;
+            for (uint256 j = 0; j < chunkLen; j++) {
+                code[offset + j] = chunk[j];
+            }
+            offset += chunkLen;
         }
     }
 

@@ -5,6 +5,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {TemplErrors} from "./TemplErrors.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 /// @title Base templ storage and shared helpers
 /// @notice Hosts shared state, events, and internal helpers used by membership, treasury, and governance modules.
@@ -22,6 +23,19 @@ abstract contract TemplBase is ReentrancyGuard {
     address internal constant DEFAULT_BURN_ADDRESS = 0x000000000000000000000000000000000000dEaD;
     /// @dev Caps the number of external reward tokens tracked to keep join gas bounded.
     uint256 internal constant MAX_EXTERNAL_REWARD_TOKENS = 256;
+    /// @dev Default denominator applied to fee curve slope calculations.
+    uint256 internal constant DEFAULT_FEE_CURVE_SCALE = 1e18;
+
+    enum FeeCurveFormula {
+        Constant,
+        Linear
+    }
+
+    struct FeeCurveConfig {
+        FeeCurveFormula formula;
+        uint256 slope;
+        uint256 scale;
+    }
 
     /// @notice Percent of the entry fee that is burned on every join.
     uint256 public burnPercent;
@@ -51,6 +65,8 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @notice Maximum allowed members when greater than zero (0 = uncapped).
     /// @dev Named in uppercase historically; kept for backwards compatibility with emitted ABI.
     uint256 public MAX_MEMBERS;
+    /// @notice Encodes how entry fees evolve as new members join.
+    FeeCurveConfig public feeCurve;
 
     /// @notice Percent of YES votes required to satisfy quorum.
     uint256 public quorumPercent;
@@ -104,6 +120,9 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 newBurnPercent;
         uint256 newTreasuryPercent;
         uint256 newMemberPoolPercent;
+        FeeCurveFormula newFeeCurveFormula;
+        uint256 newFeeCurveSlope;
+        uint256 newFeeCurveScale;
         string newHomeLink;
         uint256 newMaxMembers;
         uint256 yesVotes;
@@ -142,6 +161,7 @@ abstract contract TemplBase is ReentrancyGuard {
         SetDictatorship,
         SetMaxMembers,
         SetHomeLink,
+        SetFeeCurve,
         Undefined
     }
 
@@ -216,6 +236,7 @@ abstract contract TemplBase is ReentrancyGuard {
     );
 
     event TemplHomeLinkUpdated(string previousLink, string newLink);
+    event FeeCurveUpdated(FeeCurveFormula formula, uint256 slope, uint256 scale);
 
     struct ExternalRewardState {
         uint256 poolBalance;
@@ -353,6 +374,8 @@ abstract contract TemplBase is ReentrancyGuard {
         if (bytes(_homeLink).length != 0) {
             emit TemplHomeLinkUpdated("", _homeLink);
         }
+
+        _setFeeCurve(FeeCurveFormula.Constant, 0, DEFAULT_FEE_CURVE_SCALE);
     }
 
     /// @dev Updates the split between burn, treasury, and member pool slices.
@@ -365,6 +388,18 @@ abstract contract TemplBase is ReentrancyGuard {
         burnPercent = _burnPercent;
         treasuryPercent = _treasuryPercent;
         memberPoolPercent = _memberPoolPercent;
+    }
+
+    /// @dev Writes a new fee curve configuration controlling how entry fees evolve.
+    function _setFeeCurve(
+        FeeCurveFormula formula,
+        uint256 slope,
+        uint256 scale
+    ) internal {
+        if (scale == 0) revert TemplErrors.InvalidFeeCurve();
+        if (formula == FeeCurveFormula.Constant && slope != 0) revert TemplErrors.InvalidFeeCurve();
+        feeCurve = FeeCurveConfig({formula: formula, slope: slope, scale: scale});
+        emit FeeCurveUpdated(formula, slope, scale);
     }
 
     /// @dev Validates that the provided split plus the protocol fee equals 100%.
@@ -406,6 +441,20 @@ abstract contract TemplBase is ReentrancyGuard {
         templHomeLink = newLink;
         emit TemplHomeLinkUpdated(previous, newLink);
     }
+
+    /// @dev Computes the entry fee a newcomer must pay relative to the provided population.
+    function _currentJoinFee(uint256 currentMembers) internal view returns (uint256) {
+        FeeCurveConfig memory cfg = feeCurve;
+        if (cfg.formula == FeeCurveFormula.Constant) {
+            return entryFee;
+        }
+        if (cfg.formula == FeeCurveFormula.Linear) {
+            uint256 increment = Math.mulDiv(cfg.slope, currentMembers, cfg.scale);
+            return entryFee + increment;
+        }
+        revert TemplErrors.InvalidFeeCurve();
+    }
+
 
     /// @dev Pauses new joins when a membership cap is set and already reached.
     function _autoPauseIfLimitReached() internal {

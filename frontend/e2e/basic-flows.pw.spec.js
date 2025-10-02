@@ -157,11 +157,18 @@ test.describe('Templ core workflows', () => {
     await execTx.wait();
     await provider.send('evm_mine', []);
 
+    await expect.poll(async () => {
+      const proposal = await templReadOnly.getProposal(0);
+      return Boolean(proposal.executed ?? proposal[4]);
+    }).toBe(true);
+
     await page.goto(`/templs/${templAddress}`);
     await expect(page.getByRole('heading', { name: 'Templ Overview' })).toBeVisible();
-    await page.getByRole('button', { name: 'Refresh proposals' }).click();
     const proposalItem = page.locator('li').filter({ hasText: '#0' });
-    await expect(proposalItem.locator('span').filter({ hasText: 'Executed' })).toBeVisible();
+    await expect.poll(async () => {
+      await page.getByRole('button', { name: 'Refresh proposals' }).click();
+      return await proposalItem.locator('span').filter({ hasText: 'Executed' }).count();
+    }).toBeGreaterThan(0);
 
     const entryFeeRow = page.locator('div.space-y-1').filter({ has: page.locator('dt', { hasText: 'Entry fee' }) });
     await expect(entryFeeRow.locator('dd')).toContainText('2');

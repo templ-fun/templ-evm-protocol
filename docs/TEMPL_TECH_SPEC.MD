@@ -13,7 +13,6 @@ Templ combines on-chain membership contracts, typed governance, and an off-chain
 - **Defaults** – Burn/treasury/member splits each default to 3_000 BPS (30%), quorum to 3_300 BPS (33%), execution delay to 7 days, and the burn address to `0x0000…dEaD`. Callers can request defaults explicitly by passing `-1` for percentage fields.
 - **Validation** – Entry fees must be ≥10 units of the access token and divisible by 10. Percentages must sum to 10_000 BPS once the factory’s `protocolPercent` is included.
 - **Access control** – The deploying wallet is recorded as `factoryDeployer`. Until that address calls `setPermissionless(true)`, only it can mint templs; when permissionless mode is enabled any wallet may deploy templs, but each templ still inherits the factory’s immutable protocol recipient and percent.
-- **Implementation detail** – The factory stores the `TEMPL` creation bytecode in SSTORE2 and concatenates constructor arguments during deployment to minimise gas.
 
 ### 1.2 Templ composition
 

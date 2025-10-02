@@ -132,4 +132,13 @@ contract TEMPL is TemplBase, TemplMembership, TemplTreasury, TemplGovernance {
         _setTemplHomeLink(newLink);
     }
 
+    /// @inheritdoc TemplGovernance
+    function _governanceSetFeeCurve(
+        FeeCurveFormula formula,
+        uint256 slope,
+        uint256 scale
+    ) internal override {
+        _setFeeCurve(formula, slope, scale);
+    }
+
 }

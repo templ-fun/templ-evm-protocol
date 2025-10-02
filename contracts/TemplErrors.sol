@@ -76,6 +76,8 @@ library TemplErrors {
     error ExecutionDelayActive();
     /// @notice Thrown when a provided percentage value is invalid.
     error InvalidPercentage();
+    /// @notice Thrown when a provided fee curve configuration is invalid.
+    error InvalidFeeCurve();
     /// @notice Thrown when priest dictatorship mode disables proposal-based governance.
     error DictatorshipEnabled();
     /// @notice Thrown when attempting to toggle dictatorship to its current state.

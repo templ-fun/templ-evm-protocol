@@ -79,6 +79,18 @@ abstract contract TemplTreasury is TemplBase {
         _setTemplHomeLink(newLink);
     }
 
+    /// @notice Governance action that updates how entry fees scale with membership.
+    /// @param formula Fee curve formula to apply.
+    /// @param slope Linear coefficient applied when the formula supports it.
+    /// @param scale Denominator used for slope calculations (must be non-zero).
+    function setFeeCurveDAO(
+        FeeCurveFormula formula,
+        uint256 slope,
+        uint256 scale
+    ) external onlyDAO {
+        _setFeeCurve(formula, slope, scale);
+    }
+
     /// @dev Internal helper that executes a treasury withdrawal and emits the corresponding event.
     function _withdrawTreasury(
         address token,

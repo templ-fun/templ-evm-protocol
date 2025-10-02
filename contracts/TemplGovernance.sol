@@ -44,6 +44,13 @@ abstract contract TemplGovernance is TemplBase {
     /// @notice Hook executed when governance updates the templ home link.
     function _governanceSetHomeLink(string memory newLink) internal virtual;
 
+    /// @notice Hook executed when governance updates the fee curve configuration.
+    function _governanceSetFeeCurve(
+        FeeCurveFormula formula,
+        uint256 slope,
+        uint256 scale
+    ) internal virtual;
+
     /// @notice Opens a proposal to pause or resume new member joins.
     /// @param _paused Desired join pause state.
     /// @param _votingPeriod Optional custom voting duration (seconds).
@@ -139,6 +146,35 @@ abstract contract TemplGovernance is TemplBase {
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
         p.action = Action.SetHomeLink;
         p.newHomeLink = _newLink;
+        return id;
+    }
+
+    /// @notice Opens a proposal to update the fee curve used for join pricing.
+    /// @param _formula Fee curve formula to apply.
+    /// @param _slope Linear coefficient applied when supported by the formula.
+    /// @param _scale Denominator used in slope calculations (must be non-zero).
+    /// @param _votingPeriod Optional custom voting duration (seconds).
+    /// @param _title On-chain title for the proposal.
+    /// @param _description On-chain description for the proposal.
+    /// @return proposalId Newly created proposal identifier.
+    function createProposalSetFeeCurve(
+        FeeCurveFormula _formula,
+        uint256 _slope,
+        uint256 _scale,
+        uint256 _votingPeriod,
+        string calldata _title,
+        string calldata _description
+    ) external returns (uint256) {
+        if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
+        if (_scale == 0) revert TemplErrors.InvalidFeeCurve();
+        if (_formula == FeeCurveFormula.Constant && _slope != 0) {
+            revert TemplErrors.InvalidFeeCurve();
+        }
+        (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
+        p.action = Action.SetFeeCurve;
+        p.newFeeCurveFormula = _formula;
+        p.newFeeCurveSlope = _slope;
+        p.newFeeCurveScale = _scale;
         return id;
     }
 
@@ -361,6 +397,12 @@ abstract contract TemplGovernance is TemplBase {
             _governanceSetMaxMembers(proposal.newMaxMembers);
         } else if (proposal.action == Action.SetHomeLink) {
             _governanceSetHomeLink(proposal.newHomeLink);
+        } else if (proposal.action == Action.SetFeeCurve) {
+            _governanceSetFeeCurve(
+                proposal.newFeeCurveFormula,
+                proposal.newFeeCurveSlope,
+                proposal.newFeeCurveScale
+            );
         } else {
             revert TemplErrors.InvalidCallData();
         }

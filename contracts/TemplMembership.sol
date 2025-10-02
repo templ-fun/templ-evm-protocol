@@ -40,13 +40,15 @@ abstract contract TemplMembership is TemplBase {
             _flushExternalRemainders();
         }
 
-        uint256 burnAmount = Math.mulDiv(entryFee, burnPercent, TOTAL_PERCENT);
-        uint256 memberPoolAmount = Math.mulDiv(entryFee, memberPoolPercent, TOTAL_PERCENT);
-        uint256 protocolAmount = Math.mulDiv(entryFee, protocolPercent, TOTAL_PERCENT);
-        uint256 treasuryAmount = entryFee - burnAmount - memberPoolAmount - protocolAmount;
+        uint256 joinFee = _currentJoinFee(currentMemberCount);
+
+        uint256 burnAmount = Math.mulDiv(joinFee, burnPercent, TOTAL_PERCENT);
+        uint256 memberPoolAmount = Math.mulDiv(joinFee, memberPoolPercent, TOTAL_PERCENT);
+        uint256 protocolAmount = Math.mulDiv(joinFee, protocolPercent, TOTAL_PERCENT);
+        uint256 treasuryAmount = joinFee - burnAmount - memberPoolAmount - protocolAmount;
         uint256 toContract = treasuryAmount + memberPoolAmount;
 
-        if (IERC20(accessToken).balanceOf(payer) < entryFee) revert TemplErrors.InsufficientBalance();
+        if (IERC20(accessToken).balanceOf(payer) < joinFee) revert TemplErrors.InsufficientBalance();
 
         joiningMember.joined = true;
         joiningMember.timestamp = block.timestamp;
@@ -75,7 +77,7 @@ abstract contract TemplMembership is TemplBase {
         emit MemberJoined(
             payer,
             recipient,
-            entryFee,
+            joinFee,
             burnAmount,
             treasuryAmount,
             memberPoolAmount,

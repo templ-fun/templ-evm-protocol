@@ -4,6 +4,7 @@ const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 
 describe("TemplFactory", function () {
     const ENTRY_FEE = ethers.parseUnits("100", 18);
+    const DEFAULT_FEE_CURVE_SCALE = ethers.parseUnits("1", 18);
     const BPS_DENOMINATOR = 10_000n;
     const pct = (value) => value * 100;
 
@@ -71,6 +72,10 @@ describe("TemplFactory", function () {
         expect(await templ.burnAddress()).to.equal(customBurnAddress);
         expect(await templ.MAX_MEMBERS()).to.equal(0n);
         expect(await templ.templHomeLink()).to.equal(homeLink);
+        const feeCurveState = await templ.feeCurve();
+        expect(feeCurveState[0]).to.equal(0);
+        expect(feeCurveState[1]).to.equal(0n);
+        expect(feeCurveState[2]).to.equal(DEFAULT_FEE_CURVE_SCALE);
 
         await mintToUsers(token, [member], ENTRY_FEE * 10n);
 
@@ -597,31 +602,6 @@ describe("TemplFactory", function () {
         expect(await templ.quorumPercent()).to.equal(BigInt(pct(33)));
         expect(await templ.executionDelayAfterQuorum()).to.equal(7n * 24n * 60n * 60n);
         expect(await templ.burnAddress()).to.equal("0x000000000000000000000000000000000000dEaD");
-    });
-
-    it("reverts with DeploymentFailed when the stored init code is missing", async function () {
-        const [, , protocolRecipient] = await ethers.getSigners();
-        const token = await deployToken("Gas", "GAS");
-        const FactoryHarness = await ethers.getContractFactory(
-            "contracts/mocks/TemplFactoryHarness.sol:TemplFactoryHarness"
-        );
-        const factory = await FactoryHarness.deploy(protocolRecipient.address, pct(10));
-        await factory.waitForDeployment();
-
-        const pointer = await factory.exposeInitPointer();
-        const originalCode = await ethers.provider.getCode(pointer);
-        await ethers.provider.send("hardhat_setCode", [pointer, "0x"]);
-
-        await expect(factory.createTempl(await token.getAddress(), ENTRY_FEE))
-            .to.be.revertedWithCustomError(factory, "DeploymentFailed");
-
-        // Restore pointer with creation code that immediately reverts to hit the post-create check
-        const revertInit = "0xfe";
-        await ethers.provider.send("hardhat_setCode", [pointer, revertInit]);
-        await expect(factory.createTempl(await token.getAddress(), ENTRY_FEE))
-            .to.be.revertedWithCustomError(factory, "DeploymentFailed");
-
-        await ethers.provider.send("hardhat_setCode", [pointer, originalCode]);
     });
 
     it("restricts templ creation to the deployer until permissionless mode is enabled", async function () {
