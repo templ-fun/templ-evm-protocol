@@ -72,8 +72,8 @@ The backend (`backend/src`) is a Node 22 Express app packaged in `backend/Docker
 - **Templ registry** – Registrations store contract, priest, optional `templHomeLink`, and optional `telegramChatId`. Chat identifiers are never returned to clients unless they own the templ; listing endpoints deliberately omit them.
 - **Membership checks** – `/join` calls `isMember(member)` on chain using the configured RPC endpoint. Failure to confirm membership surfaces as `403 Membership not found`.
 - **Telegram notifier** – When a templ is bound to a chat and `TELEGRAM_BOT_TOKEN` is configured, the backend streams contract events (`MemberJoined`, `ProposalCreated`, `VoteCast`, `PriestChanged`, etc.) and delivers MarkdownV2-formatted messages. Daily digests summarise treasury and member pool balances once every 24 hours while the server holds the leader lease.
-- **Background work** – Leader election (via D1) ensures exactly one replica runs watchers, polls Telegram binding codes, and triggers digests. Other replicas stay idle until the lease expires.
-- **Persistence** – See [PERSISTENCE.md](PERSISTENCE.md) for table layouts and failover behaviour (Cloudflare D1, SQLite, or in-memory adapters).
+- **Background work** – Leader election (persisted in SQLite) ensures exactly one replica runs watchers, polls Telegram binding codes, and triggers digests. Other replicas stay idle until the lease expires.
+- **Persistence** – See [PERSISTENCE.md](PERSISTENCE.md) for table layouts and failover behaviour (SQLite volume or in-memory adapters).
 - **Configuration** – `BACKEND.md` documents every environment variable (`RPC_URL`, `BACKEND_SERVER_ID`, `ALLOWED_ORIGINS`, `TRUSTED_FACTORY_*`, rate limiting, Telegram secrets, etc.) along with sample responses.
 
 ---

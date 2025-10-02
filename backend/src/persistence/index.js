@@ -4,22 +4,6 @@ const DEFAULT_SIGNATURE_RETENTION_MS = 6 * 60 * 60 * 1000; // 6 hours
 
 /**
  * @typedef {{
- *   bind(...values: Array<string | number | null | undefined>): D1Statement;
- *   first<T = any>(): Promise<T | null>;
- *   run(): Promise<{ success?: boolean | undefined, meta?: { changes?: number | null | undefined } | undefined }>;
- *   all<T = any>(): Promise<{ results: Array<T> }>;
- * }} D1Statement
- */
-
-/**
- * @typedef {{
- *   prepare(statement: string): D1Statement;
- *   exec(statement: string): Promise<unknown>;
- * }} D1Database
- */
-
-/**
- * @typedef {{
  *   telegramChatId: string | null,
  *   priest: string | null,
  *   bindingCode: string | null
@@ -58,200 +42,6 @@ const DEFAULT_SIGNATURE_RETENTION_MS = 6 * 60 * 60 * 1000; // 6 hours
  */
 function normaliseKey(value) {
   return value ? String(value).toLowerCase() : '';
-}
-
-/**
- * Create a persistence layer backed by Cloudflare D1.
- * @param {object} opts
- * @param {D1Database} opts.d1
- * @param {number} [opts.retentionMs]
- */
-export async function createD1Persistence({ d1, retentionMs = DEFAULT_SIGNATURE_RETENTION_MS }) {
-  if (!d1 || typeof d1.prepare !== 'function') {
-    throw new Error('createD1Persistence requires a Cloudflare D1 binding');
-  }
-
-  await d1.exec(
-    'CREATE TABLE IF NOT EXISTS templ_bindings (contract TEXT PRIMARY KEY, telegramChatId TEXT, priest TEXT, bindingCode TEXT)'
-  );
-  await d1.exec(
-    'CREATE TABLE IF NOT EXISTS used_signatures (signature TEXT PRIMARY KEY, expiresAt INTEGER NOT NULL)'
-  );
-  await d1.exec(
-    'CREATE TABLE IF NOT EXISTS leader_election (id TEXT PRIMARY KEY, owner TEXT NOT NULL, expiresAt INTEGER NOT NULL)'
-  );
-  await d1.exec(
-    'CREATE INDEX IF NOT EXISTS idx_leader_election_expires ON leader_election(expiresAt)'
-  );
-
-  const insertBinding = d1.prepare(
-    'INSERT INTO templ_bindings (contract, telegramChatId, priest, bindingCode) VALUES (?1, ?2, ?3, ?4) ' +
-      'ON CONFLICT(contract) DO UPDATE SET telegramChatId = excluded.telegramChatId, priest = excluded.priest, bindingCode = excluded.bindingCode'
-  );
-  const listBindingsStmt = d1.prepare(
-    'SELECT contract, telegramChatId, priest, bindingCode FROM templ_bindings ORDER BY contract'
-  );
-  const findBindingStmt = d1.prepare(
-    'SELECT contract, telegramChatId, priest, bindingCode FROM templ_bindings WHERE contract = ?1'
-  );
-  const countBindingsStmt = d1.prepare('SELECT COUNT(1) AS count FROM templ_bindings');
-  const selectLegacyTableStmt = d1.prepare(
-    "SELECT name FROM sqlite_master WHERE type='table' AND name='groups'"
-  );
-  const selectLegacyRowsStmt = d1.prepare(
-    'SELECT groupId, contract FROM groups WHERE groupId IS NOT NULL AND contract IS NOT NULL'
-  );
-  const pruneSignaturesStmt = d1.prepare('DELETE FROM used_signatures WHERE expiresAt <= ?1');
-  const insertSignatureStmt = d1.prepare(
-    'INSERT INTO used_signatures (signature, expiresAt) VALUES (?1, ?2) ON CONFLICT(signature) DO NOTHING'
-  );
-  const upsertLeaderStmt = d1.prepare(
-    "INSERT INTO leader_election (id, owner, expiresAt) VALUES ('primary', ?1, ?2) " +
-      'ON CONFLICT(id) DO UPDATE SET owner = excluded.owner, expiresAt = excluded.expiresAt ' +
-      'WHERE leader_election.expiresAt <= ?3'
-  );
-  const refreshLeaderStmt = d1.prepare(
-    "UPDATE leader_election SET expiresAt = ?2 WHERE id = 'primary' AND owner = ?1"
-  );
-  const releaseLeaderStmt = d1.prepare(
-    "DELETE FROM leader_election WHERE id = 'primary' AND owner = ?1"
-  );
-  const readLeaderStmt = d1.prepare(
-    "SELECT owner, expiresAt FROM leader_election WHERE id = 'primary'"
-  );
-
-  try {
-    const legacy = await selectLegacyTableStmt.first();
-    if (legacy) {
-      const countRow = await countBindingsStmt.first();
-      const existing = Number(countRow?.count ?? 0);
-      if (!existing) {
-        const legacyRows = await selectLegacyRowsStmt.all();
-        /** @type {Array<{ contract?: string | null | undefined, groupId?: string | number | null | undefined }>} */
-        const rows = Array.isArray(legacyRows?.results) ? legacyRows.results : [];
-        for (const row of rows) {
-          const contractKey = normaliseKey(row?.contract);
-          if (!contractKey) continue;
-          const chatId = row?.groupId != null ? String(row.groupId) : null;
-          await insertBinding.bind(contractKey, chatId, null, null).run();
-        }
-      }
-      await d1.exec('DROP TABLE IF EXISTS groups');
-    }
-    await d1.exec('DROP TABLE IF EXISTS pending_bindings');
-    await d1.exec('DROP TABLE IF EXISTS signatures');
-  } catch (err) {
-    void err; // ignore migration failures on D1
-  }
-
-  async function persistBinding(contract, record) {
-    const key = normaliseKey(contract);
-    if (!key) return;
-    const chatId = record?.telegramChatId != null ? String(record.telegramChatId) : null;
-    const priest = record?.priest ? normaliseKey(record.priest) : null;
-    const bindingCode = record?.bindingCode != null ? String(record.bindingCode) : null;
-    await insertBinding.bind(key, chatId, priest, bindingCode).run();
-  }
-
-  async function listBindings() {
-    try {
-      const { results = [] } =
-        /** @type {{ results?: Array<{ contract?: string | null, telegramChatId?: string | number | null, priest?: string | null, bindingCode?: string | number | null }> }} */
-        (await listBindingsStmt.all());
-      return results.map((row) => ({
-        contract: normaliseKey(row?.contract),
-        telegramChatId: row?.telegramChatId != null ? String(row.telegramChatId) : null,
-        priest: row?.priest != null ? normaliseKey(row.priest) : null,
-        bindingCode: row?.bindingCode != null ? String(row.bindingCode) : null
-      }));
-    } catch {
-      return [];
-    }
-  }
-
-  async function findBinding(contract) {
-    const key = normaliseKey(contract);
-    if (!key) return null;
-    try {
-      const row =
-        /** @type {{ contract?: string | null, telegramChatId?: string | number | null, priest?: string | null, bindingCode?: string | number | null } | null} */
-        (await findBindingStmt.bind(key).first());
-      if (!row) return null;
-      return {
-        contract: key,
-        telegramChatId: row?.telegramChatId != null ? String(row.telegramChatId) : null,
-        priest: row?.priest != null ? normaliseKey(row.priest) : null,
-        bindingCode: row?.bindingCode != null ? String(row.bindingCode) : null
-      };
-    } catch {
-      return null;
-    }
-  }
-
-  async function prune(now = Date.now()) {
-    await pruneSignaturesStmt.bind(now).run();
-  }
-
-  const signatureStore = {
-    async consume(signature, timestamp = Date.now()) {
-      if (!signature) return false;
-      const key = String(signature).toLowerCase();
-      if (!key) return false;
-      await prune(timestamp);
-      const expiry = timestamp + retentionMs;
-      const result = await insertSignatureStmt.bind(key, expiry).run();
-      const changes = Number(result?.meta?.changes ?? 0);
-      return changes > 0;
-    },
-    prune
-  };
-
-  async function acquireLeadership(owner, ttlMs, now = Date.now()) {
-    if (!owner) return false;
-    const expiresAt = now + ttlMs;
-    const result = await upsertLeaderStmt.bind(owner, expiresAt, now).run();
-    const changes = Number(result?.meta?.changes ?? 0);
-    if (changes > 0) {
-      return true;
-    }
-    const row = await readLeaderStmt.first();
-    return row?.owner === owner;
-  }
-
-  async function refreshLeadership(owner, ttlMs, now = Date.now()) {
-    if (!owner) return false;
-    const expiresAt = now + ttlMs;
-    const result = await refreshLeaderStmt.bind(owner, expiresAt).run();
-    return Number(result?.meta?.changes ?? 0) > 0;
-  }
-
-  async function releaseLeadership(owner) {
-    if (!owner) return;
-    await releaseLeaderStmt.bind(owner).run();
-  }
-
-  async function getLeadershipState() {
-    const row = await readLeaderStmt.first();
-    if (!row) return { owner: null, expiresAt: 0 };
-    return {
-      owner: row.owner ?? null,
-      expiresAt: Number(row.expiresAt ?? 0)
-    };
-  }
-
-  return {
-    persistBinding,
-    listBindings,
-    findBinding,
-    signatureStore,
-    acquireLeadership,
-    refreshLeadership,
-    releaseLeadership,
-    getLeadershipState,
-    async dispose() {
-      return;
-    }
-  };
 }
 
 /**
@@ -319,7 +109,17 @@ async function createSQLitePersistence({ sqlitePath, retentionMs = DEFAULT_SIGNA
     const chatId = record?.telegramChatId != null ? String(record.telegramChatId) : null;
     const priest = record?.priest ? String(record.priest).toLowerCase() : null;
     const bindingCode = record?.bindingCode != null ? String(record.bindingCode) : null;
-    insertBinding.run(key, chatId, priest, bindingCode);
+    try {
+      insertBinding.run(key, chatId, priest, bindingCode);
+    } catch (err) {
+      const message = String(err?.message || '');
+      if (message.includes('UNIQUE constraint failed: templ_bindings.telegramChatId')) {
+        throw new Error(
+          'SQLite schema still enforces a unique Telegram chat id. Run the migrations with `npm --prefix backend run migrate -- --db <sqlite path>` before allowing multiple templs per chat.'
+        );
+      }
+      throw err;
+    }
   };
 
   const listBindings = async () => {
@@ -522,19 +322,11 @@ export function createMemoryPersistence({ retentionMs = DEFAULT_SIGNATURE_RETENT
 
 /**
  * Resolve the appropriate persistence layer based on the provided options.
- * @param {object} [opts]
- * @param {D1Database} [opts.d1]
- * @param {number} [opts.retentionMs]
- */
-/**
- * @param {{ persistence?: PersistenceAdapter, d1?: D1Database, retentionMs?: number, sqlitePath?: string }} [opts]
+ * @param {{ persistence?: PersistenceAdapter, retentionMs?: number, sqlitePath?: string }} [opts]
  * @returns {Promise<PersistenceAdapter>}
  */
 export async function createPersistence(opts = {}) {
-  const { d1, retentionMs, sqlitePath } = opts;
-  if (d1) {
-    return createD1Persistence({ d1, retentionMs });
-  }
+  const { retentionMs, sqlitePath } = opts ?? {};
   if (sqlitePath) {
     return createSQLitePersistence({ sqlitePath, retentionMs });
   }

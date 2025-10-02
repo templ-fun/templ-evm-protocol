@@ -8,7 +8,7 @@ On-chain storage lives inside each templ and the factory. See `contracts/` for s
 
 ## Backend
 
-The backend persists three tables in SQLite (with optional D1 compatibility when running inside a Cloudflare Worker):
+The backend persists three tables in SQLite:
 
 | Table | Columns | Purpose |
 | --- | --- | --- |
@@ -18,7 +18,7 @@ The backend persists three tables in SQLite (with optional D1 compatibility when
 
 No member wallet addresses, signature payloads, or join histories are persisted beyond replay protection metadata; membership checks always query the contract directly so the registry stays templ-scoped.
 
-Bindings, priests, home links, and proposal caches are refreshed from the contract whenever needed. Event cursors are not stored; after a restart the backend reattaches its watchers and streams newly emitted events. Production deployments should mount SQLite on durable storage (for example a Fly volume) so the binding tables and replay history survive restarts. The D1 adapter remains available for Worker-based deployments, but the recommended path is SQLite with a filesystem volume.
+Bindings, priests, home links, and proposal caches are refreshed from the contract whenever needed. Event cursors are not stored; after a restart the backend reattaches its watchers and streams newly emitted events. Production deployments should mount SQLite on durable storage (for example a Fly volume) so the binding tables and replay history survive restarts.
 
 Leader election only comes into play when more than one backend instance points at the same persistence layer. Single-instance deployments (including the default in-memory adapter) effectively assume leadership immediately, while multi-instance deployments rely on the shared table to ensure only one node runs watchers and background jobs at a time.
 

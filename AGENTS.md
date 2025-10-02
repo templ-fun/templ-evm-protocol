@@ -37,6 +37,6 @@
 
 ## Security & Configuration Tips
 
-- Load secrets from `.env` files (`RPC_URL`, `ALLOWED_ORIGINS`, `TELEGRAM_BOT_TOKEN`, D1 credentials`) and never commit them.
+- Load secrets from `.env` files (`RPC_URL`, `ALLOWED_ORIGINS`, `TELEGRAM_BOT_TOKEN`, `SQLITE_DB_PATH`, etc.) and never commit them.
 - Reuse signature validation and rate-limit middleware from `backend/src/middleware/`; align schema changes with `createPersistence` helpers.
 - Dry-run releases with `npm run deploy:local`, confirm Telegram binding flows, and rotate codes through priest controls when handing off access.

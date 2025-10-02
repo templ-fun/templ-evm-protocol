@@ -11,7 +11,8 @@
     "coverage": "c8 --reporter=text --reporter=lcov --report-dir=coverage npm test",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "migrate": "node scripts/migrate.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

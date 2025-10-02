@@ -15,9 +15,6 @@ async function runSkipWorkerSmokeTest() {
     WRANGLER_BIN: fakeWrangler,
     CLOUDFLARE_ACCOUNT_ID: 'test-account',
     CLOUDFLARE_API_TOKEN: 'test-token',
-    CF_D1_DATABASE_NAME: 'templ-backend',
-    CF_D1_DATABASE_ID: '00000000-0000-0000-0000-000000000000',
-    CF_D1_BINDING: 'TEMPL_DB',
     BACKEND_SERVER_ID: 'templ-backend-node',
     VITE_BACKEND_URL: 'https://example.invalid/api'
   };

@@ -85,7 +85,7 @@ Templ home links continue to live on-chain; watchers refresh them (and priest da
 
 ### Leadership & scaling
 
-Only one backend instance should emit Telegram notifications at a time. When multiple replicas share the same SQLite/D1 database the server uses the `leader_election` table to acquire a short-lived lease (`LEADER_TTL_MS`, default 60s). The leader streams templ events, polls Telegram for binding codes, and sends daily digests; standby replicas wake up periodically to refresh the lease and take over if the active process disappears. When using the in-memory persistence adapter, run a single instance so notifications are not duplicated.
+Only one backend instance should emit Telegram notifications at a time. When multiple replicas share the same SQLite database the server uses the `leader_election` table to acquire a short-lived lease (`LEADER_TTL_MS`, default 60s). The leader streams templ events, polls Telegram binding codes, and sends daily digests; standby replicas wake up periodically to refresh the lease and take over if the active process disappears. When using the in-memory persistence adapter, run a single instance so notifications are not duplicated.
 
 ### Trusted factory indexing
 
@@ -211,11 +211,17 @@ Coverage uses `c8`; run `npm --prefix backend run coverage` for LCOV reports.
 4. Provide `TELEGRAM_BOT_TOKEN` and confirm the bot is present in each group you care about. (Leaving it unset disables notifications.)
 5. Consider supplying `REDIS_URL` if you run multiple backend replicas and need distributed rate limiting.
 
+### Managing migrations
+
+- Run `npm --prefix backend run migrate -- --db /var/lib/templ/templ.db` (adjust the path for your environment) whenever a new SQL file appears under `backend/migrations/`.
+- The runner records applied versions in the `schema_migrations` table so repeated invocations are safe.
+
 ### Fly deployment quickstart
 
 1. Copy `backend/fly.example.toml` to `backend/fly.toml` and adjust the `app` name, region, and resource sizing.
 2. Create a persistent volume (`fly volumes create templ_data --size 1 --region <region> --app <app>`).
 3. Set Fly secrets for the environment variables listed above (`RPC_URL`, `APP_BASE_URL`, `BACKEND_SERVER_ID`, `TRUSTED_FACTORY_ADDRESS`, etc.). Include `REQUIRE_CONTRACT_VERIFY=1` for production hardening.
-4. Deploy with `fly deploy --config backend/fly.toml`.
+4. Apply database migrations (for example `fly ssh console -C "npm --prefix backend run migrate -- --db /var/lib/templ/templ.db"`).
+5. Deploy with `fly deploy --config backend/fly.toml`.
 
 The Docker image defined in `backend/Dockerfile` installs production dependencies, exposes port `3001`, and stores SQLite data at `/var/lib/templ/templ.db`. Refer to `docs/DEPLOYMENT_GUIDE.md` for the full rollout checklist.

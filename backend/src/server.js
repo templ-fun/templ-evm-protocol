@@ -173,25 +173,23 @@ function updateMetaFromSnapshots(meta, snapshots) {
  *     signatureStore?: { consume?: Function, prune?: Function },
  *     dispose?: Function
  *   } | null,
- *   d1?: D1Database,
  *   retentionMs?: number
  * }} [opts]
  */
 /**
  * @param {{
  *   persistence?: import('./persistence/index.js').PersistenceAdapter,
- *   d1?: any,
  *   retentionMs?: number,
  *   sqlitePath?: string
  * }} [opts]
  * @returns {Promise<import('./persistence/index.js').PersistenceAdapter>}
  */
 async function initializePersistence(opts = {}) {
-  const { persistence, d1, retentionMs, sqlitePath } = opts;
+  const { persistence, retentionMs, sqlitePath } = opts;
   if (persistence) {
     return persistence;
   }
-  return createPersistence({ d1, retentionMs, sqlitePath });
+  return createPersistence({ retentionMs, sqlitePath });
 }
 
 async function maybeNotifyQuorum({ record, contractAddress, proposalId, meta, notifier, logger }) {
@@ -989,7 +987,6 @@ export async function createApp(opts) {
     enableBackgroundTasks = process.env.NODE_ENV !== 'test',
     signatureStore: providedSignatureStore,
     persistence,
-    d1,
     signatureRetentionMs
   } = opts || {};
 
@@ -1031,7 +1028,7 @@ export async function createApp(opts) {
 
   const sqlitePath = process.env.SQLITE_DB_PATH?.trim() || null;
   /** @type {import('./persistence/index.js').PersistenceAdapter} */
-  const persistenceAdapter = await initializePersistence({ persistence, d1, retentionMs: signatureRetentionMs, sqlitePath });
+  const persistenceAdapter = await initializePersistence({ persistence, retentionMs: signatureRetentionMs, sqlitePath });
   const persist = persistenceAdapter?.persistBinding
     ? async (contract, record) => persistenceAdapter.persistBinding(contract, record)
     : async () => {};
