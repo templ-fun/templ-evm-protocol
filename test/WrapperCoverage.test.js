@@ -23,6 +23,8 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
     const { accounts, token, templ } = await deployHarness();
     const [owner, , member, recipient] = accounts;
 
+    await templ.forceSetFeeCurve(0, 0, ethers.parseUnits("1", 18));
+
     await token.mint(member.address, ENTRY_FEE);
     await token.connect(member).approve(templ.target, ENTRY_FEE);
     await templ.connect(member).join();
@@ -58,6 +60,8 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
     const { accounts, token, templ } = await deployHarness();
     const [owner, , m1, m2] = accounts;
 
+    await templ.forceSetFeeCurve(0, 0, ethers.parseUnits("1", 18));
+
     await templ.daoUpdate(ethers.ZeroAddress, 0n, false, 0, 0, 0);
     expect(await templ.entryFee()).to.equal(ENTRY_FEE);
 
@@ -83,6 +87,8 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
   it("guards priest updates, config changes, and disband preconditions", async function () {
     const { accounts, token, templ } = await deployHarness();
     const [owner, , member, secondMember] = accounts;
+
+    await templ.forceSetFeeCurve(0, 0, ethers.parseUnits("1", 18));
 
     await expect(templ.daoChangePriest(ethers.ZeroAddress)).to.be.revertedWithCustomError(
       templ,
@@ -143,6 +149,8 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
     const { accounts, token, templ } = await deployHarness();
     const [, , memberA, memberB, memberC] = accounts;
 
+    await templ.forceSetFeeCurve(0, 0, ethers.parseUnits("1", 18));
+
     await token.mint(memberA.address, ENTRY_FEE);
     await token.connect(memberA).approve(templ.target, ENTRY_FEE);
     await templ.connect(memberA).join();
@@ -180,6 +188,8 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
   it("permits dictator priests to call DAO functions directly", async function () {
     const { accounts, token, templ } = await deployHarness();
     const [, priest, member, newPriest] = accounts;
+
+    await templ.forceSetFeeCurve(0, 0, ethers.parseUnits("1", 18));
 
     await templ.daoSetDictatorship(true);
 

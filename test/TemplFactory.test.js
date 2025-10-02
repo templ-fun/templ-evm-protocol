@@ -5,6 +5,7 @@ const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 describe("TemplFactory", function () {
     const ENTRY_FEE = ethers.parseUnits("100", 18);
     const DEFAULT_FEE_CURVE_SCALE = ethers.parseUnits("1", 18);
+    const DEFAULT_FEE_CURVE_SLOPE = ethers.parseUnits("1.1", 18);
     const BPS_DENOMINATOR = 10_000n;
     const pct = (value) => value * 100;
 
@@ -73,14 +74,20 @@ describe("TemplFactory", function () {
         expect(await templ.MAX_MEMBERS()).to.equal(0n);
         expect(await templ.templHomeLink()).to.equal(homeLink);
         const feeCurveState = await templ.feeCurve();
-        expect(feeCurveState[0]).to.equal(0);
-        expect(feeCurveState[1]).to.equal(0n);
+        expect(feeCurveState[0]).to.equal(2);
+        expect(feeCurveState[1]).to.equal(DEFAULT_FEE_CURVE_SLOPE);
         expect(feeCurveState[2]).to.equal(DEFAULT_FEE_CURVE_SCALE);
 
         await mintToUsers(token, [member], ENTRY_FEE * 10n);
 
         const templContractAddress = await templ.getAddress();
-        await token.connect(member).approve(templContractAddress, ENTRY_FEE);
+        const currentMembers = await templ.memberCount();
+        let expectedJoinFee = ENTRY_FEE;
+        if (currentMembers > 0n) {
+            expectedJoinFee = (ENTRY_FEE * DEFAULT_FEE_CURVE_SLOPE) / DEFAULT_FEE_CURVE_SCALE;
+        }
+
+        await token.connect(member).approve(templContractAddress, expectedJoinFee);
 
         const burnAddress = await templ.burnAddress();
         const protocolRecipientAddress = await templ.protocolFeeRecipient();
@@ -103,10 +110,10 @@ describe("TemplFactory", function () {
         expect(memberJoined.args.payer).to.equal(member.address);
         expect(memberJoined.args.member).to.equal(member.address);
 
-        const burnAmount = (ENTRY_FEE * BigInt(burnPercent)) / BPS_DENOMINATOR;
-        const memberPoolAmount = (ENTRY_FEE * BigInt(memberPoolPercent)) / BPS_DENOMINATOR;
-        const protocolAmount = (ENTRY_FEE * BigInt(protocolPercent)) / BPS_DENOMINATOR;
-        const treasuryAmount = ENTRY_FEE - burnAmount - memberPoolAmount - protocolAmount;
+        const burnAmount = (expectedJoinFee * BigInt(burnPercent)) / BPS_DENOMINATOR;
+        const memberPoolAmount = (expectedJoinFee * BigInt(memberPoolPercent)) / BPS_DENOMINATOR;
+        const protocolAmount = (expectedJoinFee * BigInt(protocolPercent)) / BPS_DENOMINATOR;
+        const treasuryAmount = expectedJoinFee - burnAmount - memberPoolAmount - protocolAmount;
 
         expect(memberJoined.args.burnedAmount).to.equal(burnAmount);
         expect(memberJoined.args.memberPoolAmount).to.equal(memberPoolAmount);

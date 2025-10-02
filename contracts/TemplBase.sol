@@ -25,10 +25,13 @@ abstract contract TemplBase is ReentrancyGuard {
     uint256 internal constant MAX_EXTERNAL_REWARD_TOKENS = 256;
     /// @dev Default denominator applied to fee curve slope calculations.
     uint256 internal constant DEFAULT_FEE_CURVE_SCALE = 1e18;
+    /// @dev Default exponential slope (10% increase per existing member when using the default scale).
+    uint256 internal constant DEFAULT_FEE_CURVE_EXPONENTIAL_SLOPE = 1_100000000000000000;
 
     enum FeeCurveFormula {
         Constant,
-        Linear
+        Linear,
+        Exponential
     }
 
     struct FeeCurveConfig {
@@ -375,7 +378,11 @@ abstract contract TemplBase is ReentrancyGuard {
             emit TemplHomeLinkUpdated("", _homeLink);
         }
 
-        _setFeeCurve(FeeCurveFormula.Constant, 0, DEFAULT_FEE_CURVE_SCALE);
+        _setFeeCurve(
+            FeeCurveFormula.Exponential,
+            DEFAULT_FEE_CURVE_EXPONENTIAL_SLOPE,
+            DEFAULT_FEE_CURVE_SCALE
+        );
     }
 
     /// @dev Updates the split between burn, treasury, and member pool slices.
@@ -398,6 +405,7 @@ abstract contract TemplBase is ReentrancyGuard {
     ) internal {
         if (scale == 0) revert TemplErrors.InvalidFeeCurve();
         if (formula == FeeCurveFormula.Constant && slope != 0) revert TemplErrors.InvalidFeeCurve();
+        if (formula == FeeCurveFormula.Exponential && slope == 0) revert TemplErrors.InvalidFeeCurve();
         feeCurve = FeeCurveConfig({formula: formula, slope: slope, scale: scale});
         emit FeeCurveUpdated(formula, slope, scale);
     }
@@ -451,6 +459,15 @@ abstract contract TemplBase is ReentrancyGuard {
         if (cfg.formula == FeeCurveFormula.Linear) {
             uint256 increment = Math.mulDiv(cfg.slope, currentMembers, cfg.scale);
             return entryFee + increment;
+        }
+        if (cfg.formula == FeeCurveFormula.Exponential) {
+            uint256 scale = cfg.scale;
+            uint256 ratio = cfg.slope;
+            uint256 growth = scale;
+            for (uint256 i = 0; i < currentMembers; ++i) {
+                growth = Math.mulDiv(growth, ratio, scale);
+            }
+            return Math.mulDiv(entryFee, growth, scale);
         }
         revert TemplErrors.InvalidFeeCurve();
     }

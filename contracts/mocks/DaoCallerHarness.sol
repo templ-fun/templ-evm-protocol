@@ -29,6 +29,11 @@ contract DaoCallerHarness is TEMPL {
             ""
         )
     {}
+
+    /// @notice Testing helper that bypasses governance to set a custom fee curve.
+    function forceSetFeeCurve(uint8 formula, uint256 slope, uint256 scale) external {
+        _setFeeCurve(FeeCurveFormula(formula), slope, scale);
+    }
     /// @notice Wrapper to call withdrawTreasuryDAO via contract self-call
     function daoWithdraw(address token, address recipient, uint256 amount, string calldata reason) external {
         this.withdrawTreasuryDAO(token, recipient, amount, reason);

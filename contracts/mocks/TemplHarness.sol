@@ -159,4 +159,9 @@ contract TemplHarness is TEMPL {
     function harnessRemoveExternalToken(address token) external {
         _removeExternalToken(token);
     }
+
+    /// @dev Testing helper to override the fee curve without governance.
+    function harnessForceFeeCurve(uint8 formula, uint256 slope, uint256 scale) external {
+        _setFeeCurve(FeeCurveFormula(formula), slope, scale);
+    }
 }

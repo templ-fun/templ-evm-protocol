@@ -170,6 +170,9 @@ abstract contract TemplGovernance is TemplBase {
         if (_formula == FeeCurveFormula.Constant && _slope != 0) {
             revert TemplErrors.InvalidFeeCurve();
         }
+        if (_formula == FeeCurveFormula.Exponential && _slope == 0) {
+            revert TemplErrors.InvalidFeeCurve();
+        }
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
         p.action = Action.SetFeeCurve;
         p.newFeeCurveFormula = _formula;

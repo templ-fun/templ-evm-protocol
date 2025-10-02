@@ -50,6 +50,8 @@ The app uses `ethers.BrowserProvider` and the injected `window.ethereum`. Connec
 2. The UI validates fee splits and calls `factory.createTemplWithConfig`. When the form detects a deployed factory address it automatically locks the protocol percent input to the factory’s on-chain share so deployments stay in sync with backend enforcement.
 3. After the transaction confirms, the app signs the EIP-712 registration payload and POSTs it to the backend (including an optional Telegram chat id).
 
+The advanced deployment panel explains the default exponential join fee (10% compounding per existing member) and points priests toward the governance action that can flatten or reshape the curve after launch.
+
 ### Production build & Pages deploy
 
 - Build with the production API URL and factory settings:
@@ -84,6 +86,7 @@ The proposal form collects a title and description (persisted on-chain) and offe
 - Change priest
 - Update max members
 - Toggle dictatorship mode
+- Adjust fee curve (switch between constant, linear, or exponential growth)
 - Update templ home link (mirrors the on-chain `templHomeLink` string used by the backend and notifications)
 
 `voteOnProposal` casts votes; `executeProposal` remains available in `services/governance.js` for scripts.

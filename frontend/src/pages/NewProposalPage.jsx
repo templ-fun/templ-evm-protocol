@@ -92,6 +92,8 @@ export function buildActionConfig(kind, params, helpers = {}) {
         formula = 0;
       } else if (rawFormula === 'linear' || rawFormula === '1') {
         formula = 1;
+      } else if (rawFormula === 'exponential' || rawFormula === '2') {
+        formula = 2;
       } else {
         const parsed = Number(rawFormula);
         if (!Number.isFinite(parsed) || parsed < 0) {
@@ -246,6 +248,18 @@ export function NewProposalPage({
   const requiresDisband = useMemo(() => proposalType === 'disbandTreasury', [proposalType]);
   const requiresConfigUpdate = useMemo(() => proposalType === 'updateConfig', [proposalType]);
   const requiresFeeCurve = useMemo(() => proposalType === 'setFeeCurve', [proposalType]);
+  const feeCurveSlopeLabel = useMemo(() => {
+    if (feeCurveFormula === 'constant') {
+      return 'Slope';
+    }
+    if (feeCurveFormula === 'linear') {
+      return 'Linear slope (wei increase per member)';
+    }
+    if (feeCurveFormula === 'exponential') {
+      return 'Multiplier (scale-adjusted per existing member)';
+    }
+    return 'Slope';
+  }, [feeCurveFormula]);
   const protocolPercentNumber = useMemo(() => {
     if (protocolPercent === null || protocolPercent === undefined) {
       return null;
@@ -561,21 +575,26 @@ export function NewProposalPage({
                     setFeeCurveSlope('0');
                   } else if (value === 'linear' && (!feeCurveSlope || feeCurveSlope === '0')) {
                     setFeeCurveSlope('1000000000000000000');
+                  } else if (value === 'exponential' && (!feeCurveSlope || feeCurveSlope === '0')) {
+                    setFeeCurveSlope('1100000000000000000');
                   }
                 }}
               >
                 <option value="constant">Constant</option>
                 <option value="linear">Linear</option>
+                <option value="exponential">Exponential</option>
               </select>
             </label>
             <label className={form.label}>
-              {feeCurveFormula === 'constant' ? 'Slope (must stay 0 for constant curves)' : 'Linear slope (wei increase per scale unit)'}
+              {feeCurveFormula === 'constant'
+                ? 'Slope (must stay 0 for constant curves)'
+                : feeCurveSlopeLabel}
               <input
                 type="text"
                 className={form.input}
                 value={feeCurveSlope}
                 onChange={(e) => setFeeCurveSlope(e.target.value.trim())}
-                placeholder={feeCurveFormula === 'constant' ? '0' : 'e.g. 10000000000000000'}
+                placeholder={feeCurveFormula === 'constant' ? '0' : feeCurveFormula === 'exponential' ? 'e.g. 1100000000000000000' : 'e.g. 10000000000000000'}
                 disabled={feeCurveFormula === 'constant'}
               />
             </label>

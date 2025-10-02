@@ -30,6 +30,8 @@ describe("TemplHarness coverage helpers", function () {
       0,
       ""
     );
+
+    await harness.harnessForceFeeCurve(0, 0, ethers.parseUnits("1", 18));
   });
 
   it("reverts when deploying with a zero entry fee", async function () {

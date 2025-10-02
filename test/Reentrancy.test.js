@@ -51,10 +51,10 @@ describe("Reentrancy protection", function () {
     it("reverts when join is reentered", async function () {
       const attacker = accounts[2];
 
-      await token.mint(attacker.address, ENTRY_FEE);
+      await token.mint(attacker.address, ENTRY_FEE * 2n);
       await token
         .connect(attacker)
-        .approve(await templ.getAddress(), ENTRY_FEE);
+        .approve(await templ.getAddress(), ethers.MaxUint256);
 
       await token.setCallback(1);
 
@@ -66,7 +66,7 @@ describe("Reentrancy protection", function () {
     it("returns true for normal transfers when no callback is set", async function () {
       const [, sender, receiver] = accounts;
 
-      await token.mint(sender.address, ENTRY_FEE);
+      await token.mint(sender.address, ENTRY_FEE * 2n);
       const tx = await token.connect(sender).transfer(receiver.address, ENTRY_FEE);
       await tx.wait();
 
@@ -102,11 +102,14 @@ describe("Reentrancy protection", function () {
         QUORUM_BPS,
         7 * 24 * 60 * 60,
         "0x000000000000000000000000000000000000dEaD",
-        false,
+        true,
         0,
         ""
       );
       await templ.waitForDeployment();
+
+      await templ.connect(priest).setFeeCurveDAO(0, 0, ethers.parseUnits("1", 18));
+      await templ.connect(priest).setDictatorshipDAO(false);
 
       await token.setTempl(await templ.getAddress());
       await token.joinTempl(ENTRY_FEE);
@@ -144,7 +147,7 @@ describe("Reentrancy protection", function () {
       await mintToUsers(token, [priest, member], ENTRY_FEE * 4n);
       await joinMembers(templ, token, [priest, member]);
 
-      await token.mint(await rewardToken.getAddress(), ENTRY_FEE);
+      await token.mint(await rewardToken.getAddress(), ENTRY_FEE * 2n);
       await rewardToken.joinTemplWithAccessToken(await token.getAddress(), ENTRY_FEE);
 
       expect(await templ.isMember(priest.address)).to.equal(true);
@@ -187,7 +190,7 @@ describe("Reentrancy protection", function () {
       await target.waitForDeployment();
 
       await rewardToken.setTempl(await target.getAddress());
-      await rewardToken.mint((await ethers.getSigners())[0].address, ENTRY_FEE);
+      await rewardToken.mint((await ethers.getSigners())[0].address, ENTRY_FEE * 2n);
 
       await rewardToken.setCallback(3);
 

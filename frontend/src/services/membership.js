@@ -12,6 +12,34 @@ const ERC20_ABI = [
   'function symbol() view returns (string)'
 ];
 
+function computeJoinFee(entryFee, feeCurve, memberCount) {
+  const entry = BigInt(entryFee ?? 0n);
+  if (entry === 0n) return 0n;
+  const formula = Number(feeCurve?.[0] ?? feeCurve?.formula ?? 0);
+  const slope = BigInt(feeCurve?.[1] ?? feeCurve?.slope ?? 0n);
+  const scale = BigInt(feeCurve?.[2] ?? feeCurve?.scale ?? 1n);
+  const members = memberCount !== undefined && memberCount !== null
+    ? BigInt(memberCount)
+    : 0n;
+
+  if (formula === 0) {
+    return entry;
+  }
+  if (formula === 1) {
+    if (scale === 0n) return entry;
+    return entry + (slope * members) / scale;
+  }
+  if (formula === 2) {
+    if (scale === 0n) return entry;
+    let growth = scale;
+    for (let i = 0n; i < members; i += 1n) {
+      growth = (growth * slope) / scale;
+    }
+    return (entry * growth) / scale;
+  }
+  return entry;
+}
+
 function resolveCustomErrorName(err) {
   if (!err) return null;
   if (err.errorName && typeof err.errorName === 'string') return err.errorName;
@@ -87,9 +115,11 @@ export async function loadEntryRequirements({
     normalizedTemplAddress = ethers.getAddress(templAddress);
   }
   const templContract = new ethers.Contract(normalizedTemplAddress, templArtifact.abi, readProvider);
-  const [entryFeeRaw, accessToken] = await Promise.all([
+  const [entryFeeRaw, accessToken, feeCurve, memberCount] = await Promise.all([
     templContract.entryFee(),
-    templContract.accessToken()
+    templContract.accessToken(),
+    templContract.feeCurve?.().catch(() => null),
+    templContract.memberCount?.().catch(() => 0)
   ]);
   const entryFee = typeof entryFeeRaw === 'bigint' ? entryFeeRaw : BigInt(entryFeeRaw || 0);
   const tokenAddress = accessToken ? ethers.getAddress?.(accessToken) ?? accessToken : '';
@@ -97,6 +127,8 @@ export async function loadEntryRequirements({
   if (!tokenAddress) {
     throw new Error('Unable to resolve templ access token');
   }
+
+  const joinFee = computeJoinFee(entryFee, feeCurve, memberCount);
 
   const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, readProvider);
   let symbol = '';
@@ -128,8 +160,9 @@ export async function loadEntryRequirements({
   }
 
   return {
-    entryFeeWei: entryFee.toString(),
-    entryFeeFormatted: formatTokenAmount(ethers, entryFee, decimals),
+    entryFeeWei: joinFee.toString(),
+    baseEntryFeeWei: entryFee.toString(),
+    entryFeeFormatted: formatTokenAmount(ethers, joinFee, decimals),
     tokenAddress,
     tokenSymbol: symbol,
     tokenDecimals: decimals,

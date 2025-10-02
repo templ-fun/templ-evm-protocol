@@ -304,7 +304,7 @@ describe("TEMPL Contract with DAO Governance", function () {
         it("prevents double join attempts", async function () {
             await joinMembers(templ, token, [user1]);
 
-            await token.connect(user1).approve(await templ.getAddress(), ENTRY_FEE);
+            await token.connect(user1).approve(await templ.getAddress(), ethers.MaxUint256);
             await expect(templ.connect(user1).join())
                 .to.be.revertedWithCustomError(templ, "MemberAlreadyJoined");
         });
@@ -646,7 +646,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             expect(await templ.joinPaused()).to.be.true;
 
             // Should prevent joins when paused
-            await token.connect(user4).approve(await templ.getAddress(), ENTRY_FEE);
+            await token.connect(user4).approve(await templ.getAddress(), ethers.MaxUint256);
             await expect(templ.connect(user4).join())
                 .to.be.revertedWithCustomError(templ, "JoinIntakePaused");
         });
@@ -793,7 +793,7 @@ describe("TEMPL Contract with DAO Governance", function () {
         });
 
         it("Should revert joinMembers when paused", async function () {
-            await token.connect(user3).approve(await templ.getAddress(), ENTRY_FEE);
+            await token.connect(user3).approve(await templ.getAddress(), ethers.MaxUint256);
             await expect(templ.connect(user3).join())
                 .to.be.revertedWithCustomError(templ, "JoinIntakePaused");
         });
@@ -1021,12 +1021,15 @@ describe("TEMPL Contract with DAO Governance", function () {
                 33,
                 7 * 24 * 60 * 60,
                 "0x000000000000000000000000000000000000dEaD",
-                false,
+                true,
                 0,
                 ""
             ]);
 
-            await token.connect(user1).approve(await minTempl.getAddress(), 10);
+            await minTempl.connect(priest).setFeeCurveDAO(0, 0, ethers.parseUnits("1", 18));
+            await minTempl.connect(priest).setDictatorshipDAO(false);
+
+            await token.connect(user1).approve(await minTempl.getAddress(), ethers.MaxUint256);
             await minTempl.connect(user1).join();
 
             // Should still split correctly even with rounding
@@ -1124,7 +1127,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             await mintToUsers(token, joiners, TOKEN_SUPPLY);
 
             for (const signer of joiners) {
-                await token.connect(signer).approve(await templ.getAddress(), ENTRY_FEE);
+                await token.connect(signer).approve(await templ.getAddress(), ethers.MaxUint256);
                 await templ.connect(signer).join();
             }
 

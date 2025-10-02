@@ -31,7 +31,7 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
         it("SCENARIO 1: Priest is auto-enrolled and receives the initial pool allocation", async function () {
             expect(await templ.getMemberCount()).to.equal(1n);
 
-            await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
+            await token.connect(member1).approve(await templ.getAddress(), ethers.MaxUint256);
             await templ.connect(member1).join();
 
             expect(await templ.getMemberCount()).to.equal(2n);
@@ -126,11 +126,11 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
     describe("Cumulative Rewards Testing", function () {
         it("Should track cumulative rewards correctly without claiming", async function () {
             // Member 1 joins
-            await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
+            await token.connect(member1).approve(await templ.getAddress(), ethers.MaxUint256);
             await templ.connect(member1).join();
 
             // Member 2 joins - pool splits between priest and first payer
-            await token.connect(member2).approve(await templ.getAddress(), ENTRY_FEE);
+            await token.connect(member2).approve(await templ.getAddress(), ethers.MaxUint256);
             await templ.connect(member2).join();
 
             const thirtyPercent = (ENTRY_FEE * 30n) / 100n;
@@ -139,7 +139,7 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
             expect(claimable1).to.equal(secondJoinShare);
 
             // Member 3 joins - pool splits between priest, member 1, and member 2
-            await token.connect(member3).approve(await templ.getAddress(), ENTRY_FEE);
+            await token.connect(member3).approve(await templ.getAddress(), ethers.MaxUint256);
             await templ.connect(member3).join();
 
             const thirdJoinShare = thirtyPercent / 3n;
@@ -152,7 +152,7 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
             expect(claimable2).to.equal(thirdJoinShare);
 
             // Member 4 joins - pool splits between priest and the first three paid members
-            await token.connect(member4).approve(await templ.getAddress(), ENTRY_FEE);
+            await token.connect(member4).approve(await templ.getAddress(), ethers.MaxUint256);
             await templ.connect(member4).join();
 
             const fourthJoinShare = thirtyPercent / 4n;
@@ -179,16 +179,16 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
     describe("Claiming and Balance Verification", function () {
         it("Should allow members to claim exact amounts and update balances correctly", async function () {
             // Setup: 4 members join
-            await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
+            await token.connect(member1).approve(await templ.getAddress(), ethers.MaxUint256);
             await templ.connect(member1).join();
             
-            await token.connect(member2).approve(await templ.getAddress(), ENTRY_FEE);
+            await token.connect(member2).approve(await templ.getAddress(), ethers.MaxUint256);
             await templ.connect(member2).join();
             
-            await token.connect(member3).approve(await templ.getAddress(), ENTRY_FEE);
+            await token.connect(member3).approve(await templ.getAddress(), ethers.MaxUint256);
             await templ.connect(member3).join();
             
-            await token.connect(member4).approve(await templ.getAddress(), ENTRY_FEE);
+            await token.connect(member4).approve(await templ.getAddress(), ethers.MaxUint256);
             await templ.connect(member4).join();
 
             // Calculate expected amounts
@@ -276,11 +276,14 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
                 QUORUM_BPS,
                 7 * 24 * 60 * 60,
                 "0x000000000000000000000000000000000000dEaD",
-                false,
+                true,
                 0,
                 ""
             );
             await oddTempl.waitForDeployment();
+
+            await oddTempl.connect(priest).setFeeCurveDAO(0, 0, ethers.parseUnits("1", 18));
+            await oddTempl.connect(priest).setDictatorshipDAO(false);
 
             // Setup 3 members
             await token.connect(member1).approve(await oddTempl.getAddress(), ODD_FEE);
@@ -332,20 +335,20 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
 
         it("Should handle partial claims correctly", async function () {
             // Setup 3 members
-            await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
+            await token.connect(member1).approve(await templ.getAddress(), ethers.MaxUint256);
             await templ.connect(member1).join();
             
-            await token.connect(member2).approve(await templ.getAddress(), ENTRY_FEE);
+            await token.connect(member2).approve(await templ.getAddress(), ethers.MaxUint256);
             await templ.connect(member2).join();
             
-            await token.connect(member3).approve(await templ.getAddress(), ENTRY_FEE);
+            await token.connect(member3).approve(await templ.getAddress(), ethers.MaxUint256);
             await templ.connect(member3).join();
 
             // Member 1 claims their rewards from member 2
             await templ.connect(member1).claimMemberRewards();
             
             // Member 4 joins
-            await token.connect(member4).approve(await templ.getAddress(), ENTRY_FEE);
+            await token.connect(member4).approve(await templ.getAddress(), ethers.MaxUint256);
             await templ.connect(member4).join();
 
             // Member 1 should only get their share from member 4 (not double claim from member 2 & 3)
@@ -366,7 +369,7 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
             const thirtyPercent = (ENTRY_FEE * 30n) / 100n;
 
             // Member 1 joins - pool receives the full member allocation for the priest
-            await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
+            await token.connect(member1).approve(await templ.getAddress(), ethers.MaxUint256);
             await templ.connect(member1).join();
             expectedPoolBalance += thirtyPercent;
             expect(await templ.memberPoolBalance()).to.equal(expectedPoolBalance);
@@ -378,7 +381,7 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
             expect(await templ.memberPoolBalance()).to.equal(expectedPoolBalance);
 
             // Member 2 joins - adds 30% to pool
-            await token.connect(member2).approve(await templ.getAddress(), ENTRY_FEE);
+            await token.connect(member2).approve(await templ.getAddress(), ethers.MaxUint256);
             await templ.connect(member2).join();
             expectedPoolBalance += thirtyPercent;
             expect(await templ.memberPoolBalance()).to.equal(expectedPoolBalance);
@@ -390,7 +393,7 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
             expect(await templ.memberPoolBalance()).to.equal(expectedPoolBalance);
 
             // Member 3 joins - adds 30% to pool
-            await token.connect(member3).approve(await templ.getAddress(), ENTRY_FEE);
+            await token.connect(member3).approve(await templ.getAddress(), ethers.MaxUint256);
             await templ.connect(member3).join();
             expectedPoolBalance += thirtyPercent;
             expect(await templ.memberPoolBalance()).to.equal(expectedPoolBalance);
@@ -414,7 +417,7 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
     describe("memberPoolClaims tracking", function () {
         it("Should accumulate total claimed rewards across multiple claims", async function () {
             // Initial member joins
-            await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
+            await token.connect(member1).approve(await templ.getAddress(), ethers.MaxUint256);
             await templ.connect(member1).join();
 
             let totalClaimed = 0n;

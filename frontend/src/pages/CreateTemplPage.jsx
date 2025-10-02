@@ -573,6 +573,17 @@ export function CreateTemplPage({
             <p className={text.hint}>
               Optional, but helps members discover your public group from templ.fun once the templ is live.
             </p>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+              <h3 className="text-sm font-semibold text-slate-900">Fee curve defaults</h3>
+              <p>
+                Templs launch with an <strong>exponential</strong> join fee that scales by <strong>10% for every existing
+                member</strong>. Once governance is active you can propose a <em>Set fee curve</em> update (or toggle
+                dictatorship and call it directly) to adopt a different growth model.
+              </p>
+              <p className="mt-2 text-xs text-slate-600">
+                Communities that prefer a flat or linear ramp can switch after deployment without redeploying the contract.
+              </p>
+            </div>
           </div>
         ) : null}
         <button type="submit" className={button.primary} disabled={submitting}>

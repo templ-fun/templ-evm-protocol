@@ -16,7 +16,17 @@ describe("updateConfigDAO", function () {
             return entry;
         }
         const count = typeof prospectiveCount === "bigint" ? prospectiveCount : BigInt(prospectiveCount);
-        return entry + (curve[1] * count) / curve[2];
+        if (formula === 1) {
+            return entry + (curve[1] * count) / curve[2];
+        }
+        if (formula === 2) {
+            let growth = curve[2];
+            for (let i = 0n; i < count; i += 1n) {
+                growth = (growth * curve[1]) / curve[2];
+            }
+            return (entry * growth) / curve[2];
+        }
+        throw new Error(`Unsupported fee curve formula: ${formula}`);
     };
 
     let templ;
@@ -188,6 +198,49 @@ describe("updateConfigDAO", function () {
         expect(futureFee).to.equal(ENTRY_FEE + (slope * 3n) / scale);
     });
 
+    it("supports exponential fee curve updates", async function () {
+        const slope = ethers.parseUnits("1.2", 18);
+        const scale = ethers.parseUnits("1", 18);
+
+        await templ.connect(member).createProposalSetFeeCurve(
+            2,
+            slope,
+            scale,
+            7 * 24 * 60 * 60,
+            "Exponential fee curve",
+            "Compound entry fees by 20% per member"
+        );
+        await templ.connect(member).vote(0, true);
+        await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
+        await ethers.provider.send("evm_mine");
+        await templ.executeProposal(0);
+
+        const curve = await templ.feeCurve();
+        expect(curve[0]).to.equal(2);
+        expect(curve[1]).to.equal(slope);
+        expect(curve[2]).to.equal(scale);
+
+        const initialMembers = await templ.memberCount();
+        const firstFee = await computeJoinFee(templ, initialMembers);
+        let growth = scale;
+        for (let i = 0n; i < initialMembers; i += 1n) {
+            growth = (growth * slope) / scale;
+        }
+        const expectedFirst = (ENTRY_FEE * growth) / scale;
+        expect(firstFee).to.equal(expectedFirst);
+
+        const templAddress = await templ.getAddress();
+        await token.connect(secondMember).approve(templAddress, expectedFirst);
+        await templ.connect(secondMember).join();
+
+        const postJoinMembers = await templ.memberCount();
+        const secondFee = await computeJoinFee(templ, postJoinMembers);
+        let growthAfter = growth;
+        growthAfter = (growthAfter * slope) / scale;
+        const expectedSecond = (ENTRY_FEE * growthAfter) / scale;
+        expect(secondFee).to.equal(expectedSecond);
+    });
+
     it("validates scale and slope when creating fee curve proposals", async function () {
         await expect(
             templ.connect(member).createProposalSetFeeCurve(
@@ -208,6 +261,17 @@ describe("updateConfigDAO", function () {
                 7 * 24 * 60 * 60,
                 "Bad",
                 "Constant with slope"
+            )
+        ).to.be.revertedWithCustomError(templ, "InvalidFeeCurve");
+
+        await expect(
+            templ.connect(member).createProposalSetFeeCurve(
+                2,
+                0,
+                ethers.parseUnits("1", 18),
+                7 * 24 * 60 * 60,
+                "Bad",
+                "Exponential requires slope"
             )
         ).to.be.revertedWithCustomError(templ, "InvalidFeeCurve");
     });

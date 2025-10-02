@@ -14,6 +14,8 @@ async function deployTempl({
   priestIsDictator = false,
   maxMembers = 0,
   homeLink = "",
+  feeCurveOverride = "constant",
+  useFixture = true,
 } = {}) {
   async function fixture() {
     const accounts = await ethers.getSigners();
@@ -27,6 +29,7 @@ async function deployTempl({
 
     const TEMPL = await ethers.getContractFactory("TEMPL");
     const protocolRecipient = protocolFeeRecipient || priest.address;
+    const deployAsDictator = priestIsDictator || feeCurveOverride !== null;
     const templ = await TEMPL.deploy(
       priest.address,
       protocolRecipient,
@@ -39,11 +42,33 @@ async function deployTempl({
       quorumPercent,
       executionDelay,
       burnAddress,
-      priestIsDictator,
+      deployAsDictator,
       maxMembers,
       homeLink
     );
     await templ.waitForDeployment();
+    if (feeCurveOverride !== null) {
+      let formula = 0;
+      let slope = 0n;
+      let scale = ethers.parseUnits("1", 18);
+      if (feeCurveOverride === "linear") {
+        formula = 1;
+        slope = ethers.parseUnits("1", 18);
+        scale = 1n;
+      } else if (feeCurveOverride === "exponential") {
+        formula = 2;
+        slope = ethers.parseUnits("1.1", 18);
+        scale = ethers.parseUnits("1", 18);
+      } else if (typeof feeCurveOverride === "object" && feeCurveOverride !== null) {
+        formula = feeCurveOverride.formula ?? 0;
+        slope = BigInt(feeCurveOverride.slope ?? 0);
+        scale = BigInt(feeCurveOverride.scale ?? ethers.parseUnits("1", 18));
+      }
+      await templ.connect(priest).setFeeCurveDAO(formula, slope, scale);
+    }
+    if (!priestIsDictator && deployAsDictator) {
+      await templ.connect(priest).setDictatorshipDAO(false);
+    }
     try {
       const { attachCreateProposalCompat, attachProposalMetadataShim } = require("./proposal");
       attachCreateProposalCompat(templ);
@@ -59,7 +84,10 @@ async function deployTempl({
     };
   }
 
-  return loadFixture(fixture);
+  if (useFixture) {
+    return loadFixture(fixture);
+  }
+  return fixture();
 }
 
 module.exports = {

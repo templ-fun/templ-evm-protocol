@@ -138,18 +138,46 @@ function describeProposalAction(proposal, templRecord) {
           details: ['Keep entry fees constant for all future joins.']
         };
       }
-      let slopeDisplay = slope;
-      try {
-        slopeDisplay = formatTokenAmount(slope, templDecimals);
-      } catch {
-        slopeDisplay = slope;
+      if (formula === 1) {
+        let slopeDisplay = slope;
+        try {
+          slopeDisplay = formatTokenAmount(slope, templDecimals);
+        } catch {
+          slopeDisplay = slope;
+        }
+        return {
+          label: 'Set fee curve',
+          details: [
+            `Use a linear fee curve: add ${slopeDisplay} for each existing member.`,
+            'Future joins become progressively more expensive as the templ grows.'
+          ]
+        };
+      }
+      if (formula === 2) {
+        let multiplierBps = 0n;
+        try {
+          const slopeBig = BigInt(slope);
+          const scaleBig = BigInt(scale || '1');
+          if (scaleBig !== 0n) {
+            multiplierBps = (slopeBig * 10000n) / scaleBig;
+          }
+        } catch {
+          multiplierBps = 0n;
+        }
+        const multiplierPercent = Number(multiplierBps) / 100;
+        const changePercent = multiplierPercent - 100;
+        const direction = changePercent >= 0 ? 'increase' : 'decrease';
+        return {
+          label: 'Set fee curve',
+          details: [
+            `Use an exponential fee curve: each existing member multiplies the join fee to ${multiplierPercent.toFixed(2)}% of its previous value.`,
+            `That is roughly a ${Math.abs(changePercent).toFixed(2)}% ${direction} per additional member.`
+          ]
+        };
       }
       return {
         label: 'Set fee curve',
-        details: [
-          `Use a linear fee curve with slope ${slopeDisplay} per ${scale} members.`,
-          'Future joins become progressively more expensive as the templ grows.'
-        ]
+        details: ['Apply a custom fee curve configuration.']
       };
     }
     default:

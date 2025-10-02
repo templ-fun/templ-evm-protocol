@@ -119,6 +119,9 @@ export async function proposeVote({
         if (formula === 0 && slopeBigInt !== 0n) {
           throw new Error('Constant fee curves must use a zero slope');
         }
+        if (formula === 2 && slopeBigInt === 0n) {
+          throw new Error('Exponential fee curves require a non-zero slope');
+        }
         tx = await contract.createProposalSetFeeCurve(
           Math.trunc(formula),
           slopeBigInt,
