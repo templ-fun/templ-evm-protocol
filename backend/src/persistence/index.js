@@ -72,7 +72,7 @@ export async function createD1Persistence({ d1, retentionMs = DEFAULT_SIGNATURE_
   }
 
   await d1.exec(
-    'CREATE TABLE IF NOT EXISTS templ_bindings (contract TEXT PRIMARY KEY, telegramChatId TEXT UNIQUE, priest TEXT, bindingCode TEXT)'
+    'CREATE TABLE IF NOT EXISTS templ_bindings (contract TEXT PRIMARY KEY, telegramChatId TEXT, priest TEXT, bindingCode TEXT)'
   );
   await d1.exec(
     'CREATE TABLE IF NOT EXISTS used_signatures (signature TEXT PRIMARY KEY, expiresAt INTEGER NOT NULL)'
@@ -272,7 +272,7 @@ async function createSQLitePersistence({ sqlitePath, retentionMs = DEFAULT_SIGNA
   db.exec(`
     CREATE TABLE IF NOT EXISTS templ_bindings (
       contract TEXT PRIMARY KEY,
-      telegramChatId TEXT UNIQUE,
+      telegramChatId TEXT,
       priest TEXT,
       bindingCode TEXT
     );

@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS templ_bindings (
   contract TEXT PRIMARY KEY,
-  telegramChatId TEXT UNIQUE,
+  telegramChatId TEXT,
   priest TEXT,
   bindingCode TEXT
 );

@@ -68,6 +68,38 @@ test('registerTempl accepts numeric telegram chat ids', async () => {
   assert.equal(record.telegramChatId, '-1001234567890');
 });
 
+test('registerTempl allows multiple templs to reuse the same chat id', async () => {
+  const templs = new Map();
+  const context = {
+    templs,
+    persist: async () => {},
+    watchContract: async () => {},
+    logger: { info: () => {}, warn: () => {}, error: () => {} }
+  };
+
+  await registerTempl(
+    {
+      contractAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      priestAddress: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      telegramChatId: '-1004242424242'
+    },
+    context
+  );
+
+  await registerTempl(
+    {
+      contractAddress: '0xcccccccccccccccccccccccccccccccccccccccc',
+      priestAddress: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      telegramChatId: '-1004242424242'
+    },
+    context
+  );
+
+  assert.equal(templs.size, 2);
+  assert.equal(templs.get('0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa').telegramChatId, '-1004242424242');
+  assert.equal(templs.get('0xcccccccccccccccccccccccccccccccccccccccc').telegramChatId, '-1004242424242');
+});
+
 test('joinTempl rejects malformed addresses', async () => {
   await assert.rejects(
     () => joinTempl({ contractAddress: '0x123', memberAddress: '0x123' }, { ...noopContext, hasJoined: async () => true }),
