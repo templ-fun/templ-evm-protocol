@@ -1,7 +1,38 @@
 const hre = require("hardhat");
 require("dotenv").config();
 
-const factoryArtifact = require("../artifacts/contracts/TemplFactory.sol/TemplFactory.json");
+const FACTORY_EVENT_VARIANTS = [
+  {
+    id: 'current',
+    abi: 'event TemplCreated(address indexed templ, address indexed creator, address indexed priest, address token, uint256 entryFee, uint256 burnPercent, uint256 treasuryPercent, uint256 memberPoolPercent, uint256 quorumPercent, uint256 executionDelaySeconds, address burnAddress, bool priestIsDictator, uint256 maxMembers, uint8 curveStyle, uint32 curveRateBps, string homeLink)'
+  },
+  {
+    id: 'pivoted',
+    abi: 'event TemplCreated(address indexed templ, address indexed creator, address indexed priest, address token, uint256 entryFee, uint256 burnPercent, uint256 treasuryPercent, uint256 memberPoolPercent, uint256 quorumPercent, uint256 executionDelaySeconds, address burnAddress, bool priestIsDictator, uint256 maxMembers, uint8 curvePrimaryStyle, uint32 curvePrimaryRateBps, uint8 curveSecondaryStyle, uint32 curveSecondaryRateBps, uint16 curvePivotPercentOfMax, string homeLink)'
+  },
+  {
+    id: 'compat',
+    abi: 'event TemplCreated(address indexed templ, address indexed creator, address indexed priest, address token, uint256 entryFee, uint256 burnPercent, uint256 treasuryPercent, uint256 memberPoolPercent, uint256 quorumPercent, uint256 executionDelaySeconds, address burnAddress, bool priestIsDictator, uint256 maxMembers, string homeLink)'
+  }
+].map((variant) => {
+  const iface = new hre.ethers.Interface([variant.abi]);
+  const fragment = iface.getEvent('TemplCreated');
+  const topic = fragment.topicHash?.toLowerCase?.();
+  if (!topic) {
+    throw new Error('TemplCreated topic hash unavailable');
+  }
+  return {
+    ...variant,
+    iface,
+    fragment,
+    topic
+  };
+});
+
+const TEMPL_CREATED_TOPICS = FACTORY_EVENT_VARIANTS.map((variant) => variant.topic);
+const EVENT_VARIANT_BY_TOPIC = new Map(
+  FACTORY_EVENT_VARIANTS.map((variant) => [variant.topic, variant])
+);
 
 function normalizeAddress(value, label) {
   if (!value || typeof value !== 'string') {
@@ -136,23 +167,25 @@ async function fetchEventSnapshot({ provider, factoryAddress, templAddress, from
     console.warn(`[verify-templ] Ignoring factory override: ${err?.message || err}`);
     return null;
   }
-  const topic0 = hre.ethers.id('TemplCreated(address,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,address,bool,uint256,string)');
   const templTopic = hre.ethers.zeroPadValue(templAddress, 32);
-  const iface = new hre.ethers.Interface(factoryArtifact.abi);
   const startBlock = parseBlockNumber(fromBlock)
     ?? parseBlockNumber(process.env.TEMPL_FACTORY_DEPLOYMENT_BLOCK)
     ?? parseBlockNumber(process.env.TRUSTED_FACTORY_DEPLOYMENT_BLOCK)
     ?? 0;
   const filter = {
     address: factory,
-    topics: [topic0, templTopic],
+    topics: [TEMPL_CREATED_TOPICS, templTopic],
     fromBlock: startBlock
   };
   try {
     const logs = await provider.getLogs(filter);
     for (let i = logs.length - 1; i >= 0; i -= 1) {
       try {
-        const parsed = iface.parseLog(logs[i]);
+        const log = logs[i];
+        const topic = (log?.topics?.[0] || '').toLowerCase();
+        const variant = EVENT_VARIANT_BY_TOPIC.get(topic);
+        if (!variant) continue;
+        const parsed = variant.iface.parseLog(log);
         const args = parsed?.args;
         if (!args) continue;
         return {
