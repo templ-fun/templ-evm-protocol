@@ -68,4 +68,8 @@ if [ "${PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD:-}" != "1" ]; then
 fi
 npm --prefix frontend run test:e2e
 
+phase "Cleanup XMTP caches"
+rm -f frontend/pw-xmtp.db frontend/pw-xmtp.db-shm frontend/pw-xmtp.db-wal
+rm -f backend/xmtp-*.db backend/xmtp-*.db-shm backend/xmtp-*.db-wal backend/xmtp-*.db.sqlcipher_salt
+
 echo "[test:all] Completed in $(( $(date +%s) - START_TS ))s"

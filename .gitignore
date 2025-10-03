@@ -52,6 +52,7 @@ frontend/npm-cache/
 frontend/pw-dist/
 frontend/pw-results/
 frontend/pw-xmtp.db*
+backend/xmtp-*.db*
 
 # Root coverage artifact
 coverage.json

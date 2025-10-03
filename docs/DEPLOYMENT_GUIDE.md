@@ -128,25 +128,31 @@ This guide promotes templ to production with a Fly-hosted backend and a Cloudfla
 
 3. Point your frontend domain (for example `app.templ.example`) at the Pages project using Cloudflare DNS.
 
-## 5. Register templs and bind Telegram
+## 5. Register templs, seed chat metadata, and bind Telegram
 
 1. Confirm the backend responds:
 
-   ```bash
-   curl https://api.templ.example/templs
-   # -> {"templs": []}
-   ```
+  ```bash
+  curl https://api.templ.example/templs
+  # -> {"templs": []}
+  ```
 
-2. Visit the production frontend, connect the priest wallet, and create a templ. When `TRUSTED_FACTORY_ADDRESS` and `RPC_URL` are configured the backend consumes the factory event and registers the templ automatically, so the deployer only signs again if they choose to bind Telegram.
+2. Deploy templs through the factory (on-chain) and let the backend indexer register them automatically. With `TRUSTED_FACTORY_ADDRESS`/`TRUSTED_FACTORY_DEPLOYMENT_BLOCK` configured, newly emitted `TemplCreated` events are ingested within a few seconds of confirmation. Communities that prefer manual control—or need to import a templ created before the indexer was configured—can call the registration script themselves:
 
-3. If necessary (for example when backfilling historical templs or running without the factory indexer), register templs manually:
+  ```bash
+  export BACKEND_URL=https://api.templ.example
+  export TEMPL_ADDRESS=<templ address>
+  export PRIVATE_KEY=0xPriestKey
+  npx hardhat run scripts/register-templ.js --network base
+  ```
 
-   ```bash
-   export BACKEND_URL=https://api.templ.example
-   export TEMPL_ADDRESS=<templ address>
-   export PRIVATE_KEY=0xPriestKey
-   npx hardhat run scripts/register-templ.js --network base
-   ```
+3. Visit the production frontend, connect a member wallet, and confirm the following URLs all load against the deployed API:
+
+   - `https://app.templ.example/` lists templs discovered from the factory/API.
+   - `https://app.templ.example/templs/join?address=<templ>` walks through allowance + join flows and redirects into chat after membership is verified.
+   - `https://app.templ.example/templs/<templ>/chat` streams history, proposal cards, and exposes voting/claim actions inline.
+
+   Running through a complete join, proposal, vote, and execute cycle from the chat UI is the definitive production smoke test.
 
 4. Bind Telegram notifications by inviting `@templfunbot` to the target group and either tapping `https://t.me/templfunbot?startgroup=<bindingCode>` or sending `/templ <bindingCode>` in the chat. The backend persists the chat id in SQLite and acknowledges the binding.
 
