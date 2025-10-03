@@ -115,6 +115,30 @@ export async function proposeVote({
       case 'setHomeLink':
         tx = await contract.createProposalSetHomeLink(String(p.newHomeLink || ''), votingPeriod, proposalTitle, proposalDescription, txOptions);
         break;
+      case 'setEntryFeeCurve': {
+        const curveConfig = p.curve;
+        if (!curveConfig) {
+          throw new Error('Curve configuration required');
+        }
+        let baseEntryFee = 0n;
+        try {
+          baseEntryFee = p.baseEntryFee ? BigInt(p.baseEntryFee) : 0n;
+        } catch {
+          throw new Error('Invalid base entry fee');
+        }
+        if (baseEntryFee <= 0n) {
+          throw new Error('Base entry fee must be greater than zero');
+        }
+        tx = await contract.createProposalSetEntryFeeCurve(
+          curveConfig,
+          baseEntryFee,
+          votingPeriod,
+          proposalTitle,
+          proposalDescription,
+          txOptions
+        );
+        break;
+      }
       default:
         throw new Error('Unknown action: ' + action);
     }
@@ -173,6 +197,18 @@ export async function proposeVote({
       if (fn?.name === 'setTemplHomeLinkDAO' && fn.inputs.length === 1) {
         const [link] = full.decodeFunctionData(fn, callData);
         const tx = await contract.createProposalSetHomeLink(link, votingPeriod, proposalTitle, proposalDescription, txOptions);
+        return await waitForProposal(tx);
+      }
+      if (fn?.name === 'setEntryFeeCurveDAO' && fn.inputs.length === 2) {
+        const [curveStruct, baseEntryFee] = full.decodeFunctionData(fn, callData);
+        const tx = await contract.createProposalSetEntryFeeCurve(
+          curveStruct,
+          baseEntryFee,
+          votingPeriod,
+          proposalTitle,
+          proposalDescription,
+          txOptions
+        );
         return await waitForProposal(tx);
       }
       if (fn?.name === 'disbandTreasuryDAO') {
@@ -310,19 +346,21 @@ export async function fetchGovernanceParameters({
   }
   const contract = new ethers.Contract(templAddress, templArtifact.abi, provider);
   try {
-    const [defaultVotingPeriod, minVotingPeriod, maxVotingPeriod, quorumPercent, executionDelay] = await Promise.all([
+    const [defaultVotingPeriod, minVotingPeriod, maxVotingPeriod, quorumPercent, executionDelay, baseEntryFee] = await Promise.all([
       contract.DEFAULT_VOTING_PERIOD?.().catch(() => null),
       contract.MIN_VOTING_PERIOD?.().catch(() => null),
       contract.MAX_VOTING_PERIOD?.().catch(() => null),
       contract.quorumPercent?.().catch(() => null),
-      contract.executionDelayAfterQuorum?.().catch(() => null)
+      contract.executionDelayAfterQuorum?.().catch(() => null),
+      contract.baseEntryFee?.().catch(() => null)
     ]);
     return {
       defaultVotingPeriod: toNumber(defaultVotingPeriod, 7 * 24 * 60 * 60),
       minVotingPeriod: toNumber(minVotingPeriod, 7 * 24 * 60 * 60),
       maxVotingPeriod: toNumber(maxVotingPeriod, 30 * 24 * 60 * 60),
       quorumPercent: toNumber(quorumPercent, 0) / 100,
-      executionDelay: toNumber(executionDelay, 0)
+      executionDelay: toNumber(executionDelay, 0),
+      baseEntryFee: baseEntryFee ? BigInt(baseEntryFee).toString() : null
     };
   } catch (err) {
     console.warn('[templ] Failed to load governance parameters', err);

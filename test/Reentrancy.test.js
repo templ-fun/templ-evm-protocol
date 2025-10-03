@@ -1,6 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { deployTempl } = require("./utils/deploy");
+const { deployTempl, STATIC_CURVE } = require("./utils/deploy");
 const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 
 describe("Reentrancy protection", function () {
@@ -41,7 +41,8 @@ describe("Reentrancy protection", function () {
         "0x000000000000000000000000000000000000dEaD",
         false,
         0,
-        ""
+        "",
+        STATIC_CURVE
       );
       await templ.waitForDeployment();
 
@@ -104,7 +105,8 @@ describe("Reentrancy protection", function () {
         "0x000000000000000000000000000000000000dEaD",
         false,
         0,
-        ""
+        "",
+        STATIC_CURVE
       );
       await templ.waitForDeployment();
 

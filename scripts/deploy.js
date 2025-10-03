@@ -7,6 +7,84 @@ const DEFAULT_BURN_PERCENT = 30;
 const DEFAULT_TREASURY_PERCENT = 30;
 const DEFAULT_MEMBER_POOL_PERCENT = 30;
 const USE_DEFAULT_PERCENT = -1;
+const CURVE_STYLE_INDEX = {
+  static: 0,
+  linear: 1,
+  exponential: 2
+};
+
+function parseBoolean(value) {
+  if (value === undefined || value === null) return false;
+  const trimmed = String(value).trim();
+  if (trimmed === '') return false;
+  return /^(?:1|true|yes)$/i.test(trimmed);
+}
+
+function resolveCurveConfigFromEnv() {
+  const styleInput = (process.env.CURVE_PRIMARY_STYLE || process.env.CURVE_STYLE || '').trim().toLowerCase();
+  const rateInputRaw = process.env.CURVE_PRIMARY_RATE_BPS ?? process.env.CURVE_RATE_BPS;
+  const providedFlag = parseBoolean(process.env.CURVE_PROVIDED);
+
+  const hasStyleOverride = styleInput !== '';
+  const hasRateOverride = rateInputRaw !== undefined && String(rateInputRaw).trim() !== '';
+  const shouldProvideCurve = providedFlag || hasStyleOverride || hasRateOverride;
+
+  if (!shouldProvideCurve) {
+    return {
+      curveProvided: false,
+      curve: {
+        primary: { style: CURVE_STYLE_INDEX.static, rateBps: 0 }
+      },
+      description: 'factory default'
+    };
+  }
+
+  if (!hasStyleOverride && providedFlag) {
+    throw new Error('CURVE_PROVIDED is set but CURVE_PRIMARY_STYLE is missing');
+  }
+
+  const styleKey = hasStyleOverride ? styleInput : 'exponential';
+  const resolvedStyle = CURVE_STYLE_INDEX[styleKey];
+  if (resolvedStyle === undefined) {
+    throw new Error(`Unsupported CURVE_PRIMARY_STYLE "${styleInput}". Use static, linear, or exponential.`);
+  }
+
+  let resolvedRate;
+  if (hasRateOverride) {
+    const parsedRate = Number(String(rateInputRaw).trim());
+    if (!Number.isFinite(parsedRate)) {
+      throw new Error('CURVE_PRIMARY_RATE_BPS must be a finite number');
+    }
+    if (parsedRate < 0 || parsedRate > 1_000_000) {
+      throw new Error('CURVE_PRIMARY_RATE_BPS must be between 0 and 1_000_000');
+    }
+    resolvedRate = Math.round(parsedRate);
+  } else if (resolvedStyle === CURVE_STYLE_INDEX.static) {
+    resolvedRate = 0;
+  } else if (resolvedStyle === CURVE_STYLE_INDEX.linear) {
+    resolvedRate = 500;
+  } else {
+    resolvedRate = 11_000;
+  }
+
+  if (resolvedStyle === CURVE_STYLE_INDEX.static && resolvedRate !== 0) {
+    throw new Error('Static curve must use CURVE_PRIMARY_RATE_BPS=0');
+  }
+  if (resolvedStyle === CURVE_STYLE_INDEX.exponential && resolvedRate === 0) {
+    throw new Error('Exponential curve requires CURVE_PRIMARY_RATE_BPS > 0');
+  }
+
+  return {
+    curveProvided: true,
+    curve: {
+      primary: {
+        style: resolvedStyle,
+        rateBps: resolvedRate
+      }
+    },
+    description: `${styleKey} @ ${resolvedRate} bps`
+  };
+}
 
 function resolveProtocolPercentFromEnv() {
   const percentInput = (process.env.PROTOCOL_PERCENT ?? '').trim();
@@ -193,6 +271,7 @@ async function main() {
   const BACKEND_URL = (process.env.BACKEND_URL || process.env.TEMPL_BACKEND_URL || '').trim();
   const TELEGRAM_CHAT_ID = (process.env.TELEGRAM_CHAT_ID || process.env.CHAT_ID || '').trim();
   const PRIEST_IS_DICTATOR = /^(?:1|true)$/i.test((process.env.PRIEST_IS_DICTATOR || '').trim());
+  const curveConfigEnv = resolveCurveConfigFromEnv();
 
   if (!TOKEN_ADDRESS) {
     throw new Error("TOKEN_ADDRESS not set in environment");
@@ -308,6 +387,7 @@ async function main() {
   console.log("Execution Delay (seconds):", EXECUTION_DELAY_SECONDS ?? 7 * 24 * 60 * 60);
   console.log("Burn Address:", effectiveBurnAddress);
   console.log("Priest Dictatorship:", PRIEST_IS_DICTATOR ? 'enabled' : 'disabled');
+  console.log('Curve configuration:', curveConfigEnv.description);
   console.log(`Protocol Percent (${protocolPercentSource}):`, protocolPercentPercent);
   console.log('Protocol Percent (bps):', protocolPercentBps);
   
@@ -349,6 +429,8 @@ async function main() {
     burnAddress: BURN_ADDRESS || hre.ethers.ZeroAddress,
     priestIsDictator: PRIEST_IS_DICTATOR,
     maxMembers: MAX_MEMBERS,
+    curveProvided: curveConfigEnv.curveProvided,
+    curve: curveConfigEnv.curve,
     homeLink: HOME_LINK
   };
   const expectedTempl = await factoryContract.createTemplWithConfig.staticCall(templConfig);
@@ -461,6 +543,8 @@ async function main() {
     priestIsDictator: PRIEST_IS_DICTATOR,
     tokenAddress: TOKEN_ADDRESS,
     entryFee: ENTRY_FEE,
+    curveProvided: curveConfigEnv.curveProvided,
+    curve: curveConfigEnv.curve,
     deployedAt: new Date().toISOString(),
     deployer: deployer.address,
     abi: JSON.parse(contract.interface.formatJson()),

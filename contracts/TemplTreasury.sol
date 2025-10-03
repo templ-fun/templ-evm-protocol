@@ -5,6 +5,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {TemplBase} from "./TemplBase.sol";
 import {TemplErrors} from "./TemplErrors.sol";
+import {CurveConfig} from "./TemplCurve.sol";
 
 /// @title templ treasury module
 /// @notice Adds treasury controls, fee configuration, and external reward management.
@@ -79,6 +80,14 @@ abstract contract TemplTreasury is TemplBase {
         _setTemplHomeLink(newLink);
     }
 
+    /// @notice Governance action that reconfigures the entry fee curve.
+    /// @param curve New curve configuration to apply.
+    /// @param baseEntryFee Entry fee value referenced by the update (0 keeps the existing base).
+    function setEntryFeeCurveDAO(CurveConfig calldata curve, uint256 baseEntryFee) external onlyDAO {
+        CurveConfig memory config = curve;
+        _applyCurveUpdate(config, baseEntryFee);
+    }
+
     /// @dev Internal helper that executes a treasury withdrawal and emits the corresponding event.
     function _withdrawTreasury(
         address token,
@@ -140,9 +149,7 @@ abstract contract TemplTreasury is TemplBase {
     ) internal {
         if (_token != address(0) && _token != accessToken) revert TemplErrors.TokenChangeDisabled();
         if (_entryFee > 0) {
-            if (_entryFee < 10) revert TemplErrors.EntryFeeTooSmall();
-            if (_entryFee % 10 != 0) revert TemplErrors.InvalidEntryFee();
-            entryFee = _entryFee;
+            _setCurrentEntryFee(_entryFee);
         }
         if (_updateFeeSplit) {
             _setPercentSplit(_burnPercent, _treasuryPercent, _memberPoolPercent);

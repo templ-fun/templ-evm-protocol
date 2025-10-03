@@ -2,6 +2,7 @@
 pragma solidity ^0.8.23;
 
 import {TEMPL} from "../TEMPL.sol";
+import {CurveConfig, CurveSegment, CurveStyle} from "../TemplCurve.sol";
 
 /// @dev Harness that triggers onlyDAO externals via self-calls to cover wrapper paths
 contract DaoCallerHarness is TEMPL {
@@ -26,7 +27,10 @@ contract DaoCallerHarness is TEMPL {
             0x000000000000000000000000000000000000dEaD,
             false,
             0,
-            ""
+            "",
+            CurveConfig({
+                primary: CurveSegment({style: CurveStyle.Static, rateBps: 0})
+            })
         )
     {}
     /// @notice Wrapper to call withdrawTreasuryDAO via contract self-call

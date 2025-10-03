@@ -13,7 +13,7 @@ library SSTORE2 {
     function write(bytes memory _data) internal returns (address pointer) {
         if (_data.length == 0) revert WriteError();
         bytes memory code = Bytecode.creationCodeFor(abi.encodePacked(hex"00", _data));
-        assembly {
+        assembly ("memory-safe") {
             pointer := create(0, add(code, 0x20), mload(code))
         }
         if (pointer == address(0)) revert WriteError();

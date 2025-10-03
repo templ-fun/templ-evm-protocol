@@ -1,6 +1,14 @@
 const { loadFixture } = require("@nomicfoundation/hardhat-network-helpers");
 const { ethers } = require("hardhat");
 
+const STATIC_CURVE = {
+  primary: { style: 0, rateBps: 0 }
+};
+
+const EXPONENTIAL_CURVE = {
+  primary: { style: 2, rateBps: 11_000 }
+};
+
 async function deployTempl({
   entryFee = ethers.parseUnits("100", 18),
   burnPercent = 3000,
@@ -14,6 +22,7 @@ async function deployTempl({
   priestIsDictator = false,
   maxMembers = 0,
   homeLink = "",
+  curve = STATIC_CURVE,
 } = {}) {
   async function fixture() {
     const accounts = await ethers.getSigners();
@@ -41,7 +50,8 @@ async function deployTempl({
       burnAddress,
       priestIsDictator,
       maxMembers,
-      homeLink
+      homeLink,
+      curve
     );
     await templ.waitForDeployment();
     try {
@@ -64,4 +74,6 @@ async function deployTempl({
 
 module.exports = {
   deployTempl,
+  STATIC_CURVE,
+  EXPONENTIAL_CURVE,
 };

@@ -31,13 +31,14 @@ const config = {
       viaIR: true,
       optimizer: {
         enabled: true,
-        runs: usingCoverage ? 1 : 200
+        runs: usingCoverage ? 1 : 50
       }
     }
   },
   networks: {
     hardhat: {
-      chainId: 1337
+      chainId: 1337,
+      allowUnlimitedContractSize: true
     },
     base: {
       url: process.env.RPC_URL || "https://mainnet.base.org",

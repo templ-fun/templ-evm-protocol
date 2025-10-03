@@ -14,6 +14,16 @@ const ERC20_DECIMALS_ABI = ['function decimals() view returns (uint8)'];
 const MIN_ENTRY_FEE = 10n;
 const ENTRY_FEE_STEP = 10n;
 const HEX_ADDRESS_REGEX = /^0x[0-9a-fA-F]{40}$/;
+const CURVE_STYLE_INDEX = {
+  static: 0,
+  linear: 1,
+  exponential: 2
+};
+const CURVE_STYLE_OPTIONS = [
+  { value: 'static', label: 'Static (no change)' },
+  { value: 'linear', label: 'Linear' },
+  { value: 'exponential', label: 'Exponential' }
+];
 
 export function CreateTemplPage({
   ethers,
@@ -36,7 +46,7 @@ export function CreateTemplPage({
     return pct !== undefined ? String(pct) : '10';
   });
   const [protocolPercentLocked, setProtocolPercentLocked] = useState(() => FACTORY_CONFIG.protocolPercent !== undefined);
-  const [maxMembers, setMaxMembers] = useState('0');
+  const [maxMembers, setMaxMembers] = useState('249');
   const [dictatorship, setDictatorship] = useState(false);
   const [homeLink, setHomeLink] = useState('');
   const [factoryAddress, setFactoryAddress] = useState(() => FACTORY_CONFIG.address || '');
@@ -49,6 +59,9 @@ export function CreateTemplPage({
   const [tokenDecimalsError, setTokenDecimalsError] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showTokenSuggestions, setShowTokenSuggestions] = useState(false);
+  const [customCurveEnabled, setCustomCurveEnabled] = useState(false);
+  const [curvePrimaryStyle, setCurvePrimaryStyle] = useState('exponential');
+  const [curvePrimaryRateBps, setCurvePrimaryRateBps] = useState('11000');
   const sanitizedBindingHomeLink = sanitizeLink(bindingInfo?.templHomeLink);
   const bindingStartLink = useMemo(() => {
     if (!bindingInfo?.bindingCode) return null;
@@ -338,6 +351,41 @@ export function CreateTemplPage({
         console.warn('[templ] Failed to format adjusted entry fee', formatErr);
       }
     }
+
+    const resolveCurveStyleValue = (styleKey) => {
+      switch (styleKey) {
+        case 'linear':
+          return CURVE_STYLE_INDEX.linear;
+        case 'exponential':
+          return CURVE_STYLE_INDEX.exponential;
+        default:
+          return CURVE_STYLE_INDEX.static;
+      }
+    };
+
+    const parseRateBps = (value, styleKey) => {
+      const parsed = Number.parseInt(String(value ?? '0'), 10);
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        return 0;
+      }
+      if (styleKey === 'static') {
+        return 0;
+      }
+      return Math.min(parsed, 1_000_000);
+    };
+
+    const curveProvided = showAdvanced && customCurveEnabled;
+    const curveConfig = curveProvided
+      ? {
+          primary: {
+            style: resolveCurveStyleValue(curvePrimaryStyle),
+            rateBps: parseRateBps(curvePrimaryRateBps, curvePrimaryStyle)
+          }
+        }
+      : {
+          primary: { style: CURVE_STYLE_INDEX.static, rateBps: 0 }
+        };
+
     setSubmitting(true);
     pushMessage?.('Deploying templ…');
     try {
@@ -357,7 +405,9 @@ export function CreateTemplPage({
         quorumPercent,
         maxMembers,
         priestIsDictator: dictatorship,
-        templHomeLink: homeLink || undefined
+        templHomeLink: homeLink || undefined,
+        curveProvided,
+        curveConfig
       });
       pushMessage?.(`Templ deployed at ${templAddress}`);
       if (!registration) {
@@ -542,6 +592,63 @@ export function CreateTemplPage({
               Protocol receives {protocolPercentValue}% by default, leaving {feeSplitTarget}% to divide between burn, treasury,
               and member rewards.
             </p>
+            <div className="rounded-lg border border-slate-200 p-4">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h2 className="text-sm font-semibold text-slate-900">Pricing curve</h2>
+                  <p className={text.hint}>
+                    Configure how the entry fee scales as membership grows. Keep customization disabled to use the factory
+                    default exponential curve (+10% per join).
+                  </p>
+                </div>
+                <label className="flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={customCurveEnabled}
+                    onChange={(event) => setCustomCurveEnabled(event.target.checked)}
+                  />
+                  <span>Customize curve</span>
+                </label>
+              </div>
+              {customCurveEnabled ? (
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <label className={form.label}>
+                    Primary style
+                    <select
+                      className={form.input}
+                      value={curvePrimaryStyle}
+                      onChange={(event) => {
+                        const next = event.target.value;
+                        setCurvePrimaryStyle(next);
+                        if (next === 'static') {
+                          setCurvePrimaryRateBps('0');
+                        } else if (curvePrimaryRateBps === '0') {
+                          setCurvePrimaryRateBps(next === 'exponential' ? '11000' : '500');
+                        }
+                      }}
+                    >
+                      {CURVE_STYLE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className={form.label}>
+                    Primary rate (basis points)
+                    <input
+                      type="number"
+                      min="0"
+                      className={form.input}
+                      value={curvePrimaryRateBps}
+                      onChange={(event) => setCurvePrimaryRateBps(event.target.value)}
+                      disabled={curvePrimaryStyle === 'static'}
+                    />
+                    <span className={text.hint}>Example: 11000 = 10% increase per join.</span>
+                  </label>
+                </div>
+              ) : null}
+            </div>
             <label className={form.label}>
               Max members (0 = unlimited)
               <input
@@ -550,6 +657,7 @@ export function CreateTemplPage({
                 value={maxMembers}
                 onChange={(e) => setMaxMembers(e.target.value.trim())}
               />
+              <span className={text.hint}>Default simple deployments cap at 249 members including the priest.</span>
             </label>
             <label className={form.checkbox}>
               <input

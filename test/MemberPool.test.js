@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { loadFixture } = require("@nomicfoundation/hardhat-network-helpers");
 const { ethers } = require("hardhat");
-const { deployTempl } = require("./utils/deploy");
+const { deployTempl, STATIC_CURVE } = require("./utils/deploy");
 const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 const { encodeSweepMemberRewardRemainderDAO } = require("./utils/callDataBuilders");
 
@@ -278,7 +278,8 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
                 "0x000000000000000000000000000000000000dEaD",
                 false,
                 0,
-                ""
+                "",
+                STATIC_CURVE
             );
             await oddTempl.waitForDeployment();
 

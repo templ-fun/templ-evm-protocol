@@ -1,6 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { deployTempl } = require("./utils/deploy");
+const { deployTempl, STATIC_CURVE } = require("./utils/deploy");
 const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 const { encodeSetJoinPausedDAO, encodeWithdrawTreasuryDAO, encodeUpdateConfigDAO } = require("./utils/callDataBuilders");
 
@@ -58,7 +58,8 @@ describe("TEMPL Contract with DAO Governance", function () {
                 customBurnAddress,
                 false,
                 0,
-                "https://templ.direct"
+                "https://templ.direct",
+                STATIC_CURVE
             );
             await templDirect.waitForDeployment();
 
@@ -89,7 +90,8 @@ describe("TEMPL Contract with DAO Governance", function () {
                     "0x000000000000000000000000000000000000dEaD",
                     false,
                     0,
-                    ""
+                    "",
+                    STATIC_CURVE
                 )
             ).to.be.revertedWithCustomError(TEMPL, "InvalidEntryFee");
         });
@@ -111,7 +113,8 @@ describe("TEMPL Contract with DAO Governance", function () {
                     "0x000000000000000000000000000000000000dEaD",
                     false,
                     0,
-                    ""
+                    "",
+                    STATIC_CURVE
                 )
             ).to.be.revertedWithCustomError(TEMPL, "InvalidRecipient");
         });
@@ -133,7 +136,8 @@ describe("TEMPL Contract with DAO Governance", function () {
                     "0x000000000000000000000000000000000000dEaD",
                     false,
                     0,
-                    ""
+                    "",
+                    STATIC_CURVE
                 )
             ).to.be.revertedWithCustomError(TEMPL, "InvalidRecipient");
         });
@@ -154,7 +158,8 @@ describe("TEMPL Contract with DAO Governance", function () {
                 ethers.ZeroAddress,
                 false,
                 0,
-                ""
+                "",
+                STATIC_CURVE
             );
             await templZero.waitForDeployment();
 
@@ -180,7 +185,8 @@ describe("TEMPL Contract with DAO Governance", function () {
                     "0x000000000000000000000000000000000000dEaD",
                     false,
                     0,
-                    ""
+                    "",
+                    STATIC_CURVE
                 )
             ).to.be.revertedWithCustomError(TEMPL, "InvalidPercentage");
         });
@@ -202,7 +208,8 @@ describe("TEMPL Contract with DAO Governance", function () {
                     "0x000000000000000000000000000000000000dEaD",
                     false,
                     0,
-                    ""
+                    "",
+                    STATIC_CURVE
                 )
             ).to.be.revertedWithCustomError(TEMPL, "InvalidPercentageSplit");
         });
@@ -224,7 +231,8 @@ describe("TEMPL Contract with DAO Governance", function () {
                     "0x000000000000000000000000000000000000dEaD",
                     false,
                     0,
-                    ""
+                    "",
+                    STATIC_CURVE
                 )
             ).to.be.revertedWithCustomError(TEMPL, "InvalidRecipient");
         });
@@ -246,7 +254,8 @@ describe("TEMPL Contract with DAO Governance", function () {
                     "0x000000000000000000000000000000000000dEaD",
                     false,
                     0,
-                    ""
+                    "",
+                    STATIC_CURVE
                 )
             ).to.be.revertedWithCustomError(TEMPL, "AmountZero");
         });
@@ -1023,7 +1032,8 @@ describe("TEMPL Contract with DAO Governance", function () {
                 "0x000000000000000000000000000000000000dEaD",
                 false,
                 0,
-                ""
+                "",
+                STATIC_CURVE
             ]);
 
             await token.connect(user1).approve(await minTempl.getAddress(), 10);
@@ -1049,7 +1059,8 @@ describe("TEMPL Contract with DAO Governance", function () {
                 "0x000000000000000000000000000000000000dEaD",
                 false,
                 0,
-                    ""
+                "",
+                STATIC_CURVE
             )).to.be.revertedWithCustomError(factory, "EntryFeeTooSmall");
         });
 

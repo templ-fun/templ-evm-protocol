@@ -6,6 +6,19 @@ describe("TemplFactory", function () {
     const ENTRY_FEE = ethers.parseUnits("100", 18);
     const BPS_DENOMINATOR = 10_000n;
     const pct = (value) => value * 100;
+    const CURVE_STYLE = {
+        Static: 0,
+        Linear: 1,
+        Exponential: 2,
+    };
+
+    const defaultCurve = () => ({
+        primary: { style: CURVE_STYLE.Exponential, rateBps: 11_000 },
+    });
+
+    const zeroCurve = () => ({
+        primary: { style: CURVE_STYLE.Static, rateBps: 0 },
+    });
 
     async function deployToken(name = "Test", symbol = "TEST") {
         const Token = await ethers.getContractFactory("contracts/mocks/TestToken.sol:TestToken");
@@ -51,6 +64,8 @@ describe("TemplFactory", function () {
             burnAddress: customBurnAddress,
             priestIsDictator: false,
             maxMembers: 0,
+            curveProvided: true,
+            curve: defaultCurve(),
             homeLink
         };
 
@@ -135,6 +150,8 @@ describe("TemplFactory", function () {
             burnAddress: ethers.ZeroAddress,
             priestIsDictator: true,
             maxMembers: 0,
+            curveProvided: true,
+            curve: defaultCurve(),
             homeLink: "",
         };
 
@@ -158,6 +175,8 @@ describe("TemplFactory", function () {
         expect(templCreated).to.not.equal(undefined);
         expect(templCreated.args.priestIsDictator).to.equal(true);
         expect(templCreated.args.maxMembers).to.equal(0n);
+        expect(templCreated.args.curveStyle).to.equal(CURVE_STYLE.Exponential);
+        expect(templCreated.args.curveRateBps).to.equal(11_000n);
         expect(templCreated.args.homeLink).to.equal("");
     });
 
@@ -181,6 +200,8 @@ describe("TemplFactory", function () {
             burnAddress: ethers.ZeroAddress,
             priestIsDictator: false,
             maxMembers: 5,
+            curveProvided: true,
+            curve: defaultCurve(),
             homeLink: "",
         };
 
@@ -226,6 +247,8 @@ describe("TemplFactory", function () {
       burnAddress: ethers.ZeroAddress,
       priestIsDictator: false,
       maxMembers: 0,
+      curveProvided: false,
+      curve: zeroCurve(),
       homeLink: ""
     };
 
@@ -261,10 +284,12 @@ describe("TemplFactory", function () {
                 memberPoolPercent: pct(10),
                 quorumPercent: pct(33),
                 executionDelaySeconds: 7 * 24 * 60 * 60,
-            burnAddress: ethers.ZeroAddress,
-            priestIsDictator: false,
-            maxMembers: 0,
-            homeLink: ""
+                burnAddress: ethers.ZeroAddress,
+                priestIsDictator: false,
+                maxMembers: 0,
+                curveProvided: true,
+                curve: defaultCurve(),
+                homeLink: ""
         })
         ).to.be.revertedWithCustomError(factory, "InvalidPercentageSplit");
     });
@@ -289,6 +314,8 @@ describe("TemplFactory", function () {
             burnAddress: ethers.ZeroAddress,
             priestIsDictator: false,
             maxMembers: 0,
+            curveProvided: true,
+            curve: defaultCurve(),
             homeLink: "",
         };
 
@@ -323,13 +350,15 @@ describe("TemplFactory", function () {
                 burnAddress: ethers.ZeroAddress,
                 priestIsDictator: false,
                 maxMembers: 0,
+                curveProvided: true,
+                curve: defaultCurve(),
                 homeLink: "",
             })
         ).to.be.revertedWithCustomError(factory, "InvalidPercentage");
     });
 
-    it("defaults splits, priest, quorum and delay when using simple create", async function () {
-        const [deployer, , protocolRecipient] = await ethers.getSigners();
+    it("defaults splits, priest, quorum, delay, max members, and curve when using simple create", async function () {
+        const [deployer, joiner, protocolRecipient] = await ethers.getSigners();
         const token = await deployToken("Defaults", "DEF");
         const Factory = await ethers.getContractFactory("TemplFactory");
         const factory = await Factory.deploy(protocolRecipient.address, pct(10));
@@ -337,19 +366,40 @@ describe("TemplFactory", function () {
 
         const templAddress = await factory.createTempl.staticCall(await token.getAddress(), ENTRY_FEE);
         const tx = await factory.createTempl(await token.getAddress(), ENTRY_FEE);
-        await tx.wait();
+        const receipt = await tx.wait();
 
         const templ = await ethers.getContractAt("TEMPL", templAddress);
 
         expect(await templ.priest()).to.equal(deployer.address);
-    expect(await templ.burnPercent()).to.equal(BigInt(pct(30)));
-    expect(await templ.treasuryPercent()).to.equal(BigInt(pct(30)));
-    expect(await templ.memberPoolPercent()).to.equal(BigInt(pct(30)));
-    expect(await templ.protocolFeeRecipient()).to.equal(protocolRecipient.address);
-    expect(await templ.protocolPercent()).to.equal(BigInt(pct(10)));
-    expect(await templ.quorumPercent()).to.equal(BigInt(pct(33)));
+        expect(await templ.burnPercent()).to.equal(BigInt(pct(30)));
+        expect(await templ.treasuryPercent()).to.equal(BigInt(pct(30)));
+        expect(await templ.memberPoolPercent()).to.equal(BigInt(pct(30)));
+        expect(await templ.protocolFeeRecipient()).to.equal(protocolRecipient.address);
+        expect(await templ.protocolPercent()).to.equal(BigInt(pct(10)));
+        expect(await templ.quorumPercent()).to.equal(BigInt(pct(33)));
         expect(await templ.executionDelayAfterQuorum()).to.equal(7 * 24 * 60 * 60);
         expect(await templ.burnAddress()).to.equal("0x000000000000000000000000000000000000dEaD");
+        expect(await templ.MAX_MEMBERS()).to.equal(249n);
+
+        const templCreated = receipt.logs
+            .map((log) => {
+                try {
+                    return factory.interface.parseLog(log);
+                } catch (_) {
+                    return null;
+                }
+            })
+            .find((log) => log && log.name === "TemplCreated");
+
+        expect(templCreated.args.curveStyle).to.equal(CURVE_STYLE.Exponential);
+        expect(templCreated.args.curveRateBps).to.equal(11_000n);
+
+        await mintToUsers(token, [joiner], ENTRY_FEE * 5n);
+        await token.connect(joiner).approve(templAddress, ENTRY_FEE);
+        await templ.connect(joiner).join();
+
+        const expectedNextFee = (ENTRY_FEE * 11_000n) / 10_000n;
+        expect(await templ.entryFee()).to.equal(expectedNextFee);
     });
 
     it("allows templ creation for a delegated priest", async function () {
@@ -383,6 +433,8 @@ describe("TemplFactory", function () {
 
         expect(templCreated.args.creator).to.equal(deployer.address);
         expect(templCreated.args.priest).to.equal(delegatedPriest.address);
+        expect(templCreated.args.curveStyle).to.equal(CURVE_STYLE.Exponential);
+        expect(templCreated.args.curveRateBps).to.equal(11_000n);
     });
 
   it("reuses the immutable protocol configuration for every templ", async function () {
@@ -407,6 +459,8 @@ describe("TemplFactory", function () {
       burnAddress: ethers.ZeroAddress,
       priestIsDictator: false,
       maxMembers: 0,
+      curveProvided: true,
+      curve: defaultCurve(),
       homeLink: "",
     };
 
@@ -422,6 +476,8 @@ describe("TemplFactory", function () {
       burnAddress: ethers.ZeroAddress,
       priestIsDictator: true,
       maxMembers: 50,
+      curveProvided: true,
+      curve: defaultCurve(),
       homeLink: "https://templ.fun/immutability",
     };
 
@@ -527,6 +583,8 @@ describe("TemplFactory", function () {
                 burnAddress: ethers.ZeroAddress,
                 priestIsDictator: false,
                 maxMembers: 0,
+                curveProvided: true,
+                curve: defaultCurve(),
                 homeLink: ""
             })
         ).to.be.revertedWithCustomError(factory, "InvalidPercentage");
@@ -551,6 +609,8 @@ describe("TemplFactory", function () {
             burnAddress: ethers.ZeroAddress,
             priestIsDictator: false,
             maxMembers: 0,
+            curveProvided: false,
+            curve: zeroCurve(),
             homeLink: ""
         };
 
@@ -587,6 +647,8 @@ describe("TemplFactory", function () {
             burnAddress: ethers.ZeroAddress,
             priestIsDictator: false,
             maxMembers: 0,
+            curveProvided: false,
+            curve: zeroCurve(),
             homeLink: "",
         };
 
@@ -648,6 +710,8 @@ describe("TemplFactory", function () {
             burnAddress: ethers.ZeroAddress,
             priestIsDictator: false,
             maxMembers: 0,
+            curveProvided: true,
+            curve: defaultCurve(),
             homeLink: "",
         };
 
