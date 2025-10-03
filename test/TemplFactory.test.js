@@ -14,14 +14,10 @@ describe("TemplFactory", function () {
 
     const defaultCurve = () => ({
         primary: { style: CURVE_STYLE.Exponential, rateBps: 11_000 },
-        secondary: { style: CURVE_STYLE.Static, rateBps: 0 },
-        pivotPercentOfMax: 0,
     });
 
     const zeroCurve = () => ({
         primary: { style: CURVE_STYLE.Static, rateBps: 0 },
-        secondary: { style: CURVE_STYLE.Static, rateBps: 0 },
-        pivotPercentOfMax: 0,
     });
 
     async function deployToken(name = "Test", symbol = "TEST") {
@@ -179,11 +175,8 @@ describe("TemplFactory", function () {
         expect(templCreated).to.not.equal(undefined);
         expect(templCreated.args.priestIsDictator).to.equal(true);
         expect(templCreated.args.maxMembers).to.equal(0n);
-        expect(templCreated.args.curvePrimaryStyle).to.equal(CURVE_STYLE.Exponential);
-        expect(templCreated.args.curvePrimaryRateBps).to.equal(11_000n);
-        expect(templCreated.args.curveSecondaryStyle).to.equal(CURVE_STYLE.Static);
-        expect(templCreated.args.curveSecondaryRateBps).to.equal(0n);
-        expect(templCreated.args.curvePivotPercentOfMax).to.equal(0);
+        expect(templCreated.args.curveStyle).to.equal(CURVE_STYLE.Exponential);
+        expect(templCreated.args.curveRateBps).to.equal(11_000n);
         expect(templCreated.args.homeLink).to.equal("");
     });
 
@@ -398,8 +391,8 @@ describe("TemplFactory", function () {
             })
             .find((log) => log && log.name === "TemplCreated");
 
-        expect(templCreated.args.curvePrimaryStyle).to.equal(CURVE_STYLE.Exponential);
-        expect(templCreated.args.curvePrimaryRateBps).to.equal(11_000n);
+        expect(templCreated.args.curveStyle).to.equal(CURVE_STYLE.Exponential);
+        expect(templCreated.args.curveRateBps).to.equal(11_000n);
 
         await mintToUsers(token, [joiner], ENTRY_FEE * 5n);
         await token.connect(joiner).approve(templAddress, ENTRY_FEE);
@@ -440,8 +433,8 @@ describe("TemplFactory", function () {
 
         expect(templCreated.args.creator).to.equal(deployer.address);
         expect(templCreated.args.priest).to.equal(delegatedPriest.address);
-        expect(templCreated.args.curvePrimaryStyle).to.equal(CURVE_STYLE.Exponential);
-        expect(templCreated.args.curvePrimaryRateBps).to.equal(11_000n);
+        expect(templCreated.args.curveStyle).to.equal(CURVE_STYLE.Exponential);
+        expect(templCreated.args.curveRateBps).to.equal(11_000n);
     });
 
   it("reuses the immutable protocol configuration for every templ", async function () {

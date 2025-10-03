@@ -29,9 +29,7 @@ contract DaoCallerHarness is TEMPL {
             0,
             "",
             CurveConfig({
-                primary: CurveSegment({style: CurveStyle.Static, rateBps: 0}),
-                secondary: CurveSegment({style: CurveStyle.Static, rateBps: 0}),
-                pivotPercentOfMax: 0
+                primary: CurveSegment({style: CurveStyle.Static, rateBps: 0})
             })
         )
     {}

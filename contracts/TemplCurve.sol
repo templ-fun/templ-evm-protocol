@@ -8,22 +8,16 @@ enum CurveStyle {
     Exponential
 }
 
-/// @notice Segment configuration applied to a contiguous range of joins.
-/// @param style Style of growth applied within the segment.
+/// @notice Segment configuration applied to member joins.
+/// @param style Style of growth applied across all joins.
 /// @param rateBps Rate parameter whose interpretation depends on `style`.
 struct CurveSegment {
     CurveStyle style;
     uint32 rateBps;
 }
 
-/// @notice Pricing curve configuration supporting optional two-phase growth.
-/// @param primary First segment applied from 0 joins until the pivot (exclusive).
-/// @param secondary Second segment applied after the pivot when enabled.
-/// @param pivotPercentOfMax Percentage (basis points) of the member cap that acts as the pivot when
-/// `MAX_MEMBERS` is configured. The pivot operates on the number of paid joins (total members minus one
-/// for the auto-enrolled priest).
+/// @notice Pricing curve configuration applied uniformly across joins.
+/// @param primary Growth segment that determines how the entry fee evolves.
 struct CurveConfig {
     CurveSegment primary;
-    CurveSegment secondary;
-    uint16 pivotPercentOfMax;
 }

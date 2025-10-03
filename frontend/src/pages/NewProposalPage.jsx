@@ -104,14 +104,6 @@ export function buildActionConfig(kind, params, helpers = {}) {
     }
     return Math.min(parsed, 1_000_000);
   };
-  const parsePivotPercent = (value) => {
-    const parsed = Number.parseFloat(String(value ?? '0'));
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-      return 0;
-    }
-    const clamped = Math.min(Math.max(parsed, 0), 100);
-    return Math.round(clamped * 100);
-  };
   switch (kind) {
     case 'pause':
       return { action: 'setJoinPaused', params: { paused: true } };
@@ -196,12 +188,7 @@ export function buildActionConfig(kind, params, helpers = {}) {
         primary: {
           style: resolveCurveStyleValue(params.curvePrimaryStyle),
           rateBps: parseCurveRate(params.curvePrimaryRateBps, params.curvePrimaryStyle)
-        },
-        secondary: {
-          style: resolveCurveStyleValue(params.curveSecondaryStyle),
-          rateBps: parseCurveRate(params.curveSecondaryRateBps, params.curveSecondaryStyle)
-        },
-        pivotPercentOfMax: parsePivotPercent(params.curvePivotPercentOfMax)
+        }
       };
       return {
         action: 'setEntryFeeCurve',
@@ -246,9 +233,6 @@ export function NewProposalPage({
   const [updateMemberPercent, setUpdateMemberPercent] = useState('');
   const [curvePrimaryStyle, setCurvePrimaryStyle] = useState('exponential');
   const [curvePrimaryRateBps, setCurvePrimaryRateBps] = useState('11000');
-  const [curveSecondaryStyle, setCurveSecondaryStyle] = useState('static');
-  const [curveSecondaryRateBps, setCurveSecondaryRateBps] = useState('0');
-  const [curvePivotPercentOfMax, setCurvePivotPercentOfMax] = useState('0');
   const [curveUpdateBase, setCurveUpdateBase] = useState(false);
   const [curveBaseEntryFee, setCurveBaseEntryFee] = useState('0');
   const [submitting, setSubmitting] = useState(false);
@@ -475,9 +459,6 @@ export function NewProposalPage({
         memberPercent: updateMemberPercent,
         curvePrimaryStyle,
         curvePrimaryRateBps,
-        curveSecondaryStyle,
-        curveSecondaryRateBps,
-        curvePivotPercentOfMax,
         curveBaseEntryFee: baseEntryFeeValue
       }, { ethers, protocolPercent: protocolPercentNumber });
       const votingPeriodValue = Number(votingPeriod || '0');
@@ -838,51 +819,6 @@ export function NewProposalPage({
                   value={curvePrimaryRateBps}
                   onChange={(event) => setCurvePrimaryRateBps(event.target.value)}
                   disabled={curvePrimaryStyle === 'static'}
-                />
-              </label>
-              <label className={form.label}>
-                Secondary style
-                <select
-                  className={form.input}
-                  value={curveSecondaryStyle}
-                  onChange={(event) => {
-                    const next = event.target.value;
-                    setCurveSecondaryStyle(next);
-                    if (next === 'static') {
-                      setCurveSecondaryRateBps('0');
-                    } else if (curveSecondaryRateBps === '0') {
-                      setCurveSecondaryRateBps(next === 'exponential' ? '12000' : '500');
-                    }
-                  }}
-                >
-                  {CURVE_STYLE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className={form.label}>
-                Secondary rate (basis points)
-                <input
-                  type="number"
-                  min="0"
-                  className={form.input}
-                  value={curveSecondaryRateBps}
-                  onChange={(event) => setCurveSecondaryRateBps(event.target.value)}
-                  disabled={curveSecondaryStyle === 'static'}
-                />
-              </label>
-              <label className={form.label}>
-                Pivot at % of max members
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.01"
-                  className={form.input}
-                  value={curvePivotPercentOfMax}
-                  onChange={(event) => setCurvePivotPercentOfMax(event.target.value)}
                 />
               </label>
             </div>

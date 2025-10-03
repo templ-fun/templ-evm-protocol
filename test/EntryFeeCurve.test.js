@@ -63,42 +63,18 @@ describe("EntryFeeCurve", function () {
         throw new Error("unsupported curve style");
     };
 
-    const resolvePivot = (curve, maxMembers) => {
-        if (!curve.pivotPercentOfMax || maxMembers <= 1n) {
-            return 0n;
-        }
-        const capacity = maxMembers - 1n;
-        let derived = (capacity * BigInt(curve.pivotPercentOfMax)) / TOTAL_PERCENT;
-        if (derived === 0n) {
-            derived = 1n;
-        }
-        return derived;
-    };
-
-    const priceForPaidJoins = (base, curve, paidJoins, maxMembers) => {
+    const priceForPaidJoins = (base, curve, paidJoins) => {
         if (paidJoins === 0n) {
             return base;
         }
-        const pivot = resolvePivot(curve, maxMembers);
-        if (curve.secondary.style === CURVE_STYLE.Static || pivot === 0n || paidJoins <= pivot) {
-            return applySegmentForward(base, curve.primary, paidJoins);
-        }
-        const priceAtPivot = applySegmentForward(base, curve.primary, pivot);
-        const additional = paidJoins - pivot;
-        return applySegmentForward(priceAtPivot, curve.secondary, additional);
+        return applySegmentForward(base, curve.primary, paidJoins);
     };
 
-    const solveBaseEntryFee = (targetPrice, curve, paidJoins, maxMembers) => {
+    const solveBaseEntryFee = (targetPrice, curve, paidJoins) => {
         if (paidJoins === 0n) {
             return targetPrice;
         }
-        const pivot = resolvePivot(curve, maxMembers);
-        if (curve.secondary.style === CURVE_STYLE.Static || pivot === 0n || paidJoins <= pivot) {
-            return applySegmentInverse(targetPrice, curve.primary, paidJoins);
-        }
-        const additional = paidJoins - pivot;
-        const priceAtPivot = applySegmentInverse(targetPrice, curve.secondary, additional);
-        return applySegmentInverse(priceAtPivot, curve.primary, pivot);
+        return applySegmentInverse(targetPrice, curve.primary, paidJoins);
     };
 
     it("applies the default exponential curve and allows DAO updates", async function () {
@@ -124,8 +100,6 @@ describe("EntryFeeCurve", function () {
 
         const linearCurve = {
             primary: { style: CURVE_STYLE.Linear, rateBps: 500 },
-            secondary: { style: CURVE_STYLE.Static, rateBps: 0 },
-            pivotPercentOfMax: 0,
         };
 
         const baseAnchor = await templ.baseEntryFee();
@@ -143,23 +117,13 @@ describe("EntryFeeCurve", function () {
         await ethers.provider.send("evm_mine");
         await templ.executeProposal(0);
 
-        const linearFeeAfterUpdate = priceForPaidJoins(
-            ENTRY_FEE,
-            linearCurve,
-            await templ.totalJoins(),
-            await templ.MAX_MEMBERS()
-        );
+        const linearFeeAfterUpdate = priceForPaidJoins(ENTRY_FEE, linearCurve, await templ.totalJoins());
         expect(await templ.entryFee()).to.equal(linearFeeAfterUpdate);
 
         await token.connect(memberB).approve(templAddress, linearFeeAfterUpdate);
         await templ.connect(memberB).join();
 
-        const linearAfterSecondJoin = priceForPaidJoins(
-            ENTRY_FEE,
-            linearCurve,
-            await templ.totalJoins(),
-            await templ.MAX_MEMBERS()
-        );
+        const linearAfterSecondJoin = priceForPaidJoins(ENTRY_FEE, linearCurve, await templ.totalJoins());
         expect(await templ.entryFee()).to.equal(linearAfterSecondJoin);
     });
 
@@ -180,14 +144,11 @@ describe("EntryFeeCurve", function () {
 
         const upgradedCurve = {
             primary: { style: CURVE_STYLE.Exponential, rateBps: 12_000 },
-            secondary: { style: CURVE_STYLE.Static, rateBps: 0 },
-            pivotPercentOfMax: 0,
         };
 
         const newCurrentFee = ENTRY_FEE * 2n;
         const paidJoins = await templ.totalJoins();
-        const maxMembers = await templ.MAX_MEMBERS();
-        let recalibratedBase = solveBaseEntryFee(newCurrentFee, upgradedCurve, paidJoins, maxMembers);
+        let recalibratedBase = solveBaseEntryFee(newCurrentFee, upgradedCurve, paidJoins);
         const baseRemainder = recalibratedBase % 10n;
         if (baseRemainder !== 0n) {
             recalibratedBase = recalibratedBase - baseRemainder + 10n;
@@ -211,12 +172,7 @@ describe("EntryFeeCurve", function () {
 
         await templ.executeProposal(0);
 
-        const currentFeeAfterUpdate = priceForPaidJoins(
-            recalibratedBase,
-            upgradedCurve,
-            paidJoins,
-            maxMembers
-        );
+        const currentFeeAfterUpdate = priceForPaidJoins(recalibratedBase, upgradedCurve, paidJoins);
         expect(await templ.entryFee()).to.equal(currentFeeAfterUpdate);
 
         await token.connect(newMember).approve(templAddress, currentFeeAfterUpdate);
@@ -225,8 +181,7 @@ describe("EntryFeeCurve", function () {
         const nextExpected = priceForPaidJoins(
             recalibratedBase,
             upgradedCurve,
-            await templ.totalJoins(),
-            await templ.MAX_MEMBERS()
+            await templ.totalJoins()
         );
         expect(await templ.entryFee()).to.equal(nextExpected);
     });

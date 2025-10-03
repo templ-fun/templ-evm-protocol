@@ -62,9 +62,6 @@ export function CreateTemplPage({
   const [customCurveEnabled, setCustomCurveEnabled] = useState(false);
   const [curvePrimaryStyle, setCurvePrimaryStyle] = useState('exponential');
   const [curvePrimaryRateBps, setCurvePrimaryRateBps] = useState('11000');
-  const [curveSecondaryStyle, setCurveSecondaryStyle] = useState('static');
-  const [curveSecondaryRateBps, setCurveSecondaryRateBps] = useState('0');
-  const [curvePivotPercentOfMax, setCurvePivotPercentOfMax] = useState('0');
   const sanitizedBindingHomeLink = sanitizeLink(bindingInfo?.templHomeLink);
   const bindingStartLink = useMemo(() => {
     if (!bindingInfo?.bindingCode) return null;
@@ -377,32 +374,16 @@ export function CreateTemplPage({
       return Math.min(parsed, 1_000_000);
     };
 
-    const parsePivotPercent = (value) => {
-      const parsed = Number.parseFloat(String(value ?? '0'));
-      if (!Number.isFinite(parsed) || parsed <= 0) {
-        return 0;
-      }
-      const clamped = Math.min(Math.max(parsed, 0), 100);
-      return Math.round(clamped * 100);
-    };
-
     const curveProvided = showAdvanced && customCurveEnabled;
     const curveConfig = curveProvided
       ? {
           primary: {
             style: resolveCurveStyleValue(curvePrimaryStyle),
             rateBps: parseRateBps(curvePrimaryRateBps, curvePrimaryStyle)
-          },
-          secondary: {
-            style: resolveCurveStyleValue(curveSecondaryStyle),
-            rateBps: parseRateBps(curveSecondaryRateBps, curveSecondaryStyle)
-          },
-          pivotPercentOfMax: parsePivotPercent(curvePivotPercentOfMax)
+          }
         }
       : {
-          primary: { style: CURVE_STYLE_INDEX.static, rateBps: 0 },
-          secondary: { style: CURVE_STYLE_INDEX.static, rateBps: 0 },
-          pivotPercentOfMax: 0
+          primary: { style: CURVE_STYLE_INDEX.static, rateBps: 0 }
         };
 
     setSubmitting(true);
@@ -664,56 +645,6 @@ export function CreateTemplPage({
                       disabled={curvePrimaryStyle === 'static'}
                     />
                     <span className={text.hint}>Example: 11000 = 10% increase per join.</span>
-                  </label>
-                  <label className={form.label}>
-                    Secondary style
-                    <select
-                      className={form.input}
-                      value={curveSecondaryStyle}
-                      onChange={(event) => {
-                        const next = event.target.value;
-                        setCurveSecondaryStyle(next);
-                        if (next === 'static') {
-                          setCurveSecondaryRateBps('0');
-                        } else if (curveSecondaryRateBps === '0') {
-                          setCurveSecondaryRateBps(next === 'exponential' ? '12000' : '500');
-                        }
-                      }}
-                    >
-                      {CURVE_STYLE_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className={form.label}>
-                    Secondary rate (basis points)
-                    <input
-                      type="number"
-                      min="0"
-                      className={form.input}
-                      value={curveSecondaryRateBps}
-                      onChange={(event) => setCurveSecondaryRateBps(event.target.value)}
-                      disabled={curveSecondaryStyle === 'static'}
-                    />
-                    <span className={text.hint}>Applied after the pivot takes effect.</span>
-                  </label>
-                  <label className={form.label}>
-                    Pivot at % of max members
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      step="0.01"
-                      className={form.input}
-                      value={curvePivotPercentOfMax}
-                      onChange={(event) => setCurvePivotPercentOfMax(event.target.value)}
-                    />
-                    <span className={text.hint}>
-                      Optional percentage threshold (0-100). When set, the curve pivots at the smaller of the join count or
-                      percentage milestone.
-                    </span>
                   </label>
                 </div>
               ) : null}

@@ -72,9 +72,7 @@ async function deployContract({
   })();
   const factory = new ethers.Contract(factoryAddress, factoryArtifact.abi, signer);
   const defaultCurve = {
-    primary: { style: 0, rateBps: 0 },
-    secondary: { style: 0, rateBps: 0 },
-    pivotPercentOfMax: 0
+    primary: { style: 0, rateBps: 0 }
   };
   const config = {
     priest: walletAddress,
@@ -107,8 +105,10 @@ async function deployContract({
 
   if (!templAddress) {
     const templCreatedTopics = [
+      'TemplCreated(address,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,address,bool,uint256,uint8,uint32,string)',
       'TemplCreated(address,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,address,bool,uint256,uint8,uint32,uint8,uint32,uint16,string)',
-      'TemplCreated(address,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,address,bool,uint256,uint8,uint32,uint8,uint32,uint16)'
+      'TemplCreated(address,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,address,bool,uint256,uint8,uint32,uint8,uint32,uint16)',
+      'TemplCreated(address,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,address,bool,uint256,string)'
     ].map((signature) => ethers.id(signature).toLowerCase());
 
     const factoryAddressLower = factoryAddress?.toLowerCase?.() ?? '';

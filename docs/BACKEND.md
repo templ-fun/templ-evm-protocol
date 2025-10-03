@@ -89,7 +89,7 @@ Only one backend instance should emit Telegram notifications at a time. When mul
 
 ### Trusted factory indexing
 
-Providing both `RPC_URL` and `TRUSTED_FACTORY_ADDRESS` enables an indexer that tails the factory's `TemplCreated` events. The server registers new templs automatically (re-using the same validation path as manual `/templs` calls) and attaches contract watchers as soon as the factory log lands. Set `TRUSTED_FACTORY_DEPLOYMENT_BLOCK` so the historical scan stays within provider limits. With this configuration, deployers only sign when requesting Telegram bindings or later rebinds—the creation flow no longer surfaces the registration signature prompt in the frontend.
+Providing both `RPC_URL` and `TRUSTED_FACTORY_ADDRESS` enables an indexer that tails every `TemplCreated` signature emitted by the factory. The server registers new templs automatically (re-using the same validation path as manual `/templs` calls) and attaches contract watchers as soon as the factory log lands. Set `TRUSTED_FACTORY_DEPLOYMENT_BLOCK` so the historical scan stays within provider limits. With this configuration, deployers only sign when requesting Telegram bindings or later rebinds—the creation flow no longer surfaces the registration signature prompt in the frontend.
 
 ## Routes
 
@@ -115,7 +115,7 @@ Returns the list of registered templs. Chat identifiers are never exposed; reque
 
 Manually registers a templ. Requires an EIP-712 typed signature from the priest (`buildCreateTypedData`). Optional `telegramChatId` seeds an existing Telegram binding. The backend queries the contract for the current priest and canonical home link before persisting anything, so no additional metadata is required.
 
-When `TRUSTED_FACTORY_ADDRESS` is set, the backend already listens for `TemplCreated` events. Deployment tooling can also call [`POST /templs/auto`](#post-templsauto) to register without an extra wallet prompt. Keep the signed route enabled for advanced recovery scenarios (for example, backfilling templs deployed before the indexer was configured).
+When `TRUSTED_FACTORY_ADDRESS` is set, the backend already listens for every `TemplCreated` signature. Deployment tooling can also call [`POST /templs/auto`](#post-templsauto) to register without an extra wallet prompt. Keep the signed route enabled for advanced recovery scenarios (for example, backfilling templs during indexer outages).
 
 ```json
 {

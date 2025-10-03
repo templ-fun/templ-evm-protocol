@@ -2,15 +2,11 @@ const { loadFixture } = require("@nomicfoundation/hardhat-network-helpers");
 const { ethers } = require("hardhat");
 
 const STATIC_CURVE = {
-  primary: { style: 0, rateBps: 0 },
-  secondary: { style: 0, rateBps: 0 },
-  pivotPercentOfMax: 0,
+  primary: { style: 0, rateBps: 0 }
 };
 
 const EXPONENTIAL_CURVE = {
-  primary: { style: 2, rateBps: 11_000 },
-  secondary: { style: 0, rateBps: 0 },
-  pivotPercentOfMax: 0,
+  primary: { style: 2, rateBps: 11_000 }
 };
 
 async function deployTempl({

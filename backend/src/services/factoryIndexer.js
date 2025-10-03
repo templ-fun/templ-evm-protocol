@@ -1,15 +1,7 @@
-import { ethers } from 'ethers';
+import { TEMPL_CREATED_TOPICS, parseTemplCreatedLog } from '../constants/templFactoryEvents.js';
 
-const FACTORY_EVENT_ABI = [
-  'event TemplCreated(address indexed templ, address indexed creator, address indexed priest, address token, uint256 entryFee, uint256 burnPercent, uint256 treasuryPercent, uint256 memberPoolPercent, uint256 quorumPercent, uint256 executionDelaySeconds, address burnAddress, bool priestIsDictator, uint256 maxMembers, uint8 curvePrimaryStyle, uint32 curvePrimaryRateBps, uint8 curveSecondaryStyle, uint32 curveSecondaryRateBps, uint16 curvePivotPercentOfMax, string homeLink)'
-];
-
-const FACTORY_INTERFACE = new ethers.Interface(FACTORY_EVENT_ABI);
-const TEMPL_CREATED_EVENT = FACTORY_INTERFACE.getEvent('TemplCreated');
-const TEMPL_CREATED_TOPIC = /** @type {string} */ (TEMPL_CREATED_EVENT?.topicHash ?? '');
-
-if (!TEMPL_CREATED_TOPIC) {
-  throw new Error('TemplCreated topic hash unavailable');
+if (!TEMPL_CREATED_TOPICS.length) {
+  throw new Error('TemplCreated topic hashes unavailable');
 }
 const DEFAULT_LOG_WINDOW = 50_000;
 
@@ -92,7 +84,7 @@ export function createFactoryIndexer(options = {}) {
   }
 
   const normalizedFactory = factoryAddress.toLowerCase();
-  const subscriptionFilter = { address: factoryAddress, topics: [TEMPL_CREATED_TOPIC] };
+  const subscriptionFilter = { address: factoryAddress, topics: [TEMPL_CREATED_TOPICS] };
   let running = false;
   let historicalSyncInFlight = null;
 
@@ -116,32 +108,36 @@ export function createFactoryIndexer(options = {}) {
   const processLog = async (log) => {
     if (!log) return;
     if (String(log.address || '').toLowerCase() !== normalizedFactory) return;
-    if (!Array.isArray(log.topics) || (log.topics[0] || '').toLowerCase() !== String(TEMPL_CREATED_TOPIC).toLowerCase()) {
-      return;
-    }
     let parsed;
     try {
-      parsed = FACTORY_INTERFACE.parseLog(log);
+      const result = parseTemplCreatedLog(log);
+      if (!result) {
+        return;
+      }
+      ({ parsed } = result);
     } catch (err) {
       logger?.warn?.({ err: String(err?.message || err) }, 'Factory indexer failed to parse log');
       return;
     }
+
     const templAddress = parsed?.args?.templ;
     if (!shouldProcessTempl(templAddress)) {
       markTemplSeen(templAddress);
       return;
     }
+
     try {
       await onTemplDiscovered({
         templAddress,
         priestAddress: parsed?.args?.priest,
         homeLink: parsed?.args?.homeLink ?? '',
         curve: {
-          primaryStyle: Number(parsed?.args?.curvePrimaryStyle ?? 0),
-          primaryRateBps: BigInt(parsed?.args?.curvePrimaryRateBps ?? 0),
-          secondaryStyle: Number(parsed?.args?.curveSecondaryStyle ?? 0),
-          secondaryRateBps: BigInt(parsed?.args?.curveSecondaryRateBps ?? 0),
-          pivotPercentOfMax: Number(parsed?.args?.curvePivotPercentOfMax ?? 0)
+          style: Number(
+            parsed?.args?.curveStyle ?? parsed?.args?.curvePrimaryStyle ?? 0
+          ),
+          rateBps: BigInt(
+            parsed?.args?.curveRateBps ?? parsed?.args?.curvePrimaryRateBps ?? 0
+          )
         },
         event: parsed,
         log
@@ -181,7 +177,7 @@ export function createFactoryIndexer(options = {}) {
         try {
           const logs = await provider.getLogs({
             address: factoryAddress,
-            topics: [TEMPL_CREATED_TOPIC],
+            topics: [TEMPL_CREATED_TOPICS],
             fromBlock: cursor,
             toBlock: end
           });
@@ -206,7 +202,7 @@ export function createFactoryIndexer(options = {}) {
   };
 
   const handleProviderEvent = (log) => {
-    if (!matchesFilter({ address: factoryAddress, topics: [TEMPL_CREATED_TOPIC] }, log)) {
+    if (!matchesFilter({ address: factoryAddress, topics: [TEMPL_CREATED_TOPICS] }, log)) {
       return;
     }
     void processLog(log);

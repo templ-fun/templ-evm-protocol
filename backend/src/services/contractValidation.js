@@ -1,13 +1,15 @@
 import { ethers } from 'ethers';
 
+import { TEMPL_CREATED_TOPICS } from '../constants/templFactoryEvents.js';
+
 function templError(message, statusCode) {
   return Object.assign(new Error(message), { statusCode });
 }
 
 const factoryValidationCache = new Map();
-const TEMPL_CREATED_TOPIC = ethers.id(
-  'TemplCreated(address,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,address,bool,uint256,uint8,uint32,uint8,uint32,uint16,string)'
-);
+if (!TEMPL_CREATED_TOPICS.length) {
+  throw new Error('TemplCreated topic hashes unavailable');
+}
 const DEFAULT_LOG_CHUNK_SIZE = 100_000;
 
 function parseBlockNumber(value) {
@@ -58,7 +60,7 @@ async function findFactoryLogs({ provider, factory, templTopic, fromBlock, chunk
     try {
       const logs = await provider.getLogs({
         address: factory,
-        topics: [TEMPL_CREATED_TOPIC, templTopic],
+        topics: [TEMPL_CREATED_TOPICS, templTopic],
         fromBlock: start,
         toBlock: end
       });

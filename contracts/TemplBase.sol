@@ -211,10 +211,7 @@ abstract contract TemplBase is ReentrancyGuard {
     event MaxMembersUpdated(uint256 maxMembers);
     event EntryFeeCurveUpdated(
         uint8 primaryStyle,
-        uint32 primaryRateBps,
-        uint8 secondaryStyle,
-        uint32 secondaryRateBps,
-        uint16 pivotPercentOfMax
+        uint32 primaryRateBps
     );
     event PriestChanged(address indexed oldPriest, address indexed newPriest);
     event TreasuryDisbanded(
@@ -422,7 +419,7 @@ abstract contract TemplBase is ReentrancyGuard {
             baseEntryFee = targetEntryFee;
             entryFee = targetEntryFee;
         } else {
-            uint256 newBase = _solveBaseEntryFee(targetEntryFee, curve, paidJoins, MAX_MEMBERS);
+            uint256 newBase = _solveBaseEntryFee(targetEntryFee, curve, paidJoins);
             baseEntryFee = newBase;
             entryFee = targetEntryFee;
         }
@@ -448,7 +445,7 @@ abstract contract TemplBase is ReentrancyGuard {
         if (baseEntryFee == 0) {
             return;
         }
-        entryFee = _priceForPaidJoins(baseEntryFee, entryFeeCurve, _currentPaidJoins(), MAX_MEMBERS);
+        entryFee = _priceForPaidJoins(baseEntryFee, entryFeeCurve, _currentPaidJoins());
     }
 
     /// @dev Returns the number of paid joins that have occurred (excludes the auto-enrolled priest).
@@ -461,51 +458,33 @@ abstract contract TemplBase is ReentrancyGuard {
 
     /// @dev Reports whether any curve segment introduces dynamic pricing.
     function _curveHasGrowth(CurveConfig memory curve) internal pure returns (bool) {
-        return curve.primary.style != CurveStyle.Static || curve.secondary.style != CurveStyle.Static;
+        return curve.primary.style != CurveStyle.Static;
     }
 
     /// @dev Computes the entry fee for a given number of completed paid joins.
     function _priceForPaidJoins(
         uint256 baseFee,
         CurveConfig memory curve,
-        uint256 paidJoins,
-        uint256 maxMembers
+        uint256 paidJoins
     ) internal pure returns (uint256) {
         if (paidJoins == 0) {
             return baseFee;
         }
 
-        uint256 pivot = _resolvePivot(curve, maxMembers);
-
-        if (curve.secondary.style == CurveStyle.Static || pivot == 0 || paidJoins <= pivot) {
-            return _applySegment(baseFee, curve.primary, paidJoins, true);
-        }
-
-        uint256 priceAtPivot = _applySegment(baseFee, curve.primary, pivot, true);
-        uint256 additionalJoins = paidJoins - pivot;
-        return _applySegment(priceAtPivot, curve.secondary, additionalJoins, true);
+        return _applySegment(baseFee, curve.primary, paidJoins, true);
     }
 
     /// @dev Derives the base entry fee that produces a target price after `paidJoins` joins.
     function _solveBaseEntryFee(
         uint256 targetPrice,
         CurveConfig memory curve,
-        uint256 paidJoins,
-        uint256 maxMembers
+        uint256 paidJoins
     ) internal pure returns (uint256) {
         if (paidJoins == 0) {
             return targetPrice;
         }
 
-        uint256 pivot = _resolvePivot(curve, maxMembers);
-
-        if (curve.secondary.style == CurveStyle.Static || pivot == 0 || paidJoins <= pivot) {
-            return _applySegment(targetPrice, curve.primary, paidJoins, false);
-        }
-
-        uint256 additionalJoins = paidJoins - pivot;
-        uint256 priceAtPivot = _applySegment(targetPrice, curve.secondary, additionalJoins, false);
-        return _applySegment(priceAtPivot, curve.primary, pivot, false);
+        return _applySegment(targetPrice, curve.primary, paidJoins, false);
     }
 
     /// @dev Applies a curve segment forward or inverse for the specified number of steps.
@@ -525,7 +504,8 @@ abstract contract TemplBase is ReentrancyGuard {
                 return Math.mulDiv(amount, offset, TOTAL_PERCENT);
             }
             if (offset == 0) revert TemplErrors.InvalidCurveConfig();
-            return Math.mulDiv(amount, TOTAL_PERCENT, offset);
+            // Round up when solving the inverse so recomputing the curve never prices below the target.
+            return Math.mulDiv(amount, TOTAL_PERCENT, offset, Math.Rounding.Ceil);
         }
         if (segment.style == CurveStyle.Exponential) {
             uint256 factor = _powBps(segment.rateBps, steps);
@@ -533,7 +513,8 @@ abstract contract TemplBase is ReentrancyGuard {
                 return Math.mulDiv(amount, factor, TOTAL_PERCENT);
             }
             if (factor == 0) revert TemplErrors.InvalidCurveConfig();
-            return Math.mulDiv(amount, TOTAL_PERCENT, factor);
+            // Factor applies the same rounding guard as the linear segment case.
+            return Math.mulDiv(amount, TOTAL_PERCENT, factor, Math.Rounding.Ceil);
         }
         revert TemplErrors.InvalidCurveConfig();
     }
@@ -558,23 +539,9 @@ abstract contract TemplBase is ReentrancyGuard {
         return result;
     }
 
-    /// @dev Resolves the pivot join threshold based on explicit and percentage inputs.
-    function _resolvePivot(CurveConfig memory curve, uint256 maxMembers) internal pure returns (uint256) {
-        if (curve.pivotPercentOfMax == 0 || maxMembers <= 1) {
-            return 0;
-        }
-        uint256 joinCapacity = maxMembers - 1;
-        uint256 derived = Math.mulDiv(joinCapacity, curve.pivotPercentOfMax, TOTAL_PERCENT);
-        if (derived == 0) {
-            return 1;
-        }
-        return derived;
-    }
-
     /// @dev Validates curve configuration input.
     function _validateCurveConfig(CurveConfig memory curve) internal pure {
         _validateCurveSegment(curve.primary);
-        _validateCurveSegment(curve.secondary);
     }
 
     /// @dev Validates a single curve segment.
@@ -602,13 +569,7 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @dev Emits the standardized curve update event with the current configuration.
     function _emitEntryFeeCurveUpdated() internal {
         CurveConfig memory cfg = entryFeeCurve;
-        emit EntryFeeCurveUpdated(
-            uint8(cfg.primary.style),
-            cfg.primary.rateBps,
-            uint8(cfg.secondary.style),
-            cfg.secondary.rateBps,
-            cfg.pivotPercentOfMax
-        );
+        emit EntryFeeCurveUpdated(uint8(cfg.primary.style), cfg.primary.rateBps);
     }
 
     /// @dev Toggles dictatorship governance mode, emitting an event when the state changes.

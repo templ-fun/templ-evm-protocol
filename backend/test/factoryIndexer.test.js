@@ -149,6 +149,12 @@ function buildTemplCreatedLog({
     args.push(
       curvePrimaryStyle,
       curvePrimaryRate,
+      homeLink
+    );
+  } else if (variant.id === 'pivoted') {
+    args.push(
+      curvePrimaryStyle,
+      curvePrimaryRate,
       curveSecondaryStyle,
       curveSecondaryRate,
       curvePivotPercentOfMax,
@@ -193,8 +199,8 @@ test('factory indexer registers historical templ logs', async () => {
     templs,
     logger: null,
     fromBlock: 0,
-    onTemplDiscovered: async ({ templAddress: address, priestAddress, homeLink }) => {
-      calls.push({ address, priestAddress, homeLink });
+    onTemplDiscovered: async ({ templAddress: address, priestAddress, homeLink, curve }) => {
+      calls.push({ address, priestAddress, homeLink, curve });
       templs.set(address.toLowerCase(), { contractAddress: address.toLowerCase() });
     }
   });
@@ -205,6 +211,10 @@ test('factory indexer registers historical templ logs', async () => {
   assert.equal(calls.length, 1);
   assert.equal(calls[0].address, templAddress);
   assert.equal(calls[0].priestAddress, priest);
+  assert.deepEqual(calls[0].curve, {
+    style: 2,
+    rateBps: 11_000n
+  });
 
   delete process.env.TRUSTED_FACTORY_ADDRESS;
 });
@@ -246,11 +256,51 @@ test('factory indexer registers compatibility templ logs', async () => {
   assert.equal(calls[0].priestAddress, priest);
   assert.equal(calls[0].homeLink, '');
   assert.deepEqual(calls[0].curve, {
-    primaryStyle: 0,
-    primaryRateBps: 0n,
-    secondaryStyle: 0,
-    secondaryRateBps: 0n,
-    pivotPercentOfMax: 0
+    style: 0,
+    rateBps: 0n
+  });
+
+  delete process.env.TRUSTED_FACTORY_ADDRESS;
+});
+
+test('factory indexer registers pivot templ logs', async () => {
+  const factoryAddress = ethers.getAddress('0x1234567890abcdef1234567890abcdef12345678');
+  process.env.TRUSTED_FACTORY_ADDRESS = factoryAddress;
+  const templAddress = ethers.getAddress('0xffffffffffffffffffffffffffffffffffffffff');
+  const priest = ethers.getAddress('0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
+  const log = buildTemplCreatedLog({
+    factoryAddress,
+    templAddress,
+    creator: priest,
+    priest,
+    token: '0xcccccccccccccccccccccccccccccccccccccccc',
+    variantId: 'pivoted'
+  });
+
+  const provider = new MockProvider({ logs: [log] });
+  const templs = new Map();
+  const calls = [];
+
+  const indexer = createFactoryIndexer({
+    provider,
+    templs,
+    logger: null,
+    fromBlock: 0,
+    onTemplDiscovered: async ({ templAddress: address, priestAddress, curve }) => {
+      calls.push({ address, priestAddress, curve });
+      templs.set(address.toLowerCase(), { contractAddress: address.toLowerCase() });
+    }
+  });
+
+  await indexer.start();
+  await indexer.stop();
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].address, templAddress);
+  assert.equal(calls[0].priestAddress, priest);
+  assert.deepEqual(calls[0].curve, {
+    style: 2,
+    rateBps: 11_000n
   });
 
   delete process.env.TRUSTED_FACTORY_ADDRESS;

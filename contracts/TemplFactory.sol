@@ -62,11 +62,8 @@ contract TemplFactory {
         address burnAddress,
         bool priestIsDictator,
         uint256 maxMembers,
-        uint8 curvePrimaryStyle,
-        uint32 curvePrimaryRateBps,
-        uint8 curveSecondaryStyle,
-        uint32 curveSecondaryRateBps,
-        uint16 curvePivotPercentOfMax,
+        uint8 curveStyle,
+        uint32 curveRateBps,
         string homeLink
     );
 
@@ -74,12 +71,7 @@ contract TemplFactory {
 
     function _defaultCurveConfig() internal pure returns (CurveConfig memory) {
         CurveSegment memory primary = CurveSegment({style: CurveStyle.Exponential, rateBps: DEFAULT_CURVE_EXP_RATE_BPS});
-        CurveSegment memory secondary = CurveSegment({style: CurveStyle.Static, rateBps: 0});
-        return CurveConfig({
-            primary: primary,
-            secondary: secondary,
-            pivotPercentOfMax: 0
-        });
+        return CurveConfig({primary: primary});
     }
 
     /// @notice Initializes factory-wide protocol recipient and fee percent.
@@ -224,9 +216,6 @@ contract TemplFactory {
             cfg.maxMembers,
             uint8(cfg.curve.primary.style),
             cfg.curve.primary.rateBps,
-            uint8(cfg.curve.secondary.style),
-            cfg.curve.secondary.rateBps,
-            cfg.curve.pivotPercentOfMax,
             cfg.homeLink
         );
     }
