@@ -18,7 +18,7 @@ Use this doc to understand the JavaScript helpers under `shared/` that both the 
 ### linkSanitizer.js
 
 - Provides `sanitizeLink(value, opts)` for validating templ home links across the stack.
-- Accepts only whitelisted URI schemes (`https`, `http`, `tg` by default) and strips control characters before rendering.
+- Accepts only whitelisted URI schemes (`https`, `http`, `tg` by default) and strips control characters prior to rendering.
 - Used by the backend notifier and frontend overview page to prevent unsafe links from reaching Telegram or the UI.
 
 ## Testing
@@ -27,5 +27,5 @@ Use this doc to understand the JavaScript helpers under `shared/` that both the 
 
 ## Usage tips
 
-- Always call the shared typed-data builders before hitting backend endpoints. The backend uses the exact same helpers to verify payloads, so skewing field names or defaults will immediately surface as signature errors.
+- Always call the shared typed-data builders prior to hitting backend endpoints. The backend uses the exact same helpers to verify payloads, so skewing field names or defaults will immediately surface as signature errors.
 - Prefer `readTemplEnv` for cross-env configuration instead of hand-rolled `process.env` reads in new modules.

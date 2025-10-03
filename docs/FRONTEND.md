@@ -1,6 +1,6 @@
 # Frontend SPA
 
-The Vite + React app in `frontend/` now revolves around a single chat-centric experience. Every route either lists templs, walks a member through joining, or lands them in the XMTP conversation itself.
+The Vite + React app in `frontend/` revolves around a single chat-centric experience. Every route either lists templs, walks a member through joining, or lands them in the XMTP conversation itself.
 
 | Route | Purpose |
 | --- | --- |
@@ -50,7 +50,7 @@ UI-driven deployment has been retired. Deploy templs via scripts or the backend 
 
 ### Governance in chat
 
-The chat composer collects a title + optional description and offers the curated governance actions (pause joins, change priest, adjust fee splits, update home link, etc.). Submitted proposals appear as poll cards with YES/NO tallies, an Execute button (enabled once the voting window ends), and contextual metadata. Claiming member rewards happens from the same screen via the **Claim rewards** modal.
+The chat composer collects a title + optional description and offers the curated governance actions (pause joins, change priest, adjust fee splits, update home link, etc.). Submitted proposals appear as poll cards with YES/NO tallies, an Execute button (enabled after the voting window ends), and contextual metadata. Claiming member rewards happens from the same screen via the **Claim rewards** modal.
 
 ## Testing
 

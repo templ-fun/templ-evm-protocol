@@ -30,12 +30,12 @@ More detailed diagrams and sequence charts live in [`docs/CORE_FLOW_DOCS.MD`](do
 
 ## Chat-first UI
 
-The `/templs/:address/chat` route is now the heart of the application:
+The `/templs/:address/chat` route is the heart of the application:
 
 - Successful joins redirect straight into chat with history already synced.
 - The composer raises governance actions and publishes poll-style proposal cards inline.
 - Vote, execute, and reward actions all happen inside the timeline, keeping members context-switched on XMTP.
-- Telegram remains optional—the chat UI is now the canonical control centre.
+- Telegram remains optional—the chat UI serves as the canonical control centre.
 
 Every supporting document in `docs/` has been refreshed to reflect the chat-first flow (see [`docs/FRONTEND.md`](docs/FRONTEND.md) and [`docs/BACKEND.md`](docs/BACKEND.md) for deeper details).
 
@@ -59,7 +59,7 @@ npm run test:all
 
 The Playwright harness (`frontend/e2e/basic-flows.pw.spec.js`) deploys a templ, registers it with the backend, joins from the chat UI, proposes, votes, executes, and asserts the on-chain side effects—all inside the conversation. Run it standalone with `npm --prefix frontend run test:e2e` whenever you change chat flows.
 
-Run that command before handing off a change. Package-specific coverage targets remain available via `npm --prefix backend run coverage` and `npm --prefix frontend run coverage`.
+Run that command ahead of handing off a change. Package-specific coverage targets remain available via `npm --prefix backend run coverage` and `npm --prefix frontend run coverage`.
 
 ## Documentation map
 

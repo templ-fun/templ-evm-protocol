@@ -66,7 +66,7 @@ Running the server requires a JSON-RPC endpoint and aligned frontend/server IDs.
 | `XMTP_BOOT_MAX_TRIES` | Maximum attempts when registering the backend XMTP client on startup. | `30` |
 | `TRUSTED_FACTORY_ADDRESS` | Optional factory address; when set, only templs emitted by this factory may register or rebind, and cached records from other factories are skipped on restart. | unset |
 | `TRUSTED_FACTORY_DEPLOYMENT_BLOCK` | Optional block height that seeds trusted factory verification. Set this to the block the factory was deployed so log scans stay within RPC limits. | unset |
-| `REQUIRE_CONTRACT_VERIFY` | When `1` (or `NODE_ENV=production`), enforce contract deployment + priest matching before accepting `/templs` requests. | `0` |
+| `REQUIRE_CONTRACT_VERIFY` | When `1` (or `NODE_ENV=production`), enforce contract deployment + priest matching prior to accepting `/templs` requests. | `0` |
 | `LOG_LEVEL` | Pino log level. | `info` |
 | `RATE_LIMIT_STORE` | `memory` or `redis`; automatically switches to Redis when `REDIS_URL` is provided. | auto |
 | `REDIS_URL` | Redis endpoint used for rate limiting when `RATE_LIMIT_STORE=redis`. | unset |
@@ -93,7 +93,7 @@ Only one backend instance should emit Telegram notifications at a time. When mul
 
 ### Trusted factory indexing
 
-Providing both `RPC_URL` and `TRUSTED_FACTORY_ADDRESS` enables an indexer that tails every `TemplCreated` signature emitted by the factory. The server registers new templs automatically (re-using the same validation path as manual `/templs` calls) and attaches contract watchers as soon as the factory log lands. Set `TRUSTED_FACTORY_DEPLOYMENT_BLOCK` so the historical scan stays within provider limits. With this configuration, deployers only sign when requesting Telegram bindings or later rebinds—the creation flow no longer surfaces the registration signature prompt in the frontend.
+Providing both `RPC_URL` and `TRUSTED_FACTORY_ADDRESS` enables an indexer that tails every `TemplCreated` signature emitted by the factory. The server registers new templs automatically (re-using the same validation path as manual `/templs` calls) and attaches contract watchers as soon as the factory log lands. Set `TRUSTED_FACTORY_DEPLOYMENT_BLOCK` so the historical scan stays within provider limits. With this configuration, deployers sign only when requesting Telegram bindings or later rebinds—the frontend already assumes templ creation happens elsewhere.
 
 ## Routes
 
@@ -117,7 +117,7 @@ Returns the list of registered templs. Chat identifiers are never exposed; reque
 
 ### `POST /templs`
 
-Manually registers a templ. Requires an EIP-712 typed signature from the priest (`buildCreateTypedData`). Optional `telegramChatId` seeds an existing Telegram binding. The backend queries the contract for the current priest and canonical home link before persisting anything, so no additional metadata is required.
+Manually registers a templ. Requires an EIP-712 typed signature from the priest (`buildCreateTypedData`). Optional `telegramChatId` seeds an existing Telegram binding. The backend queries the contract for the current priest and canonical home link prior to persisting anything, so no additional metadata is required.
 
 When `TRUSTED_FACTORY_ADDRESS` is set, the backend already listens for every `TemplCreated` signature. Deployment tooling can also call [`POST /templs/auto`](#post-templsauto) to register without an extra wallet prompt. Keep the signed route enabled for advanced recovery scenarios (for example, backfilling templs during indexer outages).
 
@@ -134,7 +134,7 @@ When `TRUSTED_FACTORY_ADDRESS` is set, the backend already listens for every `Te
 }
 ```
 
-When `REQUIRE_CONTRACT_VERIFY=1`, the server confirms that the address hosts bytecode and that `priest()` matches the signed address before persisting anything.
+When `REQUIRE_CONTRACT_VERIFY=1`, the server confirms that the address hosts bytecode and that `priest()` matches the signed address prior to persisting anything.
 If `telegramChatId` is omitted the response contains a `bindingCode` together with the templ metadata. Invite `@templfunbot` to your group and either tap the generated `https://t.me/templfunbot?startgroup=<bindingCode>` link or send `/templ <bindingCode>` once—the backend polls Telegram until it observes the command and then stores the resolved chat id.
 
 ### `POST /templs/auto`
@@ -143,7 +143,7 @@ Registers a templ without requesting a new wallet signature. The backend resolve
 
 ### `POST /templs/rebind`
 
-Issues a fresh binding code so a templ can re-link to a new Telegram chat. Requires the current priest to sign the `buildRebindTypedData` payload; in production the backend also verifies the on-chain priest address before updating persistence.
+Issues a fresh binding code so a templ can re-link to a new Telegram chat. Requires the current priest to sign the `buildRebindTypedData` payload; in production the backend also verifies the on-chain priest address prior to updating persistence.
 
 ```json
 {
@@ -157,7 +157,7 @@ Issues a fresh binding code so a templ can re-link to a new Telegram chat. Requi
 }
 ```
 
-The response includes the new `bindingCode`; once the bot sees that code inside a Telegram group it stores the new chat id and clears the pending binding. Existing bindings are revoked immediately so only one group is active at a time.
+The response includes the new `bindingCode`; when the bot sees that code inside a Telegram group it stores the new chat id and clears the pending binding. Existing bindings are revoked immediately so only one group is active at a time.
 
 ### `POST /join`
 
@@ -173,7 +173,7 @@ When `TELEGRAM_BOT_TOKEN` is provided, the backend creates a notifier that emits
 - `ProposalCreated` – highlights new proposals with their on-chain title/description and links directly to the vote page.
 - `VoteCast` – records individual votes (YES/NO) while keeping the proposal link handy.
 - `ProposalExecuted` – reports whether execution succeeded and links back to the proposal so members can audit the outcome.
-- `ProposalQuorumReached` – fires once quorum is first satisfied so members who have not voted yet can participate before the deadline.
+- `ProposalQuorumReached` – fires when quorum is first satisfied so members who have not voted yet can participate ahead of the deadline.
 - `ProposalVotingClosed` – triggered after the post-quorum window elapses, stating whether the proposal can be executed and linking to the execution screen.
 - `PriestChanged` – announces leadership changes and links to the templ overview.
 - `TemplHomeLinkUpdated` – broadcasts when governance changes the on-chain home link so members have the latest canonical URL.
@@ -185,10 +185,10 @@ When `TELEGRAM_BOT_TOKEN` is provided, the backend creates a notifier that emits
 - `TreasuryDisbanded` – reports the total/per-member payout when treasury balances are dissolved into rewards.
 - `DictatorshipModeChanged` – signals when the priest gains (or relinquishes) direct execution powers.
 - `MaxMembersUpdated` – highlights membership cap changes with a call-to-action to invite new members when the limit increases.
-- Daily digest – once every 24 hours each templ receives a "gm" message summarising treasury + unclaimed member pool totals with a call-to-action to claim.
+- Daily digest – every 24 hours each templ receives a "gm" message summarising treasury + unclaimed member pool totals with a call-to-action to claim.
 - Binding acknowledgements – after a user triggers the start-group link or sends `/templ <hash>` in their Telegram group, the bot confirms the bridge is active.
 
-Messages are posted with Telegram `MarkdownV2` formatting—the notifier escapes links, addresses, and labels before calling the API with `parse_mode=MarkdownV2`—so alerts can mix bold headings, monospace addresses, and deep links back to the app. If no bot token exists the backend skips delivery gracefully. When a templ is registered without a chat id, the backend issues a binding code; invite `@templfunbot` to the group and trigger the start link or `/templ <code>` command once to finish the handshake.
+Messages are posted with Telegram `MarkdownV2` formatting—the notifier escapes links, addresses, and labels prior to calling the API with `parse_mode=MarkdownV2`—so alerts can mix bold headings, monospace addresses, and deep links back to the app. If no bot token exists the backend skips delivery gracefully. When a templ is registered without a chat id, the backend issues a binding code; invite `@templfunbot` to the group and trigger the start link or `/templ <code>` command—the backend polls Telegram until it observes the command and then finishes the handshake.
 
 ## Contract watchers
 
@@ -196,7 +196,7 @@ The server uses `ethers.Contract` to subscribe to templ events. Watchers are reg
 
 - Listener errors are caught and logged (but do not crash the process).
 - Proposal metadata is cached in-memory when events fire so follow-up notifications can include the title even if the on-chain read fails.
-- Quorum checks run after every proposal creation and vote to emit a one-time "quorum reached" message once the threshold is crossed.
+- Quorum checks run after every proposal creation and vote to emit a one-time "quorum reached" message when the threshold is crossed.
 - Background jobs monitor proposal deadlines, fire daily treasury/member-pool digests, and poll Telegram for binding codes until each templ is linked to a chat.
 - Priest and home-link updates are cached in memory; the contract remains the source of truth and watchers refresh them after restarts.
 - Event cursors are not persisted. On restart the backend rehydrates watcher subscriptions from the stored templ bindings, letting `ethers.Contract` pick up new on-chain events while skipping anything that fired while the server was offline.

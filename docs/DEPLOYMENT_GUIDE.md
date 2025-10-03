@@ -96,7 +96,7 @@ This guide promotes templ to production with a Fly-hosted backend and a Cloudfla
 
    The Docker build uses `backend/Dockerfile`, installs production dependencies, and starts `npm --prefix backend start` on port `3001`. The `SQLITE_DB_PATH` environment variable in `fly.toml` points at the mounted volume.
 
-5. Verify the service once the deploy finishes:
+5. Verify the service after the deploy finishes:
 
    ```bash
    fly logs --app <app-name>
@@ -168,7 +168,7 @@ This guide promotes templ to production with a Fly-hosted backend and a Cloudfla
 
 Keep these snippets handy for routine updates:
 
-- **Run database migrations** (before rolling out backend changes):
+- **Run database migrations** (prior to rolling out backend changes):
 
   ```bash
   fly ssh console -C "npm --prefix backend run migrate -- --db /var/lib/templ/templ.db"

@@ -56,11 +56,11 @@ Terminal C:
 npm --prefix frontend run dev
 ```
 
-Open `http://localhost:5173`. You’ll see the home page listing templs (empty for now), a Join button, and the chat-first workflow once you register and join a templ.
+Open `http://localhost:5173`. The home page lists templs, exposes a Join button, and routes directly into the chat-first workflow after a templ is registered and joined.
 
 ## 4) Deploy and register a templ manually
 
-The UI no longer handles deployments. Use Hardhat or a script to deploy via `TemplFactory` and register the address with the backend.
+The UI does not handle deployments. Use Hardhat or a script to deploy via `TemplFactory` and register the address with the backend.
 
 Example using the Hardhat console (Terminal D):
 
@@ -117,7 +117,7 @@ JS
 ## 5) Join and chat
 
 1. In the browser, click **Join** on the home page (or visit `/templs/join?address=<templAddress>` directly).
-2. Approve the entry fee when prompted, then click **Join templ**. The UI waits for the transaction, signs the typed `/join` payload, and navigates straight to `/templs/<address>/chat` once the backend confirms membership.
+2. Approve the entry fee when prompted, then click **Join templ**. The UI waits for the transaction, signs the typed `/join` payload, and navigates straight to `/templs/<address>/chat` after the backend confirms membership.
 3. Inside the chat you’ll see message history, the “New proposal” composer, poll-style proposal cards, vote buttons, and the **Claim rewards** modal.
 
 Invite a second wallet (Hardhat account #5) and repeat the join flow if you want to observe multi-member quorum behaviour.
@@ -131,7 +131,7 @@ Invite a second wallet (Hardhat account #5) and repeat the join flow if you want
 
 ## 7) Automated checks
 
-When you’re happy with manual testing, run the full suite before sending changes for review:
+When manual testing looks good, run the full suite ahead of sending changes for review:
 
 ```bash
 npm run test:all
@@ -145,6 +145,6 @@ Testing against a live factory is straightforward:
 
 1. Update `backend/.env` with `RPC_URL`, `TRUSTED_FACTORY_ADDRESS`, and `TRUSTED_FACTORY_DEPLOYMENT_BLOCK`, then restart the server.
 2. Override the frontend (`frontend/.env.local` or shell env) with the same factory address so the home page lists production templs.
-3. Reinstate your usual `TRUSTED_FACTORY_ADDRESS` once the templ shows up in `/templs` responses so future registrations continue to be validated automatically.
+3. Reinstate your usual `TRUSTED_FACTORY_ADDRESS` after the templ shows up in `/templs` responses so future registrations continue to be validated automatically.
 
 With that in place you can join live templs from the chat UI while still iterating locally.

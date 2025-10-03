@@ -11,7 +11,7 @@ Templ combines on-chain membership contracts, typed governance, and an off-chain
 - **Contract** – [`TemplFactory`](../contracts/TemplFactory.sol) stores the immutable protocol fee recipient and percentage for every templ it mints.
 - **Deployment helpers** – `createTemplFor(priest, token, entryFee)` uses defaults (with `createTempl(token, entryFee)` acting as a convenience wrapper that forwards the caller as priest); `createTemplWithConfig(CreateConfig)` allows custom percentages, quorum, execution delay, burn address, max members, dictatorship flag, and home link.
 - **Defaults** – Burn/treasury/member splits each default to 3_000 BPS (30%), quorum to 3_300 BPS (33%), execution delay to 7 days, the burn address to `0x0000…dEaD`, a soft cap of 249 members, and an exponential pricing curve that increases the entry fee by 10% on every paid join. Callers can request percentage defaults explicitly by passing `-1` for percentage fields.
-- **Validation** – Entry fees must be ≥10 units of the access token and divisible by 10. Percentages must sum to 10_000 BPS once the factory’s `protocolPercent` is included.
+- **Validation** – Entry fees must be ≥10 units of the access token and divisible by 10. Percentages must sum to 10_000 BPS after factoring in the factory’s `protocolPercent`.
 - **Access control** – The deploying wallet is recorded as `factoryDeployer`. Until that address calls `setPermissionless(true)`, only it can mint templs; when permissionless mode is enabled any wallet may deploy templs, but each templ still inherits the factory’s immutable protocol recipient and percent.
 - **Implementation detail** – The factory stores the `TEMPL` creation bytecode in SSTORE2 and concatenates constructor arguments during deployment to minimise gas.
 
@@ -52,7 +52,7 @@ The constructor:
   - Disband treasury holdings into member or external reward pools.
   - Change the priest.
   - Enable or disable dictatorship mode.
-- **Voting windows** – Each proposal can choose a voting period between 7 and 30 days (`0` defaults to 7). Once quorum is reached the contract enforces the per-templ `executionDelayAfterQuorum` (default 7 days) before allowing execution. Priest-authored disband proposals skip quorum but must wait for their voting window to close.
+- **Voting windows** – Each proposal can choose a voting period between 7 and 30 days (`0` defaults to 7). After quorum is reached the contract enforces the per-templ `executionDelayAfterQuorum` (default 7 days) prior to allowing execution. Priest-authored disband proposals skip quorum but must wait for their voting window to close.
 - **Quorum** – `quorumPercent` is set at deployment (default 33%). Proposals compute quorum against the number of eligible voters at snapshot time. Execution requires `yesVotes > noVotes` and the quorum percentage to be satisfied (unless the proposal is quorum-exempt).
 - **Execution router** – `executeProposal(id)` calls the relevant governance hook (`_governanceSetJoinPaused`, `_governanceUpdateConfig`, etc.). Execution is non-reentrant and reverts if quorum/delay requirements are not met, the proposal already executed, or votes did not pass.
 - **Active proposal guard** – Each address can have at most one active proposal at a time. Helpers such as `getActiveProposalsPaginated` and `pruneInactiveProposals` keep views bounded.
@@ -72,7 +72,7 @@ The backend (`backend/src`) is a Node 22 Express app packaged in `backend/Docker
 - **Templ registry** – Registrations store contract, priest, optional `templHomeLink`, XMTP group id, and optional `telegramChatId`. Identifiers are never returned to other clients; listing endpoints deliberately omit them.
 - **XMTP orchestration** – `/templs` and `/join` bootstrap XMTP group conversations, hydrate them on restart, and add verified members via inbox ids. Deterministic inbox fallbacks keep local/dev flows responsive.
 - **Membership checks** – `/join` calls `isMember(member)` on chain using the configured RPC endpoint. Failure to confirm membership surfaces as `403 Membership not found`.
-- **Telegram notifier** – When a templ is bound to a chat and `TELEGRAM_BOT_TOKEN` is configured, the backend streams contract events (`MemberJoined`, `ProposalCreated`, `VoteCast`, `PriestChanged`, etc.) and delivers MarkdownV2-formatted messages. Daily digests summarise treasury and member pool balances once every 24 hours while the server holds the leader lease.
+- **Telegram notifier** – When a templ is bound to a chat and `TELEGRAM_BOT_TOKEN` is configured, the backend streams contract events (`MemberJoined`, `ProposalCreated`, `VoteCast`, `PriestChanged`, etc.) and delivers MarkdownV2-formatted messages. Daily digests summarise treasury and member pool balances every 24 hours while the server holds the leader lease.
 - **Background work** – Leader election (persisted in SQLite) ensures exactly one replica runs watchers, syncs XMTP groups, polls Telegram binding codes, and triggers digests. Other replicas stay idle until the lease expires.
 - **Persistence** – See [PERSISTENCE.md](PERSISTENCE.md) for table layouts and failover behaviour (SQLite volume or in-memory adapters).
 - **Configuration** – `BACKEND.md` documents every environment variable (`RPC_URL`, `BACKEND_SERVER_ID`, `ALLOWED_ORIGINS`, `TRUSTED_FACTORY_*`, rate limiting, Telegram secrets, etc.) along with sample responses.
@@ -84,7 +84,7 @@ The backend (`backend/src`) is a Node 22 Express app packaged in `backend/Docker
 - **Stack** – Vite + React SPA served statically (Cloudflare Pages in production). Uses `ethers.BrowserProvider` for wallet interaction and shared signing helpers for typed data.
 - **Key routes** –
   - `/` – Home page that lists templs with token symbol, entry fee, and a Join button.
-  - `/templs/join` – Join or gift membership; handles allowance, `join` transactions, and redirects to chat once the backend verifies membership.
+  - `/templs/join` – Join or gift membership; handles allowance, `join` transactions, and redirects to chat after the backend verifies membership.
   - `/templs/:address/chat` – Wallet-authenticated XMTP chat that streams history, renders proposals as poll cards with inline voting/execution, and surfaces the reward-claim modal.
 - **Configuration** – Environment variables prefixed with `VITE_` control the backend URL, trusted factory metadata, protocol fee hints, and RPC providers. `VITE_BACKEND_SERVER_ID` must match the backend’s `BACKEND_SERVER_ID` so signatures verify.
 - **Chat UX** – Membership verification automatically lands members in XMTP chat; the UI streams history, shows proposal status, and embeds the governance forms. Priests can still request new Telegram binding codes from the overview page when alerts are enabled.
@@ -112,7 +112,7 @@ The backend (`backend/src`) is a Node 22 Express app packaged in `backend/Docker
 - **Protocol share immutability** – The protocol percentage and recipient are fixed per factory; governance cannot alter them.
 - **Entry fee safety** – Entry fees stay ≥10 and divisible by 10. Governance proposals that violate these constraints revert.
 - **Dictatorship exit hatch** – Even when dictatorship mode is active, members (including the priest) can always propose to disable it; all other proposal types are blocked until dictatorship is lifted.
-- **Quorum escape hatch** – Priest-authored disband proposals (`quorumExempt = true`) provide a deterministic way to distribute funds when quorum can no longer be met.
+- **Quorum escape hatch** – Priest-authored disband proposals (`quorumExempt = true`) provide a deterministic way to distribute funds when quorum cannot be met.
 - **Join availability** – Disbanding treasury funds never pauses joins. Only explicit pause proposals or hard member caps block new members.
 - **Reward accounting** – Member and external reward calculations carry remainders forward to guarantee eventual distribution of every token.
 - **Non-reentrancy** – `join`, reward claims, and `executeProposal` are guarded by `ReentrancyGuard`.
