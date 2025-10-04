@@ -8,7 +8,7 @@ Use this reference to see how the contracts, backend API, frontend, and Telegram
 - **Backend (B)** – Express server handling signatures, persistence, and Telegram notifications.
 - **Contract (C)** – On-chain templ instance.
 - **Telegram (T)** – Bot-backed delivery of templ events (optional).
-- **SQLite persistence (D)** – Binding store (contract ↔ Telegram chat id) with an in-memory fallback for local runs.
+- **SQLite persistence (D)** – Binding store (contract ↔ Telegram chat id, XMTP group id, binding codes). SQLite backs production; the in-memory adapter exists only for unit tests.
 - **Member (M)** / **Priest (P)** – Participants initiating actions.
 
 ## 1. Templ creation
