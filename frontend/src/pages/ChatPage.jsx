@@ -618,6 +618,7 @@ export function ChatPage({
         let lastMembershipError = null;
         const membershipAttempts = xmtpEnv === 'local' ? 8 : 24;
         for (let attempt = 0; attempt < membershipAttempts; attempt += 1) {
+          recordDebug(`verify:request:${attempt + 1}:start`);
           try {
             membership = await verifyMembership({
               signer,
@@ -628,9 +629,12 @@ export function ChatPage({
               templArtifact,
               readProvider
             });
+            recordDebug(`verify:request:${attempt + 1}:ok`);
             if (membership?.groupId) break;
             lastMembershipError = new Error('Chat group is not ready yet. Try again shortly.');
           } catch (verifyErr) {
+            const errSnippet = String(verifyErr?.message || verifyErr || '').slice(0, 120);
+            recordDebug(`verify:request:${attempt + 1}:err:${errSnippet}`);
             lastMembershipError = verifyErr;
           }
           if (cancelled) return;

@@ -56,7 +56,9 @@ The chat composer collects a title + optional description and offers the curated
 
 - `npm --prefix frontend run test` – Vitest + jsdom.
 - `npm --prefix frontend run coverage` – Coverage for components/services.
-- `npm --prefix frontend run test:e2e` – Playwright smoke test that deploys a templ, joins it, proposes/votes/executes from chat, and asserts the on-chain side effects.
+- `npm run test:e2e:local` – Playwright smoke test against the bundled XMTP local node (start it with `npm run xmtp:local:up`, stop with `npm run xmtp:local:down`).
+- `npm run test:e2e:prod` – Same Playwright flow against the hosted XMTP network.
+- `npm run test:e2e:matrix` – Runs the local and production variants sequentially (skips the local leg automatically when Docker is unavailable).
 
 ## Structure overview
 

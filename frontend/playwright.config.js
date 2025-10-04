@@ -4,7 +4,9 @@ import { randomBytes } from 'crypto';
 import path from 'path';
 import { defineConfig, devices } from '@playwright/test';
 
+const USE_LOCAL_XMTP = process.env.E2E_XMTP_LOCAL === '1';
 const XMTP_ENV = (() => {
+  if (USE_LOCAL_XMTP) return 'local';
   const forced = process.env.E2E_XMTP_ENV;
   if (forced && ['local', 'dev', 'production'].includes(forced)) return forced;
   return 'dev';
@@ -70,6 +72,15 @@ export default defineConfig({
   ],
 
   webServer: [
+    ...(USE_LOCAL_XMTP
+      ? [{
+          command: './scripts/run-xmtp-local.sh',
+          cwd: '..',
+          port: 5555,
+          reuseExistingServer: true,
+          timeout: 120 * 1000,
+        }]
+      : []),
     {
       command: 'npx hardhat node',
       port: 8545,
@@ -88,7 +99,7 @@ export default defineConfig({
         BACKEND_SERVER_ID: 'templ-dev',
         XMTP_ENV,
         LOG_LEVEL: 'info',
-        NODE_ENV: 'test',
+        NODE_ENV: 'development',
         BOT_PRIVATE_KEY,
         SQLITE_DB_PATH: sqlitePath,
         CLEAR_DB: '1',

@@ -3,6 +3,13 @@ set -euo pipefail
 
 # Provide sensible defaults for required env vars so CI/dev runs do not fail
 export BACKEND_SERVER_ID="${BACKEND_SERVER_ID:=templ-dev}"
+export E2E_XMTP_LOCAL="${E2E_XMTP_LOCAL:=1}"
+if [ "${E2E_XMTP_LOCAL}" = "1" ]; then
+  if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
+    echo "[test:all] docker unavailable; skipping local XMTP leg"
+    export E2E_XMTP_LOCAL=0
+  fi
+fi
 
 phase() { echo; echo "[test:all] === $* ==="; }
 
@@ -66,10 +73,11 @@ if [ "${PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD:-}" != "1" ]; then
   echo "[test:all] ensuring Playwright system dependencies are present"
   npm --prefix frontend exec -- playwright install-deps chromium
 fi
-npm --prefix frontend run test:e2e
+E2E_XMTP_LOCAL="${E2E_XMTP_LOCAL}" npm run test:e2e:matrix
 
 phase "Cleanup XMTP caches"
 rm -f frontend/pw-xmtp.db frontend/pw-xmtp.db-shm frontend/pw-xmtp.db-wal
 rm -f backend/xmtp-*.db backend/xmtp-*.db-shm backend/xmtp-*.db-wal backend/xmtp-*.db.sqlcipher_salt
+rm -f frontend/xmtp-local-*.db3 frontend/xmtp-local-*.db3-shm frontend/xmtp-local-*.db3-wal frontend/xmtp-local-*.db3.sqlcipher_salt
 
 echo "[test:all] Completed in $(( $(date +%s) - START_TS ))s"

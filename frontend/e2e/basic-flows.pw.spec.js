@@ -3,11 +3,17 @@ import { ethers } from 'ethers';
 import { readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { Client as NodeXmtpClient } from '@xmtp/node-sdk';
 import { buildCreateTypedData } from '../../shared/signing.js';
 import { setupWalletBridge } from './helpers.js';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const repoRoot = path.resolve(here, '..', '..');
+
+function logWithTimestamp(...args) {
+  const now = new Date().toISOString();
+  console.log(`[${now}]`, ...args);
+}
 
 function loadArtifact(relativePath) {
   const fullPath = path.join(repoRoot, relativePath);
@@ -20,6 +26,7 @@ const templArtifact = JSON.parse(readFileSync(path.join(process.cwd(), 'src/cont
 
 const HARDHAT_RPC_URL = process.env.E2E_HARDHAT_RPC_URL || 'http://127.0.0.1:8545';
 const BACKEND_URL = process.env.E2E_BACKEND_URL || 'http://localhost:3001';
+const E2E_XMTP_ENV = process.env.E2E_XMTP_ENV || 'dev';
 const WEEK_IN_SECONDS = 7 * 24 * 60 * 60;
 const FUNDING_KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
 
@@ -54,6 +61,37 @@ async function createWallets(provider) {
 }
 
 async function registerTempl({ contractAddress, priest, backendUrl, chainId }) {
+  if (E2E_XMTP_ENV === 'local') {
+    const signerAddress = await priest.getAddress();
+    let nonce = 0;
+    const xmtpSigner = {
+      type: 'EOA',
+      getAddress: () => signerAddress,
+      getIdentifier: () => ({
+        identifier: signerAddress.toLowerCase(),
+        identifierKind: 0,
+        nonce: ++nonce
+      }),
+      signMessage: async (message) => {
+        let payload = message;
+        if (message instanceof Uint8Array) {
+          try { payload = ethers.toUtf8String(message); }
+          catch { payload = ethers.hexlify(message); }
+        } else if (typeof message !== 'string') {
+          payload = String(message);
+        }
+        const signature = await priest.signMessage(payload);
+        return ethers.getBytes(signature);
+      }
+    };
+    const client = await NodeXmtpClient.create(xmtpSigner, {
+      env: 'local',
+      dbEncryptionKey: new Uint8Array(32),
+      appVersion: 'templ-e2e/0.0.1'
+    });
+    await client?.close?.();
+    console.log(`[xmtp] ensured local identity for ${signerAddress}`);
+  }
   const normalized = contractAddress.toLowerCase();
   const numericChainId = typeof chainId === 'bigint' ? Number(chainId) : Number(chainId);
   if (!Number.isSafeInteger(numericChainId)) {
@@ -96,10 +134,10 @@ function extractTemplAddress(receipt, templFactory) {
 test.describe('Chat-centric templ flow', () => {
   test('member joins and governs from chat UI', async ({ page }) => {
     page.on('console', (msg) => {
-      console.log('[browser]', msg.type(), msg.text());
+      logWithTimestamp('[browser]', msg.type(), msg.text());
     });
     page.on('pageerror', (err) => {
-      console.log('[browser-error]', err?.message || String(err));
+      logWithTimestamp('[browser-error]', err?.message || String(err));
     });
     const provider = new ethers.JsonRpcProvider(HARDHAT_RPC_URL);
     const wallets = await createWallets(provider);
@@ -205,9 +243,9 @@ test.describe('Chat-centric templ flow', () => {
     await expect(page.getByRole('heading', { name: 'Templ Chat' })).toBeVisible();
     await expect.poll(async () => templForMember.isMember(memberAddress)).toBeTruthy();
     const preDebugSteps = await page.evaluate(() => window.templTestHooks?.getDebugSteps?.() ?? []);
-    console.log('[e2e] pre-wait debug steps:', preDebugSteps);
+    logWithTimestamp('[e2e] pre-wait debug steps:', preDebugSteps);
     const preChatError = await page.evaluate(() => window.templTestHooks?.getChatError?.() ?? '');
-    console.log('[e2e] pre-wait chat error:', preChatError);
+    logWithTimestamp('[e2e] pre-wait chat error:', preChatError);
     try {
       await expect.poll(async () => {
         return page.evaluate(() => window.templTestHooks?.isConversationReady?.() ?? false);
@@ -215,8 +253,8 @@ test.describe('Chat-centric templ flow', () => {
     } catch (err) {
       const debugAfter = await page.evaluate(() => window.templTestHooks?.getDebugSteps?.() ?? []);
       const chatErrorAfter = await page.evaluate(() => window.templTestHooks?.getChatError?.() ?? '');
-      console.log('[e2e] debug steps after failure:', debugAfter);
-      console.log('[e2e] chat error after failure:', chatErrorAfter);
+      logWithTimestamp('[e2e] debug steps after failure:', debugAfter);
+      logWithTimestamp('[e2e] chat error after failure:', chatErrorAfter);
       throw err;
     }
 
@@ -226,7 +264,7 @@ test.describe('Chat-centric templ flow', () => {
     }
     expect(groupId).toBeTruthy();
     const debugSteps = await page.evaluate(() => window.templTestHooks?.getDebugSteps?.() ?? []);
-    console.log('[e2e] chat debug steps:', debugSteps);
+    logWithTimestamp('[e2e] chat debug steps:', debugSteps);
 
     // Send a chat message and ensure it lands on XMTP dev
     const chatMessage = `GM templers ${Date.now()}`;

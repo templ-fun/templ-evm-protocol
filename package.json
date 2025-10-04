@@ -22,7 +22,12 @@
     "node": "npx hardhat node",
     "prepare": "husky",
     "test:all": "./scripts/test-all.sh",
-    "gen:wallets": "node scripts/gen-wallets.js"
+    "gen:wallets": "node scripts/gen-wallets.js",
+    "xmtp:local:up": "bash -lc 'cd xmtp-local-node && ./up'",
+    "xmtp:local:down": "bash -lc 'cd xmtp-local-node && ./down'",
+    "test:e2e:local": "E2E_XMTP_LOCAL=1 E2E_XMTP_ENV=local npm --prefix frontend run test:e2e",
+    "test:e2e:prod": "E2E_XMTP_LOCAL=0 E2E_XMTP_ENV=production npm --prefix frontend run test:e2e",
+    "test:e2e:matrix": "node scripts/run-e2e-matrix.mjs"
   },
   "keywords": [
     "solidity",

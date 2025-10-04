@@ -48,6 +48,15 @@ npm --prefix backend start
 
 The server listens on `http://localhost:3001`, verifies signatures, persists templ metadata, orchestrates XMTP groups, and—if you supply `TELEGRAM_BOT_TOKEN`—forwards events to Telegram. SQLite is optional for local work; memory storage keeps things simple.
 
+To mirror production XMTP behavior without hitting remote latency, initialise the bundled local node:
+
+```bash
+git submodule update --init xmtp-local-node
+npm run xmtp:local:up
+```
+
+Set `XMTP_ENV=local` in your backend `.env` (and `VITE_XMTP_ENV=local` on the frontend) before running tests. When finished, tear the node down with `npm run xmtp:local:down`. Docker Desktop (or another daemon) must be running for these commands to succeed.
+
 ## 3) Start the frontend
 
 Terminal C:
@@ -138,6 +147,12 @@ npm run test:all
 ```
 
 This clears Vite caches, runs backend + frontend unit tests, and executes the Playwright chat flow (which deploys a templ, joins it, proposes, votes, and executes from chat).
+
+To run the end-to-end flow explicitly:
+
+- `npm run test:e2e:local` exercises the stack against the bundled XMTP local node (requires `npm run xmtp:local:up`).
+- `npm run test:e2e:prod` repeats the flow against the hosted XMTP network.
+- `npm run test:e2e:matrix` runs both sequentially (automatically skipping the local leg if Docker is unavailable).
 
 ## 8) Point the stack at a persistent deployment
 

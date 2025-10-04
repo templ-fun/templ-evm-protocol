@@ -74,7 +74,9 @@ jobs:
       - run: npm --prefix frontend test -- --reporter verbose
       - run: npm --prefix frontend run lint
       - run: npm --prefix frontend run build
-      - run: npm --prefix frontend run test:e2e
+      - run:
+          name: Run Playwright e2e (local + production)
+          command: E2E_XMTP_LOCAL=0 npm run test:e2e:matrix
 
 workflows:
   contracts:

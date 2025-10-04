@@ -1,16 +1,24 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
+## Quick orientation
 
-- `contracts/` holds Solidity sources; Hardhat scripts in `scripts/` emit artifacts to `deployments/`.
-- `backend/src/` runs the Express API, Telegram notifier, and persistence layers.
-- `frontend/src/` is the Vite + React control center; shared utilities live in `shared/` with tests beside code (`test/`, `e2e/`).
+- Stack summary: Hardhat contracts in `contracts/`, Node/Express backend in `backend/`, Vite + React frontend in `frontend/`, and shared signing/XMTP helpers in `shared/`.
+- XMTP is first-class. The backend orchestrates group creation/joining; the frontend talks directly to XMTP and the backend. Tests depend on a local XMTP node for fast feedback and the hosted XMTP network for production parity.
 
-## Build, Test, and Development Commands
+## Project structure & modules
+
+- `contracts/` – Solidity sources; Hardhat tasks in `scripts/` emit artifacts to `deployments/`.
+- `backend/src/` – Express API, Telegram notifier, persistence, and XMTP orchestration.
+- `frontend/src/` – Vite + React SPA; shared utilities/tests live beside code (`test/`, `e2e/`).
+- `shared/` – Typed-data builders and XMTP helpers consumed by backend and frontend.
+
+## Local setup & runtime commands
 
 - Install dependencies via `npm ci`, `npm --prefix backend ci`, and `npm --prefix frontend ci`.
-- Compile with `npm run compile`, start `npx hardhat node`, and launch services through `npm --prefix backend start` plus `npm --prefix frontend run dev`.
-- Run targeted checks using `npm test`, `npm --prefix backend test`, `npm --prefix frontend run test`, and Playwright via `npm --prefix frontend run test:e2e`.
+- Compile contracts with `npm run compile`; start Hardhat with `npx hardhat node`.
+- Launch services via `npm --prefix backend start` and `npm --prefix frontend run dev` (make sure `.env` files align with `docs/TEST_LOCALLY.md`).
+- To exercise XMTP locally, initialize the submodule and bring the node up: `git submodule update --init xmtp-local-node` then `npm run xmtp:local:up`. Tear it down with `npm run xmtp:local:down` when finished. Docker Desktop (or another daemon) must be running.
+- Run targeted checks using `npm test`, `npm --prefix backend test`, `npm --prefix frontend run test`, and Playwright via `npm run test:e2e:local` (fast path) or `npm run test:e2e:prod` (hosted XMTP). `npm run test:e2e:matrix` runs both and skips the local leg automatically when Docker is unavailable.
 
 ## Coding Style & Naming Conventions
 
@@ -20,7 +28,8 @@
 
 ## Testing & CI Discipline
 
-- Always run `npm run test:all` before handoff; CI reruns the same matrix after merge, so local results must stay green.
+- Always run `npm run test:all` before handoff; it drives the full suite (contracts, lint, type checks, Playwright matrix) and cleans XMTP artifacts.
+- CI executes `npm run test:e2e:matrix`, which runs the local XMTP flow when Docker is available and always runs the production XMTP flow; plan your changes so both legs pass before opening a PR.
 - When fixing a bug, first add a failing test that proves the issue, then ship the patch and validate the full suite.
 - Track coverage with `npm --prefix backend run coverage` and `npm --prefix frontend run coverage`; keep specs under each package `test/` directory.
 

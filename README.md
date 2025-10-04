@@ -57,7 +57,7 @@ Hardhat tests, Vitest specs, Playwright smoke tests, and backend unit tests are 
 npm run test:all
 ```
 
-The Playwright harness (`frontend/e2e/basic-flows.pw.spec.js`) deploys a templ, registers it with the backend, joins from the chat UI, proposes, votes, executes, and asserts the on-chain side effects—all inside the conversation. Run it standalone with `npm --prefix frontend run test:e2e` whenever you change chat flows.
+The Playwright harness (`frontend/e2e/basic-flows.pw.spec.js`) deploys a templ, registers it with the backend, joins from the chat UI, proposes, votes, executes, and asserts the on-chain side effects—all inside the conversation. Use `npm run test:e2e:local` to exercise the flow against the bundled XMTP local node (ensure `git submodule update --init xmtp-local-node && npm run xmtp:local:up` beforehand) and `npm run test:e2e:prod` to exercise the same steps against the hosted XMTP network. `npm run test:e2e:matrix` runs both sequentially, automatically skipping the local leg whenever Docker is unavailable. Tear the local node down with `npm run xmtp:local:down` when you are done.
 
 Run that command ahead of handing off a change. Package-specific coverage targets remain available via `npm --prefix backend run coverage` and `npm --prefix frontend run coverage`.
 

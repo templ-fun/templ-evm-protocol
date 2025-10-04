@@ -75,6 +75,8 @@ Running the server requires a JSON-RPC endpoint and aligned frontend/server IDs.
 
 For production runs set `SQLITE_DB_PATH` to a directory backed by durable storage (for example a Fly volume mounted at `/var/lib/templ/templ.db`). The server automatically creates tables when the path is writable. Distributed rate limiting is optional; when Redis is unavailable the in-process `MemoryStore` enforces limits per instance and logs a warning in `NODE_ENV=production`. Signature replay protection retains entries for roughly six hours regardless of the persistence backend.
 
+When testing locally, point the backend at the bundled XMTP node to mirror production timing: `git submodule update --init xmtp-local-node`, `npm run xmtp:local:up`, set `XMTP_ENV=local`, and tear it down with `npm run xmtp:local:down` when finished. Docker Desktop (or another Docker daemon) must be running before launching the node.
+
 `npm run deploy:cloudflare` (see `scripts/cloudflare.deploy.example.env`) builds the Vite frontend and deploys it to Cloudflare Pages. Backend deployment is handled separately (for example with the Fly workflow described in `docs/DEPLOYMENT_GUIDE.md`).
 
 ### Data model

@@ -1,0 +1,3 @@
+[submodule "xmtp-local-node"]
+	path = xmtp-local-node
+	url = https://github.com/xmtp/xmtp-local-node.git
