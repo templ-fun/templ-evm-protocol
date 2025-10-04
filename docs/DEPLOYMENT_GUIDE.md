@@ -72,21 +72,20 @@ This guide promotes templ to production with a Fly-hosted backend and a Cloudfla
    fly volumes create templ_data --size 1 --region <region> --app <app-name>
    ```
 
-3. Configure runtime secrets. At minimum provide:
+3. Configure runtime secrets. At minimum provide the required trio (`RPC_URL`, `BACKEND_SERVER_ID`, `APP_BASE_URL` if you want rich links) and ensure the app’s `SQLITE_DB_PATH` in `fly.toml` points at the mounted volume:
 
    ```bash
    fly secrets set \
      RPC_URL=$RPC_URL \
-     APP_BASE_URL=https://app.templ.example \
      BACKEND_SERVER_ID=templ-prod \
+     APP_BASE_URL=https://app.templ.example \
      TRUSTED_FACTORY_ADDRESS=$TRUSTED_FACTORY_ADDRESS \
      TRUSTED_FACTORY_DEPLOYMENT_BLOCK=$TRUSTED_FACTORY_DEPLOYMENT_BLOCK \
      REQUIRE_CONTRACT_VERIFY=1 \
-     ALLOWED_ORIGINS=https://app.templ.example \
      TELEGRAM_BOT_TOKEN=<bot token or omit for no Telegram>
    ```
 
-   Add `REDIS_URL` and `RATE_LIMIT_STORE=redis` if you plan to attach a managed Redis instance for distributed rate limiting. All other environment variables listed in `docs/BACKEND.md` may also be supplied through Fly secrets.
+   Add optional knobs (`ALLOWED_ORIGINS`, `LOG_LEVEL`, `REDIS_URL`, `RATE_LIMIT_STORE=redis`, `BACKEND_DB_ENC_KEY`, etc.) based on the environment guidance in `docs/BACKEND.md`.
 
 4. Deploy the backend:
 

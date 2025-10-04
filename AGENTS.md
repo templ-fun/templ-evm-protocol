@@ -16,7 +16,7 @@
 
 - Install dependencies via `npm ci`, `npm --prefix backend ci`, and `npm --prefix frontend ci`.
 - Compile contracts with `npm run compile`; start Hardhat with `npx hardhat node`.
-- Launch services via `npm --prefix backend start` and `npm --prefix frontend run dev` (make sure `.env` files align with `docs/TEST_LOCALLY.md`).
+- Set `SQLITE_DB_PATH` to a writable file (for example `./templ.local.db`) before launching the backend with `npm --prefix backend start`; run the frontend via `npm --prefix frontend run dev` (make sure `.env` files align with `docs/TEST_LOCALLY.md`).
 - To exercise XMTP locally, initialize the submodule and bring the node up: `git submodule update --init xmtp-local-node` then `npm run xmtp:local:up`. Tear it down with `npm run xmtp:local:down` when finished. Docker Desktop (or another daemon) must be running.
 - Run targeted checks using `npm test`, `npm --prefix backend test`, `npm --prefix frontend run test`, and Playwright via `npm run test:e2e:local` (fast path) or `npm run test:e2e:prod` (hosted XMTP). `npm run test:e2e:matrix` runs both and skips the local leg automatically when Docker is unavailable.
 

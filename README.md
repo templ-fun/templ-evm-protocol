@@ -47,9 +47,11 @@ npm --prefix backend ci
 npm --prefix frontend ci
 
 npm run compile                 # compile contracts
-npm --prefix backend start      # start the API (requires RPC_URL)
+npm --prefix backend start      # start the API (requires RPC_URL and SQLITE_DB_PATH)
 npm --prefix frontend run dev   # run the SPA on http://localhost:5173
 ```
+
+Set `SQLITE_DB_PATH` to a writable path (for example `./templ.local.db`) before starting the backend so templ ↔ XMTP group mappings persist across restarts.
 
 Hardhat tests, Vitest specs, Playwright smoke tests, and backend unit tests are wired together under one script:
 

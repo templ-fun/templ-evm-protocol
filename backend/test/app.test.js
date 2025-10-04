@@ -1,11 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { Wallet, Interface, ZeroAddress, getAddress } from 'ethers';
 import { Client as NodeXmtpClient } from '@xmtp/node-sdk';
 import { createApp } from '../src/server.js';
 import { buildCreateTypedData, buildJoinTypedData, buildRebindTypedData } from '../../shared/signing.js';
-import { createMemoryPersistence } from '../src/persistence/index.js';
+import { createMemoryPersistence, createPersistence } from '../src/persistence/index.js';
 
 process.env.NODE_ENV = 'test';
 process.env.BACKEND_SERVER_ID = 'test-server';
@@ -585,6 +588,160 @@ test('register templ hydrates XMTP group with backend client before joining', as
       delete process.env.XMTP_ENV;
     }
   }
+});
+
+test('sqlite persistence survives restart and rehydrates XMTP group', async (t) => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'templ-sqlite-'));
+  const dbPath = path.join(tmpDir, 'templ.db');
+  const sqliteAdapters = [];
+  const cleanup = async () => {
+    for (const adapter of sqliteAdapters.splice(0)) {
+      try { await adapter.dispose?.(); } catch { /* ignore */ }
+    }
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
+  };
+  t.after(cleanup);
+
+  const persistenceA = await createPersistence({ sqlitePath: dbPath });
+  sqliteAdapters.push(persistenceA);
+
+  const nodeInboxOriginal = NodeXmtpClient.inboxStateFromInboxIds;
+  NodeXmtpClient.inboxStateFromInboxIds = async () => [{ installations: [{ id: '0xmemberinbox' }] }];
+  t.after(() => {
+    NodeXmtpClient.inboxStateFromInboxIds = nodeInboxOriginal;
+  });
+
+  let newGroupCalls = 0;
+  const memberInboxes = new Set();
+  const memberAdditions = [];
+  const backendConversation = {
+    id: 'group-sqlite-rehydrate',
+    async send() {},
+    async updateName() {},
+    async updateDescription() {},
+    async addMembersByInboxId(ids) {
+      for (const id of ids || []) {
+        const normalised = String(id || '').toLowerCase();
+        if (!normalised) continue;
+        memberAdditions.push(normalised);
+        memberInboxes.add(normalised.replace(/^0x/, ''));
+      }
+    },
+    async addMembersByIdentifiers(entries) {
+      for (const entry of entries || []) {
+        const candidate = entry?.inboxId ?? entry?.identifier;
+        if (!candidate) continue;
+        const normalised = String(candidate).toLowerCase();
+        memberAdditions.push(normalised);
+        memberInboxes.add(normalised.replace(/^0x/, ''));
+      }
+    },
+    members: {
+      async list() {
+        return Array.from(memberInboxes).map((hex) => ({ inboxId: `0x${hex}` }));
+      }
+    }
+  };
+
+  const backendXmtpInitial = {
+    inboxId: '0xserver-inbox',
+    conversations: {
+      async newGroup() {
+        newGroupCalls += 1;
+        return backendConversation;
+      },
+      async sync() {},
+      async syncAll() {},
+      async getConversationById() { return null; },
+      async list() { return []; },
+      async listGroups() { return []; }
+    },
+    preferences: {
+      async sync() {},
+      async inboxState() {}
+    }
+  };
+
+  const { app } = await makeApp({ persistence: persistenceA, xmtp: backendXmtpInitial });
+  t.after(async () => {
+    await app.close?.();
+  });
+
+  const priestWallet = Wallet.createRandom();
+  const { contractAddress } = await registerTempl(app, priestWallet);
+  assert.equal(newGroupCalls, 1, 'group created once during initial registration');
+
+  await app.close?.();
+  await persistenceA.dispose?.();
+  const indexA = sqliteAdapters.indexOf(persistenceA);
+  if (indexA >= 0) {
+    sqliteAdapters.splice(indexA, 1);
+  }
+
+  const persistenceB = await createPersistence({ sqlitePath: dbPath });
+  sqliteAdapters.push(persistenceB);
+
+  let hydrationAttempts = 0;
+  const backendXmtpReload = {
+    inboxId: '0xserver-inbox',
+    conversations: {
+      async newGroup() {
+        throw new Error('newGroup should not be called during restore');
+      },
+      async sync() {},
+      async syncAll() {},
+      async getConversationById(id) {
+        hydrationAttempts += 1;
+        if (id === backendConversation.id) {
+          return backendConversation;
+        }
+        return null;
+      },
+      async list() {
+        return hydrationAttempts ? [backendConversation] : [];
+      },
+      async listGroups() {
+        return hydrationAttempts ? [backendConversation] : [];
+      }
+    },
+    preferences: {
+      async sync() {},
+      async inboxState() {}
+    },
+    async findInboxIdByIdentifier() {
+      return '0xmemberinbox';
+    },
+    async getKeyPackageStatusesForInstallationIds() {
+      const now = Math.floor(Date.now() / 1000);
+      return {
+        '0xmemberinbox': {
+          lifetime: {
+            notAfter: BigInt(now + 600),
+            notBefore: BigInt(now - 60)
+          }
+        }
+      };
+    }
+  };
+
+  const { app: appReload } = await makeApp({
+    persistence: persistenceB,
+    xmtp: backendXmtpReload,
+    hasJoined: async () => true
+  });
+  t.after(async () => {
+    await appReload.close?.();
+  });
+
+  await appReload.locals.restorationPromise;
+  await appReload.locals.leadershipReady;
+
+  const memberWallet = Wallet.createRandom();
+  const joinResponse = await joinTempl(appReload, contractAddress, memberWallet);
+  assert.equal(joinResponse.status, 200, 'join succeeds after restart');
+  assert.ok(hydrationAttempts >= 1, 'backend attempted to hydrate XMTP conversation');
+  assert.equal(memberAdditions.length, 1, 'persisted conversation receives new member');
+  assert.ok(memberInboxes.has('memberinbox'), 'member recorded in conversation state');
 });
 
 test('auto registration persists templ without requiring signature', async (t) => {

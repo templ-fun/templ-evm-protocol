@@ -1,6 +1,6 @@
 # Persistence
 
-Use this doc to see where templ persists data: what lives on-chain, what the backend stores in SQLite, and what the frontend keeps ephemeral.
+Use this doc to see where templ persists data: what lives on-chain, what the backend stores in SQLite, and what the frontend keeps ephemeral. The backend always requires SQLite (or another persistence adapter) so templ ↔ XMTP bindings and binding codes survive restarts.
 
 ## Contracts
 
@@ -20,7 +20,7 @@ No member wallet addresses, signature payloads, or join histories are persisted 
 
 Bindings, priests, home links, and proposal caches are refreshed from the contract whenever needed (the database only retains the chat mapping and any outstanding binding code). Event cursors are not stored; after a restart the backend reattaches its watchers and streams newly emitted events. Production deployments should mount SQLite on durable storage (for example a Fly volume) so the binding tables and replay history survive restarts.
 
-Leader election only comes into play when more than one backend instance points at the same persistence layer. Single-instance deployments (including the default in-memory adapter) effectively assume leadership immediately, while multi-instance deployments rely on the shared table to ensure only one node runs watchers and background jobs at a time.
+Leader election only comes into play when more than one backend instance points at the same persistence layer. Single-instance deployments (including the test-only in-memory adapter used by unit tests) effectively assume leadership immediately, while multi-instance deployments rely on the shared table to ensure only one node runs watchers and background jobs at a time.
 
 ## Frontend
 

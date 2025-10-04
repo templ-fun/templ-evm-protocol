@@ -53,28 +53,37 @@ Running the server requires a JSON-RPC endpoint and aligned frontend/server IDs.
 
 ## Environment variables
 
+### Required
+
+| Variable | Description |
+| --- | --- |
+| `RPC_URL` | JSON-RPC endpoint used for contract reads, membership checks, and event subscriptions. |
+| `SQLITE_DB_PATH` | Path to the SQLite database that stores templ ↔ XMTP bindings, pending binding codes, and replay protection. Must point at durable storage in production. |
+| `BACKEND_SERVER_ID` | Identifier embedded in EIP-712 typed data. Must match the frontend’s `VITE_BACKEND_SERVER_ID` so signatures verify. |
+
+### Recommended
+
 | Variable | Description | Default |
 | --- | --- | --- |
-| `RPC_URL` | **Required.** JSON-RPC endpoint used for contract reads, membership checks, and event subscriptions. | – |
-| `PORT` | Port for the Express app. | `3001` |
+| `APP_BASE_URL` | Base URL used when generating links in join responses and Telegram notifications. | unset |
 | `ALLOWED_ORIGINS` | Comma-separated CORS origins. | `http://localhost:5173` |
-| `BACKEND_SERVER_ID` | Identifier embedded in EIP-712 typed data. Must match the frontend’s `VITE_BACKEND_SERVER_ID`. | – |
-| `APP_BASE_URL` | Base URL used when generating links inside Telegram messages. | unset |
-| `TELEGRAM_BOT_TOKEN` | Bot token used to post templ updates and poll binding codes. Leave unset to disable Telegram delivery. | unset |
-| `XMTP_ENV` | XMTP environment (`local`, `dev`, or `production`). Controls which network the backend (and chat UI) connects to. | `production` |
-| `BOT_PRIVATE_KEY` | Optional EOA private key used for the server’s XMTP identity. When omitted the backend generates and persists one in SQLite. | auto-generated |
-| `BACKEND_DB_ENC_KEY` | 32-byte hex key for XMTP SQLite encryption. Required in production; defaults to zeroed key in local/test environments. | unset |
-| `XMTP_BOOT_MAX_TRIES` | Maximum attempts when registering the backend XMTP client on startup. | `30` |
-| `TRUSTED_FACTORY_ADDRESS` | Optional factory address; when set, only templs emitted by this factory may register or rebind, and cached records from other factories are skipped on restart. | unset |
-| `TRUSTED_FACTORY_DEPLOYMENT_BLOCK` | Optional block height that seeds trusted factory verification. Set this to the block the factory was deployed so log scans stay within RPC limits. | unset |
-| `REQUIRE_CONTRACT_VERIFY` | When `1` (or `NODE_ENV=production`), enforce contract deployment + priest matching prior to accepting `/templs` requests. | `0` |
+| `PORT` | Port for the Express app. | `3001` |
 | `LOG_LEVEL` | Pino log level. | `info` |
-| `RATE_LIMIT_STORE` | `memory` or `redis`; automatically switches to Redis when `REDIS_URL` is provided. | auto |
-| `REDIS_URL` | Redis endpoint used for rate limiting when `RATE_LIMIT_STORE=redis`. | unset |
-| `LEADER_TTL_MS` | Leader election heartbeat window (milliseconds) when using shared persistence. Must be ≥ 15000. | `60000` |
-| `SQLITE_DB_PATH` | Path to a persistent SQLite database. When unset, the server falls back to an in-memory adapter. | unset |
+| `XMTP_ENV` | XMTP environment (`local`, `dev`, or `production`). | `production` |
+| `BOT_PRIVATE_KEY` | EOA private key used for the server’s XMTP identity. Auto-generated and persisted when omitted. | generated |
+| `BACKEND_DB_ENC_KEY` | 32-byte hex key for XMTP SQLite encryption. Supply in production to avoid the zeroed local/test fallback. | zero key in non-prod |
+| `XMTP_BOOT_MAX_TRIES` | Maximum registration attempts for the XMTP client during startup. | `30` |
+| `TRUSTED_FACTORY_ADDRESS` | Factory address that gates registration/rebind endpoints and powers the indexer. | unset |
+| `TRUSTED_FACTORY_DEPLOYMENT_BLOCK` | Block number where the trusted factory was deployed. Used to bound historical log scans. | unset |
+| `REQUIRE_CONTRACT_VERIFY` | Enforces on-chain deployment + priest verification before accepting `/templs`. Set to `1` in production. | `0` |
+| `TELEGRAM_BOT_TOKEN` | Bot token for MarkdownV2 Telegram notifications. Leave unset to disable Telegram delivery. | unset |
+| `RATE_LIMIT_STORE` | `memory` or `redis`. Switches automatically to Redis when unset and `REDIS_URL` is provided. | auto |
+| `REDIS_URL` | Redis endpoint used for distributed rate limiting when `RATE_LIMIT_STORE=redis`. | unset |
+| `LEADER_TTL_MS` | Leader election heartbeat window (milliseconds). Must be ≥ 15000. | `60000` |
+| `DISABLE_XMTP_WAIT` | Internal/testing flag that bypasses XMTP polling delays. | `0` |
+| `CLEAR_DB` | Dev-only flag that clears the SQLite file on boot (used by Playwright). | `0` |
 
-For production runs set `SQLITE_DB_PATH` to a directory backed by durable storage (for example a Fly volume mounted at `/var/lib/templ/templ.db`). The server automatically creates tables when the path is writable. Distributed rate limiting is optional; when Redis is unavailable the in-process `MemoryStore` enforces limits per instance and logs a warning in `NODE_ENV=production`. Signature replay protection retains entries for roughly six hours regardless of the persistence backend.
+Point `SQLITE_DB_PATH` at a writable SQLite file before starting the server. In production, mount the path on durable storage (for example a Fly volume at `/var/lib/templ/templ.db`). The server automatically creates tables when the path is writable. Distributed rate limiting is optional; when Redis is unavailable the in-process `MemoryStore` enforces limits per instance and logs a warning in `NODE_ENV=production`. Signature replay protection retains entries for roughly six hours regardless of the persistence backend.
 
 When testing locally, point the backend at the bundled XMTP node to mirror production timing: `git submodule update --init xmtp-local-node`, `npm run xmtp:local:up`, set `XMTP_ENV=local`, and tear it down with `npm run xmtp:local:down` once the suite completes. Ensure Docker Desktop (or another Docker daemon) is running so the node can boot successfully.
 
@@ -92,7 +101,7 @@ Templ home links continue to live on-chain; watchers refresh them (and priest da
 
 ### Leadership & scaling
 
-Only one backend instance should emit Telegram notifications at a time. When multiple replicas share the same SQLite database the server uses the `leader_election` table to acquire a short-lived lease (`LEADER_TTL_MS`, default 60s). The leader streams templ events, polls Telegram binding codes, and sends daily digests; standby replicas wake up periodically to refresh the lease and take over if the active process disappears. When using the in-memory persistence adapter, run a single instance so notifications are not duplicated.
+Only one backend instance should emit Telegram notifications at a time. When multiple replicas share the same SQLite database the server uses the `leader_election` table to acquire a short-lived lease (`LEADER_TTL_MS`, default 60s). The leader streams templ events, polls Telegram binding codes, and sends daily digests; standby replicas wake up periodically to refresh the lease and take over if the active process disappears. The in-memory persistence adapter exists solely for tests—when running with it, keep to a single instance so notifications are not duplicated.
 
 ### Trusted factory indexing
 
@@ -195,7 +204,7 @@ Messages are posted with Telegram `MarkdownV2` formatting—the notifier escapes
 
 ## Contract watchers
 
-The server uses `ethers.Contract` to subscribe to templ events. Watchers are registered when a templ is stored or restored from persistence (SQLite or the in-memory fallback during local development).
+The server uses `ethers.Contract` to subscribe to templ events. Watchers are registered when a templ is stored or restored from persistence (SQLite in production, or the test-only in-memory adapter when running unit tests).
 
 - Listener errors are caught and logged (but do not crash the process).
 - Proposal metadata is cached in-memory when events fire so follow-up notifications can include the title even if the on-chain read fails.
@@ -209,7 +218,7 @@ The server uses `ethers.Contract` to subscribe to templ events. Watchers are reg
 `npm --prefix backend test` runs Node’s built-in test runner:
 
 - Shared `shared/signing.test.js` covers typed-data builders.
-- `backend/test/app.test.js` spins up the app against the in-memory persistence adapter, stubs a Telegram notifier, and checks templ registration, priest rebind flows, and membership checks.
+- `backend/test/app.test.js` spins up the app against the test-only in-memory persistence adapter, stubs a Telegram notifier, and checks templ registration, priest rebind flows, and membership checks.
 
 Coverage uses `c8`; run `npm --prefix backend run coverage` for LCOV reports.
 

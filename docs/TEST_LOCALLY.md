@@ -34,10 +34,10 @@ RPC_URL=http://127.0.0.1:8545
 ALLOWED_ORIGINS=http://localhost:5173
 BACKEND_SERVER_ID=templ-dev
 APP_BASE_URL=http://localhost:5173
+SQLITE_DB_PATH=./templ.local.db
 # Optional extras
 # XMTP_ENV=local
 # TELEGRAM_BOT_TOKEN=123456:bot-token-from-botfather
-# SQLITE_DB_PATH=./templ.local.db
 ```
 
 Terminal B:
@@ -46,7 +46,7 @@ Terminal B:
 npm --prefix backend start
 ```
 
-The server listens on `http://localhost:3001`, verifies signatures, orchestrates XMTP groups, caches chat mappings, refreshes templ metadata from the contract, and—if you supply `TELEGRAM_BOT_TOKEN`—forwards events to Telegram. SQLite is optional for local work; memory storage keeps things simple.
+The server listens on `http://localhost:3001`, verifies signatures, orchestrates XMTP groups, caches chat mappings, refreshes templ metadata from the contract, and—if you supply `TELEGRAM_BOT_TOKEN`—forwards events to Telegram. SQLite backs the templ ↔ XMTP bindings so restarts continue to deliver invites.
 
 To mirror production XMTP behavior without hitting remote latency, initialise the bundled local node:
 

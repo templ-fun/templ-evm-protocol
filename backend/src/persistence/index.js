@@ -350,9 +350,15 @@ export function createMemoryPersistence({ retentionMs = DEFAULT_SIGNATURE_RETENT
  * @returns {Promise<PersistenceAdapter>}
  */
 export async function createPersistence(opts = {}) {
-  const { retentionMs, sqlitePath } = opts ?? {};
-  if (sqlitePath) {
-    return createSQLitePersistence({ sqlitePath, retentionMs });
+  const { persistence, retentionMs, sqlitePath } = opts ?? {};
+  if (persistence) {
+    return persistence;
+  }
+  if (sqlitePath && String(sqlitePath).trim().length > 0) {
+    return createSQLitePersistence({ sqlitePath: String(sqlitePath).trim(), retentionMs });
+  }
+  if (process.env.NODE_ENV !== 'test') {
+    throw new Error('SQLITE_DB_PATH is required when no persistence adapter is provided');
   }
   return createMemoryPersistence({ retentionMs });
 }
