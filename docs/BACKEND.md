@@ -7,6 +7,7 @@ This guide covers the Node 22 + Express app in `backend/`. Run it as a long-live
 - Verify EIP-712 signatures for templ registration, membership checks, and optional Telegram rebind requests.
 - Create and maintain XMTP group conversations for each templ so members land in chat immediately after joining.
 - Persist templ ↔ XMTP group ids (and optional Telegram chat bindings) so restarts do not break invitations.
+- Refresh priest and home-link metadata directly from each templ contract whenever responses require it.
 - Confirm membership directly against the chain instead of keeping local member lists.
 - Stream templ events into XMTP chat and, when configured, emit MarkdownV2 Telegram notifications.
 - Index templ deployments emitted by the trusted factory so deployers are registered automatically.
@@ -48,7 +49,7 @@ npm --prefix backend ci
 npm --prefix backend start
 ```
 
-Running the server requires a JSON-RPC endpoint and aligned frontend/server IDs.
+Running the server requires a JSON-RPC endpoint and aligned frontend/server IDs. It orchestrates XMTP groups, caches chat mappings, and resolves templ metadata from the chain on demand.
 
 ## Environment variables
 
@@ -75,7 +76,7 @@ Running the server requires a JSON-RPC endpoint and aligned frontend/server IDs.
 
 For production runs set `SQLITE_DB_PATH` to a directory backed by durable storage (for example a Fly volume mounted at `/var/lib/templ/templ.db`). The server automatically creates tables when the path is writable. Distributed rate limiting is optional; when Redis is unavailable the in-process `MemoryStore` enforces limits per instance and logs a warning in `NODE_ENV=production`. Signature replay protection retains entries for roughly six hours regardless of the persistence backend.
 
-When testing locally, point the backend at the bundled XMTP node to mirror production timing: `git submodule update --init xmtp-local-node`, `npm run xmtp:local:up`, set `XMTP_ENV=local`, and tear it down with `npm run xmtp:local:down` when finished. Docker Desktop (or another Docker daemon) must be running before launching the node.
+When testing locally, point the backend at the bundled XMTP node to mirror production timing: `git submodule update --init xmtp-local-node`, `npm run xmtp:local:up`, set `XMTP_ENV=local`, and tear it down with `npm run xmtp:local:down` once the suite completes. Ensure Docker Desktop (or another Docker daemon) is running so the node can boot successfully.
 
 `npm run deploy:cloudflare` (see `scripts/cloudflare.deploy.example.env`) builds the Vite frontend and deploys it to Cloudflare Pages. Backend deployment is handled separately (for example with the Fly workflow described in `docs/DEPLOYMENT_GUIDE.md`).
 

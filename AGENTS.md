@@ -28,15 +28,15 @@
 
 ## Testing & CI Discipline
 
-- Always run `npm run test:all` before handoff; it drives the full suite (contracts, lint, type checks, Playwright matrix) and cleans XMTP artifacts.
-- CI executes `npm run test:e2e:matrix`, which runs the local XMTP flow when Docker is available and always runs the production XMTP flow; plan your changes so both legs pass before opening a PR.
+- Always run `npm run test:all` ahead of handoff; it drives the full suite (contracts, lint, type checks, Playwright matrix) and cleans XMTP artifacts.
+- CI executes `npm run test:e2e:matrix`, which runs the local XMTP flow when Docker is available and always runs the production XMTP flow; plan your changes so both legs pass in advance of opening a PR.
 - When fixing a bug, first add a failing test that proves the issue, then ship the patch and validate the full suite.
 - Track coverage with `npm --prefix backend run coverage` and `npm --prefix frontend run coverage`; keep specs under each package `test/` directory.
 
 ## Documentation Expectations
 
 - Update docs alongside code so the repo remains the canonical protocol reference—write as though the current codebase is the only version that ever existed.
-- When writing docs, avoid historical framing or phrases such as “no longer”, “now”, or “before”; describe behavior as timeless facts of the current system.
+- When writing docs, avoid historical framing or temporal phrases such as “no longer”; describe behavior as timeless facts of the current system without referencing earlier versions.
 - Refresh `README.md`, `docs/*.md`, and in-app copy whenever behavior, configuration, or APIs shift; verify every example still runs.
 
 ## Commit & Pull Request Guidelines

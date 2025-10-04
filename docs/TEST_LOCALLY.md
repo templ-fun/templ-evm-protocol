@@ -46,7 +46,7 @@ Terminal B:
 npm --prefix backend start
 ```
 
-The server listens on `http://localhost:3001`, verifies signatures, persists templ metadata, orchestrates XMTP groups, and—if you supply `TELEGRAM_BOT_TOKEN`—forwards events to Telegram. SQLite is optional for local work; memory storage keeps things simple.
+The server listens on `http://localhost:3001`, verifies signatures, orchestrates XMTP groups, caches chat mappings, refreshes templ metadata from the contract, and—if you supply `TELEGRAM_BOT_TOKEN`—forwards events to Telegram. SQLite is optional for local work; memory storage keeps things simple.
 
 To mirror production XMTP behavior without hitting remote latency, initialise the bundled local node:
 
@@ -55,7 +55,7 @@ git submodule update --init xmtp-local-node
 npm run xmtp:local:up
 ```
 
-Set `XMTP_ENV=local` in your backend `.env` (and `VITE_XMTP_ENV=local` on the frontend) before running tests. When finished, tear the node down with `npm run xmtp:local:down`. Docker Desktop (or another daemon) must be running for these commands to succeed.
+Set `XMTP_ENV=local` in your backend `.env` (and `VITE_XMTP_ENV=local` on the frontend) and run tests as usual. Tear the node down with `npm run xmtp:local:down` once you are finished. Docker Desktop (or another daemon) must be running for these commands to succeed.
 
 ## 3) Start the frontend
 
