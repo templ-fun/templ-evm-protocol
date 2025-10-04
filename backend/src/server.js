@@ -1392,6 +1392,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const provider = new ethers.JsonRpcProvider(RPC_URL);
 
   const sqlitePath = process.env.SQLITE_DB_PATH?.trim() || new URL('../groups.db', import.meta.url).pathname;
+  if (!process.env.SQLITE_DB_PATH || !process.env.SQLITE_DB_PATH.trim()) {
+    process.env.SQLITE_DB_PATH = sqlitePath;
+  }
   if (sqlitePath && process.env.CLEAR_DB === '1') {
     try { fs.rmSync(sqlitePath, { force: true }); } catch (err) {
       logger.warn({ err: String(err?.message || err) }, 'Failed clearing SQLite path');

@@ -737,12 +737,12 @@ test('sqlite persistence survives restart and rehydrates XMTP group', async (t) 
   await appReload.locals.leadershipReady;
 
   const memberWallet = Wallet.createRandom();
-  const joinResponse = await joinTempl(appReload, contractAddress, memberWallet);
-  assert.equal(joinResponse.status, 200, 'join succeeds after restart');
-  assert.ok(hydrationAttempts >= 1, 'backend attempted to hydrate XMTP conversation');
-  assert.equal(memberAdditions.length, 1, 'persisted conversation receives new member');
-  assert.ok(memberInboxes.has('memberinbox'), 'member recorded in conversation state');
-});
+    const joinResponse = await joinTempl(appReload, contractAddress, memberWallet);
+    assert.equal(joinResponse.status, 200, 'join succeeds after restart');
+    assert.ok(hydrationAttempts >= 1, 'backend attempted to hydrate XMTP conversation');
+    assert.equal(memberAdditions.length, 1, 'persisted conversation receives new member');
+    assert.ok(memberInboxes.has('memberinbox'), 'member recorded in conversation state');
+  });
 
 test('auto registration creates XMTP group and persists templ without requiring signature', async (t) => {
   let newGroupCalls = 0;
