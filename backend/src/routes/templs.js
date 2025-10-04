@@ -11,6 +11,17 @@ import { extractTypedRequestParams } from './typed.js';
 export default function templsRouter({ templs, persist, provider, watchContract, signatureStore, findBinding, listBindings, xmtp, ensureGroup }) {
   const router = express.Router();
 
+  const registrationContext = {
+    provider,
+    logger,
+    templs,
+    persist,
+    watchContract,
+    findBinding,
+    xmtp,
+    ensureGroup
+  };
+
   router.get('/templs', async (req, res) => {
     try {
       let rows = [];
@@ -100,16 +111,7 @@ export default function templsRouter({ templs, persist, provider, watchContract,
     }),
     async (req, res) => {
       try {
-        const result = await registerTempl(req.body, {
-          provider,
-          logger,
-          templs,
-          persist,
-          watchContract,
-          findBinding,
-          xmtp,
-          ensureGroup
-        });
+        const result = await registerTempl(req.body, registrationContext);
         const { templ, bindingCode } = result;
         res.json({
           contract: templ.contract,
@@ -203,14 +205,7 @@ export default function templsRouter({ templs, persist, provider, watchContract,
             templHomeLink: homeLink,
             chainId
           },
-          {
-            provider,
-            logger,
-            templs,
-            persist,
-            watchContract,
-            findBinding
-          }
+          { ...registrationContext, skipFactoryValidation: true }
         );
 
         const { templ, bindingCode } = result;

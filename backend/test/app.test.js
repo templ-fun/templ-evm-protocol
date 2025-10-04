@@ -744,8 +744,45 @@ test('sqlite persistence survives restart and rehydrates XMTP group', async (t) 
   assert.ok(memberInboxes.has('memberinbox'), 'member recorded in conversation state');
 });
 
-test('auto registration persists templ without requiring signature', async (t) => {
-  const { app, persistence, contractState } = await makeApp();
+test('auto registration creates XMTP group and persists templ without requiring signature', async (t) => {
+  let newGroupCalls = 0;
+  const members = new Set();
+  const backendConversation = {
+    id: 'group-auto-registration',
+    async send() {},
+    async updateName() {},
+    async updateDescription() {},
+    async addMembersByInboxId(ids) {
+      for (const raw of ids || []) {
+        members.add(String(raw || '').toLowerCase());
+      }
+    },
+    members: {
+      async list() {
+        return Array.from(members).map((id) => ({ inboxId: id }));
+      }
+    }
+  };
+  const backendXmtp = {
+    inboxId: '0xserver-inbox',
+    conversations: {
+      async newGroup() {
+        newGroupCalls += 1;
+        return backendConversation;
+      },
+      async sync() {},
+      async syncAll() {},
+      async getConversationById() { return null; },
+      async list() { return []; },
+      async listGroups() { return []; }
+    },
+    preferences: {
+      async sync() {},
+      async inboxState() {}
+    }
+  };
+
+  const { app, persistence, contractState } = await makeApp({ xmtp: backendXmtp });
   t.after(async () => {
     await app.close?.();
   });
@@ -764,10 +801,17 @@ test('auto registration persists templ without requiring signature', async (t) =
   assert.equal(res.body.priest, contractKey);
   assert.equal(res.body.templHomeLink, 'https://auto.link');
 
+  assert.equal(newGroupCalls, 1, 'XMTP group should be created during auto registration');
+
   const bindings = await persistence.listBindings();
   const row = bindings.find((item) => item.contract === contractKey);
   assert.ok(row, 'templ persisted after auto registration');
   assert.equal(row.priest, contractKey);
+  assert.equal(row.xmtpGroupId, backendConversation.id, 'group id persisted to SQLite');
+
+  const cached = app.locals.templs.get(contractKey);
+  assert.ok(cached, 'templ cached after auto registration');
+  assert.equal(cached.xmtpGroupId, backendConversation.id, 'group id cached');
 });
 
 test('signature replay rejected after restart with shared store', async (t) => {
