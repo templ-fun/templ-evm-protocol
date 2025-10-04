@@ -35,10 +35,6 @@ export function shouldSkipNetworkResolution() {
   return process.env.DISABLE_XMTP_WAIT === '1' || process.env.NODE_ENV === 'test';
 }
 
-export function shouldUseEphemeralCreator() {
-  return process.env.EPHEMERAL_CREATOR !== '0';
-}
-
 export function shouldUpdateMetadata() {
   return process.env.XMTP_METADATA_UPDATES !== '0';
 }

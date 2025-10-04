@@ -1177,8 +1177,7 @@ export async function createApp(opts) {
             findBinding,
             skipFactoryValidation: true,
             xmtp,
-            ensureGroup,
-            createXmtpWithRotation
+            ensureGroup
           }
         );
       } catch (err) {
@@ -1346,8 +1345,7 @@ export async function createApp(opts) {
     findBinding,
     listBindings,
     ensureGroup,
-    xmtp,
-    createXmtpWithRotation
+    xmtp
   };
 
   app.use(waitForRestoration);

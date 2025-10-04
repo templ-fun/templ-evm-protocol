@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import { Wallet, Interface, ZeroAddress, getAddress } from 'ethers';
+import { Client as NodeXmtpClient } from '@xmtp/node-sdk';
 import { createApp } from '../src/server.js';
 import { buildCreateTypedData, buildJoinTypedData, buildRebindTypedData } from '../../shared/signing.js';
 import { createMemoryPersistence } from '../src/persistence/index.js';
@@ -185,14 +186,22 @@ function createTestProvider(contractState) {
 }
 
 
-async function makeApp({ hasJoined = async () => true, persistence = createMemoryPersistence() } = {}) {
+async function makeApp({ hasJoined = async () => true, persistence = createMemoryPersistence(), xmtp = undefined, enableBackgroundTasks = false } = {}) {
   const notifications = [];
   const handlerRegistry = new Map();
   const contractState = new Map();
   const notifier = createTestNotifier(notifications);
   const connectContract = createTestConnectContract(handlerRegistry, contractState);
   const provider = createTestProvider(contractState);
-  const app = await createApp({ hasJoined, persistence, connectContract, provider, telegram: { notifier } });
+  const app = await createApp({
+    hasJoined,
+    persistence,
+    connectContract,
+    provider,
+    telegram: { notifier },
+    enableBackgroundTasks,
+    xmtp
+  });
   return { app, persistence, notifications, handlerRegistry, contractState, connectContract, provider };
 }
 
@@ -464,6 +473,118 @@ test('register templ without chat id issues binding code', async (t) => {
   assert.equal(mappingRow.xmtpGroupId, null);
   assert.equal(mappingRow.priest, wallet.address.toLowerCase());
   assert.equal(mappingRow.bindingCode, response.bindingCode);
+});
+
+test('register templ hydrates XMTP group with backend client before joining', async (t) => {
+  const originalInboxState = NodeXmtpClient.inboxStateFromInboxIds;
+  const previousNodeEnv = process.env.NODE_ENV;
+  const previousDisableWait = process.env.DISABLE_XMTP_WAIT;
+  const previousXmtpEnv = process.env.XMTP_ENV;
+  NodeXmtpClient.inboxStateFromInboxIds = async () => [{ installations: [{ id: '0xabcdef' }] }];
+  try {
+    let hydrationAttempts = 0;
+    let newGroupCalls = 0;
+    const memberInboxes = new Set();
+    const addedMembers = [];
+    const backendConversation = {
+      id: 'group-ephemeral-hydration',
+      send: async () => {},
+      addMembersByInboxId: async (ids) => {
+        for (const raw of ids || []) {
+          const normalized = String(raw || '').toLowerCase();
+          addedMembers.push(normalized);
+          memberInboxes.add(normalized.replace(/^0x/, ''));
+        }
+      },
+      addMembersByIdentifiers: async (entries) => {
+        for (const entry of entries || []) {
+          const candidate = entry?.inboxId ?? entry?.identifier;
+          if (!candidate) continue;
+          const normalized = String(candidate).toLowerCase();
+          addedMembers.push(normalized);
+          memberInboxes.add(normalized.replace(/^0x/, ''));
+        }
+      },
+      members: {
+        list: async () => Array.from(memberInboxes).map((hex) => ({ inboxId: `0x${hex}` }))
+      }
+    };
+
+    const backendXmtp = {
+      inboxId: '0xabcdefabcdefabcdefabcdefabcdefabcdef',
+      conversations: {
+        async newGroup() {
+          newGroupCalls += 1;
+          return backendConversation;
+        },
+        async sync() {},
+        async syncAll() {},
+        async getConversationById(id) {
+          hydrationAttempts += 1;
+          if (hydrationAttempts >= 2 && id === backendConversation.id) {
+            return backendConversation;
+          }
+          return null;
+        },
+        async list() {
+          return hydrationAttempts >= 2 ? [backendConversation] : [];
+        },
+        async listGroups() {
+          return hydrationAttempts >= 2 ? [backendConversation] : [];
+        }
+      },
+      preferences: {
+        async sync() {},
+        async inboxState() {}
+      },
+      findInboxIdByIdentifier: async () => null,
+      getKeyPackageStatusesForInstallationIds: async () => ({
+        '0xabcdef': {
+          lifetime: {
+            notAfter: BigInt(Math.floor(Date.now() / 1000) + 600),
+            notBefore: BigInt(Math.floor(Date.now() / 1000) - 10)
+          }
+        }
+      })
+    };
+
+    process.env.DISABLE_XMTP_WAIT = '1';
+    process.env.NODE_ENV = 'development';
+    process.env.XMTP_ENV = 'local';
+    const { app } = await makeApp({ xmtp: backendXmtp });
+
+    t.after(async () => {
+      await app.close?.();
+    });
+
+    const priestWallet = Wallet.createRandom();
+    const { contractAddress } = await registerTempl(app, priestWallet);
+
+    assert.equal(newGroupCalls, 1, 'backend XMTP client should create the group once');
+    assert.ok(hydrationAttempts >= 2, 'backend client should attempt to hydrate the new group');
+
+    const record = app.locals.templs.get(contractAddress);
+    assert.ok(record, 'templ record should exist after registration');
+    assert.strictEqual(record.group, backendConversation, 'stored conversation should belong to the long-lived XMTP client');
+
+    const memberWallet = Wallet.createRandom();
+    const joinResponse = await joinTempl(app, contractAddress, memberWallet);
+    assert.equal(joinResponse.status, 200, 'join should succeed when hydrated conversation is used');
+    assert.equal(addedMembers.length, 1, 'backend conversation should receive member addition');
+  } finally {
+    NodeXmtpClient.inboxStateFromInboxIds = originalInboxState;
+    if (typeof previousDisableWait === 'string') {
+      process.env.DISABLE_XMTP_WAIT = previousDisableWait;
+    } else {
+      delete process.env.DISABLE_XMTP_WAIT;
+    }
+    process.env.NODE_ENV = previousNodeEnv;
+    if (typeof previousXmtpEnv === 'string') {
+      process.env.XMTP_ENV = previousXmtpEnv;
+    } else {
+      delete process.env.XMTP_ENV;
+    }
+  }
 });
 
 test('auto registration persists templ without requiring signature', async (t) => {

@@ -5,9 +5,10 @@ import { buildCreateTypedData, buildRebindTypedData } from '../../../shared/sign
 import { logger } from '../logger.js';
 import { registerTempl } from '../services/registerTempl.js';
 import { requestTemplRebind } from '../services/requestTemplRebind.js';
+import { fetchTemplMetadata } from '../services/templMetadata.js';
 import { extractTypedRequestParams } from './typed.js';
 
-export default function templsRouter({ templs, persist, provider, watchContract, signatureStore, findBinding, listBindings, xmtp, ensureGroup, createXmtpWithRotation }) {
+export default function templsRouter({ templs, persist, provider, watchContract, signatureStore, findBinding, listBindings, xmtp, ensureGroup }) {
   const router = express.Router();
 
   router.get('/templs', async (req, res) => {
@@ -51,6 +52,22 @@ export default function templsRouter({ templs, persist, provider, watchContract,
           }
         }
       } catch {/* ignore runtime merge errors */}
+
+      if (provider) {
+        await Promise.all(rows.map(async (row) => {
+          try {
+            const metadata = await fetchTemplMetadata({ provider, contractAddress: row.contract, logger });
+            if (metadata.priest) {
+              row.priest = metadata.priest;
+            }
+            if (metadata.templHomeLink !== null && metadata.templHomeLink !== undefined) {
+              row.templHomeLink = metadata.templHomeLink;
+            }
+          } catch (err) {
+            logger?.warn?.({ err: String(err?.message || err), contract: row.contract }, 'templ metadata fetch failed during listing');
+          }
+        }));
+      }
       const includeRaw = String(req.query.include || '').toLowerCase();
       const includeChat = includeRaw === 'chatid' || includeRaw === 'groupid';
       if (includeChat) {
@@ -91,8 +108,7 @@ export default function templsRouter({ templs, persist, provider, watchContract,
           watchContract,
           findBinding,
           xmtp,
-          ensureGroup,
-          createXmtpWithRotation
+          ensureGroup
         });
         const { templ, bindingCode } = result;
         res.json({

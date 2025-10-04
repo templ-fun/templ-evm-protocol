@@ -9,6 +9,7 @@ import {
   shouldVerifyContracts
 } from '../xmtp/options.js';
 import { ensureContractDeployed } from './contractValidation.js';
+import { fetchTemplMetadata } from './templMetadata.js';
 
 function templError(message, statusCode) {
   return Object.assign(new Error(message), { statusCode });
@@ -285,16 +286,32 @@ export async function joinTempl(body, context) {
     await ensureContractDeployed({ provider, contractAddress: contract, chainId: Number(body?.chainId) });
   }
 
+  if (provider) {
+    try {
+      const metadata = await fetchTemplMetadata({ provider, contractAddress: contract, logger });
+      if (metadata.priest) {
+        record.priest = metadata.priest;
+      }
+      if (metadata.templHomeLink !== null && metadata.templHomeLink !== undefined) {
+        record.templHomeLink = metadata.templHomeLink;
+      }
+    } catch (err) {
+      logger?.warn?.({ err: String(err?.message || err), contract }, 'templ metadata fetch failed during join');
+    }
+  }
+
+  const buildTemplPayload = () => ({
+    contract,
+    telegramChatId: record.telegramChatId ?? null,
+    priest: record.priest ?? null,
+    templHomeLink: record.templHomeLink ?? ''
+  });
+
   if (!xmtp) {
     return {
       groupId: null,
       member: { address: member, isMember: true },
-      templ: {
-        contract,
-        telegramChatId: record.telegramChatId ?? null,
-        priest: record.priest ?? null,
-        templHomeLink: record.templHomeLink ?? ''
-      },
+      templ: buildTemplPayload(),
       links: buildLinks(contract)
     };
   }
@@ -347,12 +364,7 @@ export async function joinTempl(body, context) {
       address: member,
       isMember: true
     },
-    templ: {
-      contract,
-      telegramChatId: record.telegramChatId ?? null,
-      priest: record.priest ?? null,
-      templHomeLink: record.templHomeLink ?? ''
-    },
+    templ: buildTemplPayload(),
     links: buildLinks(contract)
   };
 }

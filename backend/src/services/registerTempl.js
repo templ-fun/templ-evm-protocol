@@ -1,12 +1,11 @@
 import { randomBytes } from 'crypto';
-import { ethers, getAddress } from 'ethers';
+import { getAddress } from 'ethers';
 import { generateInboxId, getInboxIdForIdentifier } from '@xmtp/node-sdk';
 import { IdentifierKind } from '@xmtp/node-bindings';
 import { syncXMTP } from '../../../shared/xmtp.js';
 import {
   resolveXmtpEnv,
   shouldSkipNetworkResolution,
-  shouldUseEphemeralCreator,
   shouldUpdateMetadata,
   shouldVerifyContracts,
   allowDeterministicInbox
@@ -16,6 +15,7 @@ import {
   ensurePriestMatchesOnChain,
   ensureTemplFromFactory
 } from './contractValidation.js';
+import { fetchTemplMetadata } from './templMetadata.js';
 
 function templError(message, statusCode) {
   return Object.assign(new Error(message), { statusCode });
@@ -85,58 +85,69 @@ async function resolvePriestInboxIds({ priestAddress, xmtp, logger }) {
   return identifiers;
 }
 
+async function hydrateWithBackendClient({ xmtp, groupId, disableWait, logger }) {
+  const hydrateAttempts = disableWait ? 3 : 12;
+  const hydrateDelay = disableWait ? 100 : 300;
+  for (let i = 0; i < hydrateAttempts; i += 1) {
+    try {
+      await syncXMTP(xmtp, 2, 200);
+      const hydrated = await xmtp.conversations?.getConversationById?.(groupId);
+      if (hydrated) {
+        return hydrated;
+      }
+      if (typeof xmtp.conversations?.list === 'function') {
+        const listed = await xmtp.conversations.list({ consentStates: ['allowed','unknown','denied'], conversationType: 1 });
+        const match = Array.isArray(listed) ? listed.find((c) => c?.id === groupId) : null;
+        if (match) {
+          return match;
+        }
+      }
+      if (typeof xmtp.conversations?.listGroups === 'function') {
+        const groups = await xmtp.conversations.listGroups({ consentStates: ['allowed','unknown','denied'] });
+        const match = Array.isArray(groups) ? groups.find((c) => c?.id === groupId) : null;
+        if (match) {
+          return match;
+        }
+      }
+    } catch (err) {
+      logger?.debug?.({ err: String(err?.message || err), groupId }, 'Attempt to hydrate XMTP group via backend client failed');
+    }
+    if (i < hydrateAttempts - 1) {
+      await new Promise((resolve) => setTimeout(resolve, hydrateDelay));
+    }
+  }
+  return null;
+}
+
 async function createGroup({
   contractAddress,
   inboxIds,
   xmtp,
   logger,
-  disableWait,
-  useEphemeral,
-  createXmtpWithRotation
+  disableWait
 }) {
   if (!Array.isArray(inboxIds) || inboxIds.length === 0) {
     throw new Error('No inbox ids resolved for templ priest');
   }
-  if (!useEphemeral) {
-    if (typeof xmtp?.conversations?.newGroup !== 'function') {
-      throw new Error('XMTP client missing newGroup capability');
-    }
-    if (disableWait) {
-      const timeoutMs = 3000;
-      const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('newGroup timed out')), timeoutMs));
-      return Promise.race([xmtp.conversations.newGroup(inboxIds), timeout]);
-    }
-    return xmtp.conversations.newGroup(inboxIds);
+  if (typeof xmtp?.conversations?.newGroup !== 'function') {
+    throw new Error('XMTP client missing newGroup capability');
   }
-  const wallet = ethers.Wallet.createRandom();
-  const ephemeralClient = await createXmtpWithRotation(wallet);
-  try {
-    if (typeof ephemeralClient?.conversations?.newGroup !== 'function') {
-      throw new Error('Ephemeral XMTP client missing newGroup capability');
-    }
-    const group = await ephemeralClient.conversations.newGroup(inboxIds);
-    if (shouldUpdateMetadata()) {
-      try { await group.updateName?.(`Templ ${contractAddress}`); } catch {/* ignore */}
-      try { await group.updateDescription?.('Private templ governance chat'); } catch {/* ignore */}
-    }
-    try {
-      await syncXMTP(xmtp);
-      const hydrated = await xmtp.conversations?.getConversationById?.(group.id);
-      if (hydrated) {
-        return hydrated;
-      }
-    } catch {/* ignore */}
-    return group;
-  } finally {
-    try {
-      const maybeClose = /** @type {any} */ (ephemeralClient)?.close;
-      if (typeof maybeClose === 'function') {
-        await maybeClose.call(ephemeralClient);
-      }
-    } catch (err) {
-      logger?.warn?.({ err: String(err?.message || err) }, 'Failed closing ephemeral XMTP client');
-    }
+  const createPromise = xmtp.conversations.newGroup(inboxIds);
+  const group = disableWait
+    ? await Promise.race([
+        createPromise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('newGroup timed out')), 3000))
+      ])
+    : await createPromise;
+  if (!group || !group.id) {
+    throw new Error('XMTP group creation returned no conversation');
   }
+  if (shouldUpdateMetadata()) {
+    try { await group.updateName?.(`Templ ${contractAddress}`); } catch {/* ignore */}
+    try { await group.updateDescription?.('Private templ governance chat'); } catch {/* ignore */}
+  }
+  const hydrated = await hydrateWithBackendClient({ xmtp, groupId: group.id, disableWait, logger });
+  return hydrated ?? group;
 }
 
 async function findGroupByDiff({ xmtp, beforeIds, contractAddress, logger }) {
@@ -172,8 +183,7 @@ export async function registerTempl(body, context) {
     watchContract,
     findBinding,
     skipFactoryValidation,
-    xmtp,
-    createXmtpWithRotation: rotateXmtp
+    xmtp
   } = context;
 
   const contract = normaliseAddress(contractAddress, 'contractAddress');
@@ -197,7 +207,7 @@ export async function registerTempl(body, context) {
     existing = {
       telegramChatId: persisted?.telegramChatId ?? null,
       xmtpGroupId: persisted?.xmtpGroupId ?? null,
-      priest: priest,
+      priest: persisted?.priest ? String(persisted.priest).toLowerCase() : null,
       proposalsMeta: new Map(),
       lastDigestAt: 0,
       templHomeLink: '',
@@ -205,9 +215,6 @@ export async function registerTempl(body, context) {
       contractAddress: contract,
       memberSet: new Set()
     };
-    if (persisted?.priest) {
-      existing.priest = String(persisted.priest).toLowerCase();
-    }
   }
   if (!(existing.proposalsMeta instanceof Map)) {
     existing.proposalsMeta = new Map();
@@ -220,22 +227,28 @@ export async function registerTempl(body, context) {
       existing.memberSet = new Set();
     }
   }
-  existing.priest = priest;
   existing.contractAddress = contract;
   existing.telegramChatId = telegramChatId ?? existing.telegramChatId ?? null;
 
   let resolvedHomeLink = existing.templHomeLink || '';
+  let resolvedPriest = existing.priest || null;
   if (provider) {
     try {
-      const reader = new ethers.Contract(contract, ['function templHomeLink() view returns (string)'], provider);
-      const onchainLink = await reader.templHomeLink();
-      if (typeof onchainLink === 'string') {
-        resolvedHomeLink = onchainLink;
+      const metadata = await fetchTemplMetadata({ provider, contractAddress: contract, logger });
+      if (metadata.priest) {
+        resolvedPriest = metadata.priest;
+      }
+      if (metadata.templHomeLink !== null && metadata.templHomeLink !== undefined) {
+        resolvedHomeLink = metadata.templHomeLink;
       }
     } catch (err) {
-      logger?.warn?.({ err, contract }, 'templHomeLink() unavailable during registration');
+      logger?.warn?.({ err: String(err?.message || err), contract }, 'templ metadata fetch failed during registration');
     }
   }
+  if (!resolvedPriest) {
+    resolvedPriest = priest;
+  }
+  existing.priest = resolvedPriest;
   existing.templHomeLink = resolvedHomeLink;
 
   let bindingCode = existing.bindingCode || null;
@@ -271,8 +284,6 @@ export async function registerTempl(body, context) {
 
       const inboxIds = await resolvePriestInboxIds({ priestAddress: priest, xmtp, logger });
       const disableWait = shouldSkipNetworkResolution();
-      const useEphemeral = !disableWait && shouldUseEphemeralCreator();
-      const createXmtp = rotateXmtp ?? context.createXmtpWithRotation;
 
       try {
         group = await createGroup({
@@ -280,9 +291,7 @@ export async function registerTempl(body, context) {
           inboxIds,
           xmtp,
           logger,
-          disableWait,
-          useEphemeral,
-          createXmtpWithRotation: createXmtp
+          disableWait
         });
       } catch (err) {
         logger?.warn?.({ err: String(err?.message || err), contract }, 'XMTP newGroup failed; attempting diff recovery');
