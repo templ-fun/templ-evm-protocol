@@ -154,36 +154,47 @@ export function ChatPage({
       if (messageIdsRef.current.has(entry.id)) return prev;
       messageIdsRef.current.add(entry.id);
 
-      if (entry.kind === 'proposal' || entry.kind === 'proposal-meta') {
+      if (entry.kind === 'proposal-meta') {
+        const proposalIdRaw = entry.payload?.id ?? entry.payload?.proposalId ?? entry.proposalId;
+        const proposalId = Number(proposalIdRaw ?? 0);
+        if (Number.isFinite(proposalId) && proposalId >= 0) {
+          const existing = proposalMessageRef.current.get(proposalId) || {};
+          proposalMessageRef.current.set(proposalId, {
+            id: existing.id || '',
+            synthetic: Boolean(existing.synthetic),
+            meta: true
+          });
+        }
+        return prev;
+      }
+
+      if (entry.kind === 'proposal') {
         const proposalIdRaw = entry.payload?.id ?? entry.payload?.proposalId ?? entry.proposalId;
         const proposalId = Number(proposalIdRaw ?? 0);
         if (Number.isFinite(proposalId) && proposalId >= 0) {
           const normalizedEntry = {
             ...entry,
-            kind: 'proposal',
             proposalId,
-            meta: entry.kind === 'proposal-meta'
+            meta: false,
+            synthetic: Boolean(entry.synthetic)
           };
           const existing = proposalMessageRef.current.get(proposalId);
-          if (existing) {
+          if (existing && existing.id) {
             if (existing.synthetic || existing.meta) {
               const next = prev.map((message) => (message.id === existing.id ? normalizedEntry : message));
               proposalMessageRef.current.set(proposalId, {
                 id: normalizedEntry.id,
-                synthetic: Boolean(normalizedEntry.synthetic),
-                meta: normalizedEntry.meta
+                synthetic: false,
+                meta: false
               });
               return next.sort(sortBySentAt);
-            }
-            if (normalizedEntry.synthetic) {
-              return prev;
             }
             return prev;
           }
           proposalMessageRef.current.set(proposalId, {
             id: normalizedEntry.id,
             synthetic: Boolean(normalizedEntry.synthetic),
-            meta: normalizedEntry.meta
+            meta: false
           });
           return [...prev, normalizedEntry].sort(sortBySentAt);
         }
