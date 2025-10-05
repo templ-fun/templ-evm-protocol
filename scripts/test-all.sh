@@ -73,7 +73,13 @@ if [ "${PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD:-}" != "1" ]; then
   echo "[test:all] ensuring Playwright system dependencies are present"
   npm --prefix frontend exec -- playwright install-deps chromium
 fi
-E2E_XMTP_LOCAL="${E2E_XMTP_LOCAL}" npm run test:e2e:matrix
+if [ "${CI:-0}" = "1" ]; then
+  echo "[test:all] CI detected; running full matrix"
+  E2E_XMTP_LOCAL="${E2E_XMTP_LOCAL}" npm run test:e2e:matrix
+else
+  echo "[test:all] Running local XMTP e2e only"
+  npm run test:e2e:local
+fi
 
 phase "Cleanup XMTP caches"
 rm -f frontend/pw-xmtp.db frontend/pw-xmtp.db-shm frontend/pw-xmtp.db-wal

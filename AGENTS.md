@@ -18,7 +18,7 @@
 - Compile contracts with `npm run compile`; start Hardhat with `npx hardhat node`.
 - Set `SQLITE_DB_PATH` to a writable file (for example `./templ.local.db`) before launching the backend with `npm --prefix backend start`; run the frontend via `npm --prefix frontend run dev` (make sure `.env` files align with `docs/TEST_LOCALLY.md`).
 - To exercise XMTP locally, initialize the submodule and bring the node up: `git submodule update --init xmtp-local-node` then `npm run xmtp:local:up`. Tear it down with `npm run xmtp:local:down` when finished. Docker Desktop (or another daemon) must be running.
-- Run targeted checks using `npm test`, `npm --prefix backend test`, `npm --prefix frontend run test`, and Playwright via `npm run test:e2e:local` (fast path) or `npm run test:e2e:prod` (hosted XMTP). `npm run test:e2e:matrix` runs both and skips the local leg automatically when Docker is unavailable.
+- Run targeted checks using `npm test`, `npm --prefix backend test`, `npm --prefix frontend run test`, and Playwright via `npm run test:e2e:local` (fast path) or `npm run test:e2e:prod` (hosted XMTP). Reserve `npm run test:e2e:matrix` for CI or pre-release validation when you explicitly want both legs.
 
 ## Coding Style & Naming Conventions
 
@@ -28,8 +28,8 @@
 
 ## Testing & CI Discipline
 
-- Always run `npm run test:all` ahead of handoff; it drives the full suite (contracts, lint, type checks, Playwright matrix) and cleans XMTP artifacts.
-- CI executes `npm run test:e2e:matrix`, which runs the local XMTP flow when Docker is available and always runs the production XMTP flow; plan your changes so both legs pass in advance of opening a PR.
+- Always run `npm run test:all` ahead of handoff; it drives the full suite (contracts, lint, type checks) and runs the local XMTP Playwright flow before cleaning XMTP artifacts.
+- CI executes `npm run test:e2e:matrix`, which runs the local XMTP leg when Docker is available and always runs the production XMTP leg; plan your changes so both legs pass before opening a PR.
 - When fixing a bug, first add a failing test that proves the issue, then ship the patch and validate the full suite.
 - Track coverage with `npm --prefix backend run coverage` and `npm --prefix frontend run coverage`; keep specs under each package `test/` directory.
 

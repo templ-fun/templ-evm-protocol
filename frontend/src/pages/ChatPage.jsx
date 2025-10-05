@@ -247,6 +247,11 @@ export function ChatPage({
 
       // Ensure proposal appears in the conversation even before XMTP sync finishes.
       const syntheticId = `proposal-${proposalId}`;
+      const existingStatus = proposalMessageRef.current.get(proposalId);
+      if (existingStatus && existingStatus.id && existingStatus.synthetic === false) {
+        // A real XMTP message already exists; skip synthetic placeholder refresh.
+        return;
+      }
       setMessages((prev) => {
         if (messageIdsRef.current.has(syntheticId)) return prev;
         const syntheticEntry = {
