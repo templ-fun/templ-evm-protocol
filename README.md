@@ -1,6 +1,6 @@
 # templ.fun
 
-Templ lets any ERC-20 community spin up a gated club with transparent economics, one-member/one-vote governance, and an XMTP-powered private chat. A single factory mints templs, each templ tracks its own members and fee splits, and the surrounding tooling keeps every surface in sync—with Telegram notifications remaining available as an optional add-on.
+Templ lets any ERC-20 community spin up a gated club with transparent economics, one-member/one-vote governance, and an XMTP-powered private chat. A single factory mints templs, each templ tracks its own members and fee splits, and the surrounding tooling keeps every surface in sync—with optional Telegram notifications as an add-on.
 
 ---
 
@@ -8,8 +8,8 @@ Templ lets any ERC-20 community spin up a gated club with transparent economics,
 
 | Area | What ships |
 | --- | --- |
-| On-chain | `TemplFactory` deployments with configurable priest, entry fee, burn/treasury/member splits, quorum, execution delay, optional caps, and home links. Each templ wires membership, treasury, and typed-governance modules together so communities can join, vote, withdraw, or disband without bespoke code. |
-| Frontend | Static Vite + React SPA centred on XMTP chat. Members land in the conversation immediately after joining, compose proposals, vote on poll cards, execute actions, and claim rewards without navigating away. Telegram rebinding controls remain available for communities opting into alerts. |
+| On-chain | `TemplFactory` deployments with configurable priest, entry fee, burn/treasury/member splits, quorum, execution delay, optional caps, home links, and pricing curves. Each templ wires membership, treasury, and typed-governance modules together so communities can join, vote, withdraw, or disband without bespoke code while the pricing curve keeps entry fees in sync with membership growth. |
+| Frontend | Static Vite + React SPA centred on XMTP chat. Members land in the conversation immediately after joining, compose proposals, vote on poll cards, execute actions, and claim rewards without navigating away. Telegram rebinding controls support communities that opt into alerts. |
 | Backend | Node 22 Express service that verifies typed signatures, orchestrates XMTP group creation and membership, caches templ ↔ XMTP group mappings in SQLite, refreshes priest/home-link metadata from the chain, streams contract events, and (optionally) emits MarkdownV2 Telegram notifications. Designed to run as a long-lived process (Fly, Render, Railway, bare metal) with optional Redis-backed rate limiting. |
 | Shared utilities | Signing helpers, factories for typed data, and Hardhat/Vitest/Playwright harnesses that keep the stack coherent. |
 
@@ -35,7 +35,7 @@ The `/templs/:address/chat` route is the heart of the application:
 - Successful joins redirect straight into chat with history already synced.
 - The composer raises governance actions and publishes poll-style proposal cards inline.
 - Vote, execute, and reward actions all happen inside the timeline, keeping members context-switched on XMTP.
-- Telegram remains optional—the chat UI serves as the canonical control centre.
+- Telegram is optional—the chat UI serves as the canonical control centre.
 
 Every supporting document in `docs/` has been refreshed to reflect the chat-first flow (see [`docs/FRONTEND.md`](docs/FRONTEND.md) and [`docs/BACKEND.md`](docs/BACKEND.md) for deeper details).
 
@@ -61,7 +61,7 @@ npm run test:all
 
 The Playwright harness (`frontend/e2e/basic-flows.pw.spec.js`) deploys a templ, registers it with the backend, joins from the chat UI, proposes, votes, executes, and asserts the on-chain side effects—all inside the conversation. Use `npm run test:e2e:local` to exercise the flow against the bundled XMTP local node (ensure `git submodule update --init xmtp-local-node && npm run xmtp:local:up` beforehand) and `npm run test:e2e:prod` to exercise the same steps against the hosted XMTP network. `npm run test:e2e:matrix` runs both sequentially, automatically skipping the local leg whenever Docker is unavailable. Tear the local node down with `npm run xmtp:local:down` when you are done.
 
-Run that command ahead of handing off a change. Package-specific coverage targets remain available via `npm --prefix backend run coverage` and `npm --prefix frontend run coverage`.
+Run that command ahead of handing off a change. Package-specific coverage targets are available via `npm --prefix backend run coverage` and `npm --prefix frontend run coverage`.
 
 ## Documentation map
 

@@ -136,7 +136,7 @@ This guide promotes templ to production with a Fly-hosted backend and a Cloudfla
   # -> {"templs": []}
   ```
 
-2. Deploy templs through the factory (on-chain) and let the backend indexer register them automatically. With `TRUSTED_FACTORY_ADDRESS`/`TRUSTED_FACTORY_DEPLOYMENT_BLOCK` configured, newly emitted `TemplCreated` events are ingested within a few seconds of confirmation. Communities that prefer manual control—or need to import a templ while the indexer is still being configured—can call the registration script themselves:
+2. Deploy templs through the factory (on-chain) and let the backend indexer register them automatically. With `TRUSTED_FACTORY_ADDRESS`/`TRUSTED_FACTORY_DEPLOYMENT_BLOCK` configured, newly emitted `TemplCreated` events are ingested within a few seconds of confirmation. Communities that prefer manual control—or need to import a templ before the indexer is configured—can call the registration script themselves:
 
   ```bash
   export BACKEND_URL=https://api.templ.example

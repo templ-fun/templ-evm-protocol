@@ -12,7 +12,7 @@ Templ combines on-chain membership contracts, typed governance, and an off-chain
 - **Deployment helpers** – `createTemplFor(priest, token, entryFee)` uses defaults (with `createTempl(token, entryFee)` acting as a convenience wrapper that forwards the caller as priest); `createTemplWithConfig(CreateConfig)` allows custom percentages, quorum, execution delay, burn address, max members, dictatorship flag, and home link.
 - **Defaults** – Burn/treasury/member splits each default to 3_000 BPS (30%), quorum to 3_300 BPS (33%), execution delay to 7 days, the burn address to `0x0000…dEaD`, a soft cap of 249 members, and an exponential pricing curve that increases the entry fee by 10% on every paid join. Callers can request percentage defaults explicitly by passing `-1` for percentage fields.
 - **Validation** – Entry fees must be ≥10 units of the access token and divisible by 10. Percentages must sum to 10_000 BPS after factoring in the factory’s `protocolPercent`.
-- **Access control** – The deploying wallet is recorded as `factoryDeployer`. Until that address calls `setPermissionless(true)`, only it can mint templs; when permissionless mode is enabled any wallet may deploy templs, but each templ still inherits the factory’s immutable protocol recipient and percent.
+- **Access control** – The deploying wallet is recorded as `factoryDeployer`. Until that address calls `setPermissionless(true)`, only it can mint templs; when permissionless mode is enabled any wallet may deploy templs, and each templ inherits the factory’s immutable protocol recipient and percent.
 - **Implementation detail** – The factory stores the `TEMPL` creation bytecode in SSTORE2 and concatenates constructor arguments during deployment to minimise gas.
 
 ### 1.2 Templ composition
@@ -87,7 +87,7 @@ The backend (`backend/src`) is a Node 22 Express app packaged in `backend/Docker
   - `/templs/join` – Join or gift membership; handles allowance, `join` transactions, and redirects to chat after the backend verifies membership.
   - `/templs/:address/chat` – Wallet-authenticated XMTP chat that streams history, renders proposals as poll cards with inline voting/execution, and surfaces the reward-claim modal.
 - **Configuration** – Environment variables prefixed with `VITE_` control the backend URL, trusted factory metadata, protocol fee hints, and RPC providers. `VITE_BACKEND_SERVER_ID` must match the backend’s `BACKEND_SERVER_ID` so signatures verify.
-- **Chat UX** – Membership verification automatically lands members in XMTP chat; the UI streams history, shows proposal status, and embeds the governance forms. Priests can still request new Telegram binding codes from the overview page when alerts are enabled.
+- **Chat UX** – Membership verification automatically lands members in XMTP chat; the UI streams history, shows proposal status, and embeds the governance forms. Priests can request new Telegram binding codes from the overview page when alerts are enabled.
 - **Testing** – Vitest covers components and services; Playwright E2E scripts exercise deploy/join/governance flows.
 
 ---

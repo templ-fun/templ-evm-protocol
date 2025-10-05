@@ -46,7 +46,7 @@ Terminal B:
 npm --prefix backend start
 ```
 
-The server listens on `http://localhost:3001`, verifies signatures, orchestrates XMTP groups, caches chat mappings, refreshes templ metadata from the contract, and—if you supply `TELEGRAM_BOT_TOKEN`—forwards events to Telegram. SQLite backs the templ ↔ XMTP bindings so restarts continue to deliver invites.
+The server listens on `http://localhost:3001`, verifies signatures, orchestrates XMTP groups, caches chat mappings, refreshes templ metadata from the contract, and—if you supply `TELEGRAM_BOT_TOKEN`—forwards events to Telegram. SQLite backs the templ ↔ XMTP bindings so restarts deliver invites.
 
 To mirror production XMTP behavior without hitting remote latency, initialise the bundled local node:
 
@@ -136,7 +136,7 @@ Invite a second wallet (Hardhat account #5) and repeat the join flow if you want
 - Use **New proposal** to raise actions (pause joins, change priest, tweak fee splits, update the home link, etc.).
 - Poll cards appear in the timeline with YES/NO tallies. Vote buttons send `vote(proposalId, support)` transactions via the injected wallet.
 - Once the voting window closes (fast-forward with `npx hardhat console` using `evm_increaseTime` for local tests), click **Execute** on the poll card to run the action on-chain.
-- XMTP payloads mirror these actions, so every proposal, vote, execution, and reward claim stays visible to the group. Telegram notifications still work if you bind a chat, but they’re optional.
+- XMTP payloads mirror these actions, so every proposal, vote, execution, and reward claim stays visible to the group. Telegram notifications trigger when you bind a chat, but they’re optional.
 
 ## 7) Automated checks
 
@@ -160,6 +160,6 @@ Testing against a live factory is straightforward:
 
 1. Update `backend/.env` with `RPC_URL`, `TRUSTED_FACTORY_ADDRESS`, and `TRUSTED_FACTORY_DEPLOYMENT_BLOCK`, then restart the server.
 2. Override the frontend (`frontend/.env.local` or shell env) with the same factory address so the home page lists production templs.
-3. Reinstate your usual `TRUSTED_FACTORY_ADDRESS` after the templ shows up in `/templs` responses so future registrations continue to be validated automatically.
+3. Reinstate your usual `TRUSTED_FACTORY_ADDRESS` after the templ shows up in `/templs` responses so future registrations are validated automatically.
 
-With that in place you can join live templs from the chat UI while still iterating locally.
+With that in place you can join live templs from the chat UI while iterating locally.

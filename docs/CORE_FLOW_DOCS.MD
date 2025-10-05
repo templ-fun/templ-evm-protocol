@@ -73,7 +73,7 @@ sequenceDiagram
     B-->>F: { member:{isMember:true}, templ:{...}, links:{...} }
 ```
 
-`join` executes whenever the templ is unpaused and under the member cap. Disband proposals never gate the join flow; governance keeps the community open unless it explicitly pauses the contract or enforces a hard cap. Frontend helpers still surface `MemberLimitReached` so members know when governance must expand the cohort.
+`join` executes whenever the templ is unpaused and under the member cap. Disband proposals never gate the join flow; governance keeps the community open unless it explicitly pauses the contract or enforces a hard cap. Frontend helpers surface `MemberLimitReached` so members know when governance must expand the cohort.
 
 ## 3. Telegram notifications
 

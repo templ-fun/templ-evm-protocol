@@ -4,13 +4,13 @@ The Vite + React app in `frontend/` revolves around a single chat-centric experi
 
 | Route | Purpose |
 | --- | --- |
-| `/` | Lists discovered templs (factory scan + backend registry) with their token symbol, entry fee, and a Join button. |
+| `/` | Lists discovered templs (factory scan + backend registry) with their token symbol, entry fee, and both **Open chat** and **Join** actions. |
 | `/templs/join` | Handles allowance + membership flows. Accepts an `address` query param to prefill the target templ, and automatically redirects to chat after a successful join. |
 | `/templs/:address/chat` | Wallet-authenticated XMTP chat where members send messages, compose proposals, vote via poll cards, execute decisions, and claim rewards without leaving the conversation. |
 
-Telegram notifications remain optional; inviting `@templfunbot` with the binding code returned by the backend continues to work, but day-to-day governance happens inside the chat.
+Telegram notifications are optional; invite `@templfunbot` with the binding code returned by the backend to receive alerts while day-to-day governance happens inside the chat.
 
-Because the build output is static, you can still deploy it to [Cloudflare Pages](https://pages.cloudflare.com/) or any other static host. Pair it with the Node backend (Fly, Render, Railway, etc.) for the API/XMTP orchestration.
+Because the build output is static, deploy it to [Cloudflare Pages](https://pages.cloudflare.com/) or any other static host. Pair it with the Node backend (Fly, Render, Railway, etc.) for the API/XMTP orchestration.
 
 ## Local development
 
@@ -39,7 +39,7 @@ The SPA relies on `ethers.BrowserProvider` and the injected `window.ethereum`. W
 
 ### Deployment & registration
 
-UI-driven deployment has been retired. Deploy templs via scripts or the backend API (`POST /templs` or `/templs/auto`), then refresh the home page to see them alongside their entry fee. Once registered, everything else happens in the chat.
+Deploy templs via scripts or the backend API (`POST /templs` or `/templs/auto`), then refresh the home page to see them alongside their entry fee. Once registered, everything else happens in the chat.
 
 ### Join flow
 

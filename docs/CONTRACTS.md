@@ -11,12 +11,13 @@ Use this guide to understand the on-chain modules that handle membership, fee sp
 
 ## At a glance
 
-- Creation: `TemplFactory.createTemplFor` / `createTempl` / `createTemplWithConfig` (sets splits, priest, optional cap/home link).
+- Creation: `TemplFactory.createTemplFor` / `createTempl` / `createTemplWithConfig` (sets splits, priest, optional cap/home link/curve).
 - Membership: `join`, `claimMemberRewards`, `isMember`, `getMemberCount`.
 - Governance: create/vote/execute typed proposals; post‑quorum delay; optional dictatorship mode.
 - Treasury: `withdrawTreasuryDAO`, `disbandTreasuryDAO`, donations supported.
 - Caps & Pausing: `setMaxMembersDAO`, `setJoinPausedDAO`; disband proposals do not block joins.
 - Views: `getConfig`, `getTreasuryInfo`, `getProposal*`, `getExternalReward*`.
+- Pricing: entry fee curves exposed via `entryFeeCurve`, `EntryFeeCurveUpdated`, `setEntryFeeCurveDAO`, and `createProposalSetEntryFeeCurve`.
 - Events/Errors: emitted for all lifecycle actions; see the lists below and `contracts/TemplErrors.sol`.
 
 ## Overview
@@ -27,25 +28,32 @@ Solidity 0.8.23. Core contract lives in `contracts/TEMPL.sol` with shared errors
 
 Each module handles a focused responsibility:
 
-- `TemplBase`: shared storage layout, immutables, counters, events, and modifiers (including the `priestIsDictator` flag that toggles priest-only governance). It also stores the templ's canonical home link (`templHomeLink`) and emits `TemplHomeLinkUpdated` whenever governance changes it. All other modules inherit it, so audits can focus on a single storage contract.
+- `TemplBase`: shared storage layout, immutables, counters, events, and modifiers (including the `priestIsDictator` flag that toggles priest-only governance). It also stores the templ's canonical home link (`templHomeLink`) alongside `baseEntryFee`, the live `entryFee`, and the `entryFeeCurve` configuration, emitting `TemplHomeLinkUpdated` / `EntryFeeCurveUpdated` whenever governance changes them. All other modules inherit it, so audits can focus on a single storage contract.
 - `TemplMembership`: membership lifecycle (`join`, claims, view helpers) and accounting for the member pool.
-- `TemplTreasury`: governance-callable treasury/config/priest handlers and their internal helpers, including member limit management via `setMaxMembersDAO`.
+- `TemplTreasury`: governance-callable treasury/config/priest handlers and their internal helpers, including member limit management via `setMaxMembersDAO` and curve adjustments via `setEntryFeeCurveDAO`.
 - `TemplGovernance`: proposal creation, voting/quorum logic, execution router, and governance view helpers.
 - `TEMPL`: thin concrete contract wiring the constructor requirements (`priest`, `protocolFeeRecipient`, `token`, `entryFee`, fee splits) and exposing the payable `receive` hook. The constructor auto-enrols the deploying priest as the founding member so the pioneer member-pool allocation immediately accrues to them.
-- `TemplFactory`: immutable protocol recipient/percentage plus helpers that deploy templ instances with per-templ burn/treasury/member splits. Deployment structs include an initial `homeLink` string propagated into each `TEMPL` at construction.
+- `TemplFactory`: immutable protocol recipient/percentage plus helpers that deploy templ instances with per-templ burn/treasury/member splits. Deployment structs include an initial `homeLink` string and optional `CurveConfig` propagated into each `TEMPL` at construction.
 
 ## Entry-fee economics
 
 Entry fees follow a fixed protocol share; each deployment chooses how the remaining percentages split:
 
 - **Burn (`burnPercent`)** - transferred to the templ’s configured burn address (defaults to `0x000000000000000000000000000000000000dEaD`).
-- **Treasury (`treasuryPercent`)** - retained on the contract and counted in `treasuryBalance`. Additional donations accrue to the contract balance and remain governable via `withdrawTreasuryDAO` / `disbandTreasuryDAO`.
+- **Treasury (`treasuryPercent`)** - retained on the contract and counted in `treasuryBalance`. Additional donations accrue to the contract balance and stay governable via `withdrawTreasuryDAO` / `disbandTreasuryDAO`.
 - **Member Pool (`memberPoolPercent`)** - retained on the contract and counted in `memberPoolBalance`; claimable by existing members through `claimMemberRewards()`.
 - **Protocol (`protocolPercent`)** - forwarded to the immutable `protocolFeeRecipient`. The percentage is chosen when the factory is deployed (10% in our sample scripts) and applies to every TEMPL created by that factory.
 
 The percentages must sum to 100%. On-chain these values are stored as basis points (BPS), so `30%` is represented as `3_000` and an even split of `30/30/30/10` becomes `3_000/3_000/3_000/1_000`. When a new member joins, existing members receive `floor(memberPoolShare / (n-1))` tokens each (where `n` is the new member count). Indivisible remainders accumulate in `memberRewardRemainder` and are rolled into the next distribution.
 
 The zero-member edge case (reachable only in harnessed tests) simply parks the would-be member-pool slice in `memberPoolBalance` with no immediate reward accrual. Live deployments always start with the priest counted as member zero, so the first paid join streams its pool share exclusively to the priest. If a harness clears the list and a new wallet joins with no other members present, that pioneer can later reclaim their entire fee minus burn/protocol as soon as another member arrives because the balance sits in the pool awaiting the next pro-rata update.
+
+### Entry fee curve
+
+- Each templ stores a `baseEntryFee` anchor and a `CurveConfig` (`CurveStyle.Static`, `Linear`, or `Exponential`) that determines how the join price evolves. The current `entryFee` view recomputes after every paid join so future members pay according to the curve and live member count.
+- Factory defaults install an exponential curve with `rateBps = 11_000`, producing a 10% price increase per paid join alongside the default 249-member soft cap. Deployers can override the curve by calling `createTemplWithConfig` with `curveProvided = true` and a custom `curve` payload (or set `curveProvided = false` to re-use the factory default).
+- Governance can update the price without changing the growth profile via `updateConfigDAO(... entryFee, updateFeeSplit=false ...)`, or adjust the curve itself with `setEntryFeeCurveDAO` / `createProposalSetEntryFeeCurve`. Passing a non-zero `baseEntryFee` during curve updates reanchors the pricing ladder; omitting it preserves the existing base while swapping the curve style/rate.
+- All curve changes emit `EntryFeeCurveUpdated(style, rateBps)` so off-chain indexers can track pricing history. Invariants mirror join requirements: entry fees must be ≥10 and divisible by 10, and exponential segments require non-zero rates.
 
 ### Member pool mechanics
 
@@ -84,7 +92,8 @@ sequenceDiagram
 - Execution: Any address may call `executeProposal(id)`. Execution is atomic and non-reentrant.
 - Typed proposals only (no arbitrary calls). The allowed actions are:
 - `setJoinPausedDAO(bool)` - pause or resume new member joins.
-  - `updateConfigDAO(address,uint256,bool,uint256,uint256,uint256)` - update the entry fee (must remain >0 and multiple of 10) and, when `_updateFeeSplit` is true, adjust the burn/treasury/member percentages. The protocol split comes from the factory and cannot be changed. Token changes are disabled (`_token` must be `address(0)` or the current token), else `TokenChangeDisabled`.
+  - `updateConfigDAO(address,uint256,bool,uint256,uint256,uint256)` - update the entry fee (must be >0 and multiple of 10) and, when `_updateFeeSplit` is true, adjust the burn/treasury/member percentages. The protocol split comes from the factory and cannot be changed. Token changes are disabled (`_token` must be `address(0)` or the current token), else `TokenChangeDisabled`.
+  - `setEntryFeeCurveDAO(CurveConfig,uint256)` - update the pricing curve from a priest-controlled context (dictatorship or proposal execution). Respects the same invariants as the proposal variant.
   - `withdrawTreasuryDAO(address,address,uint256,string)` - withdraw a specific amount of any asset (access token, other ERC-20, or ETH with `address(0)`).
   - `changePriestDAO(address)` - change the priest address via governance; backends persist the new priest and announce it via Telegram notifications.
   - `disbandTreasuryDAO(address token)` - move the full available balance of `token` into a member-distributable pool. When `token == accessToken`, funds roll into the member pool (`memberPoolBalance`) with per-member integer division and any remainder added to `memberRewardRemainder`. When targeting any other ERC-20 or native ETH (`address(0)`), the amount is recorded in an external rewards pool so members can later claim their share with `claimExternalReward`.
@@ -105,16 +114,17 @@ Remaining external dust is queued for the current cohort ahead of any new member
 - After quorum: a new snapshot is recorded (`postQuorumEligibleVoters` + `quorumSnapshotBlock`). Members who joined earlier than that quorum transaction retain voting rights; later joiners are rejected with `JoinedAfterProposal`. Because Ethereum timestamps are per block, joins mined in the same block that reached quorum remain eligible. When quorum is later lost (YES votes drop below the threshold), execution reverts with `QuorumNotReached` until quorum support is restored.
 - Execution requires a simple majority (`yesVotes > noVotes`) and:
   - if quorum is required: quorum must have been reached and maintained, and the contract’s configured `executionDelayAfterQuorum` must have elapsed (default 7 days; customisable via the factory); otherwise it reverts with `QuorumNotReached` or `ExecutionDelayActive`.
-  - priest exception: `createProposalDisbandTreasury(...)` proposed by `priest` is quorum-exempt and respects only its `endTime`. This leniency is intentional so an inactive templ that can no longer reach quorum still has a deterministic path to wind down via the priest.
+- priest exception: `createProposalDisbandTreasury(...)` proposed by `priest` is quorum-exempt and respects only its `endTime`. This leniency is intentional so an inactive templ that can no longer reach quorum retains a deterministic path to wind down via the priest.
 
 ### Proposal types (create functions)
 
 All create functions require `string title, string description` parameters so that proposal metadata lives on-chain alongside the action parameters:
 
 - `createProposalSetJoinPaused(bool paused, uint256 votingPeriod, string title, string description)`
-- `createProposalUpdateConfig(uint256 newEntryFee, uint256 newBurnPercent, uint256 newTreasuryPercent, uint256 newMemberPoolPercent, bool updateFeeSplit, uint256 votingPeriod, string title, string description)` - set `updateFeeSplit = true` to apply the provided percentages; when false, the existing burn/treasury/member splits remain unchanged and only the fee (or paused state) is updated.
+- `createProposalUpdateConfig(uint256 newEntryFee, uint256 newBurnPercent, uint256 newTreasuryPercent, uint256 newMemberPoolPercent, bool updateFeeSplit, uint256 votingPeriod, string title, string description)` - set `updateFeeSplit = true` to apply the provided percentages; when false, the existing burn/treasury/member splits stay unchanged and only the fee (or paused state) is updated.
 - `createProposalSetMaxMembers(uint256 newLimit, uint256 votingPeriod, string title, string description)` - set the member cap (use `0` to remove the limit). Reverts immediately with `MemberLimitTooLow` if the proposal attempts to lower the cap beneath the current membership count.
 - `createProposalSetHomeLink(string newLink, uint256 votingPeriod, string title, string description)` - update the templ home link surfaced in the frontend and Telegram notifications.
+- `createProposalSetEntryFeeCurve(CurveConfig curve, uint256 baseEntryFee, uint256 votingPeriod, string title, string description)` - swap the pricing curve and optionally reanchor the base entry fee. Passing `0` for `baseEntryFee` keeps the existing base while applying the new curve.
 - `createProposalWithdrawTreasury(address token, address recipient, uint256 amount, string reason, uint256 votingPeriod, string title, string description)`
 - `createProposalChangePriest(address newPriest, uint256 votingPeriod, string title, string description)`
 - `createProposalDisbandTreasury(address token, uint256 votingPeriod, string title, string description)` (`token` can be the access token, another ERC-20, or `address(0)` for ETH)
@@ -126,7 +136,7 @@ Proposals emit `ProposalCreated(id, proposer, endTime, title, description)` and 
 
 - Reentrancy: `join`, `claimMemberRewards`, and `executeProposal` are non-reentrant.
 - Join guard: `join` disallows calls from the DAO address itself (`InvalidSender`).
-- Pausing: only blocks `join`; proposing and voting continue while paused.
+- Pausing: only blocks `join`; proposing and voting remain available while paused.
 - Token compatibility: access tokens must follow standard ERC-20 semantics. Fee-on-transfer ("taxed") tokens will corrupt fee splits and are unsupported.
 
 ## User-facing functions and views
@@ -139,7 +149,7 @@ Proposals emit `ProposalCreated(id, proposer, endTime, title, description)` and 
 - `getActiveProposals()` - returns IDs of proposals within their active window.
 - `getActiveProposalsPaginated(uint256 offset, uint256 limit)` - returns `(ids, hasMore)`; `limit` in [1,100], else `LimitOutOfRange`. `offset` skips the first `offset` active proposals (after filtering), keeping pagination stable even when the tracked active array contains lazily-pruned entries.
 - `pruneInactiveProposals(uint256 maxRemovals)` - shrinks the tracked active set by removing proposals that have expired or executed; anyone can call it to keep views efficient.
-- `getProposal(uint256 id)` - returns `(proposer, yesVotes, noVotes, endTime, executed, passed, title, description)` with `passed` computed according to quorum/delay rules and only when YES votes continue to satisfy quorum.
+- `getProposal(uint256 id)` - returns `(proposer, yesVotes, noVotes, endTime, executed, passed, title, description)` with `passed` computed according to quorum/delay rules and only when YES votes satisfy quorum.
 - `getProposalSnapshots(uint256 id)` - returns `(eligibleVotersPreQuorum, eligibleVotersPostQuorum, preQuorumSnapshotBlock, quorumSnapshotBlock, createdAt, quorumReachedAt)` so clients can reason about eligibility windows.
 - `hasVoted(uint256 id, address voter)` - returns `(voted, support)`.
 - `isMember(address user)` - returns membership status.
@@ -156,8 +166,8 @@ Proposals emit `ProposalCreated(id, proposer, endTime, title, description)` and 
 ## State, events, errors
 
 - Key immutables: `protocolFeeRecipient`, `accessToken`, `burnAddress`. Priest is changeable via governance.
-- Key variables: `entryFee` (≥10 and multiple of 10), `joinPaused`, `MAX_MEMBERS` (0 = unlimited; when a non-zero cap is reached the contract auto-pauses new joins until governance raises or clears the limit and then unpauses), `treasuryBalance` (tracks fee-sourced tokens only), `memberPoolBalance`, `priestIsDictator`, `cumulativeMemberRewards`, and lightweight membership metadata (`memberCount`, per-member snapshots). Fee-flow totals derive from `MemberJoined` events off-chain instead of being persisted in storage.
-- Governance constants: `quorumPercent` and `executionDelayAfterQuorum` are set during deployment (factory defaults 33% and 7 days, but overridable during templ creation) and remain immutable afterwards.
+- Key variables: `baseEntryFee` (anchor for the pricing curve), `entryFee` (≥10 and multiple of 10), `entryFeeCurve` (current growth config), `joinPaused`, `MAX_MEMBERS` (0 = unlimited; when a non-zero cap is reached the contract auto-pauses new joins until governance raises or clears the limit and then unpauses), `treasuryBalance` (tracks fee-sourced tokens only), `memberPoolBalance`, `priestIsDictator`, `cumulativeMemberRewards`, and lightweight membership metadata (`memberCount`, per-member snapshots). Fee-flow totals derive from `MemberJoined` events off-chain instead of being persisted in storage.
+- Governance constants: `quorumPercent` and `executionDelayAfterQuorum` are set during deployment (factory defaults 33% and 7 days, but overridable during templ creation) and stay immutable afterwards.
 - External reward claims:
   - `claimExternalReward(address token)` - transfers the caller’s accrued share of the specified external token (ERC-20 or `address(0)` for ETH). Reverts with `NoRewardsToClaim` if nothing is available. Emitted `ExternalRewardClaimed` mirrors successful withdrawals.
 - Events:
@@ -174,6 +184,7 @@ Proposals emit `ProposalCreated(id, proposer, endTime, title, description)` and 
   - `ExternalRewardClaimed(token,member,amount)`
   - `PriestChanged(oldPriest,newPriest)`
   - `DictatorshipModeChanged(enabled)`
+  - `EntryFeeCurveUpdated(style,rateBps)`
   - `TemplHomeLinkUpdated(previousLink,newLink)`
     - Backend listeners persist the new link and broadcast a Telegram alert so members always see the canonical home.
 - Custom errors live in `contracts/TemplErrors.sol`; reference that file for the authoritative list when wiring revert expectations.
@@ -214,9 +225,9 @@ sequenceDiagram
 
 ## Configuration & Deployment
 
-- Primary entrypoint is `TemplFactory(address protocolFeeRecipient, uint256 protocolPercent)`. Creating a new templ instance can rely on defaults (`createTemplFor(priest, token, entryFee)` or the convenience wrapper `createTempl(token, entryFee)` which forwards `msg.sender` as the priest) or a custom struct (`createTemplWithConfig`). Burn/treasury/member fields are expressed in basis points: each slice may be explicitly configured to `0`, and providing `-1` defers to the factory default. After defaults resolve, the three slices plus the factory’s immutable `protocolPercent` must total `10_000` (100%). The struct also includes a `priestIsDictator` boolean to opt into priest-only governance and a `maxMembers` field (`0` for unlimited) to cap membership from genesis. The shipped defaults (`3_000/3_000/3_000`) intentionally assume the protocol percent is `1_000` (10%); deployers choosing a different protocol share must either modify the constants prior to deployment or pass explicit splits via `createTemplWithConfig` so the total sums to `10_000` BPS.
-- The factory records the deploying wallet as `factoryDeployer`, exposes the current `permissionless` mode, and emits `PermissionlessModeUpdated` whenever `setPermissionless(bool)` flips the flag. Permissionless mode defaults to `false`, meaning only `factoryDeployer` may call `createTemplFor`/`createTempl`/`createTemplWithConfig`; once set to `true`, anyone can deploy templs while the protocol recipient and percent remain immutable for every instance minted through that factory.
-- `scripts/deploy.js` deploys a factory when none is provided (`FACTORY_ADDRESS`), then creates a templ via the factory using environment variables: `PRIEST_ADDRESS` (defaults to deployer), `PROTOCOL_FEE_RECIPIENT`, `PROTOCOL_PERCENT`, `TOKEN_ADDRESS`, `ENTRY_FEE`, `BURN_PERCENT`, `TREASURY_PERCENT`, `MEMBER_POOL_PERCENT` (plus optional `QUORUM_PERCENT`, `EXECUTION_DELAY_SECONDS`, `BURN_ADDRESS`, `PRIEST_IS_DICTATOR`). Set any of the three split variables to `-1` to reuse the defaults while editing the others; the resolved percentages must sum to 100 alongside the protocol fee.
+- Primary entrypoint is `TemplFactory(address protocolFeeRecipient, uint256 protocolPercent)`. Creating a new templ instance can rely on defaults (`createTemplFor(priest, token, entryFee)` or the convenience wrapper `createTempl(token, entryFee)` which forwards `msg.sender` as the priest) or a custom struct (`createTemplWithConfig`). Burn/treasury/member fields are expressed in basis points: each slice may be explicitly configured to `0`, and providing `-1` defers to the factory default. After defaults resolve, the three slices plus the factory’s immutable `protocolPercent` must total `10_000` (100%). The struct also includes `priestIsDictator` to boot into dictatorship, `maxMembers` (defaults to `249`) to enforce a soft cap from genesis, and curve controls (`curveProvided`, `curve`) so deployers can override the default exponential curve. The shipped defaults (`3_000/3_000/3_000`) intentionally assume the protocol percent is `1_000` (10%); deployers choosing a different protocol share must either modify the constants prior to deployment or pass explicit splits via `createTemplWithConfig` so the total sums to `10_000` BPS.
+- The factory records the deploying wallet as `factoryDeployer`, exposes the current `permissionless` mode, and emits `PermissionlessModeUpdated` whenever `setPermissionless(bool)` flips the flag. Permissionless mode defaults to `false`, meaning only `factoryDeployer` may call `createTemplFor`/`createTempl`/`createTemplWithConfig`; once set to `true`, anyone can deploy templs while the protocol recipient and percent are immutable for every instance minted through that factory. `TemplCreated` events surface the resolved curve style/rate so off-chain indexers know which pricing schedule applies.
+- `scripts/deploy.js` deploys a factory when none is provided (`FACTORY_ADDRESS`), then creates a templ via the factory using environment variables: `PRIEST_ADDRESS` (defaults to deployer), `PROTOCOL_FEE_RECIPIENT`, `PROTOCOL_PERCENT`, `TOKEN_ADDRESS`, `ENTRY_FEE`, `BURN_PERCENT`, `TREASURY_PERCENT`, `MEMBER_POOL_PERCENT` (plus optional `QUORUM_PERCENT`, `EXECUTION_DELAY_SECONDS`, `BURN_ADDRESS`, `PRIEST_IS_DICTATOR`, `MAX_MEMBERS`, `CURVE_STYLE`/`CURVE_PRIMARY_STYLE`, `CURVE_RATE_BPS`, `TEMPL_HOME_LINK`). Set any of the three split variables to `-1` to reuse the defaults while editing the others; the resolved percentages must sum to 100 alongside the protocol fee.
 - Commands:
   - Compile/tests: `npm run compile`, `npm test`, `npm run slither`.
   - Deploy example: `npx hardhat run scripts/deploy.js --network base`.

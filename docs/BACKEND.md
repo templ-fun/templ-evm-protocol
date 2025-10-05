@@ -97,7 +97,7 @@ SQLite (referenced by `SQLITE_DB_PATH`) stores:
 - `used_signatures(signature TEXT PRIMARY KEY, expiresAt INTEGER)` – replay protection for typed requests. Entries expire automatically (6 hour retention) and fall back to the in-memory cache only when persistent storage is unavailable.
 - `leader_election(id TEXT PRIMARY KEY, owner TEXT, expiresAt INTEGER)` – coordinates which backend instance currently holds the notification lease. Only the owning instance streams Telegram events and runs interval jobs; other replicas stay idle until the lease expires.
 
-Templ home links continue to live on-chain; watchers refresh them (and priest data) from the contract whenever listeners attach so the chain remains the canonical source of truth.
+Templ home links live on-chain; watchers refresh them (and priest data) from the contract whenever listeners attach so the chain is the canonical source of truth.
 
 ### Leadership & scaling
 
@@ -210,7 +210,7 @@ The server uses `ethers.Contract` to subscribe to templ events. Watchers are reg
 - Proposal metadata is cached in-memory when events fire so follow-up notifications can include the title even if the on-chain read fails.
 - Quorum checks run after every proposal creation and vote to emit a one-time "quorum reached" message when the threshold is crossed.
 - Background jobs monitor proposal deadlines, fire daily treasury/member-pool digests, and poll Telegram for binding codes until each templ is linked to a chat.
-- Priest and home-link updates are cached in memory; the contract remains the source of truth and watchers refresh them after restarts.
+- Priest and home-link updates are cached in memory; the contract is the source of truth and watchers refresh them after restarts.
 - Event cursors are not persisted. On restart the backend rehydrates watcher subscriptions from the stored templ bindings, letting `ethers.Contract` pick up new on-chain events while skipping anything that fired while the server was offline.
 
 ## Testing
