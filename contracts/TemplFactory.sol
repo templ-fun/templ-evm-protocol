@@ -24,6 +24,7 @@ contract TemplFactory {
     int256 internal constant USE_DEFAULT_PERCENT = -1;
     uint256 internal constant DEFAULT_MAX_MEMBERS = 249;
     uint32 internal constant DEFAULT_CURVE_EXP_RATE_BPS = 11_000;
+    uint256 internal constant MAX_INIT_CODE_CHUNK_SIZE = 24_000;
 
     struct CreateConfig {
         address priest;
@@ -46,7 +47,8 @@ contract TemplFactory {
     uint256 public immutable protocolPercent;
     address public immutable factoryDeployer;
     bool public permissionless;
-    address internal immutable templInitCodePointer;
+    address[] internal templInitCodePointers;
+    uint256 internal templInitCodeLength;
 
     event TemplCreated(
         address indexed templ,
@@ -84,7 +86,9 @@ contract TemplFactory {
         protocolPercent = _protocolPercent;
         factoryDeployer = msg.sender;
         permissionless = false;
-        templInitCodePointer = SSTORE2.write(type(TEMPL).creationCode);
+        bytes memory initCode = type(TEMPL).creationCode;
+        templInitCodeLength = initCode.length;
+        templInitCodePointers = _writeInitCodeChunks(initCode);
     }
 
     /// @notice Toggles permissionless mode for templ creation.
@@ -188,7 +192,7 @@ contract TemplFactory {
             cfg.homeLink,
             cfg.curve
         );
-        bytes memory templInitCode = SSTORE2.read(templInitCodePointer);
+        bytes memory templInitCode = _loadTemplInitCode();
         if (templInitCode.length == 0) revert TemplErrors.DeploymentFailed();
         bytes memory initCode = abi.encodePacked(templInitCode, constructorArgs);
 
@@ -218,6 +222,44 @@ contract TemplFactory {
             cfg.curve.primary.rateBps,
             cfg.homeLink
         );
+    }
+
+    function _writeInitCodeChunks(bytes memory initCode) internal returns (address[] memory pointers) {
+        uint256 totalLength = initCode.length;
+        if (totalLength == 0) revert TemplErrors.DeploymentFailed();
+        uint256 chunkCount = (totalLength + MAX_INIT_CODE_CHUNK_SIZE - 1) / MAX_INIT_CODE_CHUNK_SIZE;
+        pointers = new address[](chunkCount);
+        for (uint256 i = 0; i < chunkCount; ++i) {
+            uint256 offset = i * MAX_INIT_CODE_CHUNK_SIZE;
+            uint256 remaining = totalLength - offset;
+            uint256 chunkSize = remaining > MAX_INIT_CODE_CHUNK_SIZE ? MAX_INIT_CODE_CHUNK_SIZE : remaining;
+            bytes memory chunk = new bytes(chunkSize);
+            for (uint256 j = 0; j < chunkSize; ++j) {
+                chunk[j] = initCode[offset + j];
+            }
+            pointers[i] = SSTORE2.write(chunk);
+        }
+    }
+
+    function _loadTemplInitCode() internal view returns (bytes memory initCode) {
+        address[] storage pointers = templInitCodePointers;
+        uint256 pointerCount = pointers.length;
+        uint256 expectedLength = templInitCodeLength;
+        if (pointerCount == 0 || expectedLength == 0) revert TemplErrors.DeploymentFailed();
+        initCode = new bytes(expectedLength);
+        uint256 offset = 0;
+        for (uint256 i = 0; i < pointerCount; ++i) {
+            bytes memory chunk = SSTORE2.read(pointers[i]);
+            uint256 chunkLength = chunk.length;
+            if (chunkLength == 0 || offset + chunkLength > expectedLength) {
+                revert TemplErrors.DeploymentFailed();
+            }
+            for (uint256 j = 0; j < chunkLength; ++j) {
+                initCode[offset + j] = chunk[j];
+            }
+            offset += chunkLength;
+        }
+        if (offset != expectedLength) revert TemplErrors.DeploymentFailed();
     }
 
     /// @dev Resolves a potentially sentinel-encoded percent to its final value.

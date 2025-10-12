@@ -670,7 +670,9 @@ describe("TemplFactory", function () {
         const factory = await FactoryHarness.deploy(protocolRecipient.address, pct(10));
         await factory.waitForDeployment();
 
-        const pointer = await factory.exposeInitPointer();
+        const pointers = await factory.exposeInitPointers();
+        expect(pointers.length).to.be.greaterThan(0);
+        const pointer = pointers[0];
         const originalCode = await ethers.provider.getCode(pointer);
         await ethers.provider.send("hardhat_setCode", [pointer, "0x"]);
 
