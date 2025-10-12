@@ -46,6 +46,7 @@ backend/e2e-groups.db*
 coverage/
 frontend/coverage/
 backend/coverage/
+backend/**/*.db3*
 frontend/.vitest-cache/
 frontend/.vite-cache/
 frontend/npm-cache/
