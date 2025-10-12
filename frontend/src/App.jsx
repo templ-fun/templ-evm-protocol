@@ -127,6 +127,8 @@ function App() {
   const [treasuryPercent, setTreasuryPercent] = useState('30');
   const [memberPoolPercent, setMemberPoolPercent] = useState('30');
   const [maxMembers, setMaxMembers] = useState('');
+  const [createTokenDecimals, setCreateTokenDecimals] = useState(null);
+  const [createTokenSymbol, setCreateTokenSymbol] = useState(null);
 
   // curve configuration
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -134,6 +136,77 @@ function App() {
   const [curvePrimaryStyle, setCurvePrimaryStyle] = useState('exponential');
   const [curvePrimaryRateBps, setCurvePrimaryRateBps] = useState('11000');
   const [homeLink, setHomeLink] = useState('');
+  useEffect(() => {
+    if (!FACTORY_CONFIG.address) {
+      setShowAdvanced(true);
+    }
+  }, [FACTORY_CONFIG.address]);
+  useEffect(() => {
+    const trimmed = typeof tokenAddress === 'string' ? tokenAddress.trim() : '';
+    if (!ethers.isAddress(trimmed)) {
+      setCreateTokenDecimals(null);
+      setCreateTokenSymbol(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        let reader = signer;
+        if (!reader) {
+          if (typeof window !== 'undefined' && window?.ethereum) {
+            try {
+              reader = new ethers.BrowserProvider(window.ethereum);
+            } catch {
+              if (!cancelled) {
+                setCreateTokenDecimals(null);
+                setCreateTokenSymbol(null);
+              }
+              return;
+            }
+          } else {
+            if (!cancelled) {
+              setCreateTokenDecimals(null);
+              setCreateTokenSymbol(null);
+            }
+            return;
+          }
+        }
+        const tokenContract = new ethers.Contract(
+          trimmed,
+          ['function decimals() view returns (uint8)', 'function symbol() view returns (string)'],
+          reader
+        );
+        let decimals = null;
+        try {
+          const rawDecimals = await tokenContract.decimals();
+          const parsedDecimals = Number(rawDecimals);
+          decimals = Number.isFinite(parsedDecimals) ? parsedDecimals : null;
+        } catch {
+          decimals = null;
+        }
+        let symbol = null;
+        try {
+          const rawSymbol = await tokenContract.symbol();
+          if (typeof rawSymbol === 'string' && rawSymbol.trim().length > 0) {
+            symbol = rawSymbol.trim();
+          }
+        } catch {
+          symbol = null;
+        }
+        if (cancelled) return;
+        setCreateTokenDecimals(decimals);
+        setCreateTokenSymbol(symbol);
+      } catch {
+        if (!cancelled) {
+          setCreateTokenDecimals(null);
+          setCreateTokenSymbol(null);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tokenAddress, signer]);
 
   // telegram binding
   const [bindingInfo, setBindingInfo] = useState(null);
@@ -156,6 +229,13 @@ function App() {
   const autoDeployTriggeredRef = useRef(false);
 
 
+  const tokenAddressValid = (() => {
+    try {
+      return ethers.isAddress(String(tokenAddress || '').trim());
+    } catch {
+      return false;
+    }
+  })();
   const burnPercentNum = Number.isFinite(Number(burnPercent)) ? Number(burnPercent) : 0;
   const treasuryPercentNum = Number.isFinite(Number(treasuryPercent)) ? Number(treasuryPercent) : 0;
   const memberPoolPercentNum = Number.isFinite(Number(memberPoolPercent)) ? Number(memberPoolPercent) : 0;
@@ -173,6 +253,20 @@ function App() {
   const protocolPercentDisplay = protocolPercentNum !== null && Number.isFinite(protocolPercentNum)
     ? formatPercentText(protocolPercentNum)
     : null;
+  const entryFeeDisplay = (() => {
+    if (!Number.isInteger(createTokenDecimals)) return null;
+    const raw = String(entryFee || '').trim();
+    if (!/^\d+$/.test(raw) || raw === '') return null;
+    try {
+      let formatted = ethers.formatUnits(raw, createTokenDecimals);
+      if (formatted.includes('.')) {
+        formatted = formatted.replace(/\.?0+$/, '');
+      }
+      return formatted;
+    } catch {
+      return null;
+    }
+  })();
   const activeProtocolPercent = Number.isFinite(currentProtocolPercent) ? currentProtocolPercent : protocolPercentNum;
   const parsedBurnInput = Number.isFinite(Number(proposeBurnPercent)) ? Number(proposeBurnPercent) : 0;
   const parsedTreasuryInput = Number.isFinite(Number(proposeTreasuryPercent)) ? Number(proposeTreasuryPercent) : 0;
@@ -1856,59 +1950,44 @@ function App() {
 
         {path === '/create' && (
           <div className="forms space-y-3">
-        <div className="deploy space-y-2">
-          <h2 className="text-xl font-semibold">Create Templ</h2>
-          <div>
-            <label className="block text-sm font-medium text-black/70 mb-1">Access token address</label>
-            <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Token address" value={tokenAddress} onChange={(e) => setTokenAddress(e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-black/70 mb-1">TemplFactory address</label>
-            <input
-              className={`w-full border border-black/20 rounded px-3 py-2 ${FACTORY_CONFIG.address ? 'bg-black/5' : ''}`}
-              placeholder="Factory address"
-              value={factoryAddress}
-              readOnly={Boolean(FACTORY_CONFIG.address)}
-              onChange={(e) => setFactoryAddress(e.target.value)}
-            />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <div>
-              <label className="block text-sm font-medium text-black/70 mb-1">Protocol fee recipient (fixed)</label>
-              <input className="w-full border border-black/20 rounded px-3 py-2 bg-black/5" value={protocolFeeRecipient || 'fetching…'} readOnly />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-black/70 mb-1">Protocol percent</label>
-              <input
-                className="w-full border border-black/20 rounded px-3 py-2 bg-black/5"
-                value={protocolPercentDisplay ?? 'fetching…'}
-                readOnly
-              />
-            </div>
-              </div>
+            <div className="deploy space-y-3">
+              <h2 className="text-xl font-semibold">Create Templ</h2>
               <div>
-                <label className="block text-sm font-medium text-black/70 mb-1">Entry fee (wei)</label>
-                <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Entry fee" value={entryFee} onChange={(e) => setEntryFee(e.target.value)} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-black/70 mb-1">Max members (0 = unlimited)</label>
-                <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Optional" value={maxMembers} onChange={(e) => setMaxMembers(e.target.value)} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-black/70 mb-1">Fee split (%)</label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  <input className="border border-black/20 rounded px-3 py-2" placeholder="Burn" value={burnPercent} onChange={(e) => setBurnPercent(e.target.value)} />
-                  <input className="border border-black/20 rounded px-3 py-2" placeholder="Treasury" value={treasuryPercent} onChange={(e) => setTreasuryPercent(e.target.value)} />
-                  <input className="border border-black/20 rounded px-3 py-2" placeholder="Member pool" value={memberPoolPercent} onChange={(e) => setMemberPoolPercent(e.target.value)} />
-                </div>
-                {protocolPercentDisplay !== null && (
-                  <div className={`text-xs mt-1 ${splitBalanced ? 'text-black/60' : 'text-red-600'}`}>
-                    Fee split total: {splitTotalDisplay ?? '…'}/100 (includes protocol {protocolPercentDisplay})
-                  </div>
+                <label className="block text-sm font-medium text-black/70 mb-1">Access token address</label>
+                <input
+                  className="w-full border border-black/20 rounded px-3 py-2"
+                  placeholder="Token address"
+                  value={tokenAddress}
+                  onChange={(e) => setTokenAddress(e.target.value)}
+                />
+                {Number.isInteger(createTokenDecimals) && (
+                  <p className="text-xs text-black/60 mt-1">
+                    Detected token decimals: {createTokenDecimals}
+                    {createTokenSymbol ? ` • Symbol ${createTokenSymbol}` : ''}
+                  </p>
+                )}
+                {!Number.isInteger(createTokenDecimals) && tokenAddressValid && (
+                  <p className="text-xs text-black/60 mt-1">
+                    Unable to detect token decimals. Connect a wallet or confirm the token exposes decimals().
+                  </p>
                 )}
               </div>
-
-              {/* Advanced Options */}
+              <div>
+                <label className="block text-sm font-medium text-black/70 mb-1">Entry fee (base units)</label>
+                <input
+                  className="w-full border border-black/20 rounded px-3 py-2"
+                  placeholder="Entry fee"
+                  value={entryFee}
+                  onChange={(e) => setEntryFee(e.target.value)}
+                />
+                {entryFeeDisplay !== null && (
+                  <p className="text-xs text-black/60 mt-1">
+                    Entry fee: {entryFeeDisplay}
+                    {createTokenSymbol ? ` ${createTokenSymbol}` : ''}
+                    {Number.isInteger(createTokenDecimals) ? ` (decimals ${createTokenDecimals})` : ''}
+                  </p>
+                )}
+              </div>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <button
                   type="button"
@@ -1918,10 +1997,54 @@ function App() {
                   {showAdvanced ? 'Hide advanced' : 'Advanced options'}
                 </button>
               </div>
-
               {showAdvanced && (
                 <div className="space-y-4 border-t border-black/10 pt-4">
-                  {/* Home Link */}
+                  <div>
+                    <label className="block text-sm font-medium text-black/70 mb-1">TemplFactory address</label>
+                    <input
+                      className={`w-full border border-black/20 rounded px-3 py-2 ${FACTORY_CONFIG.address ? 'bg-black/5' : ''}`}
+                      placeholder="Factory address"
+                      value={factoryAddress}
+                      readOnly={Boolean(FACTORY_CONFIG.address)}
+                      onChange={(e) => setFactoryAddress(e.target.value)}
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-sm font-medium text-black/70 mb-1">Protocol fee recipient (fixed)</label>
+                      <input className="w-full border border-black/20 rounded px-3 py-2 bg-black/5" value={protocolFeeRecipient || 'fetching…'} readOnly />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-black/70 mb-1">Protocol percent</label>
+                      <input
+                        className="w-full border border-black/20 rounded px-3 py-2 bg-black/5"
+                        value={protocolPercentDisplay ?? 'fetching…'}
+                        readOnly
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-black/70 mb-1">Max members (0 = unlimited)</label>
+                    <input
+                      className="w-full border border-black/20 rounded px-3 py-2"
+                      placeholder="Optional"
+                      value={maxMembers}
+                      onChange={(e) => setMaxMembers(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-black/70 mb-1">Fee split (%)</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <input className="border border-black/20 rounded px-3 py-2" placeholder="Burn" value={burnPercent} onChange={(e) => setBurnPercent(e.target.value)} />
+                      <input className="border border-black/20 rounded px-3 py-2" placeholder="Treasury" value={treasuryPercent} onChange={(e) => setTreasuryPercent(e.target.value)} />
+                      <input className="border border-black/20 rounded px-3 py-2" placeholder="Member pool" value={memberPoolPercent} onChange={(e) => setMemberPoolPercent(e.target.value)} />
+                    </div>
+                    {protocolPercentDisplay !== null && (
+                      <div className={`text-xs mt-1 ${splitBalanced ? 'text-black/60' : 'text-red-600'}`}>
+                        Fee split total: {splitTotalDisplay ?? '…'}/100 (includes protocol {protocolPercentDisplay})
+                      </div>
+                    )}
+                  </div>
                   <div>
                     <label className="block text-sm font-medium text-black/70 mb-1">
                       Templ home link
@@ -1936,8 +2059,6 @@ function App() {
                       Optional, but helps members discover your public group from templ.fun once the templ is live.
                     </p>
                   </div>
-
-                  {/* Curve Configuration */}
                   <div className="rounded-lg border border-black/20 p-4">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                       <div>
@@ -2002,7 +2123,6 @@ function App() {
                   </div>
                 </div>
               )}
-
               <button className="px-4 py-2 rounded bg-primary text-black font-semibold w-full sm:w-auto" onClick={handleDeploy}>Deploy</button>
             </div>
           </div>
