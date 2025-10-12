@@ -1262,8 +1262,99 @@ export async function createApp(opts) {
     notifier,
     signatureStore,
     findBinding,
-    listBindings
+    listBindings,
+    xmtp: null,
+    lastJoin: { at: 0, payload: null },
+    ensureGroup: async (record) => null
   };
+
+  // XMTP setup - add to context if enabled
+  let xmtp = null;
+  let lastJoin = { at: 0, payload: null };
+
+  if (process.env.XMTP_ENABLED === '1') {
+    try {
+      // Dynamically import XMTP modules only when enabled
+      const { createXmtpWithRotation, waitForXmtpClientReady, waitForInboxReady, XMTP_ENV } = await import('./xmtp/index.js');
+
+      // Generate or load a persistent bot private key tied to this server instance
+      let botPrivateKey = process.env.BOT_PRIVATE_KEY;
+      try {
+        const db = persistenceAdapter?.db;
+        if (db && typeof db.exec === 'function') {
+          try { db.exec('CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT)'); } catch { /* ignore */ }
+          if (!botPrivateKey) {
+            try {
+              const row = db.prepare('SELECT value FROM kv WHERE key = ?').get('bot_private_key');
+              if (row && row.value) {
+                botPrivateKey = String(row.value);
+              }
+            } catch { /* ignore */ }
+          }
+          if (!botPrivateKey) {
+            // Create a fresh key and persist it so the "invite bot" is stable across restarts
+            const w = ethers.Wallet.createRandom();
+            botPrivateKey = w.privateKey;
+            try {
+              db.prepare('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)').run('bot_private_key', botPrivateKey);
+              logger.info('Generated and persisted new invite-bot key');
+            } catch { /* ignore */ }
+          }
+        }
+      } catch (e) {
+        // Fall back to env-only key if DB init fails
+        if (!botPrivateKey) throw e;
+      }
+
+      const wallet = new ethers.Wallet(botPrivateKey, provider);
+      const envMax = Number(process.env.XMTP_MAX_ATTEMPTS);
+      const bootTries = Number.isFinite(Number(process.env.XMTP_BOOT_MAX_TRIES))
+        ? Number(process.env.XMTP_BOOT_MAX_TRIES)
+        : 30;
+
+      for (let i = 1; i <= bootTries; i++) {
+        try {
+          xmtp = await createXmtpWithRotation(
+            wallet,
+            Number.isFinite(envMax) && envMax > 0 ? envMax : undefined
+          );
+          const ready = await waitForXmtpClientReady(xmtp, 30, 500);
+          if (!ready) throw new Error('XMTP client not ready');
+          logger.info({ instanceId, inboxId: xmtp.inboxId }, 'XMTP client ready');
+          break;
+        } catch (e) {
+          logger.warn({ attempt: i, err: String(e?.message || e) }, 'XMTP boot not ready; retrying');
+          if (i === bootTries) throw e;
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+      }
+
+      // Add XMTP context
+      context.xmtp = xmtp;
+      context.lastJoin = lastJoin;
+
+      // Add XMTP helper function to context
+      context.ensureGroup = async (record) => {
+        if (record?.group) return record.group;
+        if (record?.groupId && xmtp?.conversations?.getConversationById) {
+          try {
+            const maybe = await xmtp.conversations.getConversationById(record.groupId);
+            if (maybe) {
+              record.group = maybe;
+              return maybe;
+            }
+          } catch (err) {
+            logger.warn({ err: err?.message || err, groupId: record.groupId }, 'Failed to hydrate group conversation');
+          }
+        }
+        return record?.group || null;
+      };
+
+    } catch (err) {
+      logger.error({ err: String(err?.message || err), instanceId }, 'Failed to initialize XMTP client');
+      // Continue without XMTP if initialization fails
+    }
+  }
 
   app.use(waitForRestoration);
   app.use(templsRouter(context));

@@ -5,7 +5,7 @@ import { logger } from '../logger.js';
 import { joinTempl } from '../services/joinTempl.js';
 import { extractTypedRequestParams } from './typed.js';
 
-export default function joinRouter({ hasJoined, templs, signatureStore }) {
+export default function joinRouter({ hasJoined, templs, signatureStore, xmtp, lastJoin, provider, ensureGroup }) {
   const router = express.Router();
 
   router.post(
@@ -21,11 +21,30 @@ export default function joinRouter({ hasJoined, templs, signatureStore }) {
     }),
     async (req, res) => {
       try {
-        const result = await joinTempl(req.body, {
-          hasJoined,
-          templs,
-          logger,
-        });
+        // Use XMTP join service if XMTP is enabled and the request includes XMTP-specific fields
+        const useXmtp = xmtp && (req.body.inboxId || req.body.memberInboxId || process.env.XMTP_ENABLED === '1');
+
+        let result;
+        if (useXmtp) {
+          // Dynamically import XMTP join service when needed
+          const { joinTemplWithXmtp } = await import('../services/xmtpJoinService.js');
+          result = await joinTemplWithXmtp(req.body, {
+            hasJoined,
+            templs,
+            logger,
+            lastJoin,
+            provider,
+            xmtp,
+            ensureGroup
+          });
+        } else {
+          result = await joinTempl(req.body, {
+            hasJoined,
+            templs,
+            logger,
+          });
+        }
+
         res.json(result);
       } catch (err) {
         const status = err?.statusCode && Number.isInteger(err.statusCode) ? err.statusCode : 500;

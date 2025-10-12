@@ -32,6 +32,7 @@ const DEFAULT_SIGNATURE_RETENTION_MS = 6 * 60 * 60 * 1000; // 6 hours
  *   refreshLeadership?: (owner: string, ttlMs: number, now?: number) => Promise<boolean>,
  *   releaseLeadership?: (owner: string) => Promise<void>,
  *   getLeadershipState?: () => Promise<{ owner: string | null, expiresAt: number }>,
+ *   db?: any,
  *   dispose(): Promise<void> | void
  * }} PersistenceAdapter
  */
@@ -197,6 +198,7 @@ async function createSQLitePersistence({ sqlitePath, retentionMs = DEFAULT_SIGNA
     refreshLeadership,
     releaseLeadership,
     getLeadershipState,
+    db,
     async dispose() {
       try {
         db.close();
