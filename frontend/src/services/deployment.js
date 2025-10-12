@@ -5,6 +5,30 @@ import { waitForConversation } from '@shared/xmtp.js';
 import { addToTestRegistry, dlog, isDebugEnabled } from './utils.js';
 import { postJson } from './http.js';
 
+const TOTAL_PERCENT_BPS = 10_000;
+const PERCENT_PATTERN = /^\d+(\.\d{1,2})?$/;
+
+function percentValueToBps(value, field) {
+  const raw = value === undefined || value === null ? '' : String(value).trim();
+  if (!PERCENT_PATTERN.test(raw)) {
+    throw new Error(`${field} must be numeric with up to two decimal places`);
+  }
+  const [whole, fraction = ''] = raw.split('.');
+  const wholeNum = Number(whole);
+  if (!Number.isFinite(wholeNum)) {
+    throw new Error(`${field} is invalid`);
+  }
+  const fractionDigits = (fraction + '00').slice(0, 2);
+  return (wholeNum * 100) + Number(fractionDigits);
+}
+
+function formatBpsAsPercent(bps) {
+  const percent = bps / 100;
+  if (!Number.isFinite(percent)) return String(bps);
+  const fixed = percent.toFixed(2);
+  return fixed.endsWith('.00') ? fixed.slice(0, -3) : fixed.replace(/\.0$/, '');
+}
+
 /**
  * Deploy a new TEMPL contract and register a group with the backend.
  * @param {import('../flows.types').DeployRequest} params
@@ -54,13 +78,39 @@ export async function deployTempl({
   if (!protocolFeeRecipient || protocolFeeRecipient === ethers.ZeroAddress) {
     throw new Error('Factory protocol fee recipient not configured');
   }
-  const burn = BigInt(burnPercent ?? 30);
-  const treasury = BigInt(treasuryPercent ?? 30);
-  const member = BigInt(memberPoolPercent ?? 30);
-  const protocol = BigInt(protocolPercentRaw ?? 0n);
-  const totalSplit = burn + treasury + member + protocol;
-  if (totalSplit !== 100n) {
-    throw new Error(`Fee split must equal 100, received ${totalSplit}`);
+  let protocolBps;
+  try {
+    if (typeof protocolPercentRaw === 'bigint') {
+      protocolBps = Number(protocolPercentRaw);
+    } else if (typeof protocolPercentRaw === 'number') {
+      protocolBps = protocolPercentRaw;
+    } else if (protocolPercentRaw && typeof protocolPercentRaw.toString === 'function') {
+      protocolBps = Number(protocolPercentRaw.toString());
+    } else {
+      protocolBps = Number(protocolPercentRaw ?? 0);
+    }
+  } catch {
+    protocolBps = Number(protocolPercentRaw ?? 0);
+  }
+  if (!Number.isFinite(protocolBps)) {
+    throw new Error('Invalid protocol percent from factory');
+  }
+  let burnBps;
+  let treasuryBps;
+  let memberBps;
+  try {
+    burnBps = percentValueToBps(burnPercent ?? '0', 'Burn percent');
+    treasuryBps = percentValueToBps(treasuryPercent ?? '0', 'Treasury percent');
+    memberBps = percentValueToBps(memberPoolPercent ?? '0', 'Member pool percent');
+  } catch (err) {
+    throw new Error(err?.message || 'Invalid percentage input');
+  }
+  if (burnBps < 0 || treasuryBps < 0 || memberBps < 0) {
+    throw new Error('Percentages cannot be negative');
+  }
+  const totalSplitBps = burnBps + treasuryBps + memberBps + protocolBps;
+  if (totalSplitBps !== TOTAL_PERCENT_BPS) {
+    throw new Error(`Fee split must equal 100, received ${formatBpsAsPercent(totalSplitBps)}`);
   }
   let normalizedEntryFee;
   try {
@@ -82,9 +132,9 @@ export async function deployTempl({
     priest: walletAddress,
     token: normalizedToken,
     entryFee: normalizedEntryFee,
-    burnPercent: Number(burn),
-    treasuryPercent: Number(treasury),
-    memberPoolPercent: Number(member),
+    burnPercent: burnBps,
+    treasuryPercent: treasuryBps,
+    memberPoolPercent: memberBps,
     burnAddress: burnAddress && ethers.isAddress?.(burnAddress)
       ? burnAddress
       : (ethers.ZeroAddress ?? '0x0000000000000000000000000000000000000000'),
@@ -111,9 +161,9 @@ export async function deployTempl({
 
   const zeroAddress = ethers.ZeroAddress ?? '0x0000000000000000000000000000000000000000';
   const defaultsRequested =
-    Number(burn) === 30 &&
-    Number(treasury) === 30 &&
-    Number(member) === 30 &&
+    burnBps === 3_000 &&
+    treasuryBps === 3_000 &&
+    memberBps === 3_000 &&
     config.priest === walletAddress &&
     config.burnAddress === zeroAddress &&
     config.quorumPercent === undefined &&

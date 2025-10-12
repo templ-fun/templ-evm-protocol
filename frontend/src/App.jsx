@@ -117,8 +117,10 @@ function App() {
   const [factoryAddress, setFactoryAddress] = useState(() => FACTORY_CONFIG.address || '');
   const [protocolFeeRecipient, setProtocolFeeRecipient] = useState(() => FACTORY_CONFIG.protocolFeeRecipient || '');
   const [protocolPercent, setProtocolPercent] = useState(() => {
-    const percent = FACTORY_CONFIG.protocolPercent;
-    return Number.isFinite(percent) ? percent : 10;
+    const percent = Number(FACTORY_CONFIG.protocolPercent);
+    if (!Number.isFinite(percent)) return 10;
+    const normalized = percent > 100 ? percent / 100 : percent;
+    return Number(normalized.toFixed(2));
   });
   const [entryFee, setEntryFee] = useState('');
   const [burnPercent, setBurnPercent] = useState('30');
@@ -158,7 +160,19 @@ function App() {
   const treasuryPercentNum = Number.isFinite(Number(treasuryPercent)) ? Number(treasuryPercent) : 0;
   const memberPoolPercentNum = Number.isFinite(Number(memberPoolPercent)) ? Number(memberPoolPercent) : 0;
   const protocolPercentNum = Number.isFinite(Number(protocolPercent)) ? Number(protocolPercent) : null;
+  const formatPercentText = (value) => {
+    if (!Number.isFinite(value)) return null;
+    const fixed = value.toFixed(2);
+    if (fixed.endsWith('.00')) return fixed.slice(0, -3);
+    if (fixed.endsWith('0')) return fixed.slice(0, -1);
+    return fixed;
+  };
   const splitTotal = burnPercentNum + treasuryPercentNum + memberPoolPercentNum + (protocolPercentNum ?? 0);
+  const splitBalanced = Number.isFinite(splitTotal) ? Math.abs(splitTotal - 100) < 0.001 : false;
+  const splitTotalDisplay = Number.isFinite(splitTotal) ? formatPercentText(splitTotal) : null;
+  const protocolPercentDisplay = protocolPercentNum !== null && Number.isFinite(protocolPercentNum)
+    ? formatPercentText(protocolPercentNum)
+    : null;
   const activeProtocolPercent = Number.isFinite(currentProtocolPercent) ? currentProtocolPercent : protocolPercentNum;
   const parsedBurnInput = Number.isFinite(Number(proposeBurnPercent)) ? Number(proposeBurnPercent) : 0;
   const parsedTreasuryInput = Number.isFinite(Number(proposeTreasuryPercent)) ? Number(proposeTreasuryPercent) : 0;
@@ -257,12 +271,16 @@ function App() {
           dec = Number(await erc20.decimals());
         } catch { dec = null; }
         if (!cancelled) {
+          const normalizedBurn = Number.isFinite(burnPct) ? Number((burnPct / 100).toFixed(2)) : null;
+          const normalizedTreasury = Number.isFinite(treasuryPct) ? Number((treasuryPct / 100).toFixed(2)) : null;
+          const normalizedMember = Number.isFinite(memberPct) ? Number((memberPct / 100).toFixed(2)) : null;
+          const normalizedProtocol = Number.isFinite(protocolPct) ? Number((protocolPct / 100).toFixed(2)) : null;
           setCurrentFee(fee.toString());
           setTokenDecimals(dec);
-          if (Number.isFinite(burnPct)) setCurrentBurnPercent(burnPct);
-          if (Number.isFinite(treasuryPct)) setCurrentTreasuryPercent(treasuryPct);
-          if (Number.isFinite(memberPct)) setCurrentMemberPercent(memberPct);
-          if (Number.isFinite(protocolPct)) setCurrentProtocolPercent(protocolPct);
+          setCurrentBurnPercent(normalizedBurn);
+          setCurrentTreasuryPercent(normalizedTreasury);
+          setCurrentMemberPercent(normalizedMember);
+          setCurrentProtocolPercent(normalizedProtocol);
           if (dictatorshipState !== null) {
             setIsDictatorship(Boolean(dictatorshipState));
           } else {
@@ -575,8 +593,11 @@ function App() {
           setProtocolFeeRecipient(recipient);
         }
         const bpNum = Number(bpRaw);
-        if (!Number.isNaN(bpNum) && bpNum !== protocolPercent) {
-          setProtocolPercent(bpNum);
+        if (!Number.isNaN(bpNum)) {
+          const normalized = Number((bpNum / 100).toFixed(2));
+          if (Math.abs(normalized - protocolPercent) >= 0.001) {
+            setProtocolPercent(normalized);
+          }
         }
       } catch (err) {
         dlog('[app] load factory config failed', err?.message || err);
@@ -632,8 +653,9 @@ function App() {
       return;
     }
     const splits = [burnPercent, treasuryPercent, memberPoolPercent];
-    if (!splits.every((n) => /^\d+$/.test(n))) {
-      alert('Percentages must be numeric');
+    const percentPattern = /^\d+(\.\d{1,2})?$/;
+    if (!splits.every((n) => percentPattern.test(String(n ?? '').trim()))) {
+      alert('Percentages must be numeric with up to two decimal places');
       return;
     }
     const burn = Number(burnPercent);
@@ -646,8 +668,8 @@ function App() {
     const protocolShare = Number.isFinite(protocolPercent) ? protocolPercent : null;
     if (protocolShare !== null) {
       const totalSplit = burn + treas + member + protocolShare;
-      if (totalSplit !== 100) {
-        alert(`Fee split must sum to 100. Current total: ${totalSplit}`);
+      if (Math.abs(totalSplit - 100) >= 0.001) {
+        alert(`Fee split must sum to 100. Current total: ${Number(totalSplit.toFixed(2))}`);
         return;
       }
     }
@@ -718,9 +740,13 @@ function App() {
     if (autoDeployTriggeredRef.current) return;
     if (!signer) return;
     try {
-      const splitsValid = [burnPercent, treasuryPercent, memberPoolPercent].every((n) => /^\d+$/.test(n));
+      const percentPattern = /^\d+(\.\d{1,2})?$/;
+      const splitsValid = [burnPercent, treasuryPercent, memberPoolPercent].every((n) => percentPattern.test(String(n ?? '').trim()));
       const limitValid = !maxMembers || /^\d+$/.test(maxMembers);
-      const sumValid = !Number.isFinite(protocolPercent) ? true : (Number(burnPercent) + Number(treasuryPercent) + Number(memberPoolPercent) + Number(protocolPercent)) === 100;
+      const protocolValue = Number(protocolPercent);
+      const sumValid = !Number.isFinite(protocolValue)
+        ? true
+        : Math.abs((Number(burnPercent) + Number(treasuryPercent) + Number(memberPoolPercent) + protocolValue) - 100) < 0.001;
       const trimmedFactory = factoryAddress.trim();
       if (trimmedFactory && ethers.isAddress(trimmedFactory) && ethers.isAddress(tokenAddress) && /^\d+$/.test(entryFee) && splitsValid && sumValid && limitValid) {
         autoDeployTriggeredRef.current = true;
@@ -1851,10 +1877,14 @@ function App() {
               <label className="block text-sm font-medium text-black/70 mb-1">Protocol fee recipient (fixed)</label>
               <input className="w-full border border-black/20 rounded px-3 py-2 bg-black/5" value={protocolFeeRecipient || 'fetching…'} readOnly />
             </div>
-                <div>
-                <label className="block text-sm font-medium text-black/70 mb-1">Protocol percent</label>
-                  <input className="w-full border border-black/20 rounded px-3 py-2 bg-black/5" value={protocolPercentNum ?? 'fetching…'} readOnly />
-                </div>
+            <div>
+              <label className="block text-sm font-medium text-black/70 mb-1">Protocol percent</label>
+              <input
+                className="w-full border border-black/20 rounded px-3 py-2 bg-black/5"
+                value={protocolPercentDisplay ?? 'fetching…'}
+                readOnly
+              />
+            </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-black/70 mb-1">Entry fee (wei)</label>
@@ -1871,9 +1901,9 @@ function App() {
                   <input className="border border-black/20 rounded px-3 py-2" placeholder="Treasury" value={treasuryPercent} onChange={(e) => setTreasuryPercent(e.target.value)} />
                   <input className="border border-black/20 rounded px-3 py-2" placeholder="Member pool" value={memberPoolPercent} onChange={(e) => setMemberPoolPercent(e.target.value)} />
                 </div>
-                {Number.isFinite(protocolPercentNum) && (
-                  <div className={`text-xs mt-1 ${splitTotal === 100 ? 'text-black/60' : 'text-red-600'}`}>
-                    Fee split total: {splitTotal}/100 (includes protocol {protocolPercentNum})
+                {protocolPercentDisplay !== null && (
+                  <div className={`text-xs mt-1 ${splitBalanced ? 'text-black/60' : 'text-red-600'}`}>
+                    Fee split total: {splitTotalDisplay ?? '…'}/100 (includes protocol {protocolPercentDisplay})
                   </div>
                 )}
               </div>

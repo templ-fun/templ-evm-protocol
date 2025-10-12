@@ -64,7 +64,7 @@ This guide promotes templ to production with a Fly-hosted backend and a Cloudfla
    cp backend/fly.example.toml backend/fly.toml
    ```
 
-   Update `app`, `primary_region`, and any sizing preferences to match your Fly account. The template references `backend/Dockerfile`, exposes port `3001`, and mounts `/var/lib/templ` for SQLite.
+   Update `app`, `primary_region`, and any sizing preferences to match your Fly account. The template references `Dockerfile` (in `backend/`), exposes port `3001`, and mounts `/var/lib/templ` for SQLite.
 
 2. Create a persistent volume so the SQLite database survives deploys and restarts:
 
