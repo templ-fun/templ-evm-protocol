@@ -2103,16 +2103,7 @@ function App() {
                   </p>
                 )}
               </div>
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <button
-                  type="button"
-                  className="px-4 py-2 rounded border border-black/20 text-sm"
-                  onClick={() => setShowAdvanced((prev) => !prev)}
-                >
-                  {showAdvanced ? 'Hide advanced' : 'Advanced options'}
-                </button>
-              </div>
-              {showAdvanced && (
+                            {showAdvanced && (
                 <div className="space-y-4 border-t border-black/10 pt-4">
                   <div>
                     <label className="block text-sm font-medium text-black/70 mb-1">TemplFactory address</label>
@@ -2238,7 +2229,16 @@ function App() {
                   </div>
                 </div>
               )}
-              <button className="px-4 py-2 rounded bg-primary text-black font-semibold w-full sm:w-auto" onClick={handleDeploy}>Deploy</button>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <button className="px-4 py-2 rounded bg-primary text-black font-semibold w-full sm:w-auto" onClick={handleDeploy}>Deploy</button>
+                <button
+                  type="button"
+                  className="px-4 py-2 rounded border border-black/20 text-sm"
+                  onClick={() => setShowAdvanced((prev) => !prev)}
+                >
+                  {showAdvanced ? 'Hide advanced' : 'Advanced options'}
+                </button>
+              </div>
             </div>
           </div>
         )}
