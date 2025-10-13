@@ -59,7 +59,7 @@
 .modal__footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
 
 /* Basic helpers for demo */
-.bg-primary { background: var(--primary); }
+/* .bg-primary { background: var(--primary); } */
 .text-black { color: #000; }
 .font-semibold { font-weight: 600; }
 
@@ -76,3 +76,7 @@
 .drawer { border: 1px solid var(--border); border-radius: 12px; padding: 12px; background: #fff; }
 .drawer-title { font-weight: 600; margin-bottom: 8px; }
 .drawer-grid { display: grid; gap: 8px; }
+
+input {
+  background: white;
+}
