@@ -569,8 +569,13 @@ function App() {
     // Kick off identity readiness check in background so deploy/join can await it later
     try {
       const ensureReady = async () => {
+        const onLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
         const forcedEnv = import.meta.env.VITE_XMTP_ENV?.trim();
-        const env = forcedEnv || (['localhost', '127.0.0.1'].includes(window.location.hostname) ? 'dev' : 'production');
+        const env = forcedEnv || (onLocalhost ? 'dev' : null);
+        if (!env) {
+          identityReadyRef.current = true;
+          return true;
+        }
         const inboxId = client.inboxId?.replace?.(/^0x/i, '') || '';
         if (!inboxId) return true;
         let max = import.meta.env?.VITE_E2E_DEBUG === '1' ? 120 : 90;
@@ -941,8 +946,13 @@ function App() {
         if (identityReadyPromiseRef.current) {
           await identityReadyPromiseRef.current;
         } else if (xmtp?.inboxId) {
-          const forcedEnv = import.meta.env.VITE_XMTP_ENV?.trim();
-          const env = forcedEnv || (['localhost', '127.0.0.1'].includes(window.location.hostname) ? 'dev' : 'production');
+        const onLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+        const forcedEnv = import.meta.env.VITE_XMTP_ENV?.trim();
+        const env = forcedEnv || (onLocalhost ? 'dev' : null);
+        if (!env) {
+          identityReadyRef.current = true;
+          return;
+        }
           const inboxId = xmtp.inboxId.replace(/^0x/i, '');
           let max = import.meta.env?.VITE_E2E_DEBUG === '1' ? 120 : 90;
           let delay = 1000;
