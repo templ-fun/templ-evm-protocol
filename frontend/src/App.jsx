@@ -178,7 +178,8 @@ function App() {
     if (!FACTORY_CONFIG.address) {
       setShowAdvanced(true);
     }
-  }, [FACTORY_CONFIG.address]);
+    // FACTORY_CONFIG.address is static at module load; run once.
+  }, []);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
@@ -373,16 +374,19 @@ function App() {
     return Math.min(parsed, 1_000_000);
   };
 
-  const curveConfig = showAdvanced && customCurveEnabled
-    ? {
+  const curveConfig = useMemo(() => {
+    if (showAdvanced && customCurveEnabled) {
+      return {
         primary: {
           style: resolveCurveStyleValue(curvePrimaryStyle),
           rateBps: parseCurveRateBps(curvePrimaryRateBps, curvePrimaryStyle)
         }
-      }
-    : {
-        primary: { style: CURVE_STYLE_INDEX.static, rateBps: 0 }
       };
+    }
+    return {
+      primary: { style: CURVE_STYLE_INDEX.static, rateBps: 0 }
+    };
+  }, [showAdvanced, customCurveEnabled, curvePrimaryStyle, curvePrimaryRateBps]);
 
   // Fetch entry fee and token decimals for display in reprice UI
   useEffect(() => {
@@ -898,7 +902,28 @@ function App() {
       console.error('[app] deploy failed', err);
       alert(err.message);
     }
-  }, [signer, xmtp, tokenAddress, entryFee, burnPercent, treasuryPercent, memberPoolPercent, protocolPercent, factoryAddress, walletAddress, updateTemplAddress, pushStatus, navigate, maxMembers, rememberJoinedTempl, setTemplList]);
+  }, [
+    signer,
+    xmtp,
+    tokenAddress,
+    entryFee,
+    burnPercent,
+    treasuryPercent,
+    memberPoolPercent,
+    protocolPercent,
+    factoryAddress,
+    walletAddress,
+    updateTemplAddress,
+    pushStatus,
+    navigate,
+    maxMembers,
+    rememberJoinedTempl,
+    setTemplList,
+    customCurveEnabled,
+    showAdvanced,
+    curveConfig,
+    homeLink
+  ]);
 
   // In e2e debug mode, auto-trigger deploy once inputs are valid to deflake clicks
   useEffect(() => {

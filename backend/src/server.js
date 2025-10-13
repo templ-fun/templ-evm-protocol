@@ -1393,11 +1393,20 @@ export async function createApp(opts) {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   dotenv.config();
-  const { RPC_URL } = process.env;
+  const { RPC_URL, RPC_CHAIN_ID } = process.env;
   if (!RPC_URL) {
     throw new Error('Missing RPC_URL environment variable');
   }
-  const provider = new ethers.JsonRpcProvider(RPC_URL);
+  let provider;
+  if (RPC_CHAIN_ID) {
+    const parsedChainId = Number(RPC_CHAIN_ID);
+    if (!Number.isFinite(parsedChainId) || parsedChainId <= 0) {
+      throw new Error(`Invalid RPC_CHAIN_ID "${RPC_CHAIN_ID}"`);
+    }
+    provider = new ethers.JsonRpcProvider(RPC_URL, { chainId: parsedChainId, name: `chain-${parsedChainId}` });
+  } else {
+    provider = new ethers.JsonRpcProvider(RPC_URL);
+  }
 
   const hasJoined = async (contractAddress, memberAddress) => {
     const contract = new ethers.Contract(

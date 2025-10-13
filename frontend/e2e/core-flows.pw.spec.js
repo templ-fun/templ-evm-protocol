@@ -15,7 +15,6 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
 
   test('All 7 Core Flows', async ({ page, wallets }) => {
 
-    let lastSentTxHash = null;
     const waitForUiReady = async (label) => {
       await expect.poll(async () => {
         const state = await page.evaluate(() => {
@@ -203,7 +202,6 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
           console.log('[wallet bridge] nonce selection', pendingNonce, nextNonceForWallet);
           req.nonce = pendingNonce;
           const resp = await w.sendTransaction(req);
-          lastSentTxHash = resp.hash;
           const usedNonce = typeof resp.nonce === 'bigint' ? Number(resp.nonce) : resp.nonce;
           if (Number.isFinite(usedNonce)) {
             nextNonceForWallet = usedNonce + 1;
@@ -433,7 +431,6 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
         }
         req.nonce = pendingNonce;
         const resp = await w.sendTransaction(req);
-        lastSentTxHash = resp.hash;
         const usedNonce = typeof resp.nonce === 'bigint' ? Number(resp.nonce) : resp.nonce;
         if (Number.isFinite(usedNonce)) {
           memberNextNonce = usedNonce + 1;
@@ -657,7 +654,6 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
       req.nonce = nextNonce;
       const resp = await testWallet.sendTransaction(req);
       const hash = resp.hash;
-      lastSentTxHash = hash;
       uiTxCache.set(key, hash);
       const usedNonce = typeof resp.nonce === 'bigint' ? Number(resp.nonce) : resp.nonce;
       if (Number.isFinite(usedNonce)) {
@@ -781,7 +777,6 @@ test.describe('TEMPL E2E - All 7 Core Flows', () => {
         }
         req.nonce = pendingNonce;
         const resp = await priestWallet.sendTransaction(req);
-        lastSentTxHash = resp.hash;
         const usedNonce = typeof resp.nonce === 'bigint' ? Number(resp.nonce) : resp.nonce;
         if (Number.isFinite(usedNonce)) priestNextNonce = usedNonce + 1;
         return resp.hash;

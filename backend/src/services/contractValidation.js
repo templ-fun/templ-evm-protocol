@@ -96,10 +96,17 @@ export async function ensureContractDeployed({ provider, contractAddress, chainI
     if (err?.statusCode) throw err;
   }
   let code;
-  try {
-    code = await provider.getCode(contractAddress);
-  } catch {
-    throw templError('Unable to verify contract', 400);
+  const maxAttempts = 3;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      code = await provider.getCode(contractAddress);
+      break;
+    } catch {
+      if (attempt === maxAttempts - 1) {
+        throw templError('Unable to verify contract', 400);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+    }
   }
   if (!code || code === '0x') {
     throw templError('Not a contract', 400);
