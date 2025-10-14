@@ -3,8 +3,9 @@ import { ethers } from 'ethers';
 import { Client } from '@xmtp/node-sdk';
 import { waitFor } from '../../../shared/xmtp-wait.js';
 import { logger } from '../logger.js';
+import { resolveXmtpEnv } from './options.js';
 
-export const XMTP_ENV = process.env.XMTP_ENV || 'dev';
+export const XMTP_ENV = resolveXmtpEnv();
 
 // Linearize: wait until the target inbox is visible on the XMTP network
 export async function waitForInboxReady(inboxId, tries = 60) {
@@ -44,7 +45,7 @@ export async function createXmtpWithRotation(wallet, maxAttempts = 20) {
       const hex = explicit.startsWith('0x') ? explicit : `0x${explicit}`;
       dbEncryptionKey = ethers.getBytes(hex);
     } else if (wallet?.privateKey) {
-      const env = String(process.env.XMTP_ENV || 'dev');
+      const env = resolveXmtpEnv();
       const material = ethers.concat([ethers.getBytes(wallet.privateKey), ethers.toUtf8Bytes(`:${env}:templ-db-key`) ]);
       const keyHex = ethers.keccak256(material);
       dbEncryptionKey = ethers.getBytes(keyHex);
@@ -88,13 +89,24 @@ export async function createXmtpWithRotation(wallet, maxAttempts = 20) {
     };
     try {
       // @ts-ignore - Node SDK accepts EOA-like signers; our JS object matches at runtime
-      const env = process.env.XMTP_ENV || 'dev';
+      const env = resolveXmtpEnv();
       // @ts-ignore - TS cannot discriminate the 'EOA' literal on JS object; safe at runtime
+      const loggingLevel =
+        process.env.XMTP_LOG_LEVEL ||
+        (process.env.NODE_ENV === 'production' ? 'warn' : 'debug');
+      const structuredLogging = process.env.XMTP_STRUCTURED_LOGGING === '1';
+      const appVersion = process.env.XMTP_APP_VERSION || 'templ/1.0.1';
+      const apiUrl = process.env.XMTP_API_URL;
+      if (apiUrl) {
+        logger.info({ apiUrl }, 'XMTP using custom API URL override');
+      }
       return await Client.create(xmtpSigner, {
         dbEncryptionKey,
         env,
-        loggingLevel: 'off',
-        appVersion: 'templ/1.0.1'
+        loggingLevel,
+        structuredLogging,
+        appVersion,
+        ...(apiUrl ? { apiUrl } : {})
       });
     } catch (err) {
       const msg = String(err?.message || err);
@@ -110,7 +122,7 @@ export async function createXmtpWithRotation(wallet, maxAttempts = 20) {
 
 // Wait for the XMTP client to be able to talk to the network deterministically.
 export async function waitForXmtpClientReady(xmtp, tries = 30, delayMs = 500) {
-  const env = process.env.XMTP_ENV || 'dev';
+  const env = resolveXmtpEnv();
   return Boolean(await waitFor({
     tries,
     delayMs,

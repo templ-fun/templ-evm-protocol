@@ -63,6 +63,16 @@ npm --prefix backend start
 
 The server listens on `http://localhost:3001`, verifies signatures, persists templ registrations in the in-memory adapter (matching the SQLite schema), and—if a `TELEGRAM_BOT_TOKEN` is supplied—posts contract events to chat ids registered for each templ. You only need a persistent store (SQLite) in production; local development stays dependency-free.
 
+### XMTP sanity check
+
+You can exercise XMTP group messaging without deploying contracts by running the demo script:
+
+```bash
+XMTP_ENV=dev npm --prefix backend run xmtp:demo
+```
+
+The script spins up two temporary XMTP clients, creates a group conversation, sends a message from “alice”, and confirms “bob” can fetch it. Set `XMTP_ALICE_PRIVATE_KEY` and `XMTP_BOB_PRIVATE_KEY` if you want to reuse the same inboxes between runs (handy for debugging consent or installation limits).
+
 ## 3) Start the frontend
 
 Terminal C:

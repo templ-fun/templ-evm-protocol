@@ -12,7 +12,8 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc -p tsconfig.json",
-    "migrate": "node scripts/migrate.js"
+    "migrate": "node scripts/migrate.js",
+    "xmtp:demo": "node scripts/xmtp-demo.js"
   },
   "dependencies": {
     "@xmtp/node-sdk": "^4.1.0",

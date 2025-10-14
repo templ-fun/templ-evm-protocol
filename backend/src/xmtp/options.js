@@ -1,7 +1,13 @@
 // XMTP configuration options
 export function resolveXmtpEnv() {
-  const env = process.env.XMTP_ENV || 'dev';
-  return ['local', 'dev', 'production'].includes(env) ? env : 'dev';
+  const raw = process.env.XMTP_ENV;
+  if (raw && ['local', 'dev', 'production'].includes(raw)) {
+    return raw;
+  }
+  if (process.env.NODE_ENV === 'production') {
+    return 'production';
+  }
+  return 'dev';
 }
 
 export function isFastEnv() {

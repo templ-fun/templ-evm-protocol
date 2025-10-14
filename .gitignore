@@ -47,6 +47,9 @@ coverage/
 frontend/coverage/
 backend/coverage/
 backend/**/*.db3*
+xmtp-*.db3*
+backend/.data/
+backend/local-templ.db*
 frontend/.vitest-cache/
 frontend/.vite-cache/
 frontend/npm-cache/

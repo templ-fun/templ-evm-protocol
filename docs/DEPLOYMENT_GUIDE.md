@@ -94,6 +94,7 @@ This guide promotes templ to production with a Fly-hosted backend and a Cloudfla
    fly secrets set \
      XMTP_ENABLED=1 \
      XMTP_ENV=production \
+     # Optional: XMTP_API_URL=https://grpc.production.xmtp.network:443 # Override XMTP endpoint if your network requires custom routing
      # Optional: BACKEND_DB_ENC_KEY=0x... # 32-byte hex key for encrypting XMTP database (generate in production)
      # Optional: BOT_PRIVATE_KEY=0x... # Optional: provide your own bot private key
      # Optional: XMTP_MAX_ATTEMPTS=20 # Maximum installation rotation attempts

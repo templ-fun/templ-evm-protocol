@@ -1,4 +1,5 @@
 // @ts-check
+import { setDefaultResultOrder } from 'dns';
 import express from 'express';
 import dotenv from 'dotenv';
 import { ethers } from 'ethers';
@@ -7,6 +8,13 @@ import rateLimit, { MemoryStore } from 'express-rate-limit';
 import { createRateLimitStore } from './config.js';
 import cors from 'cors';
 import { randomUUID } from 'crypto';
+
+try {
+  // Force IPv4 lookups first; XMTP endpoints only publish A records.
+  setDefaultResultOrder('ipv4first');
+} catch {
+  /* ignore environments that do not support tweaking DNS result order */
+}
 
 import templsRouter from './routes/templs.js';
 import joinRouter from './routes/join.js';
@@ -74,6 +82,122 @@ function buildAllowedOrigins() {
     .split(',')
     .map((o) => o.trim())
     .filter(Boolean);
+}
+
+function resolveTrustProxySetting() {
+  const raw = process.env.TRUST_PROXY;
+  if (raw === undefined) {
+    return process.env.NODE_ENV === 'production' ? 'loopback' : false;
+  }
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return process.env.NODE_ENV === 'production' ? 'loopback' : false;
+  }
+  const lower = trimmed.toLowerCase();
+  if (lower === 'false' || lower === '0') {
+    return false;
+  }
+  if (lower === 'true') {
+    return true;
+  }
+  const numeric = Number(trimmed);
+  if (Number.isFinite(numeric)) {
+    return numeric;
+  }
+  return trimmed;
+}
+
+function mapMetadata(metadata) {
+  if (!metadata || typeof metadata !== 'object') return undefined;
+  try {
+    if (typeof metadata.getMap === 'function') {
+      return metadata.getMap();
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    if (metadata instanceof Map) {
+      return Object.fromEntries(metadata.entries());
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    if (metadata.internalRepr instanceof Map) {
+      return Object.fromEntries(metadata.internalRepr.entries());
+    }
+  } catch {
+    /* ignore */
+  }
+  const plain = {};
+  let hasValue = false;
+  for (const key of Object.keys(metadata)) {
+    const value = metadata[key];
+    if (typeof value === 'function') continue;
+    plain[key] = value;
+    hasValue = true;
+  }
+  return hasValue ? plain : undefined;
+}
+
+function describeError(err) {
+  if (!err || typeof err !== 'object') {
+    return { message: String(err) };
+  }
+  const plain = {};
+  const copy = (key) => {
+    if (err[key] !== undefined) {
+      plain[key] = err[key];
+    }
+  };
+  copy('name');
+  copy('message');
+  copy('code');
+  copy('status');
+  copy('details');
+  if (err.stack) {
+    plain.stack = err.stack;
+  }
+  if (err.cause && err.cause !== err) {
+    plain.cause = describeError(err.cause);
+  }
+  const metadata = mapMetadata(err.metadata);
+  if (metadata) {
+    plain.metadata = metadata;
+  }
+  const debugInformation = err.debugInformation;
+  if (debugInformation && typeof debugInformation === 'object') {
+    const debug = {};
+    const capture = (label, fn) => {
+      if (typeof fn !== 'function') return;
+      try {
+        const value = fn.call(debugInformation);
+        if (value) {
+          debug[label] = value;
+        }
+      } catch (e) {
+        debug[`${label}Error`] = e?.message || String(e);
+      }
+    };
+    capture('apiStats', debugInformation.apiAggregateStatistics);
+    capture('identityStats', debugInformation.identityAggregateStatistics);
+    capture('streamStats', debugInformation.streamAggregateStatistics);
+    if (Object.keys(debug).length > 0) {
+      plain.debug = debug;
+    }
+  }
+  const extraKeys = Object.getOwnPropertyNames(err).filter(
+    (key) => !['name', 'message', 'code', 'status', 'details', 'stack', 'metadata', 'debugInformation', 'cause'].includes(key)
+  );
+  for (const key of extraKeys) {
+    const value = err[key];
+    if (value === undefined || typeof value === 'function') continue;
+    if (plain[key] === undefined) {
+      plain[key] = value;
+    }
+  }
+  return plain;
 }
 
 function toNumber(value) {
@@ -1014,6 +1138,10 @@ export async function createApp(opts) {
     return `templ-${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`;
   })();
   const app = express();
+  const trustProxySetting = resolveTrustProxySetting();
+  if (trustProxySetting !== false) {
+    app.set('trust proxy', trustProxySetting);
+  }
   app.use(cors({ origin: buildAllowedOrigins() }));
   app.use(express.json());
   app.use(helmet());
@@ -1323,7 +1451,7 @@ export async function createApp(opts) {
           logger.info({ instanceId, inboxId: xmtp.inboxId }, 'XMTP client ready');
           break;
         } catch (e) {
-          logger.warn({ attempt: i, err: String(e?.message || e) }, 'XMTP boot not ready; retrying');
+          logger.warn({ attempt: i, err: describeError(e) }, 'XMTP boot not ready; retrying');
           if (i === bootTries) throw e;
           await new Promise((r) => setTimeout(r, 1000));
         }
@@ -1351,7 +1479,7 @@ export async function createApp(opts) {
       };
 
     } catch (err) {
-      logger.error({ err: String(err?.message || err), instanceId }, 'Failed to initialize XMTP client');
+      logger.error({ err: describeError(err), instanceId }, 'Failed to initialize XMTP client');
       // Continue without XMTP if initialization fails
     }
   }
