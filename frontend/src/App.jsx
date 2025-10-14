@@ -98,6 +98,7 @@ const CURVE_PREVIEW_MARKERS = [1n, 10n, 100n, 1000n];
 const CURVE_PREVIEW_SAMPLE_MEMBERS_BASIC = [1n, 2n, 3n, 5n, 10n, 20n, 50n, 100n, 150n, 200n, 249n];
 const CURVE_PREVIEW_MARKERS_BASIC = [1n, 10n, 100n, 249n];
 const CURVE_PREVIEW_GRADIENT_ID = 'curve-preview-gradient';
+const STABLE_SYMBOL_HINTS = ['USD', 'USDC', 'USDBC', 'USDT', 'DAI'];
 
 const formatOrdinal = (value) => {
   const suffixLookup = { 1: 'st', 2: 'nd', 3: 'rd' };
@@ -293,21 +294,24 @@ const formatTokenAmount = (value, decimals, symbol) => {
   }
 };
 
-const formatCurvePriceDisplay = (value, decimals, symbol) => {
+const formatCurvePriceDisplay = (value, decimals, symbol, usdRate) => {
   if (value === null) {
-    return { primary: null, secondary: null };
+    return { primary: null, secondary: null, usd: null };
   }
   const tokenDisplay = formatTokenAmount(value, decimals, symbol);
   const rawDisplay = formatRawUnitsDisplay(value, decimals, symbol);
+  const usdDisplay = formatUsdFromBigInt(value, decimals, usdRate);
   if (tokenDisplay) {
     return {
       primary: tokenDisplay,
-      secondary: rawDisplay ? `≈ ${rawDisplay.amount} ${rawDisplay.unit}` : null
+      secondary: rawDisplay ? `≈ ${rawDisplay.amount} ${rawDisplay.unit}` : null,
+      usd: usdDisplay
     };
   }
   return {
     primary: rawDisplay ? `${rawDisplay.amount} ${rawDisplay.unit}` : null,
-    secondary: null
+    secondary: null,
+    usd: usdDisplay
   };
 };
 
@@ -374,6 +378,113 @@ const formatMultiplier = (baseFee, price) => {
     return `${formatted.replace(/\.0+$/, '')}× base`;
   }
   return `~10^${delta.toFixed(1)}× base`;
+};
+
+const formatUsdAmount = (value) => {
+  if (!Number.isFinite(value)) return null;
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000) {
+    return `$${value.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+  }
+  if (abs >= 1_000) {
+    return `$${value.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+  }
+  if (abs >= 0.01) {
+    return `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+  return `$${value.toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}`;
+};
+
+const inferUsdRateForToken = (symbol, address) => {
+  const normalizedSymbol = typeof symbol === 'string' ? symbol.trim().toUpperCase() : '';
+  if (normalizedSymbol && STABLE_SYMBOL_HINTS.some((hint) => normalizedSymbol.includes(hint))) {
+    return 1;
+  }
+  const normalizedAddress = typeof address === 'string' ? address.trim().toLowerCase() : '';
+  if (!normalizedAddress) {
+    return null;
+  }
+  const knownStableAddresses = [
+    '0x833589fcd6edb6e08f4c7c90c2b4dfa8f2edb9a3', // Base native USDC
+    '0x0fa07e6a80cad0ef4c6bb7c4b8c4fae8207212b8', // USDbC
+    '0x50c5725949a6f0c72e6c4a641f24049a917db0cb', // DAI
+    '0x09bc4e874d2f9f97755ce22f579f5dc1d0a3bf8d'  // USDT
+  ];
+  if (knownStableAddresses.includes(normalizedAddress)) {
+    return 1;
+  }
+  return null;
+};
+
+const bigIntToDecimal = (value, decimals) => {
+  if (value === null || !Number.isInteger(decimals)) {
+    return null;
+  }
+  try {
+    const formatted = ethers.formatUnits(value, decimals);
+    const numeric = Number(formatted);
+    return Number.isFinite(numeric) ? numeric : null;
+  } catch {
+    return null;
+  }
+};
+
+const formatUsdFromBigInt = (value, decimals, usdRate) => {
+  if (value === null || usdRate === null) {
+    return null;
+  }
+  const amount = bigIntToDecimal(value, decimals);
+  if (amount === null) {
+    return null;
+  }
+  return formatUsdAmount(amount * usdRate);
+};
+
+const percentValueToBps = (value) => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  let numeric = null;
+  if (typeof value === 'number') {
+    numeric = value;
+  } else if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = Number(trimmed);
+    if (Number.isFinite(parsed)) {
+      numeric = parsed;
+    }
+  }
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    return null;
+  }
+  const clamped = Math.min(numeric, 100);
+  return BigInt(Math.round(clamped * 100));
+};
+
+const applyPercentBigInt = (value, percentBps) => {
+  if (value === null || percentBps === null) {
+    return null;
+  }
+  try {
+    return (value * percentBps) / 10000n;
+  } catch {
+    return null;
+  }
+};
+
+const formatTokenUsdBreakdown = (value, decimals, symbol, usdRate) => {
+  if (value === null) {
+    return { token: null, raw: null, usd: null };
+  }
+  const tokenDisplay = formatTokenAmount(value, decimals, symbol);
+  const rawDisplay = formatRawUnitsDisplay(value, decimals, symbol);
+  const usdDisplay = formatUsdFromBigInt(value, decimals, usdRate);
+  return {
+    token: tokenDisplay ?? (rawDisplay ? `${rawDisplay.amount} ${rawDisplay.unit}` : null),
+    raw: rawDisplay ? `${rawDisplay.amount} ${rawDisplay.unit}` : null,
+    usd: usdDisplay
+  };
 };
 
 const formatPreviewRangeLabel = (preview) => {
@@ -511,6 +622,7 @@ function App() {
 
   // curve configuration
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [priestDictatorship, setPriestDictatorship] = useState(false);
   const [curvePrimaryStyle, setCurvePrimaryStyle] = useState('exponential');
   const [curvePrimaryRateBps, setCurvePrimaryRateBps] = useState('10094');
   const [homeLink, setHomeLink] = useState('');
@@ -520,6 +632,11 @@ function App() {
     }
     // FACTORY_CONFIG.address is static at module load; run once.
   }, []);
+  useEffect(() => {
+    if (!showAdvanced) {
+      setPriestDictatorship(false);
+    }
+  }, [showAdvanced]);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
@@ -687,6 +804,8 @@ function App() {
   const protocolPercentDisplay = protocolPercentNum !== null && Number.isFinite(protocolPercentNum)
     ? formatPercentText(protocolPercentNum)
     : null;
+  const tokenAddressTrimmed = typeof tokenAddress === 'string' ? tokenAddress.trim() : '';
+  const tokenAddressLower = tokenAddressTrimmed ? tokenAddressTrimmed.toLowerCase() : '';
   const entryFeeDisplay = (() => {
     if (!Number.isInteger(createTokenDecimals)) return null;
     const raw = String(entryFee || '').trim();
@@ -702,11 +821,12 @@ function App() {
     }
   })();
   const entryFeeUnitLabel = resolveEntryFeeUnitLabel(createTokenDecimals, createTokenSymbol);
-  const entryFeeRawDisplay = (() => {
-    const parsed = parseBigIntInput(entryFee);
-    if (parsed === null) return null;
-    return formatRawUnitsDisplay(parsed, createTokenDecimals, createTokenSymbol);
-  })();
+  const entryFeeBigInt = parseBigIntInput(entryFee);
+  const entryFeeRawDisplay = entryFeeBigInt === null
+    ? null
+    : formatRawUnitsDisplay(entryFeeBigInt, createTokenDecimals, createTokenSymbol);
+  const usdRateHint = inferUsdRateForToken(createTokenSymbol, tokenAddressLower);
+  const entryFeeUsdDisplay = formatUsdFromBigInt(entryFeeBigInt, createTokenDecimals, usdRateHint);
   const activeProtocolPercent = Number.isFinite(currentProtocolPercent) ? currentProtocolPercent : protocolPercentNum;
   const parsedBurnInput = Number.isFinite(Number(proposeBurnPercent)) ? Number(proposeBurnPercent) : 0;
   const parsedTreasuryInput = Number.isFinite(Number(proposeTreasuryPercent)) ? Number(proposeTreasuryPercent) : 0;
@@ -799,6 +919,9 @@ function App() {
     const cap = parseOptionalMaxMembers(maxMembers);
     const markerBase = showAdvanced ? CURVE_PREVIEW_MARKERS : CURVE_PREVIEW_MARKERS_BASIC;
     const sampleBase = showAdvanced ? CURVE_PREVIEW_SAMPLE_MEMBERS : CURVE_PREVIEW_SAMPLE_MEMBERS_BASIC;
+    const usdRate = inferUsdRateForToken(symbol, tokenAddressLower);
+    const burnPercentBps = percentValueToBps(burnPercent);
+    const treasuryPercentBps = percentValueToBps(treasuryPercent);
     const markerStrings = [
       ...markerBase.map((value) => value.toString()),
       ...(cap !== null && cap > 0n ? [cap.toString()] : [])
@@ -808,17 +931,41 @@ function App() {
       highlightMarkers = highlightMarkers.filter((member) => member <= cap);
     }
     highlightMarkers = [...highlightMarkers].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    const cumulativeFeeByMember = new Map();
+    let cumulativeFees = 0n;
+    let lastMemberComputed = 0n;
+    for (const member of highlightMarkers) {
+      if (cap !== null && member > cap) {
+        break;
+      }
+      let current = lastMemberComputed + 1n;
+      if (current < 1n) current = 1n;
+      while (current <= member) {
+        const joinPrice = computePriceForJoin(baseFee, style, rate, current);
+        cumulativeFees += joinPrice;
+        current += 1n;
+      }
+      cumulativeFeeByMember.set(member.toString(), cumulativeFees);
+      if (member > lastMemberComputed) {
+        lastMemberComputed = member;
+      }
+    }
     const highlightCards = highlightMarkers.map((member) => {
       const withinCap = cap === null || member <= cap;
       const price = withinCap ? computePriceForJoin(baseFee, style, rate, member) : null;
+      const cumulativeFee = withinCap ? (cumulativeFeeByMember.get(member.toString()) ?? null) : null;
+      const burnTotal = applyPercentBigInt(cumulativeFee, burnPercentBps);
+      const treasuryTotal = applyPercentBigInt(cumulativeFee, treasuryPercentBps);
       return {
         key: member.toString(),
         member,
-        ordinalLabel: formatOrdinal(Number(member)),
+        ordinalLabel: `${formatOrdinal(Number(member))} member${Number(member) === 1 ? '' : 's'}`,
         withinCap,
         price,
-        display: formatCurvePriceDisplay(price, decimals, symbol),
-        multiplier: price !== null ? formatMultiplier(baseFee, price) : null
+        display: formatCurvePriceDisplay(price, decimals, symbol, usdRate),
+        multiplier: price !== null ? formatMultiplier(baseFee, price) : null,
+        burnTotal: formatTokenUsdBreakdown(burnTotal, decimals, symbol, usdRate),
+        treasuryTotal: formatTokenUsdBreakdown(treasuryTotal, decimals, symbol, usdRate)
       };
     });
     const cappedMembers = highlightCards.filter((card) => !card.withinCap);
@@ -953,7 +1100,10 @@ function App() {
     createTokenSymbol,
     entryFee,
     maxMembers,
-    showAdvanced
+    showAdvanced,
+    burnPercent,
+    treasuryPercent,
+    tokenAddressLower
   ]);
 
   // Fetch entry fee and token decimals for display in reprice UI
@@ -1417,7 +1567,8 @@ function App() {
         memberPoolPercent,
         protocolPercent,
         factoryAddress,
-        maxMembers: normalizedMaxMembers.toString()
+        maxMembers: normalizedMaxMembers.toString(),
+        priestDictatorship
       });
       const result = await deployTempl({
         ethers,
@@ -1429,6 +1580,7 @@ function App() {
         burnPercent,
         treasuryPercent,
         memberPoolPercent,
+        priestIsDictator: showAdvanced ? priestDictatorship : false,
         maxMembers: normalizedMaxMembers,
         factoryAddress: trimmedFactory,
         factoryArtifact: templFactoryArtifact,
@@ -1487,6 +1639,7 @@ function App() {
     maxMembers,
     rememberJoinedTempl,
     setTemplList,
+    priestDictatorship,
     showAdvanced,
     curveConfig,
     homeLink
@@ -2718,6 +2871,7 @@ function App() {
                     Entry fee: {entryFeeDisplay}
                     {createTokenSymbol ? ` ${createTokenSymbol}` : ''}
                     {entryFeeRawDisplay ? ` • ${entryFeeRawDisplay.amount} ${entryFeeRawDisplay.unit}` : ''}
+                    {entryFeeUsdDisplay ? ` • ${entryFeeUsdDisplay}` : ''}
                     {Number.isInteger(createTokenDecimals) ? ` (decimals ${createTokenDecimals})` : ''}
                   </p>
                 )}
@@ -2769,6 +2923,41 @@ function App() {
                         Fee split total: {splitTotalDisplay ?? '…'}/100 (includes protocol {protocolPercentDisplay})
                       </div>
                     )}
+                  </div>
+                  <div className="rounded-lg border border-black/20 p-3 bg-white/80">
+                    <div className="flex flex-col gap-1">
+                      <h3 className="text-sm font-medium text-black/90">Governance mode</h3>
+                      <p className="text-xs text-black/60">
+                        Choose whether governance actions require member voting or can be executed immediately by the priest.
+                      </p>
+                    </div>
+                    <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+                      <label className="inline-flex items-center gap-2 text-sm font-medium text-black/80">
+                        <input
+                          type="radio"
+                          name="governance-mode"
+                          className="h-4 w-4"
+                          checked={!priestDictatorship}
+                          onChange={() => setPriestDictatorship(false)}
+                        />
+                        Member democracy (default)
+                      </label>
+                      <label className="inline-flex items-center gap-2 text-sm font-medium text-black/80">
+                        <input
+                          type="radio"
+                          name="governance-mode"
+                          className="h-4 w-4"
+                          checked={priestDictatorship}
+                          onChange={() => setPriestDictatorship(true)}
+                        />
+                        Priest dictatorship
+                      </label>
+                    </div>
+                    <p className="text-xs text-black/60 mt-2">
+                      {priestDictatorship
+                        ? 'Priest dictatorship lets the priest execute governance changes instantly until members vote to restore democracy.'
+                        : 'Member democracy routes actions through the proposal and voting flow before execution.'}
+                    </p>
                   </div>
                   <div className="hidden">
                     <label className="block text-sm font-medium text-black/70 mb-1">
@@ -2873,7 +3062,7 @@ function App() {
                         )}
                       </div>
                       <div className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium text-black/80" style={{ background: 'rgba(229, 255, 90, 0.2)' }}>
-                        <span>Next members</span>
+                        <span>Join Fee Projection</span>
                         <span className="font-semibold text-black/70">{formatPreviewRangeLabel(curvePreview)}</span>
                       </div>
                     </div>
@@ -2933,12 +3122,27 @@ function App() {
                               {card.withinCap && card.display?.primary ? (
                                 <>
                                   <div className="text-sm font-semibold text-black/90 mt-1">{card.display.primary}</div>
+                                  {card.display.usd && (
+                                    <div className="text-xs text-black/60">{card.display.usd}</div>
+                                  )}
                                   {card.display.secondary && (
                                     <div className="text-xs text-black/60">{card.display.secondary}</div>
                                   )}
                                   {card.multiplier && (
                                     <div className="text-xs text-black/60 mt-1">{card.multiplier}</div>
                                   )}
+                                  <div className="mt-3 space-y-1 text-xs text-black/70">
+                                    <div>
+                                      <span className="font-semibold text-black/80">Total burn</span>{' '}
+                                      {card.burnTotal?.token ?? card.burnTotal?.raw ?? '—'}
+                                      {card.burnTotal?.usd ? ` • ${card.burnTotal.usd}` : ''}
+                                    </div>
+                                    <div>
+                                      <span className="font-semibold text-black/80">Total treasury</span>{' '}
+                                      {card.treasuryTotal?.token ?? card.treasuryTotal?.raw ?? '—'}
+                                      {card.treasuryTotal?.usd ? ` • ${card.treasuryTotal.usd}` : ''}
+                                    </div>
+                                  </div>
                                 </>
                               ) : (
                                 <div className="text-sm text-black/60 mt-1">Capped by max members</div>
