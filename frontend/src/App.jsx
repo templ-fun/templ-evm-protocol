@@ -625,6 +625,9 @@ function App() {
   const [priestDictatorship, setPriestDictatorship] = useState(false);
   const [curvePrimaryStyle, setCurvePrimaryStyle] = useState('exponential');
   const [curvePrimaryRateBps, setCurvePrimaryRateBps] = useState('10094');
+  const [quorumPercentInput, setQuorumPercentInput] = useState('');
+  const [executionDelayInput, setExecutionDelayInput] = useState('');
+  const [customBurnAddress, setCustomBurnAddress] = useState('');
   const [homeLink, setHomeLink] = useState('');
   useEffect(() => {
     if (!FACTORY_CONFIG.address) {
@@ -635,6 +638,9 @@ function App() {
   useEffect(() => {
     if (!showAdvanced) {
       setPriestDictatorship(false);
+      setQuorumPercentInput('');
+      setExecutionDelayInput('');
+      setCustomBurnAddress('');
     }
   }, [showAdvanced]);
   useEffect(() => {
@@ -1567,6 +1573,49 @@ function App() {
         return;
       }
     }
+    let quorumBps = null;
+    if (showAdvanced) {
+      const quorumTrim = String(quorumPercentInput || '').trim();
+      if (quorumTrim) {
+        if (!percentPattern.test(quorumTrim)) {
+          alert('Quorum must be numeric with up to two decimal places');
+          return;
+        }
+        const quorumNumeric = Number(quorumTrim);
+        if (!Number.isFinite(quorumNumeric) || quorumNumeric < 0 || quorumNumeric > 100) {
+          alert('Quorum percent must be between 0 and 100');
+          return;
+        }
+        quorumBps = Math.round(quorumNumeric * 100);
+      }
+    }
+    let executionDelaySecondsValue = null;
+    if (showAdvanced) {
+      const executionTrim = String(executionDelayInput || '').trim();
+      if (executionTrim) {
+        if (!/^\d+$/.test(executionTrim)) {
+          alert('Execution delay must be a non-negative integer (seconds)');
+          return;
+        }
+        const parsedDelay = Number(executionTrim);
+        if (!Number.isFinite(parsedDelay) || parsedDelay < 0) {
+          alert('Execution delay must be a non-negative integer (seconds)');
+          return;
+        }
+        executionDelaySecondsValue = parsedDelay;
+      }
+    }
+    let burnAddressValue = null;
+    if (showAdvanced) {
+      const burnTrim = String(customBurnAddress || '').trim();
+      if (burnTrim) {
+        if (!ethers.isAddress(burnTrim)) {
+          alert('Burn address must be a valid address');
+          return;
+        }
+        burnAddressValue = burnTrim;
+      }
+    }
     try {
       dlog('[app] deploying templ with factory', {
         tokenAddress,
@@ -1577,7 +1626,10 @@ function App() {
         protocolPercent,
         factoryAddress,
         maxMembers: normalizedMaxMembers.toString(),
-        priestDictatorship
+        priestDictatorship,
+        quorumBps,
+        executionDelaySecondsValue,
+        burnAddressValue
       });
       const result = await deployTempl({
         ethers,
@@ -1589,6 +1641,9 @@ function App() {
         burnPercent,
         treasuryPercent,
         memberPoolPercent,
+        quorumPercent: quorumBps ?? undefined,
+        executionDelaySeconds: executionDelaySecondsValue ?? undefined,
+        burnAddress: burnAddressValue ?? undefined,
         priestIsDictator: showAdvanced ? priestDictatorship : false,
         maxMembers: normalizedMaxMembers,
         factoryAddress: trimmedFactory,
@@ -1649,6 +1704,9 @@ function App() {
     rememberJoinedTempl,
     setTemplList,
     priestDictatorship,
+    quorumPercentInput,
+    executionDelayInput,
+    customBurnAddress,
     showAdvanced,
     curveConfig,
     homeLink
@@ -2995,7 +3053,47 @@ function App() {
                         : 'Member democracy routes actions through the proposal and voting flow before execution.'}
                     </p>
                   </div>
-                  <div className="hidden">
+                  <div className="rounded-lg border border-black/20 p-3 bg-white/80">
+                    <div className="flex flex-col gap-1">
+                      <h3 className="text-sm font-medium text-black/90">Governance thresholds</h3>
+                      <p className="text-xs text-black/60">
+                        Override quorum, execution delay, or burn address. Leave blank to inherit factory defaults.
+                      </p>
+                    </div>
+                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-black/70 mb-1">Quorum percent</label>
+                        <input
+                          className="w-full border border-black/20 rounded px-3 py-2"
+                          placeholder="Default 33"
+                          value={quorumPercentInput}
+                          onChange={(e) => setQuorumPercentInput(e.target.value)}
+                        />
+                        <p className="text-xs text-black/60 mt-1">Enter percent (e.g. 33.00).</p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-black/70 mb-1">Execution delay (sec)</label>
+                        <input
+                          className="w-full border border-black/20 rounded px-3 py-2"
+                          placeholder="Default 604800"
+                          value={executionDelayInput}
+                          onChange={(e) => setExecutionDelayInput(e.target.value)}
+                        />
+                        <p className="text-xs text-black/60 mt-1">Seconds between quorum and execution.</p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-black/70 mb-1">Burn address</label>
+                        <input
+                          className="w-full border border-black/20 rounded px-3 py-2"
+                          placeholder="0x0000...dEaD"
+                          value={customBurnAddress}
+                          onChange={(e) => setCustomBurnAddress(e.target.value)}
+                        />
+                        <p className="text-xs text-black/60 mt-1">Defaults to the dead address.</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div>
                     <label className="block text-sm font-medium text-black/70 mb-1">
                       Templ home link
                     </label>
