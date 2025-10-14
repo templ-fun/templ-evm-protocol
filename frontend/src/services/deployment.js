@@ -130,14 +130,14 @@ export async function deployTempl({
   const normalizedToken = String(tokenAddress);
   const normalizedBurnAddress = burnAddress && ethers.isAddress?.(burnAddress)
     ? burnAddress
-    : (ethers.ZeroAddress ?? '0x0000000000000000000000000000000000000000');
+    : undefined;
   const useCustomCurve = Boolean(curveProvided && curveConfig);
   const defaultCurve = { primary: { style: 0, rateBps: 0 } };
   const curveStruct = useCustomCurve ? curveConfig : defaultCurve;
-  const quorumValue = quorumPercent !== undefined && quorumPercent !== null ? Number(quorumPercent) : 0;
+  const quorumValue = quorumPercent !== undefined && quorumPercent !== null ? Number(quorumPercent) : undefined;
   const executionDelayValue = executionDelaySeconds !== undefined && executionDelaySeconds !== null
     ? Number(executionDelaySeconds)
-    : 0;
+    : undefined;
   const homeLinkValue = templHomeLink ? String(templHomeLink) : '';
 
   const config = {
@@ -147,15 +147,21 @@ export async function deployTempl({
     burnPercent: burnBps,
     treasuryPercent: treasuryBps,
     memberPoolPercent: memberBps,
-    quorumPercent: quorumValue,
-    executionDelaySeconds: executionDelayValue,
-    burnAddress: normalizedBurnAddress,
     priestIsDictator: priestIsDictator === true,
     maxMembers: normalizedMaxMembers,
     curveProvided: useCustomCurve,
     curve: curveStruct,
     homeLink: homeLinkValue
   };
+  if (quorumValue !== undefined) {
+    config.quorumPercent = quorumValue;
+  }
+  if (executionDelayValue !== undefined) {
+    config.executionDelaySeconds = executionDelayValue;
+  }
+  if (normalizedBurnAddress) {
+    config.burnAddress = normalizedBurnAddress;
+  }
 
   const zeroAddress = ethers.ZeroAddress ?? '0x0000000000000000000000000000000000000000';
   const defaultsRequested =
@@ -163,9 +169,9 @@ export async function deployTempl({
     treasuryBps === 3_000 &&
     memberBps === 3_000 &&
     config.priest === walletAddress &&
-    config.burnAddress === zeroAddress &&
-    config.quorumPercent === 0 &&
-    config.executionDelaySeconds === 0 &&
+    (config.burnAddress === undefined || config.burnAddress === zeroAddress) &&
+    config.quorumPercent === undefined &&
+    config.executionDelaySeconds === undefined &&
     config.priestIsDictator === false &&
     normalizedMaxMembers === 0n &&
     !useCustomCurve &&
