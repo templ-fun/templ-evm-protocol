@@ -22,6 +22,9 @@ primary_region = "gru"
   min_machines_running = 1
   processes = ["app"]
 
+[http_options]
+  h2_backend = true
+
 [[vm]]
   cpu_kind = "shared"
   cpus = 1
