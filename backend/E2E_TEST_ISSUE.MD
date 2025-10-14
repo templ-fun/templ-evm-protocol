@@ -1,30 +1,27 @@
-# E2E Failing Join Flow Summary
+# E2E Join Flow Reference
 
-## Current Symptoms
-- Playwright `core-flows.pw.spec.js` fails while waiting on `/join` response. The UI raises `handlePurchaseAndJoin`, but the backend never receives the request (`purchaseAndJoin: sending join payload` never logs), so the test times out.
-- Multiple retries show Hardhat emits `Nonce too low … Expected nonce to be 3 but got 2` for the UI wallet. The deploy transaction repeatedly reuses nonce 2.
-- When the scripted wallet bridge switches to a freshly generated account, the default Hardhat factory rejects deployment because permissionless mode is disabled, so the UI deploy path never succeeds.
+The Playwright suite exercises the full templ journey—deploy, join, govern, claim—using the harness in `frontend/e2e/core-flows.pw.spec.js`. Use this note as the authoritative description of how the scripted flow interacts with the stack.
 
-## Root Causes
-1. **Nonce handling between Node wallets and the browser bridge.** The bridge now signs transactions for randomly created wallets. When the UI calls `__templTrigger("deploy")`, the browser tries to submit a transaction before the provider clears the previous pending tx. Hardhat runs with automine and does not queue, so the duplicate nonce throws and nothing reaches the backend.
-2. **Factory permission gating.** The new random UI wallet is not the factory deployer; without `setPermissionless(true)` the contract reverts. This kept the UI from recording deployments.
-3. **join payload never fires.** Because deploy never finishes, `handlePurchaseAndJoin` never runs, so `/join` is never POSTed.
+## Test bootstrap
 
-## Reliable Fix Strategy
-1. **Enable permissionless creation in tests.**
-   - After deploying `TemplFactory` inside `fixtures.js`/`core-flows.pw.spec.js`, call `await templFactory.setPermissionless(true);` so any funded wallet can deploy.
-2. **Wait for Node/network to clear a nonce before each UI transaction.**
-   - Before calling `__templTrigger('deploy')`, poll `provider.getTransactionCount(address, 'pending')` until it equals `'latest'`.
-   - Inside the bridge, seed `req.nonce` with `await provider.getTransactionCount(address,'pending')`. This matches the check above and prevents duplicate use.
-3. **Auto-trigger deploy once.**
-   - Instead of clicking the button during the test, set `window.__templSetAutoDeploy(true)` and rely on the app’s auto-deploy effect (already authored for vitest flows).
-4. **Verify success in test flow.**
-   - Replace the previous `expect` on raw hash with a status poll (`'✅ Templ deployed'`) and confirm the contract bytecode is non-empty.
-5. **After deploy succeeds, schedule `handlePurchaseAndJoin`.**
-   - Ensure the test waits for join payload log (`purchaseAndJoin: sending join payload`). After it appears, the `/join` POST resolves, the backend registers the new group, and the rest of the flow can continue.
+1. **Contracts.** Each run deploys a fresh `TestToken` and `TemplFactory` with the priest wallet supplied by the fixture. The factory is immediately switched to permissionless mode (`setPermissionless(true)`) so any funded wallet can create templs during the browser session.
+2. **Wallet bridge.** The harness provisions a dedicated UI wallet (random by default, falling back to other funded accounts) and pipes JSON-RPC calls through Hardhat. `window.ethereum.request` handles `eth_sendTransaction`, `eth_signTypedData_v4`, and basic chain queries so the SPA behaves as if MetaMask were present.
+3. **XMTP readiness.** Before each attempt, the script clears OPFS and IndexedDB to remove prior XMTP state, then rotates through the candidate wallets until the app publishes `window.__templReady.xmtp = true`.
+4. **Auto deploy.** Once the SPA reports the signer + XMTP clients are ready, the harness triggers the built-in auto-deploy effect (`window.__templSetAutoDeploy(true)`). The UI submits `factory.createTemplWithConfig` using the test token and waits for the status banner to display `✅ Templ deployed`.
 
-## Next Steps for Engineer
-1. Implement the permissionless toggle and nonce synchronization in `core-flows.pw.spec.js`.
-2. Remove manual UI clicks for deploy; use the exposed auto-trigger and wait for the success status.
-3. Confirm `purchaseAndJoin` logs appear and `/join status 200` shows up in `PW_E2E_VERBOSE` output.
-4. Once the pilot flow passes, run `npm run test:all` to verify no other regressions were introduced.
+## Join + verification
+
+1. The test wallet calls `join()` on the newly deployed templ.
+2. After the transaction confirms, the browser signs the EIP-712 join payload via the bridge and POSTs `/join` to the backend.
+3. The backend verifies `isMember` on chain, returns templ metadata + links, and (when XMTP is enabled) adds the member to the templ’s XMTP group.
+
+The harness asserts both the backend response and the XMTP invitation by polling the UI for success indicators and reading browser logs when `PW_E2E_VERBOSE=1`.
+
+## Debug checklist
+
+- **Permissionless creation.** Ensure `setPermissionless(true)` runs during setup; otherwise Hardhat reverts templ deployment for non-deployer wallets.
+- **Nonce alignment.** The bridge uses Hardhat’s pending nonce each time it sends a transaction. If you modify the harness, keep pending/confirmed nonces in sync to avoid `Nonce too low` errors.
+- **Storage reset.** XMTP maintains OPFS/IndexedDB state. The existing helper clears both before each wallet attempt; retain that logic if you tweak the harness.
+- **Backend visibility.** Run Playwright with `PW_E2E_VERBOSE=1` to surface `/join` requests and XMTP status updates in the test log.
+
+With these pieces in place, `npm run test:all` exercises the join flow reliably on every run.
