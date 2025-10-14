@@ -2043,7 +2043,7 @@ function App() {
       <div className="w-full border-b border-black/10">
         <div className="max-w-screen-md mx-auto px-4 py-2 flex items-center justify-between">
           <div className="flex gap-2">
-            <button className="px-3 py-1 rounded border border-black/20" onClick={() => navigate('/')}>Home</button>
+            <button className="px-3 py-1 rounded border border-black/20" onClick={() => navigate('/templs')}>List</button>
             <button className="px-3 py-1 rounded border border-black/20" onClick={() => navigate('/create')}>Create</button>
           </div>
           <div className="flex items-center gap-2">
@@ -2070,7 +2070,7 @@ function App() {
         {/* Contract info block accessible via Info drawer in Chat */}
 
         {/* Routes */}
-        {path === '/' && (
+        {path === '/templs' && (
           <div data-testid="templ-list" className="space-y-3">
             <h2 className="text-xl font-semibold">Templs</h2>
             {templCards.length === 0 && <p>No templs yet</p>}
@@ -2735,10 +2735,10 @@ function App() {
             <div className="space-y-3 border border-black/10 rounded p-4">
               <h2 className="text-lg font-semibold">Select a templ</h2>
               <p className="text-sm text-black/60">
-                Visit the home tab and choose a templ you have joined to open its chat.
+                Visit the list tab and choose a templ you have joined to open its chat.
               </p>
-              <button className="px-3 py-2 rounded bg-primary text-black font-semibold w-full sm:w-auto" onClick={() => navigate('/')}>
-                Back to Home
+              <button className="px-3 py-2 rounded bg-primary text-black font-semibold w-full sm:w-auto" onClick={() => navigate('/templs')}>
+                Back to List
               </button>
             </div>
           )
