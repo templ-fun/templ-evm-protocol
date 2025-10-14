@@ -38,6 +38,46 @@ function dlog(...args) {
   try { console.log(...args); } catch {}
 }
 
+const JOINED_STORAGE_PREFIX = 'templ:joined';
+
+function normalizeAddressLower(address) {
+  if (!address) return '';
+  const raw = typeof address === 'string' ? address.trim() : String(address || '').trim();
+  if (!raw) return '';
+  try {
+    return ethers.getAddress(raw).toLowerCase();
+  } catch {
+    if (ethers.isAddress(raw)) {
+      try {
+        return ethers.getAddress(raw).toLowerCase();
+      } catch {
+        return raw.toLowerCase();
+      }
+    }
+  }
+  return '';
+}
+
+function loadJoinedTemplsFromStorage(storageKey = JOINED_STORAGE_PREFIX) {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const normalized = parsed
+      .map((value) => normalizeAddressLower(value))
+      .filter(Boolean);
+    return Array.from(new Set(normalized));
+  } catch {
+    return [];
+  }
+}
+
+function joinedStorageKeyForWallet(walletLower) {
+  return walletLower ? `${JOINED_STORAGE_PREFIX}:${walletLower}` : JOINED_STORAGE_PREFIX;
+}
+
 // Curve configuration constants
 const CURVE_STYLE_INDEX = {
   static: 0,
@@ -54,6 +94,7 @@ function App() {
   // Minimal client-side router (no external deps)
   const { path, query, navigate } = useAppLocation();
   const [walletAddress, setWalletAddress] = useState();
+  const walletAddressLower = useMemo(() => normalizeAddressLower(walletAddress), [walletAddress]);
   const [signer, setSigner] = useState();
   const [xmtp, setXmtp] = useState();
   const [group, setGroup] = useState();
@@ -105,10 +146,10 @@ function App() {
   const creatingXmtpPromiseRef = useRef(null);
   const identityReadyRef = useRef(false);
   const identityReadyPromiseRef = useRef(null);
+  const membershipCheckedRef = useRef(new Set());
   
   // muting form
   const [isPriest, setIsPriest] = useState(false);
-  const walletAddressLower = walletAddress ? walletAddress.toLowerCase() : '';
   const isDelegate = walletAddressLower ? delegates.includes(walletAddressLower) : false;
   const canModerate = isPriest || isDelegate;
 
@@ -129,44 +170,30 @@ function App() {
   const [maxMembers, setMaxMembers] = useState('');
   const [createTokenDecimals, setCreateTokenDecimals] = useState(null);
   const [createTokenSymbol, setCreateTokenSymbol] = useState(null);
-  const [joinedTempls, setJoinedTempls] = useState(() => {
-    if (typeof window === 'undefined') return [];
-    try {
-      const raw = JSON.parse(window.localStorage.getItem('templ:joined') || '[]');
-      if (Array.isArray(raw)) {
-        return raw
-          .map((a) => {
-            try { return ethers.getAddress(String(a)).toLowerCase(); }
-            catch { return String(a || '').toLowerCase(); }
-          })
-          .filter((a) => a && ethers.isAddress(a));
-      }
-    } catch {}
-    return [];
-  });
-  const rememberJoinedTempl = useCallback((address) => {
-    if (!address) return;
-    let normalized = '';
-    try {
-      normalized = ethers.getAddress(address);
-    } catch {
-      try {
-        normalized = ethers.getAddress(String(address || '').trim());
-      } catch {
-        normalized = String(address || '').trim();
-      }
-    }
+  const [joinedTempls, setJoinedTempls] = useState(() => loadJoinedTemplsFromStorage());
+  const rememberJoinedTempl = useCallback((address, options = {}) => {
+    const normalized = normalizeAddressLower(address);
     if (!normalized) return;
-    const key = normalized.toLowerCase();
+    const walletKey = typeof options?.wallet === 'string'
+      ? normalizeAddressLower(options.wallet)
+      : walletAddressLower;
+    const storageKey = joinedStorageKeyForWallet(walletKey);
     setJoinedTempls((prev) => {
-      if (prev.includes(key)) return prev;
-      const next = [...prev, key];
+      if (prev.includes(normalized)) {
+        return prev;
+      }
+      const next = [...prev, normalized];
       if (typeof window !== 'undefined') {
-        try { window.localStorage?.setItem('templ:joined', JSON.stringify(next)); } catch {}
+        try {
+          window.localStorage.setItem(storageKey, JSON.stringify(next));
+          if (storageKey !== JOINED_STORAGE_PREFIX) {
+            window.localStorage.setItem(JOINED_STORAGE_PREFIX, JSON.stringify(next));
+          }
+        } catch {}
       }
       return next;
     });
-  }, []);
+  }, [walletAddressLower]);
 
   // curve configuration
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -187,6 +214,18 @@ function App() {
       if (last && ethers.isAddress(last)) rememberJoinedTempl(last);
     } catch {}
   }, [rememberJoinedTempl]);
+  useEffect(() => {
+    membershipCheckedRef.current = new Set();
+    const storageKey = joinedStorageKeyForWallet(walletAddressLower);
+    const stored = loadJoinedTemplsFromStorage(storageKey);
+    setJoinedTempls((prev) => {
+      const next = stored;
+      if (next.length === prev.length && next.every((addr, idx) => addr === prev[idx])) {
+        return prev;
+      }
+      return next;
+    });
+  }, [walletAddressLower]);
   useEffect(() => {
     const trimmed = typeof tokenAddress === 'string' ? tokenAddress.trim() : '';
     if (!ethers.isAddress(trimmed)) {
@@ -283,6 +322,41 @@ function App() {
     }
   })();
   const joinedTemplSet = useMemo(() => new Set(joinedTempls), [joinedTempls]);
+  useEffect(() => {
+    if (!walletAddress || !walletAddressLower || !signer) return;
+    const memberAddress = walletAddress;
+    const runner = signer.provider ?? signer;
+    if (!runner) return;
+    const addressesToCheck = templList
+      .map((item) => normalizeAddressLower(item.contract))
+      .filter((contractAddress) => contractAddress
+        && !joinedTemplSet.has(contractAddress)
+        && !membershipCheckedRef.current.has(contractAddress));
+    if (addressesToCheck.length === 0) return;
+    let cancelled = false;
+    addressesToCheck.forEach((addr) => membershipCheckedRef.current.add(addr));
+    (async () => {
+      const checks = addressesToCheck.map(async (contractAddress) => {
+        try {
+          const contract = new ethers.Contract(contractAddress, templArtifact.abi, runner);
+          let joined = false;
+          if (typeof contract.isMember === 'function') {
+            joined = await contract.isMember(memberAddress);
+          } else if (typeof contract.hasAccess === 'function') {
+            joined = await contract.hasAccess(memberAddress);
+          }
+          if (cancelled || !joined) return;
+          rememberJoinedTempl(contractAddress, { wallet: memberAddress });
+        } catch (err) {
+          dlog('[app] membership probe failed', { contractAddress, error: err?.message || err });
+        }
+      });
+      await Promise.all(checks);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [templList, walletAddress, walletAddressLower, signer, joinedTemplSet, rememberJoinedTempl]);
   const burnPercentNum = Number.isFinite(Number(burnPercent)) ? Number(burnPercent) : 0;
   const treasuryPercentNum = Number.isFinite(Number(treasuryPercent)) ? Number(treasuryPercent) : 0;
   const memberPoolPercentNum = Number.isFinite(Number(memberPoolPercent)) ? Number(memberPoolPercent) : 0;
