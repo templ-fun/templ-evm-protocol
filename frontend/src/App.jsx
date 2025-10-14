@@ -92,9 +92,11 @@ const CURVE_STYLE_OPTIONS = [
 
 const BPS_SCALE = 10_000n;
 const DEFAULT_CURVE_STYLE = 'exponential';
-const DEFAULT_CURVE_RATE_BPS = 11_000;
+const DEFAULT_CURVE_RATE_BPS = 10_094;
 const CURVE_PREVIEW_SAMPLE_MEMBERS = [1n, 2n, 3n, 5n, 10n, 20n, 50n, 100n, 250n, 500n, 1000n];
 const CURVE_PREVIEW_MARKERS = [1n, 10n, 100n, 1000n];
+const CURVE_PREVIEW_SAMPLE_MEMBERS_BASIC = [1n, 2n, 3n, 5n, 10n, 20n, 50n, 100n, 150n, 200n, 249n];
+const CURVE_PREVIEW_MARKERS_BASIC = [1n, 10n, 100n, 249n];
 const CURVE_PREVIEW_GRADIENT_ID = 'curve-preview-gradient';
 
 const formatOrdinal = (value) => {
@@ -374,6 +376,34 @@ const formatMultiplier = (baseFee, price) => {
   return `~10^${delta.toFixed(1)}× base`;
 };
 
+const formatPreviewRangeLabel = (preview) => {
+  if (!preview || !preview.ready) {
+    return '1 → …';
+  }
+  const visibleCards = (preview.highlightCards || []).filter((card) => card.withinCap && card.price);
+  if (visibleCards.length === 0) {
+    return '1 → …';
+  }
+  const first = visibleCards[0]?.member;
+  const last = visibleCards[visibleCards.length - 1]?.member;
+  if (first === undefined || last === undefined) {
+    return '1 → …';
+  }
+  try {
+    const firstLabel = typeof first === 'bigint' ? first.toString() : String(first ?? '');
+    const lastLabel = typeof last === 'bigint' ? last.toString() : String(last ?? '');
+    if (!firstLabel || !lastLabel) {
+      return '1 → …';
+    }
+    if (firstLabel === lastLabel) {
+      return firstLabel;
+    }
+    return `${firstLabel} → ${lastLabel}`;
+  } catch {
+    return '1 → …';
+  }
+};
+
 function App() {
   // Minimal client-side router (no external deps)
   const { path, query, navigate } = useAppLocation();
@@ -481,9 +511,8 @@ function App() {
 
   // curve configuration
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [customCurveEnabled, setCustomCurveEnabled] = useState(false);
   const [curvePrimaryStyle, setCurvePrimaryStyle] = useState('exponential');
-  const [curvePrimaryRateBps, setCurvePrimaryRateBps] = useState('11000');
+  const [curvePrimaryRateBps, setCurvePrimaryRateBps] = useState('10094');
   const [homeLink, setHomeLink] = useState('');
   useEffect(() => {
     if (!FACTORY_CONFIG.address) {
@@ -739,18 +768,18 @@ function App() {
   };
 
   const curveConfig = useMemo(() => {
-    if (showAdvanced && customCurveEnabled) {
+    if (!showAdvanced) {
       return {
-        primary: {
-          style: resolveCurveStyleValue(curvePrimaryStyle),
-          rateBps: parseCurveRateBps(curvePrimaryRateBps, curvePrimaryStyle)
-        }
+        primary: { style: CURVE_STYLE_INDEX.static, rateBps: 0 }
       };
     }
     return {
-      primary: { style: CURVE_STYLE_INDEX.static, rateBps: 0 }
+      primary: {
+        style: resolveCurveStyleValue(curvePrimaryStyle),
+        rateBps: parseCurveRateBps(curvePrimaryRateBps, curvePrimaryStyle)
+      }
     };
-  }, [showAdvanced, customCurveEnabled, curvePrimaryStyle, curvePrimaryRateBps]);
+  }, [curvePrimaryRateBps, curvePrimaryStyle, showAdvanced]);
 
   const curvePreview = useMemo(() => {
     const baseFee = parseBigIntInput(entryFee);
@@ -759,7 +788,7 @@ function App() {
     }
     const decimals = Number.isInteger(createTokenDecimals) ? Number(createTokenDecimals) : null;
     const symbol = typeof createTokenSymbol === 'string' && createTokenSymbol.trim() ? createTokenSymbol.trim() : null;
-    const previewMode = showAdvanced && customCurveEnabled ? 'custom' : 'default';
+    const previewMode = showAdvanced ? 'custom' : 'default';
     const style = previewMode === 'custom' ? curvePrimaryStyle : DEFAULT_CURVE_STYLE;
     let rate = previewMode === 'custom'
       ? BigInt(parseCurveRateBps(curvePrimaryRateBps, curvePrimaryStyle))
@@ -768,7 +797,18 @@ function App() {
       rate = 0n;
     }
     const cap = parseOptionalMaxMembers(maxMembers);
-    const highlightCards = CURVE_PREVIEW_MARKERS.map((member) => {
+    const markerBase = showAdvanced ? CURVE_PREVIEW_MARKERS : CURVE_PREVIEW_MARKERS_BASIC;
+    const sampleBase = showAdvanced ? CURVE_PREVIEW_SAMPLE_MEMBERS : CURVE_PREVIEW_SAMPLE_MEMBERS_BASIC;
+    const markerStrings = [
+      ...markerBase.map((value) => value.toString()),
+      ...(cap !== null && cap > 0n ? [cap.toString()] : [])
+    ];
+    let highlightMarkers = Array.from(new Set(markerStrings)).map((value) => BigInt(value));
+    if (!showAdvanced && cap !== null && cap > 0n) {
+      highlightMarkers = highlightMarkers.filter((member) => member <= cap);
+    }
+    highlightMarkers = [...highlightMarkers].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    const highlightCards = highlightMarkers.map((member) => {
       const withinCap = cap === null || member <= cap;
       const price = withinCap ? computePriceForJoin(baseFee, style, rate, member) : null;
       return {
@@ -782,7 +822,7 @@ function App() {
       };
     });
     const cappedMembers = highlightCards.filter((card) => !card.withinCap);
-    let sampleMembers = CURVE_PREVIEW_SAMPLE_MEMBERS.filter((member) => cap === null || member <= cap);
+    let sampleMembers = sampleBase.filter((member) => cap === null || member <= cap);
     if (cap !== null && cap > 0n && !sampleMembers.some((member) => member === cap)) {
       sampleMembers = [...sampleMembers, cap];
     }
@@ -838,7 +878,7 @@ function App() {
     chartPoints.forEach((point) => {
       axisTicksSet.add(point.axisMember);
     });
-    CURVE_PREVIEW_MARKERS.forEach((marker) => {
+    highlightMarkers.forEach((marker) => {
       const numeric = Number(marker);
       const minMember = chartPoints[0]?.axisMember ?? numeric;
       const maxMember = chartPoints[chartPoints.length - 1]?.axisMember ?? numeric;
@@ -881,9 +921,7 @@ function App() {
       ? `Max members cap (${cap.toString()}) prevents reaching the ${cappedMembers.map((item) => item.ordinalLabel).join(', ')}.`
       : null;
     const modeLabel = previewMode === 'custom' ? 'Custom curve' : 'Factory default';
-    const metaNote = previewMode === 'custom'
-      ? null
-      : 'Factory default applies a +10% exponential increase per paid join.';
+    const metaNote = null;
     return {
       ready: true,
       meta: {
@@ -909,7 +947,6 @@ function App() {
       footnote
     };
   }, [
-    customCurveEnabled,
     curvePrimaryRateBps,
     curvePrimaryStyle,
     createTokenDecimals,
@@ -1396,7 +1433,7 @@ function App() {
         factoryAddress: trimmedFactory,
         factoryArtifact: templFactoryArtifact,
         templArtifact,
-        curveProvided: showAdvanced && customCurveEnabled,
+        curveProvided: showAdvanced,
         curveConfig,
         templHomeLink: homeLink || undefined
       });
@@ -1450,7 +1487,6 @@ function App() {
     maxMembers,
     rememberJoinedTempl,
     setTemplList,
-    customCurveEnabled,
     showAdvanced,
     curveConfig,
     homeLink
@@ -2686,7 +2722,7 @@ function App() {
                   </p>
                 )}
               </div>
-                            {showAdvanced && (
+              {showAdvanced && (
                 <div className="space-y-4">
                   <div className="hidden">
                     <label className="block text-sm font-medium text-black/70 mb-1">TemplFactory address</label>
@@ -2748,194 +2784,184 @@ function App() {
                       Optional, but helps members discover your public group from templ.fun once the templ is live.
                     </p>
                   </div>
-                  <div className="rounded-lg border border-black/20 p-4">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                      <div>
-                        <h3 className="text-sm font-medium text-black/90">Pricing curve</h3>
-                        <p className="text-xs text-black/60">
-                          Configure how the entry fee scales as membership grows. Keep customization disabled to use the factory default exponential curve (+10% per join).
-                        </p>
-                      </div>
-                    </div>
-                      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <label className="inline-flex items-center gap-2 text-sm font-medium text-black/80">
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 rounded border border-black/40"
-                            checked={customCurveEnabled}
-                            onChange={(event) => {
-                              const next = event.target.checked;
-                              setCustomCurveEnabled(next);
-                              if (!next) {
-                                setCurvePrimaryStyle(DEFAULT_CURVE_STYLE);
-                                setCurvePrimaryRateBps(String(DEFAULT_CURVE_RATE_BPS));
-                              }
-                            }}
-                          />
-                          Customize curve
-                        </label>
-                        <button
-                          type="button"
-                          className="text-xs font-medium text-black/50 underline underline-offset-4"
-                          onClick={() => {
-                            setCustomCurveEnabled(false);
-                            setCurvePrimaryStyle(DEFAULT_CURVE_STYLE);
-                            setCurvePrimaryRateBps(String(DEFAULT_CURVE_RATE_BPS));
-                          }}
-                        >
-                          Reset to default
-                        </button>
-                      </div>
-                      <div className="mt-4 grid gap-4 md:grid-cols-2">
-                        <div>
-                          <label className="block text-sm font-medium text-black/70 mb-1">
-                            Primary style
-                          </label>
-                          <select
-                            className="w-full border border-black/20 rounded px-3 py-2"
-                            value={curvePrimaryStyle}
-                            onChange={(event) => {
-                              const next = event.target.value;
-                              setCustomCurveEnabled(true);
-                              setCurvePrimaryStyle(next);
-                              if (next === 'static') {
-                                setCurvePrimaryRateBps('0');
-                              } else if (curvePrimaryRateBps === '0') {
-                                setCurvePrimaryRateBps(next === 'exponential' ? String(DEFAULT_CURVE_RATE_BPS) : '500');
-                              }
-                            }}
-                          >
-                            {CURVE_STYLE_OPTIONS.map((option) => (
-                              <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-black/70 mb-1">
-                            Primary rate (basis points)
-                          </label>
-                          <input
-                            type="number"
-                            min="0"
-                            className="w-full border border-black/20 rounded px-3 py-2"
-                            value={curvePrimaryRateBps}
-                            onChange={(event) => {
-                              setCustomCurveEnabled(true);
-                              setCurvePrimaryRateBps(event.target.value);
-                            }}
-                            disabled={curvePrimaryStyle === 'static'}
-                          />
-                          <p className="text-xs text-black/60 mt-1">
-                            Example: 11000 = 10% increase per join.
-                          </p>
-                        </div>
-                      </div>
-                      <div className="mt-6">
-                        <div className="rounded-lg border border-black/10 p-4" style={{ background: 'rgba(0, 0, 0, 0.03)' }}>
-                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                            <div>
-                              <div className="text-xs uppercase tracking-wide text-black/50">{curvePreview.meta?.modeLabel ?? 'Curve preview'}</div>
-                              <div className="text-sm font-semibold text-black/80">
-                                {curvePreview.meta?.styleLabel ?? 'Pricing curve'}
-                              </div>
-                              {curvePreview.meta?.rateDescriptor && (
-                                <div className="text-xs text-black/60">{curvePreview.meta.rateDescriptor}</div>
-                              )}
-                            </div>
-                            <div className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium text-black/80" style={{ background: 'rgba(229, 255, 90, 0.2)' }}>
-                              <span>Next members</span>
-                              <span className="font-semibold text-black/70">1 → 1k</span>
-                            </div>
-                          </div>
-                          {curvePreview.ready ? (
-                            <>
-                              <div className="relative mt-4 h-40 w-full">
-                                <svg
-                                  viewBox={`0 0 ${curvePreview.chart.width} ${curvePreview.chart.height}`}
-                                  role="img"
-                                  aria-label="Entry fee curve preview"
-                                  className="h-full w-full"
-                                >
-                                  <defs>
-                                    <linearGradient id={CURVE_PREVIEW_GRADIENT_ID} x1="0" x2="0" y1="0" y2="1">
-                                      <stop offset="0%" stopColor="#ffd600" stopOpacity="0.4" />
-                                      <stop offset="100%" stopColor="#ffd600" stopOpacity="0" />
-                                    </linearGradient>
-                                  </defs>
-                                  {curvePreview.chart.areaPath && (
-                                    <path
-                                      d={curvePreview.chart.areaPath}
-                                      fill={`url(#${CURVE_PREVIEW_GRADIENT_ID})`}
-                                      stroke="none"
-                                    />
-                                  )}
-                                  {curvePreview.chart.linePath && (
-                                    <path
-                                      d={curvePreview.chart.linePath}
-                                      fill="none"
-                                      stroke="#f2a900"
-                                      strokeWidth="2"
-                                      strokeLinejoin="round"
-                                      strokeLinecap="round"
-                                    />
-                                  )}
-                                  {curvePreview.chart.highlightPoints.map((point, index) => (
-                                    <g key={`highlight-${index}`}>
-                                      <circle cx={point.x} cy={point.y} r="5" fill="#111827" fillOpacity="0.15" />
-                                      <circle cx={point.x} cy={point.y} r="3" fill="#f2a900" />
-                                    </g>
-                                  ))}
-                                </svg>
-                                <div className="pointer-events-none absolute inset-x-0 bottom-1 flex justify-between px-3 text-[10px] font-medium uppercase tracking-wide text-black/40">
-                                  {curvePreview.chart.axisTicks.map((tick) => (
-                                    <span key={`axis-${tick.value}`}>{tick.label}</span>
-                                  ))}
-                                </div>
-                              </div>
-                              <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                                {curvePreview.highlightCards.map((card) => (
-                                  <div
-                                    key={card.key}
-                                    className="rounded-md border border-black/10 px-3 py-2 shadow-sm"
-                                    style={{ background: 'rgba(255, 255, 255, 0.85)' }}
-                                  >
-                                    <div className="text-xs uppercase tracking-wide text-black/50">{card.ordinalLabel}</div>
-                                    {card.withinCap && card.display?.primary ? (
-                                      <>
-                                        <div className="text-sm font-semibold text-black/90 mt-1">{card.display.primary}</div>
-                                        {card.display.secondary && (
-                                          <div className="text-xs text-black/60">{card.display.secondary}</div>
-                                        )}
-                                        {card.multiplier && (
-                                          <div className="text-xs text-black/60 mt-1">{card.multiplier}</div>
-                                        )}
-                                      </>
-                                    ) : (
-                                      <div className="text-sm text-black/60 mt-1">Capped by max members</div>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                              {(curvePreview.meta?.note || curvePreview.footnote) && (
-                                <p className="mt-3 text-xs text-black/60">
-                                  {curvePreview.meta?.note ?? ''}
-                                  {curvePreview.meta?.note && curvePreview.footnote ? ' ' : ''}
-                                  {curvePreview.footnote ?? ''}
-                                </p>
-                              )}
-                            </>
-                          ) : (
-                            <p className="mt-4 text-sm text-black/60">
-                              Set a base entry fee to preview how the curve evolves.
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                  </div>
                 </div>
               )}
+              <div className="rounded-lg border border-black/20 p-4">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <h3 className="text-sm font-medium text-black/90">Pricing curve</h3>
+                    <p className="text-xs text-black/60">
+                      {showAdvanced
+                        ? 'Adjust how the entry fee scales as membership grows.'
+                        : 'Factory default applies a +0.94% exponential increase per paid join.'}
+                    </p>
+                    {!showAdvanced && (
+                      <p className="text-xs text-black/60 mt-1">
+                        Switch to advanced options to customize the curve.
+                      </p>
+                    )}
+                  </div>
+                  {showAdvanced && (
+                    <button
+                      type="button"
+                      className="text-xs font-medium text-black/50 underline underline-offset-4"
+                      onClick={() => {
+                        setCurvePrimaryStyle(DEFAULT_CURVE_STYLE);
+                        setCurvePrimaryRateBps(String(DEFAULT_CURVE_RATE_BPS));
+                      }}
+                    >
+                      Reset to default
+                    </button>
+                  )}
+                </div>
+                {showAdvanced && (
+                  <div className="mt-4 grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="block text-sm font-medium text-black/70 mb-1">
+                        Primary style
+                      </label>
+                      <select
+                        className="w-full border border-black/20 rounded px-3 py-2"
+                        value={curvePrimaryStyle}
+                        onChange={(event) => {
+                          const next = event.target.value;
+                          setCurvePrimaryStyle(next);
+                          if (next === 'static') {
+                            setCurvePrimaryRateBps('0');
+                          } else if (curvePrimaryRateBps === '0') {
+                            setCurvePrimaryRateBps(next === 'exponential' ? String(DEFAULT_CURVE_RATE_BPS) : '500');
+                          }
+                        }}
+                      >
+                        {CURVE_STYLE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-black/70 mb-1">
+                        Primary rate (basis points)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        className="w-full border border-black/20 rounded px-3 py-2"
+                        value={curvePrimaryRateBps}
+                        onChange={(event) => {
+                          setCurvePrimaryRateBps(event.target.value);
+                        }}
+                        disabled={curvePrimaryStyle === 'static'}
+                      />
+                      <p className="text-xs text-black/60 mt-1">
+                        Example: 10094 ~0.94% increase per join.
+                      </p>
+                    </div>
+                  </div>
+                )}
+                <div className="mt-6">
+                  <div className="rounded-lg border border-black/10 p-4" style={{ background: 'rgba(0, 0, 0, 0.03)' }}>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <div className="text-xs uppercase tracking-wide text-black/50">{curvePreview.meta?.modeLabel ?? 'Curve preview'}</div>
+                        <div className="text-sm font-semibold text-black/80">
+                          {curvePreview.meta?.styleLabel ?? 'Pricing curve'}
+                        </div>
+                        {curvePreview.meta?.rateDescriptor && (
+                          <div className="text-xs text-black/60">{curvePreview.meta.rateDescriptor}</div>
+                        )}
+                      </div>
+                      <div className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium text-black/80" style={{ background: 'rgba(229, 255, 90, 0.2)' }}>
+                        <span>Next members</span>
+                        <span className="font-semibold text-black/70">{formatPreviewRangeLabel(curvePreview)}</span>
+                      </div>
+                    </div>
+                    {curvePreview.ready ? (
+                      <>
+                        <div className="relative mt-4 h-40 w-full">
+                          <svg
+                            viewBox={`0 0 ${curvePreview.chart.width} ${curvePreview.chart.height}`}
+                            role="img"
+                            aria-label="Entry fee curve preview"
+                            className="h-full w-full"
+                          >
+                            <defs>
+                              <linearGradient id={CURVE_PREVIEW_GRADIENT_ID} x1="0" x2="0" y1="0" y2="1">
+                                <stop offset="0%" stopColor="#ffd600" stopOpacity="0.4" />
+                                <stop offset="100%" stopColor="#ffd600" stopOpacity="0" />
+                              </linearGradient>
+                            </defs>
+                            {curvePreview.chart.areaPath && (
+                              <path
+                                d={curvePreview.chart.areaPath}
+                                fill={`url(#${CURVE_PREVIEW_GRADIENT_ID})`}
+                                stroke="none"
+                              />
+                            )}
+                            {curvePreview.chart.linePath && (
+                              <path
+                                d={curvePreview.chart.linePath}
+                                fill="none"
+                                stroke="#f2a900"
+                                strokeWidth="2"
+                                strokeLinejoin="round"
+                                strokeLinecap="round"
+                              />
+                            )}
+                            {curvePreview.chart.highlightPoints.map((point, index) => (
+                              <g key={`highlight-${index}`}>
+                                <circle cx={point.x} cy={point.y} r="5" fill="#111827" fillOpacity="0.15" />
+                                <circle cx={point.x} cy={point.y} r="3" fill="#f2a900" />
+                              </g>
+                            ))}
+                          </svg>
+                          <div className="pointer-events-none absolute inset-x-0 bottom-1 flex justify-between px-3 text-[10px] font-medium uppercase tracking-wide text-black/40">
+                            {curvePreview.chart.axisTicks.map((tick) => (
+                              <span key={`axis-${tick.value}`}>{tick.label}</span>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                          {curvePreview.highlightCards.map((card) => (
+                            <div
+                              key={card.key}
+                              className="rounded-md border border-black/10 px-3 py-2 shadow-sm"
+                              style={{ background: 'rgba(255, 255, 255, 0.85)' }}
+                            >
+                              <div className="text-xs uppercase tracking-wide text-black/50">{card.ordinalLabel}</div>
+                              {card.withinCap && card.display?.primary ? (
+                                <>
+                                  <div className="text-sm font-semibold text-black/90 mt-1">{card.display.primary}</div>
+                                  {card.display.secondary && (
+                                    <div className="text-xs text-black/60">{card.display.secondary}</div>
+                                  )}
+                                  {card.multiplier && (
+                                    <div className="text-xs text-black/60 mt-1">{card.multiplier}</div>
+                                  )}
+                                </>
+                              ) : (
+                                <div className="text-sm text-black/60 mt-1">Capped by max members</div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                        {(curvePreview.meta?.note || curvePreview.footnote) && (
+                          <p className="mt-3 text-xs text-black/60">
+                            {curvePreview.meta?.note ?? ''}
+                            {curvePreview.meta?.note && curvePreview.footnote ? ' ' : ''}
+                            {curvePreview.footnote ?? ''}
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="mt-4 text-sm text-black/60">
+                        Set a base entry fee to preview how the curve evolves.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <button className="px-4 py-2 rounded bg-primary text-black font-semibold w-full sm:w-auto" onClick={handleDeploy}>Deploy</button>
                 <button
