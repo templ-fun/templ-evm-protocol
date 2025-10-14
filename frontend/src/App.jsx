@@ -638,6 +638,15 @@ function App() {
     }
   }, [showAdvanced]);
   useEffect(() => {
+    if (!Number.isInteger(createTokenDecimals)) return;
+    const currentFee = typeof entryFee === 'string' ? entryFee.trim() : '';
+    if (currentFee) return;
+    try {
+      const suggested = (10n ** BigInt(createTokenDecimals)).toString();
+      setEntryFee(suggested);
+    } catch {}
+  }, [createTokenDecimals, tokenAddress]);
+  useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
       const last = window.localStorage.getItem('templ:lastAddress');
@@ -2914,9 +2923,36 @@ function App() {
                   <div>
                     <label className="block text-sm font-medium text-black/70 mb-1">Fee split (%)</label>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                      <input className="border border-black/20 rounded px-3 py-2" placeholder="Burn" value={burnPercent} onChange={(e) => setBurnPercent(e.target.value)} />
-                      <input className="border border-black/20 rounded px-3 py-2" placeholder="Treasury" value={treasuryPercent} onChange={(e) => setTreasuryPercent(e.target.value)} />
-                      <input className="border border-black/20 rounded px-3 py-2" placeholder="Member pool" value={memberPoolPercent} onChange={(e) => setMemberPoolPercent(e.target.value)} />
+                      <div>
+                        <label className="text-xs text-black/60 block mb-1" htmlFor="burn-percent-input">Burn</label>
+                        <input
+                          id="burn-percent-input"
+                          className="w-full border border-black/20 rounded px-3 py-2"
+                          placeholder={String(burnPercent ?? '').trim() === '' ? 'Burn' : ''}
+                          value={burnPercent}
+                          onChange={(e) => setBurnPercent(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-black/60 block mb-1" htmlFor="treasury-percent-input">Treasury</label>
+                        <input
+                          id="treasury-percent-input"
+                          className="w-full border border-black/20 rounded px-3 py-2"
+                          placeholder={String(treasuryPercent ?? '').trim() === '' ? 'Treasury' : ''}
+                          value={treasuryPercent}
+                          onChange={(e) => setTreasuryPercent(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-black/60 block mb-1" htmlFor="member-percent-input">Member pool</label>
+                        <input
+                          id="member-percent-input"
+                          className="w-full border border-black/20 rounded px-3 py-2"
+                          placeholder={String(memberPoolPercent ?? '').trim() === '' ? 'Member pool' : ''}
+                          value={memberPoolPercent}
+                          onChange={(e) => setMemberPoolPercent(e.target.value)}
+                        />
+                      </div>
                     </div>
                     {protocolPercentDisplay !== null && (
                       <div className={`text-xs mt-1 ${splitBalanced ? 'text-black/60' : 'text-red-600'}`}>
@@ -2955,7 +2991,7 @@ function App() {
                     </div>
                     <p className="text-xs text-black/60 mt-2">
                       {priestDictatorship
-                        ? 'Priest dictatorship lets the priest execute governance changes instantly until members vote to restore democracy.'
+                        ? 'Priest dictatorship lets the priest execute governance changes instantly, and only the priest can return the templ to democracy.'
                         : 'Member democracy routes actions through the proposal and voting flow before execution.'}
                     </p>
                   </div>
@@ -3698,8 +3734,8 @@ function App() {
               {(proposeAction === 'enableDictatorship' || proposeAction === 'disableDictatorship') && (
                 <div className="text-xs text-black/80 mb-2">
                   {proposeAction === 'enableDictatorship'
-                    ? 'Enabling dictatorship lets the priest execute governance actions instantly until members vote it back off.'
-                    : 'Returning to democracy requires member voting and restores proposal-based governance.'}
+                    ? 'Enabling dictatorship lets the priest execute governance actions instantly; only the priest can later return to democracy.'
+                    : 'Disabling dictatorship restores proposal-based governance and once again requires member voting.'}
                 </div>
               )}
               <div className="text-xs text-black/60">Tip: Pause/Unpause, Move Treasury, and Set Member Limit encode the call data automatically. Reprice expects a new fee in raw token amounts. Adjust Fee Split collects the burn/treasury/member percentages (protocol share stays at the contract’s configured value).</div>
@@ -3904,7 +3940,7 @@ function App() {
                       if (!proposeTitle) setProposeTitle(enable ? 'Enable Dictatorship' : 'Return to Democracy');
                       if (!proposeDesc) {
                         setProposeDesc(enable
-                          ? 'Enable priest dictatorship so governance actions execute instantly.'
+                          ? 'Enable priest dictatorship so governance actions execute instantly (only the priest can later return to democracy).'
                           : 'Disable priest dictatorship to restore member voting.');
                       }
                     } catch (e) {
