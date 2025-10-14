@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1
 FROM node:22-bookworm-slim AS base
 
-# Install build tooling for native modules (better-sqlite3)
+# Install build tooling and runtime dependencies for native modules and gRPC
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends build-essential python3 \
+  && apt-get install -y --no-install-recommends build-essential python3 ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
