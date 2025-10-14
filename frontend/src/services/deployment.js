@@ -128,6 +128,18 @@ export async function deployTempl({
     throw new Error('Max members must be non-negative');
   }
   const normalizedToken = String(tokenAddress);
+  const normalizedBurnAddress = burnAddress && ethers.isAddress?.(burnAddress)
+    ? burnAddress
+    : (ethers.ZeroAddress ?? '0x0000000000000000000000000000000000000000');
+  const useCustomCurve = Boolean(curveProvided && curveConfig);
+  const defaultCurve = { primary: { style: 0, rateBps: 0 } };
+  const curveStruct = useCustomCurve ? curveConfig : defaultCurve;
+  const quorumValue = quorumPercent !== undefined && quorumPercent !== null ? Number(quorumPercent) : 0;
+  const executionDelayValue = executionDelaySeconds !== undefined && executionDelaySeconds !== null
+    ? Number(executionDelaySeconds)
+    : 0;
+  const homeLinkValue = templHomeLink ? String(templHomeLink) : '';
+
   const config = {
     priest: walletAddress,
     token: normalizedToken,
@@ -135,29 +147,15 @@ export async function deployTempl({
     burnPercent: burnBps,
     treasuryPercent: treasuryBps,
     memberPoolPercent: memberBps,
-    burnAddress: burnAddress && ethers.isAddress?.(burnAddress)
-      ? burnAddress
-      : (ethers.ZeroAddress ?? '0x0000000000000000000000000000000000000000'),
+    quorumPercent: quorumValue,
+    executionDelaySeconds: executionDelayValue,
+    burnAddress: normalizedBurnAddress,
     priestIsDictator: priestIsDictator === true,
-    maxMembers: normalizedMaxMembers
+    maxMembers: normalizedMaxMembers,
+    curveProvided: useCustomCurve,
+    curve: curveStruct,
+    homeLink: homeLinkValue
   };
-
-  // Add curve configuration if provided
-  if (curveProvided && curveConfig) {
-    config.curveProvided = true;
-    config.curveConfig = curveConfig;
-  }
-
-  // Add home link if provided
-  if (templHomeLink) {
-    config.homeLink = templHomeLink;
-  }
-  if (quorumPercent !== undefined && quorumPercent !== null) {
-    config.quorumPercent = Number(quorumPercent);
-  }
-  if (executionDelaySeconds !== undefined && executionDelaySeconds !== null) {
-    config.executionDelaySeconds = Number(executionDelaySeconds);
-  }
 
   const zeroAddress = ethers.ZeroAddress ?? '0x0000000000000000000000000000000000000000';
   const defaultsRequested =
@@ -166,12 +164,12 @@ export async function deployTempl({
     memberBps === 3_000 &&
     config.priest === walletAddress &&
     config.burnAddress === zeroAddress &&
-    config.quorumPercent === undefined &&
-    config.executionDelaySeconds === undefined &&
+    config.quorumPercent === 0 &&
+    config.executionDelaySeconds === 0 &&
     config.priestIsDictator === false &&
     normalizedMaxMembers === 0n &&
-    !config.curveProvided &&
-    !config.homeLink;
+    !useCustomCurve &&
+    homeLinkValue === '';
 
   let contractAddress;
   if (defaultsRequested) {
