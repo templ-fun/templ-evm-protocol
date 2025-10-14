@@ -24,4 +24,12 @@ Leader election only comes into play when more than one backend instance points 
 
 ## Frontend
 
-The SPA relies on factory reads (via ethers.js) and backend APIs for state. `localStorage` usage is limited to E2E/testing helpers that remember recently deployed templ addresses; production flows do not persist app data locally. Wallet connections and provider instances come from the injected `window.ethereum` context (or the optional `VITE_RPC_URL`).
+The SPA relies on factory reads (via ethers.js) and backend APIs for state. `localStorage` persists a small amount of console context so users can pick up where they left off:
+
+- `templ:lastAddress` / `templ:lastGroupId` – last deployed or joined templ and XMTP group id (used to prefill `/chat` when no query parameter is present).
+- `templ:joined` and `templ:joined:<wallet>` – joined templ caches per wallet so the directory can highlight memberships.
+- `templ:test:deploys` – list of addresses deployed during e2e/debug runs when local fallbacks are enabled.
+- `templ:messages:<groupId>` / `templ:proposals:<templ>` – cached XMTP history and proposal metadata for quick reloads.
+- `templ:profile:<inboxId>` – XMTP profile details saved locally so the chat drawer can populate display names and avatars before network calls complete.
+
+Wallet connections and provider instances come from the injected `window.ethereum` context (or the optional `VITE_RPC_URL`).

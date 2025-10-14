@@ -90,6 +90,290 @@ const CURVE_STYLE_OPTIONS = [
   { value: 'exponential', label: 'Exponential' }
 ];
 
+const BPS_SCALE = 10_000n;
+const DEFAULT_CURVE_STYLE = 'exponential';
+const DEFAULT_CURVE_RATE_BPS = 11_000;
+const CURVE_PREVIEW_SAMPLE_MEMBERS = [1n, 2n, 3n, 5n, 10n, 20n, 50n, 100n, 250n, 500n, 1000n];
+const CURVE_PREVIEW_MARKERS = [1n, 10n, 100n, 1000n];
+const CURVE_PREVIEW_GRADIENT_ID = 'curve-preview-gradient';
+
+const formatOrdinal = (value) => {
+  const suffixLookup = { 1: 'st', 2: 'nd', 3: 'rd' };
+  const normalized = Number(value);
+  if (!Number.isFinite(normalized)) return String(value);
+  const remainderHundred = normalized % 100;
+  if (remainderHundred >= 11 && remainderHundred <= 13) {
+    return `${normalized}th`;
+  }
+  const remainderTen = normalized % 10;
+  const suffix = suffixLookup[remainderTen] || 'th';
+  return `${normalized}${suffix}`;
+};
+
+const parseBigIntInput = (value) => {
+  const raw = String(value ?? '').trim();
+  if (!raw || !/^\d+$/.test(raw)) {
+    return null;
+  }
+  try {
+    return BigInt(raw);
+  } catch {
+    return null;
+  }
+};
+
+const parseOptionalMaxMembers = (value) => {
+  const parsed = parseBigIntInput(value);
+  if (parsed === null || parsed === 0n) {
+    return null;
+  }
+  return parsed;
+};
+
+const log10BigInt = (value) => {
+  if (value === null || value <= 0n) return 0;
+  const str = value.toString();
+  const digits = str.length;
+  const sliceLength = Math.min(15, digits);
+  const leading = Number(str.slice(0, sliceLength));
+  if (!Number.isFinite(leading) || leading <= 0) {
+    return digits - 1;
+  }
+  return Math.log10(leading) + (digits - sliceLength);
+};
+
+const formatScientificNotation = (digits) => {
+  const clean = String(digits || '').replace(/^0+/, '');
+  if (!clean) return '0';
+  if (clean.length <= 3) return clean;
+  const mantissa = `${clean[0]}.${clean.slice(1, 4)}`;
+  return `${mantissa}e+${clean.length - 1}`;
+};
+
+const formatUnitsAmount = (value, decimals) => {
+  if (value === null) {
+    return null;
+  }
+  try {
+    const formatted = ethers.formatUnits(value, decimals);
+    const [wholeRaw, fractionRaw = ''] = formatted.split('.');
+    const whole = wholeRaw.replace(/^0+(?=\d)/, '') || '0';
+    const trimmedFraction = fractionRaw.replace(/0+$/, '');
+    if (whole.length <= 6) {
+      const fraction = trimmedFraction.slice(0, 4);
+      const suffix = trimmedFraction.length > 4 ? '…' : '';
+      const integerPart = whole.length <= 15 && Number.isFinite(Number(whole))
+        ? Number(whole).toLocaleString('en-US')
+        : whole;
+      return `${integerPart}${fraction ? `.${fraction}${suffix}` : ''}`;
+    }
+    const combinedDigits = (whole + trimmedFraction).replace(/^0+/, '') || '0';
+    return formatScientificNotation(combinedDigits);
+  } catch {
+    return null;
+  }
+};
+
+const resolveBaseUnitCandidates = (decimals, symbol) => {
+  if (!Number.isInteger(decimals)) {
+    return [];
+  }
+  if (decimals === 0) {
+    return [
+      { label: symbol || 'tokens', decimals: 0 }
+    ];
+  }
+  if (decimals === 18) {
+    return [
+      { label: 'wei', decimals: 0 },
+      { label: 'gwei', decimals: 9 },
+      { label: symbol || 'tokens', decimals: 18 }
+    ];
+  }
+  if (decimals === 9) {
+    return [
+      { label: symbol ? `${symbol} base units` : 'nano units', decimals: 0 },
+      { label: symbol || 'tokens', decimals: 9 }
+    ];
+  }
+  if (decimals === 6) {
+    return [
+      { label: symbol ? `${symbol} base units` : 'micro units', decimals: 0 },
+      { label: symbol || 'tokens', decimals: 6 }
+    ];
+  }
+  if (decimals === 3) {
+    return [
+      { label: symbol ? `${symbol} base units` : 'milli units', decimals: 0 },
+      { label: symbol || 'tokens', decimals: 3 }
+    ];
+  }
+  return [
+    { label: symbol ? `${symbol} base units` : 'tokens', decimals: 0 },
+    { label: symbol || 'tokens', decimals }
+  ];
+};
+
+const chooseBaseUnitCandidate = (value, candidates) => {
+  if (!candidates.length) return null;
+  if (value === 0n) {
+    return candidates[0];
+  }
+  const logValue = log10BigInt(value);
+  for (const candidate of candidates) {
+    const approxExp = logValue - candidate.decimals;
+    if (!Number.isFinite(approxExp)) {
+      continue;
+    }
+    if (approxExp >= -2 && approxExp <= 9) {
+      return candidate;
+    }
+  }
+  return candidates[candidates.length - 1];
+};
+
+const formatRawUnitsDisplay = (value, decimals, symbol) => {
+  if (value === null || value < 0n) {
+    return null;
+  }
+  if (!Number.isInteger(decimals)) {
+    const fallback = formatUnitsAmount(value, 0);
+    if (!fallback) return null;
+    return {
+      amount: fallback,
+      unit: symbol ? `${symbol} units` : 'tokens'
+    };
+  }
+  const candidates = resolveBaseUnitCandidates(decimals, symbol);
+  if (!candidates.length) {
+    return null;
+  }
+  const chosen = chooseBaseUnitCandidate(value, candidates) || candidates[0];
+  const display = formatUnitsAmount(value, chosen.decimals);
+  if (!display) {
+    return null;
+  }
+  return {
+    amount: display,
+    unit: chosen.label
+  };
+};
+
+const resolveEntryFeeUnitLabel = (decimals, symbol) => {
+  if (!Number.isInteger(decimals)) {
+    return 'tokens';
+  }
+  const candidates = resolveBaseUnitCandidates(decimals, symbol);
+  return candidates[0]?.label ?? 'tokens';
+};
+
+const formatTokenAmount = (value, decimals, symbol) => {
+  if (!Number.isInteger(decimals)) {
+    return null;
+  }
+  try {
+    const formatted = ethers.formatUnits(value, decimals);
+    const [wholeRaw, fractionRaw = ''] = formatted.split('.');
+    const whole = wholeRaw.replace(/^0+(?=\d)/, '') || '0';
+    const trimmedFraction = fractionRaw.replace(/0+$/, '');
+    if (whole.length <= 6) {
+      const fraction = trimmedFraction.slice(0, 4);
+      const suffix = trimmedFraction.length > 4 ? '…' : '';
+      const displayFraction = fraction ? `.${fraction}${suffix}` : '';
+      const base = `${whole}${displayFraction}`;
+      return symbol ? `${base} ${symbol}` : base;
+    }
+    const combinedDigits = (whole + trimmedFraction).replace(/^0+/, '') || '0';
+    const scientific = formatScientificNotation(combinedDigits);
+    return symbol ? `${scientific} ${symbol}` : scientific;
+  } catch {
+    return null;
+  }
+};
+
+const formatCurvePriceDisplay = (value, decimals, symbol) => {
+  if (value === null) {
+    return { primary: null, secondary: null };
+  }
+  const tokenDisplay = formatTokenAmount(value, decimals, symbol);
+  const rawDisplay = formatRawUnitsDisplay(value, decimals, symbol);
+  if (tokenDisplay) {
+    return {
+      primary: tokenDisplay,
+      secondary: rawDisplay ? `≈ ${rawDisplay.amount} ${rawDisplay.unit}` : null
+    };
+  }
+  return {
+    primary: rawDisplay ? `${rawDisplay.amount} ${rawDisplay.unit}` : null,
+    secondary: null
+  };
+};
+
+const powBpsBigInt = (factorBps, exponent) => {
+  if (exponent === 0n) {
+    return BPS_SCALE;
+  }
+  let result = BPS_SCALE;
+  let baseFactor = factorBps;
+  let remaining = exponent;
+  while (remaining > 0n) {
+    if (remaining & 1n) {
+      result = (result * baseFactor) / BPS_SCALE;
+    }
+    remaining >>= 1n;
+    if (remaining > 0n) {
+      baseFactor = (baseFactor * baseFactor) / BPS_SCALE;
+    }
+  }
+  return result;
+};
+
+const applyCurveSegmentBigInt = (amount, style, rateBps, steps) => {
+  if (steps === 0n || style === 'static') {
+    return amount;
+  }
+  if (style === 'linear') {
+    const offset = BPS_SCALE + rateBps * steps;
+    return (amount * offset) / BPS_SCALE;
+  }
+  if (style === 'exponential') {
+    const factor = powBpsBigInt(rateBps, steps);
+    return (amount * factor) / BPS_SCALE;
+  }
+  return amount;
+};
+
+const computePriceForJoin = (baseFee, style, rateBps, memberIndex) => {
+  if (memberIndex <= 1n) {
+    return baseFee;
+  }
+  return applyCurveSegmentBigInt(baseFee, style, rateBps, memberIndex - 1n);
+};
+
+const formatMultiplier = (baseFee, price) => {
+  if (price === null || baseFee === null || baseFee === 0n) return null;
+  if (price === baseFee) return 'Same as base price';
+  const logPrice = log10BigInt(price);
+  const logBase = log10BigInt(baseFee);
+  const delta = logPrice - logBase;
+  if (!Number.isFinite(delta) || Number.isNaN(delta)) {
+    return null;
+  }
+  if (delta < 3.5) {
+    const ratio = Math.pow(10, delta);
+    if (!Number.isFinite(ratio)) {
+      return `~10^${delta.toFixed(1)}× base`;
+    }
+    const formatted = ratio >= 100
+      ? ratio.toFixed(0)
+      : ratio >= 10
+        ? ratio.toFixed(1)
+        : ratio.toFixed(2);
+    return `${formatted.replace(/\.0+$/, '')}× base`;
+  }
+  return `~10^${delta.toFixed(1)}× base`;
+};
+
 function App() {
   // Minimal client-side router (no external deps)
   const { path, query, navigate } = useAppLocation();
@@ -167,7 +451,7 @@ function App() {
   const [burnPercent, setBurnPercent] = useState('30');
   const [treasuryPercent, setTreasuryPercent] = useState('30');
   const [memberPoolPercent, setMemberPoolPercent] = useState('30');
-  const [maxMembers, setMaxMembers] = useState('');
+  const [maxMembers, setMaxMembers] = useState('249');
   const [createTokenDecimals, setCreateTokenDecimals] = useState(null);
   const [createTokenSymbol, setCreateTokenSymbol] = useState(null);
   const [joinedTempls, setJoinedTempls] = useState(() => loadJoinedTemplsFromStorage());
@@ -388,6 +672,12 @@ function App() {
       return null;
     }
   })();
+  const entryFeeUnitLabel = resolveEntryFeeUnitLabel(createTokenDecimals, createTokenSymbol);
+  const entryFeeRawDisplay = (() => {
+    const parsed = parseBigIntInput(entryFee);
+    if (parsed === null) return null;
+    return formatRawUnitsDisplay(parsed, createTokenDecimals, createTokenSymbol);
+  })();
   const activeProtocolPercent = Number.isFinite(currentProtocolPercent) ? currentProtocolPercent : protocolPercentNum;
   const parsedBurnInput = Number.isFinite(Number(proposeBurnPercent)) ? Number(proposeBurnPercent) : 0;
   const parsedTreasuryInput = Number.isFinite(Number(proposeTreasuryPercent)) ? Number(proposeTreasuryPercent) : 0;
@@ -461,6 +751,173 @@ function App() {
       primary: { style: CURVE_STYLE_INDEX.static, rateBps: 0 }
     };
   }, [showAdvanced, customCurveEnabled, curvePrimaryStyle, curvePrimaryRateBps]);
+
+  const curvePreview = useMemo(() => {
+    const baseFee = parseBigIntInput(entryFee);
+    if (baseFee === null || baseFee <= 0n) {
+      return { ready: false, reason: 'entry-fee' };
+    }
+    const decimals = Number.isInteger(createTokenDecimals) ? Number(createTokenDecimals) : null;
+    const symbol = typeof createTokenSymbol === 'string' && createTokenSymbol.trim() ? createTokenSymbol.trim() : null;
+    const previewMode = showAdvanced && customCurveEnabled ? 'custom' : 'default';
+    const style = previewMode === 'custom' ? curvePrimaryStyle : DEFAULT_CURVE_STYLE;
+    let rate = previewMode === 'custom'
+      ? BigInt(parseCurveRateBps(curvePrimaryRateBps, curvePrimaryStyle))
+      : BigInt(DEFAULT_CURVE_RATE_BPS);
+    if (style === 'static') {
+      rate = 0n;
+    }
+    const cap = parseOptionalMaxMembers(maxMembers);
+    const highlightCards = CURVE_PREVIEW_MARKERS.map((member) => {
+      const withinCap = cap === null || member <= cap;
+      const price = withinCap ? computePriceForJoin(baseFee, style, rate, member) : null;
+      return {
+        key: member.toString(),
+        member,
+        ordinalLabel: formatOrdinal(Number(member)),
+        withinCap,
+        price,
+        display: formatCurvePriceDisplay(price, decimals, symbol),
+        multiplier: price !== null ? formatMultiplier(baseFee, price) : null
+      };
+    });
+    const cappedMembers = highlightCards.filter((card) => !card.withinCap);
+    let sampleMembers = CURVE_PREVIEW_SAMPLE_MEMBERS.filter((member) => cap === null || member <= cap);
+    if (cap !== null && cap > 0n && !sampleMembers.some((member) => member === cap)) {
+      sampleMembers = [...sampleMembers, cap];
+    }
+    if (sampleMembers.length === 0) {
+      sampleMembers = [1n];
+    }
+    sampleMembers = [...sampleMembers].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    const chartPointsRaw = sampleMembers.map((member) => {
+      const price = computePriceForJoin(baseFee, style, rate, member);
+      return {
+        member,
+        price,
+        logMember: Math.log10(Number(member)),
+        logPrice: log10BigInt(price)
+      };
+    });
+    const logMembers = chartPointsRaw.map((point) => point.logMember);
+    const logPrices = chartPointsRaw.map((point) => point.logPrice);
+    const minLogMember = Math.min(...logMembers);
+    const maxLogMember = Math.max(...logMembers);
+    const minLogPrice = Math.min(...logPrices);
+    const maxLogPrice = Math.max(...logPrices);
+    const xRange = maxLogMember - minLogMember || 1;
+    const yRange = maxLogPrice - minLogPrice || 1;
+    const chartWidth = 560;
+    const chartHeight = 180;
+    const margin = { top: 12, right: 16, bottom: 28, left: 36 };
+    const innerWidth = chartWidth - margin.left - margin.right;
+    const innerHeight = chartHeight - margin.top - margin.bottom;
+    const baselineY = chartHeight - margin.bottom;
+    const chartPoints = chartPointsRaw.map((point) => {
+      const x = xRange === 0
+        ? margin.left + innerWidth / 2
+        : margin.left + ((point.logMember - minLogMember) / xRange) * innerWidth;
+      const y = yRange === 0
+        ? baselineY - innerHeight / 2
+        : baselineY - ((point.logPrice - minLogPrice) / yRange) * innerHeight;
+      return {
+        ...point,
+        x,
+        y,
+        axisMember: Number(point.member)
+      };
+    });
+    const linePath = chartPoints.map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(' ');
+    let areaPath = '';
+    if (chartPoints.length >= 2 && linePath) {
+      const first = chartPoints[0];
+      const last = chartPoints[chartPoints.length - 1];
+      areaPath = `${linePath} L${last.x.toFixed(2)},${baselineY.toFixed(2)} L${first.x.toFixed(2)},${baselineY.toFixed(2)} Z`;
+    }
+    const axisTicksSet = new Set();
+    chartPoints.forEach((point) => {
+      axisTicksSet.add(point.axisMember);
+    });
+    CURVE_PREVIEW_MARKERS.forEach((marker) => {
+      const numeric = Number(marker);
+      const minMember = chartPoints[0]?.axisMember ?? numeric;
+      const maxMember = chartPoints[chartPoints.length - 1]?.axisMember ?? numeric;
+      if (numeric >= minMember && numeric <= maxMember) {
+        axisTicksSet.add(numeric);
+      }
+    });
+    const axisTicks = Array.from(axisTicksSet)
+      .sort((a, b) => a - b)
+      .map((value) => ({
+        value,
+        label: value >= 1000 ? `${(value / 1000).toFixed(value % 1000 === 0 ? 0 : 1)}k` : String(value)
+      }));
+    const highlightWithPoints = highlightCards.map((card) => {
+      if (!card.withinCap || !card.price) {
+        return { ...card, chartPosition: null };
+      }
+      const point = chartPoints.find((item) => item.member === card.member);
+      if (!point) {
+        return { ...card, chartPosition: null };
+      }
+      return {
+        ...card,
+        chartPosition: { x: point.x, y: point.y }
+      };
+    });
+    const styleOption = CURVE_STYLE_OPTIONS.find((option) => option.value === style);
+    const rateNumber = Number(rate);
+    let rateDescriptor = null;
+    if (style === 'linear') {
+      rateDescriptor = `+${(rateNumber / 100).toFixed(rateNumber % 100 === 0 ? 0 : 2)}% per member`;
+    } else if (style === 'exponential') {
+      const multiplier = rateNumber / 10000;
+      const percent = (multiplier - 1) * 100;
+      rateDescriptor = `×${multiplier.toFixed(multiplier >= 10 ? 1 : 2)} per member (~${percent.toFixed(2)}%)`;
+    } else {
+      rateDescriptor = 'Flat price';
+    }
+    const footnote = cappedMembers.length > 0 && cap
+      ? `Max members cap (${cap.toString()}) prevents reaching the ${cappedMembers.map((item) => item.ordinalLabel).join(', ')}.`
+      : null;
+    const modeLabel = previewMode === 'custom' ? 'Custom curve' : 'Factory default';
+    const metaNote = previewMode === 'custom'
+      ? null
+      : 'Factory default applies a +10% exponential increase per paid join.';
+    return {
+      ready: true,
+      meta: {
+        mode: previewMode,
+        modeLabel,
+        style,
+        styleLabel: styleOption?.label ?? style,
+        rateDescriptor,
+        note: metaNote
+      },
+      highlightCards: highlightWithPoints,
+      chart: {
+        width: chartWidth,
+        height: chartHeight,
+        linePath,
+        areaPath,
+        highlightPoints: highlightWithPoints
+          .map((card) => card.chartPosition)
+          .filter(Boolean),
+        axisTicks,
+        baselineY
+      },
+      footnote
+    };
+  }, [
+    customCurveEnabled,
+    curvePrimaryRateBps,
+    curvePrimaryStyle,
+    createTokenDecimals,
+    createTokenSymbol,
+    entryFee,
+    maxMembers,
+    showAdvanced
+  ]);
 
   // Fetch entry fee and token decimals for display in reprice UI
   useEffect(() => {
@@ -2213,7 +2670,7 @@ function App() {
                 )}
               </div>
               <div>
-                <label className="block text-sm font-medium text-black/70 mb-1">Entry fee (base units)</label>
+                <label className="block text-sm font-medium text-black/70 mb-1">Entry fee ({entryFeeUnitLabel})</label>
                 <input
                   className="w-full border border-black/20 rounded px-3 py-2"
                   placeholder="Entry fee"
@@ -2224,13 +2681,14 @@ function App() {
                   <p className="text-xs text-black/60 mt-1">
                     Entry fee: {entryFeeDisplay}
                     {createTokenSymbol ? ` ${createTokenSymbol}` : ''}
+                    {entryFeeRawDisplay ? ` • ${entryFeeRawDisplay.amount} ${entryFeeRawDisplay.unit}` : ''}
                     {Number.isInteger(createTokenDecimals) ? ` (decimals ${createTokenDecimals})` : ''}
                   </p>
                 )}
               </div>
                             {showAdvanced && (
-                <div className="space-y-4 border-t border-black/10 pt-4">
-                  <div>
+                <div className="space-y-4">
+                  <div className="hidden">
                     <label className="block text-sm font-medium text-black/70 mb-1">TemplFactory address</label>
                     <input
                       className="w-full border border-black/20 rounded px-3 py-2"
@@ -2240,7 +2698,7 @@ function App() {
                       onChange={(e) => setFactoryAddress(e.target.value)}
                     />
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div className="hidden grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <div>
                       <label className="block text-sm font-medium text-black/70 mb-1">Protocol fee recipient (fixed)</label>
                       <input className="w-full border border-black/20 rounded px-3 py-2" value={protocolFeeRecipient || 'fetching…'} readOnly />
@@ -2255,7 +2713,7 @@ function App() {
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-black/70 mb-1">Max members (0 = unlimited)</label>
+                    <label className="block text-sm font-medium text-black/70 mb-1">Max members (default 249 keeps XMTP chat inside the 250 participant limit; set 0 for unlimited)</label>
                     <input
                       className="w-full border border-black/20 rounded px-3 py-2"
                       placeholder="Optional"
@@ -2276,7 +2734,7 @@ function App() {
                       </div>
                     )}
                   </div>
-                  <div>
+                  <div className="hidden">
                     <label className="block text-sm font-medium text-black/70 mb-1">
                       Templ home link
                     </label>
@@ -2298,16 +2756,36 @@ function App() {
                           Configure how the entry fee scales as membership grows. Keep customization disabled to use the factory default exponential curve (+10% per join).
                         </p>
                       </div>
-                      <label className="flex items-center gap-2 text-sm text-black/70">
-                        <input
-                          type="checkbox"
-                          checked={customCurveEnabled}
-                          onChange={(event) => setCustomCurveEnabled(event.target.checked)}
-                        />
-                        <span>Customize curve</span>
-                      </label>
                     </div>
-                    {customCurveEnabled && (
+                      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <label className="inline-flex items-center gap-2 text-sm font-medium text-black/80">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border border-black/40"
+                            checked={customCurveEnabled}
+                            onChange={(event) => {
+                              const next = event.target.checked;
+                              setCustomCurveEnabled(next);
+                              if (!next) {
+                                setCurvePrimaryStyle(DEFAULT_CURVE_STYLE);
+                                setCurvePrimaryRateBps(String(DEFAULT_CURVE_RATE_BPS));
+                              }
+                            }}
+                          />
+                          Customize curve
+                        </label>
+                        <button
+                          type="button"
+                          className="text-xs font-medium text-black/50 underline underline-offset-4"
+                          onClick={() => {
+                            setCustomCurveEnabled(false);
+                            setCurvePrimaryStyle(DEFAULT_CURVE_STYLE);
+                            setCurvePrimaryRateBps(String(DEFAULT_CURVE_RATE_BPS));
+                          }}
+                        >
+                          Reset to default
+                        </button>
+                      </div>
                       <div className="mt-4 grid gap-4 md:grid-cols-2">
                         <div>
                           <label className="block text-sm font-medium text-black/70 mb-1">
@@ -2318,11 +2796,12 @@ function App() {
                             value={curvePrimaryStyle}
                             onChange={(event) => {
                               const next = event.target.value;
+                              setCustomCurveEnabled(true);
                               setCurvePrimaryStyle(next);
                               if (next === 'static') {
                                 setCurvePrimaryRateBps('0');
                               } else if (curvePrimaryRateBps === '0') {
-                                setCurvePrimaryRateBps(next === 'exponential' ? '11000' : '500');
+                                setCurvePrimaryRateBps(next === 'exponential' ? String(DEFAULT_CURVE_RATE_BPS) : '500');
                               }
                             }}
                           >
@@ -2342,7 +2821,10 @@ function App() {
                             min="0"
                             className="w-full border border-black/20 rounded px-3 py-2"
                             value={curvePrimaryRateBps}
-                            onChange={(event) => setCurvePrimaryRateBps(event.target.value)}
+                            onChange={(event) => {
+                              setCustomCurveEnabled(true);
+                              setCurvePrimaryRateBps(event.target.value);
+                            }}
                             disabled={curvePrimaryStyle === 'static'}
                           />
                           <p className="text-xs text-black/60 mt-1">
@@ -2350,7 +2832,107 @@ function App() {
                           </p>
                         </div>
                       </div>
-                    )}
+                      <div className="mt-6">
+                        <div className="rounded-lg border border-black/10 p-4" style={{ background: 'rgba(0, 0, 0, 0.03)' }}>
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                              <div className="text-xs uppercase tracking-wide text-black/50">{curvePreview.meta?.modeLabel ?? 'Curve preview'}</div>
+                              <div className="text-sm font-semibold text-black/80">
+                                {curvePreview.meta?.styleLabel ?? 'Pricing curve'}
+                              </div>
+                              {curvePreview.meta?.rateDescriptor && (
+                                <div className="text-xs text-black/60">{curvePreview.meta.rateDescriptor}</div>
+                              )}
+                            </div>
+                            <div className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium text-black/80" style={{ background: 'rgba(229, 255, 90, 0.2)' }}>
+                              <span>Next members</span>
+                              <span className="font-semibold text-black/70">1 → 1k</span>
+                            </div>
+                          </div>
+                          {curvePreview.ready ? (
+                            <>
+                              <div className="relative mt-4 h-40 w-full">
+                                <svg
+                                  viewBox={`0 0 ${curvePreview.chart.width} ${curvePreview.chart.height}`}
+                                  role="img"
+                                  aria-label="Entry fee curve preview"
+                                  className="h-full w-full"
+                                >
+                                  <defs>
+                                    <linearGradient id={CURVE_PREVIEW_GRADIENT_ID} x1="0" x2="0" y1="0" y2="1">
+                                      <stop offset="0%" stopColor="#ffd600" stopOpacity="0.4" />
+                                      <stop offset="100%" stopColor="#ffd600" stopOpacity="0" />
+                                    </linearGradient>
+                                  </defs>
+                                  {curvePreview.chart.areaPath && (
+                                    <path
+                                      d={curvePreview.chart.areaPath}
+                                      fill={`url(#${CURVE_PREVIEW_GRADIENT_ID})`}
+                                      stroke="none"
+                                    />
+                                  )}
+                                  {curvePreview.chart.linePath && (
+                                    <path
+                                      d={curvePreview.chart.linePath}
+                                      fill="none"
+                                      stroke="#f2a900"
+                                      strokeWidth="2"
+                                      strokeLinejoin="round"
+                                      strokeLinecap="round"
+                                    />
+                                  )}
+                                  {curvePreview.chart.highlightPoints.map((point, index) => (
+                                    <g key={`highlight-${index}`}>
+                                      <circle cx={point.x} cy={point.y} r="5" fill="#111827" fillOpacity="0.15" />
+                                      <circle cx={point.x} cy={point.y} r="3" fill="#f2a900" />
+                                    </g>
+                                  ))}
+                                </svg>
+                                <div className="pointer-events-none absolute inset-x-0 bottom-1 flex justify-between px-3 text-[10px] font-medium uppercase tracking-wide text-black/40">
+                                  {curvePreview.chart.axisTicks.map((tick) => (
+                                    <span key={`axis-${tick.value}`}>{tick.label}</span>
+                                  ))}
+                                </div>
+                              </div>
+                              <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                                {curvePreview.highlightCards.map((card) => (
+                                  <div
+                                    key={card.key}
+                                    className="rounded-md border border-black/10 px-3 py-2 shadow-sm"
+                                    style={{ background: 'rgba(255, 255, 255, 0.85)' }}
+                                  >
+                                    <div className="text-xs uppercase tracking-wide text-black/50">{card.ordinalLabel}</div>
+                                    {card.withinCap && card.display?.primary ? (
+                                      <>
+                                        <div className="text-sm font-semibold text-black/90 mt-1">{card.display.primary}</div>
+                                        {card.display.secondary && (
+                                          <div className="text-xs text-black/60">{card.display.secondary}</div>
+                                        )}
+                                        {card.multiplier && (
+                                          <div className="text-xs text-black/60 mt-1">{card.multiplier}</div>
+                                        )}
+                                      </>
+                                    ) : (
+                                      <div className="text-sm text-black/60 mt-1">Capped by max members</div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                              {(curvePreview.meta?.note || curvePreview.footnote) && (
+                                <p className="mt-3 text-xs text-black/60">
+                                  {curvePreview.meta?.note ?? ''}
+                                  {curvePreview.meta?.note && curvePreview.footnote ? ' ' : ''}
+                                  {curvePreview.footnote ?? ''}
+                                </p>
+                              )}
+                            </>
+                          ) : (
+                            <p className="mt-4 text-sm text-black/60">
+                              Set a base entry fee to preview how the curve evolves.
+                            </p>
+                          )}
+                        </div>
+                      </div>
                   </div>
                 </div>
               )}
@@ -2890,7 +3472,7 @@ function App() {
                     : 'Returning to democracy requires member voting and restores proposal-based governance.'}
                 </div>
               )}
-              <div className="text-xs text-black/60">Tip: Pause/Unpause, Move Treasury, and Set Member Limit encode the call data automatically. Reprice expects a new fee in raw token units. Adjust Fee Split collects the burn/treasury/member percentages (protocol share stays at the contract’s configured value).</div>
+              <div className="text-xs text-black/60">Tip: Pause/Unpause, Move Treasury, and Set Member Limit encode the call data automatically. Reprice expects a new fee in raw token amounts. Adjust Fee Split collects the burn/treasury/member percentages (protocol share stays at the contract’s configured value).</div>
               {proposeAction === 'reprice' && (
                 <div className="text-xs text-black/80 mt-1 flex flex-col gap-2">
                   <div className="flex gap-2 items-center">

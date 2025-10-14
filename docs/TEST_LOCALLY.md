@@ -83,11 +83,10 @@ npm --prefix frontend run dev
 
 Open `http://localhost:5173`. The SPA provides dedicated routes for every core flow:
 
-- `/templs/create` – deploy + register a templ (optionally include a Telegram chat id).
-- `/templs/join` – join (or gift a join) and verify membership with the backend.
-- `/templs/:address` – overview page with quick navigation to proposals.
-- `/templs/:address/proposals/new` – create governance actions.
-- `/templs/:address/proposals/:id/vote` – cast a YES/NO vote.
+- `/create` – deploy + register a templ (optionally set a home link).
+- `/join` – join (or gift a join) and verify membership with the backend.
+- `/templs` – list known templs, show local fallbacks, and offer quick navigation into chat.
+- `/chat?address=<templ>` – end-to-end console: XMTP chat, proposal composer, vote execution helpers, reward claims, moderation controls, and Telegram binding prompts.
 
 ## 4) Load Hardhat wallets in your browser
 
@@ -108,26 +107,26 @@ Commonly used accounts (private keys are from Hardhat defaults—never use them 
 
 ## 5) Deploy and register a templ
 
-1. Connect the priest wallet in the UI and navigate to `/templs/create`.
+1. Connect the priest wallet in the UI and navigate to `/create`.
 2. Fill in the form:
    - Factory address: the `TemplFactory` you deployed or the value from `VITE_TEMPL_FACTORY_ADDRESS`.
    - Access token address: any ERC-20 you control on the local chain (deploy `TestToken` via `npx hardhat console` if needed).
    - Entry fee / fee split / limits: pick values that satisfy on-chain validations (entry fee ≥ 10 wei and divisible by 10, fee split sums to 100).
    - Telegram chat id: optional numeric id; omit it if you don’t want Telegram alerts yet.
 3. Submit—the frontend deploys the contract via the factory. When `TRUSTED_FACTORY_ADDRESS` and `RPC_URL` are set the backend observes every `TemplCreated` signature emitted by the factory and registers the templ automatically, so there is no extra signature prompt during creation. The CLI deploy script mirrors this behaviour; set `CURVE_PRIMARY_STYLE` (`static`, `linear`, or `exponential`) and `CURVE_PRIMARY_RATE_BPS` before running `scripts/deploy.js` if you need a custom curve, otherwise the factory default exponential curve is applied.
-4. After success you land on `/templs/:address` where the overview reflects the on-chain priest and home link once the backend syncs. Use the “Generate binding code” action (it triggers the priest signature) if you want Telegram alerts; the response yields a `/templ <bindingCode>` command together with the `https://t.me/templfunbot?startgroup=<bindingCode>` deep link. Invite `@templfunbot` and trigger either option in the group to finish the binding.
+4. After success the UI registers the templ with the backend, caches the address in `localStorage`, and redirects to `/chat?address=<templAddress>`. The info drawer exposes “Generate binding code” and “Refresh binding” buttons that POST unsigned payloads to `/templs/${address}/auto` and `/templs/${address}/rebind`. The backend only accepts typed payloads on `/templs/auto` and `/templs/rebind`, so use the CLI helper or direct API calls for production rebinds.
 
 ## 6) Join and verify membership
 
-1. Switch to the member wallet and open `/templs/join?address=<templAddress>`.
+1. Switch to the member wallet and open `/join?address=<templAddress>`.
 2. Use “Join templ” to approve + call `join` if you haven’t joined before.
 3. Click “Verify Membership” to sign the EIP-712 payload and call the backend `/join` endpoint.
 4. The response includes the templ metadata plus deep links (join, overview, proposals) derived from `APP_BASE_URL`.
 
 ## 7) Create proposals and vote
 
-- `/templs/:address/proposals/new` lets any member raise actions such as pausing, changing the priest, updating fees, etc. Titles and descriptions live on-chain and emit in `ProposalCreated` events.
-- `/templs/:address/proposals/:id/vote` submits `vote(proposalId, support)` transactions.
+- Inside `/chat?address=<templ>` any member can raise actions such as pausing joins, changing the priest, adjusting entry fees and splits, disbanding treasury balances, or toggling dictatorship. Titles and descriptions live on-chain and emit in `ProposalCreated` events.
+- The same surface submits votes (`vote(proposalId, support)`) and exposes an execution button once quorum and delay requirements pass.
 - If the templ was registered with a Telegram chat id, the backend will post:
   - Member joins (`MemberJoined`) with live treasury/member-pool balances.
   - Proposal creations (including on-chain title/description).
@@ -136,7 +135,7 @@ Commonly used accounts (private keys are from Hardhat defaults—never use them 
   - Priest changes and templ home-link updates.
   - Daily treasury/member-pool digests (every 24h) when the server remains online.
   Each message links back to the relevant frontend route so members can take action quickly and is formatted with Telegram Markdown V2 for consistent bold headers, code spans, and deep links. Posting the one-time binding code also yields an immediate “Telegram bridge active” acknowledgement.
-- `/templs/:address/claim` lets connected wallets see the raw member pool balance and call `claimMemberRewards()`.
+- Claim buttons in the info panel call `claimMemberRewards()` and `claimExternalReward()` for eligible tokens.
 
 ## 8) Run the automated checks
 

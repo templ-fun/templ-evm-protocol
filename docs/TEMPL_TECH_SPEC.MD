@@ -80,18 +80,23 @@ The backend (`backend/src`) is a Node 22 Express app packaged in `backend/Docker
 
 ## 3. Frontend application
 
-- **Stack** – Vite + React SPA served statically (Cloudflare Pages in production). Uses `ethers.BrowserProvider` for wallet interaction and shared signing helpers for typed data.
+- **Stack** – Vite + React SPA served statically (Cloudflare Pages in production). `Landing.jsx` renders on `/` while `App.jsx` powers the interactive console. Wallet access uses `ethers.BrowserProvider` and the shared signing helpers.
 - **Key routes** –
-  - `/` – Landing page that lists templs discovered via the configured factory and backend metadata.
-  - `/templs/create` – Guided deployment, including fee split validation and registration with the backend.
-  - `/templs/join` – Join or gift membership; handles approvals when required.
-  - `/templs/:address` – Overview with priest info, Telegram binding status, treasury/member pool snapshots, and governance shortcuts.
-  - `/templs/:address/proposals/new` – Proposal composer with typed action selection.
-  - `/templs/:address/proposals/:id/vote` – Voting surface (YES/NO) and execution helpers.
-  - `/templs/:address/claim` – Member rewards claim page (access-token and external pools).
-- **Configuration** – Environment variables prefixed with `VITE_` control the backend URL, trusted factory metadata, protocol fee hints, and RPC providers. `VITE_BACKEND_SERVER_ID` must match the backend’s `BACKEND_SERVER_ID` so signatures verify.
-- **Telegram binding UX** – After registering a templ the SPA surfaces the binding code returned by the backend. Priests can request new codes from the overview page to rotate chats.
-- **Testing** – Vitest covers components and services; Playwright E2E scripts exercise deploy/join/governance flows.
+  - `/templs` – Wallet-aware templ directory sourced from the backend (with optional local fallbacks when `VITE_ENABLE_BACKEND_FALLBACK` or `TEMPL_ENABLE_LOCAL_FALLBACK` is enabled).
+  - `/create` – Guided deployment form; on success it registers the templ with the backend and redirects to `/chat?address=<templAddress>`.
+  - `/join` – Join or gift membership; honours the `?address=` query parameter to pre-fill the contract.
+  - `/chat` – Single-page templ console that drives XMTP chat, proposal creation, voting, execution helpers, reward claims, moderation, and Telegram binding prompts. It expects `?address=` and falls back to the last joined templ recorded in `localStorage`.
+- **Governance actions** – The proposal dialog covers pause/unpause, withdraw treasury (to the connected wallet), disband treasury, adjust entry fees and fee splits, set membership caps, change the priest, and toggle dictatorship mode. Titles/descriptions are written on-chain; telemetry relies on contract events.
+- **Telegram binding drawer** – The info panel exposes “Generate binding code” and “Refresh binding” buttons that POST to `/templs/${address}/auto` and `/templs/${address}/rebind`. The backend only accepts typed payloads on `/templs/auto` and `/templs/rebind`, so operators should rely on the CLI helper or manual API calls when rotating bindings.
+- **Home link drawer** – Captures a preferred URL and emits a success toast; it does not broadcast the value to the contract or backend.
+- **Configuration** – Key environment flags:
+  - `VITE_BACKEND_URL`, `VITE_BACKEND_SERVER_ID` – API base URL and the identifier used in EIP-712 payloads (must match the backend).
+  - `VITE_TEMPL_FACTORY_ADDRESS`, `VITE_TEMPL_FACTORY_PROTOCOL_RECIPIENT`, `VITE_TEMPL_FACTORY_PROTOCOL_PERCENT` (or their `TEMPL_*` equivalents) – default factory hints shown on the deploy form.
+  - `VITE_TEMPL_FACTORY_DEPLOYMENT_BLOCK`, `VITE_RPC_URL` – optional RPC hints for templ discovery without a connected wallet.
+  - `VITE_ENABLE_BACKEND_FALLBACK` / `TEMPL_ENABLE_LOCAL_FALLBACK` – allow the app to fall back to locally stored templ addresses when the backend directory is unavailable.
+  - `VITE_XMTP_ENV` – selects the XMTP environment (`local`, `dev`, `production`) for chat interactions.
+  - `VITE_E2E_DEBUG`, `VITE_E2E_NO_PURCHASE` – speed up Playwright flows (shorter polling, optional purchase skips).
+- **Testing** – Vitest covers components/services, while Playwright E2E exercises deploy → join → chat flows with XMTP mocks. Tests rely on the shared helpers and the environment flags listed above.
 
 ---
 
