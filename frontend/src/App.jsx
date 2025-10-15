@@ -334,6 +334,48 @@ function isMissingInstallationError(err) {
   return message.includes('Database(NotFound');
 }
 
+function createReinstallError(details = 'Missing XMTP installation metadata') {
+  const error = new Error(details);
+  error.name = 'XMTP_REINSTALL';
+  return error;
+}
+
+function extractKeyPackageStatus(statuses, installationId) {
+  if (!statuses) return null;
+  const target = String(installationId || '');
+  const candidates = [target, target.toLowerCase(), target.replace(/^0x/i, '')];
+  const matchKey = (key) => {
+    if (!key) return false;
+    const val = String(key);
+    return candidates.includes(val) || candidates.includes(val.toLowerCase()) || candidates.includes(val.replace(/^0x/i, ''));
+  };
+  if (statuses instanceof Map) {
+    for (const [key, value] of statuses.entries()) {
+      if (matchKey(key)) return value;
+    }
+    return null;
+  }
+  if (Array.isArray(statuses)) {
+    for (const entry of statuses) {
+      if (!entry) continue;
+      if (Array.isArray(entry) && entry.length >= 2) {
+        const [key, value] = entry;
+        if (matchKey(key)) return value;
+      } else if (entry.installationId || entry.id) {
+        const key = entry.installationId || entry.id;
+        if (matchKey(key)) return entry;
+      }
+    }
+    return null;
+  }
+  if (typeof statuses === 'object') {
+    for (const key of Object.keys(statuses)) {
+      if (matchKey(key)) return statuses[key];
+    }
+  }
+  return null;
+}
+
 // Curve configuration constants
 const CURVE_STYLE_INDEX = {
   static: 0,
@@ -2060,6 +2102,33 @@ function App() {
       let clientInstance = null;
       try {
         clientInstance = await Client.create(signerWrapper, options);
+        if (disableAutoRegister) {
+          let reinstall = false;
+          if (!clientInstance?.installationId) {
+            reinstall = true;
+            dlog('[app] Cached XMTP client missing installationId after resume attempt', { nonce });
+          } else {
+            try {
+              const statuses = await clientInstance.getKeyPackageStatusesForInstallationIds?.([String(clientInstance.installationId)]);
+              const status = extractKeyPackageStatus(statuses, clientInstance.installationId);
+              if (!status || status?.validationError) {
+                reinstall = true;
+                dlog('[app] XMTP key package status invalid after resume', {
+                  nonce,
+                  validationError: status?.validationError || null,
+                  statusAvailable: Boolean(status)
+                });
+              }
+            } catch (err) {
+              reinstall = true;
+              dlog('[app] XMTP key package status check threw during resume', err?.message || err);
+            }
+          }
+          if (reinstall) {
+            try { await clientInstance.close?.(); } catch {}
+            throw createReinstallError('Cached XMTP installation invalid or revoked');
+          }
+        }
         try { localStorage.setItem(storageKey, String(nonce)); } catch {}
         saveXmtpCache(address, {
           nonce,
@@ -2143,7 +2212,7 @@ function App() {
               limitEncountered = true;
               continue;
             }
-            if (isMissingInstallationError(err)) {
+            if (err?.name === 'XMTP_REINSTALL' || isMissingInstallationError(err)) {
               requireFreshInstallation = true;
               reinstallReason = msg;
               try { cache.installationId = null; } catch {}
@@ -2178,6 +2247,13 @@ function App() {
         const msg = String(err?.message || err);
         if (isAccessHandleError(err)) {
           dlog('[app] XMTP fallback retry after access handle error', { fallbackNonce });
+          return await createClientWithNonce(fallbackNonce, false);
+        }
+        if (err?.name === 'XMTP_REINSTALL') {
+          dlog('[app] XMTP fallback reported reinstall requirement, retrying without disableAutoRegister', {
+            fallbackNonce,
+            reinstallReason: err?.message || ''
+          });
           return await createClientWithNonce(fallbackNonce, false);
         }
         if (msg.includes('already registered 10/10 installations')) {
