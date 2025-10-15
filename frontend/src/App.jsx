@@ -4673,12 +4673,17 @@ function App() {
               <button className="btn btn-primary" onClick={async () => {
                 try {
                   if (!templAddress || !signer) return;
-                  let callData = '0x';
+                  let callData = null;
+                  let actionKey = null;
+                  let actionParams = {};
+                  const metaTitle = proposeTitle || 'Untitled';
+                  const metaDescription = (proposeDesc || '').trim();
+
                   if (proposeAction === 'pause' || proposeAction === 'unpause') {
-                    try {
-                      const iface = new ethers.Interface(['function setPausedDAO(bool)']);
-                      callData = iface.encodeFunctionData('setPausedDAO', [proposeAction === 'pause']);
-                    } catch {}
+                    actionKey = 'setPaused';
+                    actionParams = { paused: proposeAction === 'pause' };
+                    if (!proposeTitle) setProposeTitle(proposeAction === 'pause' ? 'Pause DAO' : 'Resume DAO');
+                    if (!proposeDesc) setProposeDesc(proposeAction === 'pause' ? 'Pause all joins and proposal execution.' : 'Resume normal operations for joins and governance.');
                   } else if (proposeAction === 'moveTreasuryToMe') {
                     try {
                       const me = await signer.getAddress();
@@ -4726,22 +4731,31 @@ function App() {
                         }
                       }
                       const reason = proposeReason.trim() || 'Treasury withdrawal';
-                      const iface = new ethers.Interface(['function withdrawTreasuryDAO(address token, address recipient, uint256 amount, string reason)']);
-                      callData = iface.encodeFunctionData('withdrawTreasuryDAO', [tokenAddr, me, amount, reason]);
+                      actionKey = 'withdrawTreasury';
+                      actionParams = { token: tokenAddr, recipient: me, amount, reason };
                       if (!proposeTitle) setProposeTitle('Move Treasury to me');
                       if (!proposeDesc) setProposeDesc(reason);
                     } catch (e) {
-                      alert(e?.message || 'Failed to encode treasury withdrawal');
+                      alert(e?.message || 'Failed to prepare treasury withdrawal');
                       return;
                     }
                   } else if (proposeAction === 'reprice') {
                     try {
                       const newFee = BigInt(String(proposeFee || '0'));
-                      const iface = new ethers.Interface(['function updateConfigDAO(address _token, uint256 _entryFee, bool _updateFeeSplit, uint256 _burnPercent, uint256 _treasuryPercent, uint256 _memberPoolPercent)']);
-                      callData = iface.encodeFunctionData('updateConfigDAO', [ethers.ZeroAddress, newFee, false, 0, 0, 0]);
+                      actionKey = 'updateConfig';
+                      actionParams = {
+                        newEntryFee: newFee,
+                        updateFeeSplit: false,
+                        newBurnPercent: 0,
+                        newTreasuryPercent: 0,
+                        newMemberPoolPercent: 0
+                      };
                       if (!proposeTitle) setProposeTitle('Reprice Entry Fee');
                       if (!proposeDesc) setProposeDesc(`Set new entry fee to ${String(newFee)}`);
-                    } catch {}
+                    } catch (e) {
+                      alert(e?.message || 'Invalid entry fee');
+                      return;
+                    }
                   } else if (proposeAction === 'setMaxMembers') {
                     try {
                       const trimmed = String(proposeMaxMembers || '').trim();
@@ -4750,8 +4764,8 @@ function App() {
                       if (memberCountValue !== null && target > 0n && BigInt(memberCountValue) > target) {
                         throw new Error('Limit must be at least the current member count');
                       }
-                      const iface = new ethers.Interface(['function setMaxMembersDAO(uint256)']);
-                      callData = iface.encodeFunctionData('setMaxMembersDAO', [target]);
+                      actionKey = 'setMaxMembers';
+                      actionParams = { newMaxMembers: target };
                       if (!proposeTitle) setProposeTitle('Set Member Limit');
                       if (!proposeDesc) {
                         setProposeDesc(target === 0n ? 'Remove the member limit' : `Set max members to ${target.toString()}`);
@@ -4778,8 +4792,14 @@ function App() {
                       if (total !== 100) {
                         throw new Error(`Percentages must sum to 100 including protocol share (${activeProtocolPercent}%)`);
                       }
-                      const iface = new ethers.Interface(['function updateConfigDAO(address _token, uint256 _entryFee, bool _updateFeeSplit, uint256 _burnPercent, uint256 _treasuryPercent, uint256 _memberPoolPercent)']);
-                      callData = iface.encodeFunctionData('updateConfigDAO', [ethers.ZeroAddress, 0, true, burnValue, treasuryValue, memberValue]);
+                      actionKey = 'updateConfig';
+                      actionParams = {
+                        newEntryFee: 0n,
+                        updateFeeSplit: true,
+                        newBurnPercent: burnValue,
+                        newTreasuryPercent: treasuryValue,
+                        newMemberPoolPercent: memberValue
+                      };
                       if (!proposeTitle) setProposeTitle('Adjust Fee Split');
                       if (!proposeDesc) {
                         setProposeDesc(`Set burn/treasury/member to ${burnValue}/${treasuryValue}/${memberValue}`);
@@ -4801,8 +4821,8 @@ function App() {
                         if (!ethers.isAddress(provided)) throw new Error('Invalid disband token address');
                         tokenAddr = provided;
                       }
-                      const iface = new ethers.Interface(['function disbandTreasuryDAO(address)']);
-                      callData = iface.encodeFunctionData('disbandTreasuryDAO', [tokenAddr]);
+                      actionKey = 'disbandTreasury';
+                      actionParams = { token: tokenAddr };
                       if (!proposeTitle) setProposeTitle('Disband Treasury');
                       if (!proposeDesc) {
                         const label = tokenAddr === ethers.ZeroAddress ? 'ETH' : tokenAddr;
@@ -4816,8 +4836,8 @@ function App() {
                     try {
                       const addr = String(proposeNewPriest || '').trim();
                       if (!addr || !ethers.isAddress(addr)) throw new Error('Invalid priest address');
-                      const iface = new ethers.Interface(['function changePriestDAO(address)']);
-                      callData = iface.encodeFunctionData('changePriestDAO', [addr]);
+                      actionKey = 'changePriest';
+                      actionParams = { newPriest: addr };
                       if (!proposeTitle) setProposeTitle('Change Priest');
                       if (!proposeDesc) setProposeDesc(`Set new priest to ${addr}`);
                     } catch (e) {
@@ -4825,24 +4845,35 @@ function App() {
                       return;
                     }
                   } else if (proposeAction === 'enableDictatorship' || proposeAction === 'disableDictatorship') {
-                    try {
-                      const enable = proposeAction === 'enableDictatorship';
-                      const iface = new ethers.Interface(['function setDictatorshipDAO(bool)']);
-                      callData = iface.encodeFunctionData('setDictatorshipDAO', [enable]);
-                      if (!proposeTitle) setProposeTitle(enable ? 'Enable Dictatorship' : 'Return to Democracy');
-                      if (!proposeDesc) {
-                        setProposeDesc(enable
-                          ? 'Enable priest dictatorship so governance actions execute instantly (only the priest can later return to democracy).'
-                          : 'Disable priest dictatorship to restore member voting.');
-                      }
-                    } catch (e) {
-                      alert(e?.message || 'Failed to encode governance mode change');
-                      return;
+                    const enable = proposeAction === 'enableDictatorship';
+                    actionKey = 'setDictatorship';
+                    actionParams = { enable };
+                    if (!proposeTitle) setProposeTitle(enable ? 'Enable Dictatorship' : 'Return to Democracy');
+                    if (!proposeDesc) {
+                      setProposeDesc(enable
+                        ? 'Enable priest dictatorship so governance actions execute instantly (only the priest can later return to democracy).'
+                        : 'Disable priest dictatorship to restore member voting.');
                     }
                   }
-                  const metaTitle = proposeTitle || 'Untitled';
-                  const metaDescription = (proposeDesc || '').trim();
-                  const { proposalId } = await proposeVote({ ethers, signer, templAddress, templArtifact, title: metaTitle, description: metaDescription, callData });
+
+                  let proposalId = null;
+                  if (actionKey) {
+                    const result = await proposeVote({
+                      ethers,
+                      signer,
+                      templAddress,
+                      templArtifact,
+                      action: actionKey,
+                      params: actionParams
+                    });
+                    proposalId = result?.proposalId ?? null;
+                  } else if (callData) {
+                    const result = await proposeVote({ ethers, signer, templAddress, templArtifact, callData });
+                    proposalId = result?.proposalId ?? null;
+                  } else {
+                    alert('Unsupported proposal type');
+                    return;
+                  }
                   if (proposalId !== null && proposalId !== undefined) {
                     const numericId = Number(proposalId);
                     setProposalsById((prev) => {
