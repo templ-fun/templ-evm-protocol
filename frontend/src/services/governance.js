@@ -38,10 +38,21 @@ export async function proposeVote({
   params = {},
   callData,
   votingPeriod = 0,
-  txOptions = {}
+  txOptions = {},
+  title,
+  description
 }) {
   const contract = new ethers.Contract(templAddress, templArtifact.abi, signer);
   const lowerAddress = String(templAddress || '').toLowerCase();
+  const proposalTitle = typeof title === 'string' && title.trim().length ? title.trim() : 'Untitled Proposal';
+  const proposalDescription = typeof description === 'string' ? description : '';
+  const overrides = txOptions && Object.keys(txOptions).length ? txOptions : undefined;
+  const withOverrides = async (methodName, args) => {
+    if (overrides) {
+      return await contract[methodName](...args, overrides);
+    }
+    return await contract[methodName](...args);
+  };
   const waitForProposal = async (tx) => {
     const receipt = await tx.wait();
     const proposalId = extractProposalIdFromReceipt(receipt, ethers, templArtifact, lowerAddress);
@@ -53,11 +64,11 @@ export async function proposeVote({
     let tx;
     switch (action) {
       case 'setPaused':
-        tx = await contract.createProposalSetPaused(!!p.paused, votingPeriod, txOptions); break;
+        tx = await withOverrides('createProposalSetJoinPaused', [!!p.paused, votingPeriod, proposalTitle, proposalDescription]); break;
       case 'withdrawTreasury':
-        tx = await contract.createProposalWithdrawTreasury(p.token, p.recipient, p.amount, p.reason || '', votingPeriod, txOptions); break;
+        tx = await withOverrides('createProposalWithdrawTreasury', [p.token, p.recipient, p.amount, p.reason || '', votingPeriod, proposalTitle, proposalDescription]); break;
       case 'changePriest':
-        tx = await contract.createProposalChangePriest(p.newPriest, votingPeriod, txOptions); break;
+        tx = await withOverrides('createProposalChangePriest', [p.newPriest, votingPeriod, proposalTitle, proposalDescription]); break;
       case 'updateConfig': {
         const rawFee = p.newEntryFee ?? 0;
         let feeBigInt = 0n;
@@ -68,15 +79,16 @@ export async function proposeVote({
         const updateSplit = p.updateFeeSplit !== undefined
           ? !!p.updateFeeSplit
           : (newBurn !== 0 || newTreasury !== 0 || newMember !== 0);
-        tx = await contract.createProposalUpdateConfig(
+        tx = await withOverrides('createProposalUpdateConfig', [
           feeBigInt,
           newBurn,
           newTreasury,
           newMember,
           updateSplit,
           votingPeriod,
-          txOptions
-        );
+          proposalTitle,
+          proposalDescription
+        ]);
         break;
       }
       case 'setMaxMembers': {
@@ -84,7 +96,7 @@ export async function proposeVote({
         let limitBigInt = 0n;
         try { limitBigInt = BigInt(rawLimit); } catch { throw new Error('Invalid max member limit'); }
         if (limitBigInt < 0n) throw new Error('Max member limit must be non-negative');
-        tx = await contract.createProposalSetMaxMembers(limitBigInt, votingPeriod, txOptions);
+        tx = await withOverrides('createProposalSetMaxMembers', [limitBigInt, votingPeriod, proposalTitle, proposalDescription]);
         break;
       }
       case 'disbandTreasury': {
@@ -100,11 +112,11 @@ export async function proposeVote({
           }
           tokenAddr = provided;
         }
-        tx = await contract.createProposalDisbandTreasury(tokenAddr, votingPeriod, txOptions);
+        tx = await withOverrides('createProposalDisbandTreasury', [tokenAddr, votingPeriod, proposalTitle, proposalDescription]);
         break;
       }
       case 'setDictatorship':
-        tx = await contract.createProposalSetDictatorship(!!p.enable, votingPeriod, txOptions);
+        tx = await withOverrides('createProposalSetDictatorship', [!!p.enable, votingPeriod, proposalTitle, proposalDescription]);
         break;
       default:
         throw new Error('Unknown action: ' + action);
@@ -121,53 +133,64 @@ export async function proposeVote({
       const sig = callData.slice(0, 10).toLowerCase();
       const full = new ethers.Interface(templArtifact.abi);
       const fn = full.getFunction(sig);
-      if (fn?.name === 'setPausedDAO') {
+      if (fn?.name === 'setJoinPausedDAO') {
         const [paused] = full.decodeFunctionData(fn, callData);
-        const tx = await contract.createProposalSetPaused(paused, votingPeriod, txOptions);
+        const tx = await withOverrides('createProposalSetJoinPaused', [paused, votingPeriod, proposalTitle, proposalDescription]);
         return await waitForProposal(tx);
       }
       if (fn?.name === 'withdrawTreasuryDAO' && fn.inputs.length === 4) {
         const [token, recipient, amount, reason] = full.decodeFunctionData(fn, callData);
-        const tx = await contract.createProposalWithdrawTreasury(token, recipient, amount, reason, votingPeriod, txOptions);
+        const tx = await withOverrides('createProposalWithdrawTreasury', [token, recipient, amount, reason, votingPeriod, proposalTitle, proposalDescription]);
         return await waitForProposal(tx);
       }
       if (fn?.name === 'changePriestDAO' && fn.inputs.length === 1) {
         const [newPriest] = full.decodeFunctionData(fn, callData);
-        const tx = await contract.createProposalChangePriest(newPriest, votingPeriod, txOptions);
+        const tx = await withOverrides('createProposalChangePriest', [newPriest, votingPeriod, proposalTitle, proposalDescription]);
         return await waitForProposal(tx);
       }
       if (fn?.name === 'updateConfigDAO' && fn.inputs.length === 6) {
         const [, newEntryFee, updateSplit, burnPercentValue, treasuryPercentValue, memberPoolPercentValue] = full.decodeFunctionData(fn, callData);
-        const tx = await contract.createProposalUpdateConfig(
+        const tx = await withOverrides('createProposalUpdateConfig', [
           newEntryFee,
           burnPercentValue,
           treasuryPercentValue,
           memberPoolPercentValue,
           updateSplit,
           votingPeriod,
-          txOptions
-        );
+          proposalTitle,
+          proposalDescription
+        ]);
         return await waitForProposal(tx);
       }
       if (fn?.name === 'setMaxMembersDAO' && fn.inputs.length === 1) {
         const [limit] = full.decodeFunctionData(fn, callData);
-        const tx = await contract.createProposalSetMaxMembers(limit, votingPeriod, txOptions);
+        const tx = await withOverrides('createProposalSetMaxMembers', [limit, votingPeriod, proposalTitle, proposalDescription]);
         return await waitForProposal(tx);
       }
       if (fn?.name === 'setDictatorshipDAO' && fn.inputs.length === 1) {
         const [enable] = full.decodeFunctionData(fn, callData);
-        const tx = await contract.createProposalSetDictatorship(enable, votingPeriod, txOptions);
+        const tx = await withOverrides('createProposalSetDictatorship', [enable, votingPeriod, proposalTitle, proposalDescription]);
+        return await waitForProposal(tx);
+      }
+      if (fn?.name === 'setTemplHomeLinkDAO' && fn.inputs.length === 1) {
+        const [link] = full.decodeFunctionData(fn, callData);
+        const tx = await withOverrides('createProposalSetHomeLink', [link, votingPeriod, proposalTitle, proposalDescription]);
+        return await waitForProposal(tx);
+      }
+      if (fn?.name === 'setEntryFeeCurveDAO' && fn.inputs.length === 2) {
+        const [curve, baseFee] = full.decodeFunctionData(fn, callData);
+        const tx = await withOverrides('createProposalSetEntryFeeCurve', [curve, baseFee, votingPeriod, proposalTitle, proposalDescription]);
         return await waitForProposal(tx);
       }
       if (fn?.name === 'disbandTreasuryDAO') {
         if (fn.inputs.length === 1) {
           const [token] = full.decodeFunctionData(fn, callData);
-          const tx = await contract.createProposalDisbandTreasury(token, votingPeriod, txOptions);
+          const tx = await withOverrides('createProposalDisbandTreasury', [token, votingPeriod, proposalTitle, proposalDescription]);
           return await waitForProposal(tx);
         }
         if (fn.inputs.length === 0) {
           const token = await contract.accessToken();
-          const tx = await contract.createProposalDisbandTreasury(token, votingPeriod, txOptions);
+          const tx = await withOverrides('createProposalDisbandTreasury', [token, votingPeriod, proposalTitle, proposalDescription]);
           return await waitForProposal(tx);
         }
       }

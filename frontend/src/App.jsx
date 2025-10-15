@@ -717,6 +717,28 @@ function App() {
         return walletAddress ? 'Allowance status unavailable.' : 'Connect your wallet to check allowance.';
     }
   })();
+  function formatAllowance(raw, decimals, symbol) {
+    try {
+      if (!raw) return raw;
+      const value = BigInt(raw);
+      if (decimals === null || decimals === undefined) {
+        return `${value.toString()} raw units`;
+      }
+      const formatted = formatTokenAmount(value, decimals, symbol);
+      return formatted || `${value.toString()} raw units`;
+    } catch {
+      return raw;
+    }
+  }
+  const baseScanUrl = useCallback((address) => {
+    if (!address) return '#';
+    try { return `https://basescan.org/address/${ethers.getAddress(address)}`; } catch { return '#'; }
+  }, []);
+  const formatMembersLabel = useCallback((count, max) => {
+    const currentLabel = Number.isFinite(count) ? count.toString() : '…';
+    if (!max || max === '0') return currentLabel;
+    return `${currentLabel} / ${max}`;
+  }, []);
   useEffect(() => {
     setApprovalStage(needsTokenApproval ? 'checking' : 'approved');
     setApprovalError(null);
@@ -1118,11 +1140,14 @@ function App() {
       const members = summary?.status === 'ready' && summary.memberCount !== undefined
         ? Number(summary.memberCount)
         : null;
+      const maxMembers = summary?.status === 'ready' ? summary.maxMembers : null;
       return {
         ...item,
         contract,
         joined,
-        memberCount: members
+        memberCount: members,
+        maxMembers,
+        summary
       };
     });
     items.sort((a, b) => {
@@ -2415,6 +2440,9 @@ function App() {
           if (mutes.includes(from)) continue;
           const raw = String(msg.content || '');
           let parsed = null;
+          if (typeof raw === 'string' && raw.length === 0) {
+            continue;
+          }
           try { parsed = JSON.parse(raw); } catch {}
           if (parsed && parsed.type === 'profile') {
             const name = String(parsed.name || '').slice(0, 64);
@@ -2486,13 +2514,17 @@ function App() {
           if (parsed && (parsed.type === 'templ-created' || parsed.type === 'member-joined')) {
             setMessages((m) => {
               if (m.some((it) => it.mid === msg.id)) return m;
-              return [...m, { mid: msg.id, kind: 'system', senderAddress: from, content: parsed.type === 'templ-created' ? 'Templ created' : `${shorten(parsed.address)} joined` }];
+              const content = parsed.type === 'templ-created'
+                ? 'Templ created'
+                : parsed.address
+                  ? `${shorten(parsed.address)} joined`
+                  : 'Member joined';
+              return [...m, { mid: msg.id, kind: 'system', senderAddress: from, content }];
             });
             continue;
           }
           setMessages((m) => {
             if (m.some((it) => it.mid === msg.id)) return m;
-            // Replace local echo if present
             const idx = m.findIndex((it) => it.localEcho && it.kind === 'text' && it.content === raw && ((it.senderAddress || '').toLowerCase() === from || !it.senderAddress));
             if (idx !== -1) {
               const copy = m.slice();
@@ -3076,16 +3108,20 @@ function App() {
       const normalizedSender = senderAddress ? senderAddress.toLowerCase() : '';
       const localNonce = `local-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
       // Local echo to ensure immediate UI feedback; mark with localEcho so the stream can replace it
-      setMessages((m) => [
-        ...m,
-        {
-          kind: 'text',
-          senderAddress: normalizedSender || senderAddress || '',
-          content: body,
-          localEcho: true,
-          localNonce
-        }
-      ]);
+      setMessages((m) => {
+        const exists = m.some((item) => item.localEcho && item.content === body && ((item.senderAddress || '').toLowerCase() === normalizedSender || !item.senderAddress));
+        if (exists) return m;
+        return [
+          ...m,
+          {
+            kind: 'text',
+            senderAddress: normalizedSender || senderAddress || '',
+            content: body,
+            localEcho: true,
+            localNonce
+          }
+        ];
+      });
       setMessageInput('');
       pushStatus('✅ Message sent');
     } catch (err) {
@@ -3907,6 +3943,19 @@ function App() {
               </div>
               <div className="grid gap-2">
                 <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium text-black/80">Templ contract</span>
+                  <div className="flex items-center gap-2">
+                    <a className="font-mono text-[11px] underline underline-offset-4" href={baseScanUrl(templAddress)} target="_blank" rel="noreferrer">
+                      {templAddress ? shorten(templAddress) : '…'}
+                    </a>
+                    {templAddress && (
+                      <button type="button" className="px-2 py-1 text-[11px] rounded border border-black/20" onClick={() => copyToClipboard(templAddress)}>
+                        Copy
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-2">
                   <span className="font-medium text-black/80">Token</span>
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-[11px]">
@@ -3945,40 +3994,62 @@ function App() {
                 </div>
               </div>
             </div>
+            <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Contract address" value={templAddress} onChange={(e) => updateTemplAddress(e.target.value)} />
             {needsTokenApproval && (
-              <div className="rounded border border-black/20 bg-white/80 p-3 text-xs text-black/70 space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-semibold text-black/90">Token approval</span>
-                  <button
-                    type="button"
-                    className="px-3 py-1 rounded border border-black/20 text-xs font-semibold"
-                    onClick={handleApproveToken}
-                    disabled={approvalButtonDisabled}
-                  >
-                    {approvalButtonLabel}
-                  </button>
-                </div>
-                <p className="text-xs text-black/60">
-                  Grant the templ contract permission to pull the entry fee from your wallet once. Approval only needs to be signed the first time.
-                </p>
+              <div className="rounded border border-black/20 bg-white/80 p-3 text-xs text-black/70 space-y-1">
                 <p className={`text-xs ${approvalStage === 'approved' ? 'text-green-700' : approvalStage === 'error' ? 'text-red-600' : 'text-black/60'}`}>
                   {approvalStatusText}
                 </p>
-                {approvalAllowance !== null && needsTokenApproval && joinMembershipInfo.required && (
+                {approvalAllowance !== null && joinMembershipInfo.required && (
                   <p className="text-[11px] text-black/50">
-                    Allowance: {approvalAllowance} • Required: {joinMembershipInfo.required.toString()}
+                    Allowance: {formatAllowance(approvalAllowance, joinMembershipInfo.decimals, joinMembershipInfo.symbol)} • Required: {formatAllowance(joinMembershipInfo.required.toString(), joinMembershipInfo.decimals, joinMembershipInfo.symbol)}
                   </p>
                 )}
               </div>
             )}
-            <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Contract address" value={templAddress} onChange={(e) => updateTemplAddress(e.target.value)} />
-            <button
-              className="px-4 py-2 rounded bg-primary text-black font-semibold w-full sm:w-auto"
-              onClick={handlePurchaseAndJoin}
-              disabled={joinSteps.purchase === 'pending' || joinSteps.join === 'pending' || (needsTokenApproval && approvalStage !== 'approved')}
-            >
-              Purchase & Join
-            </button>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              {needsTokenApproval && (
+                <button
+                  type="button"
+                  className="px-4 py-2 rounded border border-black/20 text-sm font-semibold w-full sm:w-auto"
+                  onClick={handleApproveToken}
+                  disabled={approvalButtonDisabled}
+                >
+                  {approvalButtonLabel}
+                </button>
+              )}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              {needsTokenApproval && (
+                <button
+                  type="button"
+                  className="px-4 py-2 rounded border border-black/20 text-sm font-semibold w-full sm:w-auto"
+                  onClick={handleApproveToken}
+                  disabled={approvalButtonDisabled}
+                >
+                  {approvalButtonLabel}
+                </button>
+              )}
+              <button
+                className="px-4 py-2 rounded bg-primary text-black font-semibold w-full sm:w-auto"
+                onClick={handlePurchaseAndJoin}
+                disabled={joinSteps.purchase === 'pending' || joinSteps.join === 'pending' || (needsTokenApproval && approvalStage !== 'approved')}
+              >
+                Purchase & Join
+              </button>
+              {templAddress && templAddress.toLowerCase && joinedTempls.some((addr) => addr === templAddress.toLowerCase()) && (
+                <button
+                  type="button"
+                  className="px-4 py-2 rounded border border-black/20 text-sm font-semibold w-full sm:w-auto"
+                  onClick={() => navigate(`/chat?address=${templAddress}`)}
+                >
+                  Go to Chat
+                </button>
+              )}
+            </div>
+            </div>
+            <p className="text-xs text-black/60">
+              After the on-chain join confirms, the templ backend may take up to a minute to provision the XMTP group. The status panel below updates automatically once the chat is ready.
+            </p>
             {(joinSteps.purchase !== 'idle' || joinSteps.join !== 'idle') && pendingJoinMatches && (
               <div className="mt-2 rounded border border-black/10 bg-white/70 p-3 text-xs text-black/70">
                 <div>{renderStepStatus('Purchase access (tx)', joinSteps.purchase, joinSteps.purchase === 'error' ? joinSteps.error : purchaseStatusNote || undefined)}</div>
@@ -3988,46 +4059,63 @@ function App() {
             {/* Optional list if no prefill */}
               {(!templAddress || templAddress.trim() === '') && (
                 <div className="space-y-2">
-                  {templList.map((t) => (
-                  <div key={t.contract} className="flex flex-col gap-2 rounded border border-black/10 bg-white/70 p-2">
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                      <button type="button" title="Copy address" data-address={String(t.contract).toLowerCase()} className="text-left underline underline-offset-4 font-mono text-sm flex-1 break-words" onClick={() => copyToClipboard(t.contract)}>
-                        {shorten(t.contract)}
-                      </button>
-                      <button className="px-3 py-1 rounded border border-black/20 w-full sm:w-auto" onClick={() => navigate(`/join?address=${t.contract}`)}>Select</button>
-                    </div>
-                    {(() => {
-                      const key = String(t.contract || '').toLowerCase();
-                      const summary = templSummaries[key];
-                      if (!summary) {
-                        return <div className="text-xs text-black/60">Loading entry fee…</div>;
-                      }
-                      if (summary.status === 'loading') {
-                        return <div className="text-xs text-black/60">Loading entry fee…</div>;
-                      }
-                      if (summary.status === 'error') {
-                        return <div className="text-xs text-red-600">{summary.error || 'Failed to load entry fee'}</div>;
-                      }
-                      const tokenLabel = summary.symbol || (summary.token ? shorten(summary.token) : 'Unknown token');
-                      const members = Number.isFinite(summary.memberCount) ? summary.memberCount : null;
-                      const maxMembers = summary.maxMembers;
-                      let membersDisplay = '…';
-                      if (members !== null) {
-                        membersDisplay = maxMembers && maxMembers !== '0'
-                          ? `${members} / ${maxMembers}`
-                          : `${members}`;
-                      }
+                  {templCards.map((card) => {
+                    const summary = card.summary;
+                    if (!summary || summary.status === 'loading') {
                       return (
-                        <div className="text-xs text-black/60 space-y-1">
-                          <div>Token: {tokenLabel}</div>
-                          <div>Entry fee: {summary.formatted}</div>
-                          {summary.usd && <div>≈ {summary.usd}</div>}
-                          <div>Members: {membersDisplay}</div>
+                        <div key={card.contract} className="flex flex-col gap-2 rounded border border-black/10 bg-white/70 p-3 text-xs text-black/60">
+                          Loading templ metadata…
                         </div>
                       );
-                    })()}
-                  </div>
-                  ))}
+                    }
+                    if (summary.status === 'error') {
+                      return (
+                        <div key={card.contract} className="flex flex-col gap-2 rounded border border-black/10 bg-white/70 p-3 text-xs text-red-600">
+                          {summary.error || 'Failed to load templ metadata'}
+                        </div>
+                      );
+                    }
+                    const alreadyJoined = card.joined;
+                    const tokenLabel = summary.symbol || (summary.token ? shorten(summary.token) : 'Unknown token');
+                    const membersLabel = formatMembersLabel(summary.memberCount, summary.maxMembers);
+                    return (
+                      <div key={card.contract} className="flex flex-col gap-2 rounded border border-black/10 bg-white/70 p-3">
+                        <div className="flex flex-col gap-1">
+                          <div className="flex flex-wrap items-center gap-2 text-sm">
+                            <span className="font-semibold text-black/90">Templ</span>
+                            <a className="text-xs font-mono underline underline-offset-4" href={baseScanUrl(card.contract)} target="_blank" rel="noreferrer">
+                              {shorten(card.contract)}
+                            </a>
+                            <button type="button" className="text-[11px] underline" onClick={() => copyToClipboard(card.contract)}>Copy</button>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 text-sm">
+                            <span className="font-semibold text-black/90">Token</span>
+                            {summary.token ? (
+                              <>
+                                <a className="text-xs font-mono underline underline-offset-4" href={baseScanUrl(summary.token)} target="_blank" rel="noreferrer">
+                                  {shorten(summary.token)}
+                                </a>
+                                <span className="text-xs text-black/60">{tokenLabel}</span>
+                              </>
+                            ) : (
+                              <span className="text-xs text-black/60">Unknown</span>
+                            )}
+                          </div>
+                          <div className="text-xs text-black/60">Entry fee: {summary.formatted || summary.raw}</div>
+                          {summary.usd && <div className="text-xs text-black/60">≈ {summary.usd}</div>}
+                          <div className="text-xs text-black/60">Members: {membersLabel}</div>
+                        </div>
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                          <button className="px-3 py-1 rounded border border-black/20 w-full sm:w-auto" onClick={() => navigate(`/join?address=${card.contract}`)}>
+                            {alreadyJoined ? 'Review Join Flow' : 'Join'}
+                          </button>
+                          <button className="px-3 py-1 rounded border border-black/20 w-full sm:w-auto" onClick={() => navigate(`/chat?address=${card.contract}`)}>
+                            {alreadyJoined ? 'Go to Chat' : 'Open Chat'}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -4664,12 +4752,17 @@ function App() {
               <button className="btn btn-primary" onClick={async () => {
                 try {
                   if (!templAddress || !signer) return;
-                  let callData = '0x';
+                  let callData = null;
+                  let actionKey = null;
+                  let actionParams = {};
+                  const metaTitle = proposeTitle || 'Untitled';
+                  const metaDescription = (proposeDesc || '').trim();
+
                   if (proposeAction === 'pause' || proposeAction === 'unpause') {
-                    try {
-                      const iface = new ethers.Interface(['function setPausedDAO(bool)']);
-                      callData = iface.encodeFunctionData('setPausedDAO', [proposeAction === 'pause']);
-                    } catch {}
+                    actionKey = 'setPaused';
+                    actionParams = { paused: proposeAction === 'pause' };
+                    if (!proposeTitle) setProposeTitle(proposeAction === 'pause' ? 'Pause DAO' : 'Resume DAO');
+                    if (!proposeDesc) setProposeDesc(proposeAction === 'pause' ? 'Pause all joins and proposal execution.' : 'Resume normal operations for joins and governance.');
                   } else if (proposeAction === 'moveTreasuryToMe') {
                     try {
                       const me = await signer.getAddress();
@@ -4717,22 +4810,31 @@ function App() {
                         }
                       }
                       const reason = proposeReason.trim() || 'Treasury withdrawal';
-                      const iface = new ethers.Interface(['function withdrawTreasuryDAO(address token, address recipient, uint256 amount, string reason)']);
-                      callData = iface.encodeFunctionData('withdrawTreasuryDAO', [tokenAddr, me, amount, reason]);
+                      actionKey = 'withdrawTreasury';
+                      actionParams = { token: tokenAddr, recipient: me, amount, reason };
                       if (!proposeTitle) setProposeTitle('Move Treasury to me');
                       if (!proposeDesc) setProposeDesc(reason);
                     } catch (e) {
-                      alert(e?.message || 'Failed to encode treasury withdrawal');
+                      alert(e?.message || 'Failed to prepare treasury withdrawal');
                       return;
                     }
                   } else if (proposeAction === 'reprice') {
                     try {
                       const newFee = BigInt(String(proposeFee || '0'));
-                      const iface = new ethers.Interface(['function updateConfigDAO(address _token, uint256 _entryFee, bool _updateFeeSplit, uint256 _burnPercent, uint256 _treasuryPercent, uint256 _memberPoolPercent)']);
-                      callData = iface.encodeFunctionData('updateConfigDAO', [ethers.ZeroAddress, newFee, false, 0, 0, 0]);
+                      actionKey = 'updateConfig';
+                      actionParams = {
+                        newEntryFee: newFee,
+                        updateFeeSplit: false,
+                        newBurnPercent: 0,
+                        newTreasuryPercent: 0,
+                        newMemberPoolPercent: 0
+                      };
                       if (!proposeTitle) setProposeTitle('Reprice Entry Fee');
                       if (!proposeDesc) setProposeDesc(`Set new entry fee to ${String(newFee)}`);
-                    } catch {}
+                    } catch (e) {
+                      alert(e?.message || 'Invalid entry fee');
+                      return;
+                    }
                   } else if (proposeAction === 'setMaxMembers') {
                     try {
                       const trimmed = String(proposeMaxMembers || '').trim();
@@ -4741,8 +4843,8 @@ function App() {
                       if (memberCountValue !== null && target > 0n && BigInt(memberCountValue) > target) {
                         throw new Error('Limit must be at least the current member count');
                       }
-                      const iface = new ethers.Interface(['function setMaxMembersDAO(uint256)']);
-                      callData = iface.encodeFunctionData('setMaxMembersDAO', [target]);
+                      actionKey = 'setMaxMembers';
+                      actionParams = { newMaxMembers: target };
                       if (!proposeTitle) setProposeTitle('Set Member Limit');
                       if (!proposeDesc) {
                         setProposeDesc(target === 0n ? 'Remove the member limit' : `Set max members to ${target.toString()}`);
@@ -4769,8 +4871,14 @@ function App() {
                       if (total !== 100) {
                         throw new Error(`Percentages must sum to 100 including protocol share (${activeProtocolPercent}%)`);
                       }
-                      const iface = new ethers.Interface(['function updateConfigDAO(address _token, uint256 _entryFee, bool _updateFeeSplit, uint256 _burnPercent, uint256 _treasuryPercent, uint256 _memberPoolPercent)']);
-                      callData = iface.encodeFunctionData('updateConfigDAO', [ethers.ZeroAddress, 0, true, burnValue, treasuryValue, memberValue]);
+                      actionKey = 'updateConfig';
+                      actionParams = {
+                        newEntryFee: 0n,
+                        updateFeeSplit: true,
+                        newBurnPercent: burnValue,
+                        newTreasuryPercent: treasuryValue,
+                        newMemberPoolPercent: memberValue
+                      };
                       if (!proposeTitle) setProposeTitle('Adjust Fee Split');
                       if (!proposeDesc) {
                         setProposeDesc(`Set burn/treasury/member to ${burnValue}/${treasuryValue}/${memberValue}`);
@@ -4792,8 +4900,8 @@ function App() {
                         if (!ethers.isAddress(provided)) throw new Error('Invalid disband token address');
                         tokenAddr = provided;
                       }
-                      const iface = new ethers.Interface(['function disbandTreasuryDAO(address)']);
-                      callData = iface.encodeFunctionData('disbandTreasuryDAO', [tokenAddr]);
+                      actionKey = 'disbandTreasury';
+                      actionParams = { token: tokenAddr };
                       if (!proposeTitle) setProposeTitle('Disband Treasury');
                       if (!proposeDesc) {
                         const label = tokenAddr === ethers.ZeroAddress ? 'ETH' : tokenAddr;
@@ -4807,8 +4915,8 @@ function App() {
                     try {
                       const addr = String(proposeNewPriest || '').trim();
                       if (!addr || !ethers.isAddress(addr)) throw new Error('Invalid priest address');
-                      const iface = new ethers.Interface(['function changePriestDAO(address)']);
-                      callData = iface.encodeFunctionData('changePriestDAO', [addr]);
+                      actionKey = 'changePriest';
+                      actionParams = { newPriest: addr };
                       if (!proposeTitle) setProposeTitle('Change Priest');
                       if (!proposeDesc) setProposeDesc(`Set new priest to ${addr}`);
                     } catch (e) {
@@ -4816,24 +4924,45 @@ function App() {
                       return;
                     }
                   } else if (proposeAction === 'enableDictatorship' || proposeAction === 'disableDictatorship') {
-                    try {
-                      const enable = proposeAction === 'enableDictatorship';
-                      const iface = new ethers.Interface(['function setDictatorshipDAO(bool)']);
-                      callData = iface.encodeFunctionData('setDictatorshipDAO', [enable]);
-                      if (!proposeTitle) setProposeTitle(enable ? 'Enable Dictatorship' : 'Return to Democracy');
-                      if (!proposeDesc) {
-                        setProposeDesc(enable
-                          ? 'Enable priest dictatorship so governance actions execute instantly (only the priest can later return to democracy).'
-                          : 'Disable priest dictatorship to restore member voting.');
-                      }
-                    } catch (e) {
-                      alert(e?.message || 'Failed to encode governance mode change');
-                      return;
+                    const enable = proposeAction === 'enableDictatorship';
+                    actionKey = 'setDictatorship';
+                    actionParams = { enable };
+                    if (!proposeTitle) setProposeTitle(enable ? 'Enable Dictatorship' : 'Return to Democracy');
+                    if (!proposeDesc) {
+                      setProposeDesc(enable
+                        ? 'Enable priest dictatorship so governance actions execute instantly (only the priest can later return to democracy).'
+                        : 'Disable priest dictatorship to restore member voting.');
                     }
                   }
-                  const metaTitle = proposeTitle || 'Untitled';
-                  const metaDescription = (proposeDesc || '').trim();
-                  const { proposalId } = await proposeVote({ ethers, signer, templAddress, templArtifact, title: metaTitle, description: metaDescription, callData });
+
+                  let proposalId = null;
+                  if (actionKey) {
+                    const result = await proposeVote({
+                      ethers,
+                      signer,
+                      templAddress,
+                      templArtifact,
+                      action: actionKey,
+                      params: actionParams,
+                      title: metaTitle,
+                      description: metaDescription
+                    });
+                    proposalId = result?.proposalId ?? null;
+                  } else if (callData) {
+                    const result = await proposeVote({
+                      ethers,
+                      signer,
+                      templAddress,
+                      templArtifact,
+                      callData,
+                      title: metaTitle,
+                      description: metaDescription
+                    });
+                    proposalId = result?.proposalId ?? null;
+                  } else {
+                    alert('Unsupported proposal type');
+                    return;
+                  }
                   if (proposalId !== null && proposalId !== undefined) {
                     const numericId = Number(proposalId);
                     setProposalsById((prev) => {

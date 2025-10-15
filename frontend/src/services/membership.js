@@ -130,6 +130,31 @@ async function hasSufficientAllowance({ ethers, providerOrSigner, owner, token, 
   }
 }
 
+async function assertSufficientBalance({ ethers, providerOrSigner, token, owner, amount }) {
+  const zeroAddress = (typeof ethers?.ZeroAddress === 'string'
+    ? ethers.ZeroAddress
+    : '0x0000000000000000000000000000000000000000').toLowerCase();
+  if (!providerOrSigner) {
+    throw new Error('Join failed: missing provider to check balances');
+  }
+  if (String(token).toLowerCase() === zeroAddress) {
+    const balance = await providerOrSigner.getBalance(owner);
+    if (BigInt(balance) < amount) {
+      throw new Error('Insufficient native balance for entry fee');
+    }
+    return;
+  }
+  const erc20 = new ethers.Contract(
+    token,
+    ['function balanceOf(address owner) view returns (uint256)'],
+    providerOrSigner
+  );
+  const balance = await erc20.balanceOf(owner);
+  if (BigInt(balance) < amount) {
+    throw new Error('Insufficient token balance for entry fee');
+  }
+}
+
 /**
  * Approve entry fee (if needed) and purchase templ access.
  * @param {import('../flows.types').PurchaseAccessRequest} params
@@ -161,6 +186,11 @@ export async function purchaseAccess({
     if (typeof contract.hasAccess === 'function') {
       const already = await contract.hasAccess(memberAddress);
       if (already) return false;
+    } else if (typeof contract.members === 'function') {
+      try {
+        const info = await contract.members(memberAddress);
+        if (info && info.joined) return false;
+      } catch {}
     }
   } catch {}
   const { token: resolvedToken, amount: resolvedAmount } = await resolveAccessConfig({
@@ -193,9 +223,54 @@ export async function purchaseAccess({
     }
   }
 
+  await assertSufficientBalance({
+    ethers,
+    providerOrSigner: signer.provider ?? signer,
+    token: resolvedToken,
+    owner: memberAddress,
+    amount: resolvedAmount
+  });
+
+  try {
+    const maxMembersRaw = await contract.MAX_MEMBERS();
+    if (maxMembersRaw !== undefined && maxMembersRaw !== null) {
+      const maxMembers = BigInt(maxMembersRaw);
+      if (maxMembers > 0n) {
+        try {
+          const totalPurchases = BigInt(await contract.totalPurchases());
+          if (totalPurchases >= maxMembers) {
+            throw new Error('Member limit reached for this templ');
+          }
+        } catch (err) {
+          if (err instanceof Error && err.message === 'Member limit reached for this templ') throw err;
+        }
+      }
+    }
+  } catch {}
+
+  try {
+    if (typeof contract.paused === 'function') {
+      const paused = await contract.paused();
+      if (paused) {
+        throw new Error('Templ is currently paused; ask the priest to unpause before joining');
+      }
+    }
+  } catch (err) {
+    if (err instanceof Error && /Templ is currently paused/.test(err.message)) {
+      throw err;
+    }
+  }
+
   const purchaseOverrides = { ...txOptions };
-  dlog('purchaseAccess: sending purchase', { overrides: purchaseOverrides });
-  const tx = await contract.purchaseAccess(purchaseOverrides);
+  dlog('purchaseAccess: sending join()', { overrides: purchaseOverrides });
+  let tx;
+  if (typeof contract.join === 'function') {
+    tx = await contract.join(purchaseOverrides);
+  } else if (typeof contract.purchaseAccess === 'function') {
+    tx = await contract.purchaseAccess(purchaseOverrides);
+  } else {
+    throw new Error('Join failed: contract does not expose join()');
+  }
   await tx.wait();
   dlog('purchaseAccess: tx mined');
   return true;

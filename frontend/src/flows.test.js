@@ -351,7 +351,7 @@ describe('templ flows', () => {
 
   it('proposeVote uses typed helper for setPaused', async () => {
     const contract = {
-      createProposalSetPaused: vi.fn().mockResolvedValue({ wait: vi.fn().mockResolvedValue({ logs: [] }) })
+      createProposalSetJoinPaused: vi.fn().mockResolvedValue({ wait: vi.fn().mockResolvedValue({ logs: [] }) })
     };
     const ethers = { Contract: vi.fn().mockReturnValue(contract) };
     const result = await proposeVote({
@@ -363,7 +363,7 @@ describe('templ flows', () => {
       params: { paused: true },
       votingPeriod: 0
     });
-    expect(contract.createProposalSetPaused).toHaveBeenCalled();
+    expect(contract.createProposalSetJoinPaused).toHaveBeenCalledWith(true, 0, 'Untitled Proposal', '');
     expect(result).toEqual({ receipt: expect.any(Object), proposalId: null });
   });
 
@@ -393,7 +393,7 @@ describe('templ flows', () => {
     expect(ethers.Interface).toHaveBeenCalled();
     expect(interfaceInstance.getFunction).toHaveBeenCalledWith('0xabcdef');
     expect(interfaceInstance.decodeFunctionData).toHaveBeenCalledWith(expect.objectContaining({ name: 'setDictatorshipDAO' }), '0xabcdef');
-    expect(contract.createProposalSetDictatorship).toHaveBeenCalledWith(true, 0, {});
+    expect(contract.createProposalSetDictatorship).toHaveBeenCalledWith(true, 0, 'Untitled Proposal', '');
     expect(result).toEqual({ receipt: expect.any(Object), proposalId: null });
   });
 
@@ -413,7 +413,7 @@ describe('templ flows', () => {
       votingPeriod: 42,
       txOptions: { gasLimit: 1 }
     });
-    expect(contract.createProposalSetMaxMembers).toHaveBeenCalledWith(7n, 42, { gasLimit: 1 });
+    expect(contract.createProposalSetMaxMembers).toHaveBeenCalledWith(7n, 42, 'Untitled Proposal', '', { gasLimit: 1 });
   });
 
   it('proposeVote decodes setMaxMembers call data', async () => {
@@ -439,7 +439,7 @@ describe('templ flows', () => {
       templArtifact,
       callData: '0xabcdef01'
     });
-    expect(contract.createProposalSetMaxMembers).toHaveBeenCalledWith(5n, 0, {});
+    expect(contract.createProposalSetMaxMembers).toHaveBeenCalledWith(5n, 0, 'Untitled Proposal', '');
   });
 
   it('voteOnProposal calls vote', async () => {
