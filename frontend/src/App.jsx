@@ -1254,9 +1254,7 @@ function App() {
     };
   }, [tokenAddress, signer]);
 
-  // telegram binding
-  const [bindingInfo, setBindingInfo] = useState(null);
-  const [registeringBinding, setRegisteringBinding] = useState(false);
+  // telegram binding handled via external operator tooling
 
   // Governance: all members have 1 vote
 
@@ -1813,7 +1811,11 @@ function App() {
     const xmtpEnv = resolveXmtpEnv();
     const cache = loadXmtpCache(address);
     const storageKey = `xmtp:nonce:${address.toLowerCase()}`;
-    const baseOptions = { env: xmtpEnv, appVersion: 'templ/0.1.0' };
+    const baseOptions = {
+      env: xmtpEnv,
+      appVersion: 'templ/0.1.0',
+      dbOptions: { type: 'idb' }
+    };
 
     const candidateSet = new Set();
     if (cache?.nonce) candidateSet.add(Number(cache.nonce));
@@ -3033,12 +3035,16 @@ function App() {
   useEffect(() => {
     if (!pathIsChat || !templAddress || !signer) return;
     const provider = signer.provider;
-    const stopWatching = watchProposals({
-      ethers,
-      provider,
-      templAddress,
-      templArtifact,
-      onProposal: (p) => {
+    const runner = provider ?? signer;
+    const supportsLiveSubscriptions = runner && !(runner instanceof ethers.BrowserProvider);
+    let stopWatching = () => {};
+    if (supportsLiveSubscriptions) {
+      stopWatching = watchProposals({
+        ethers,
+        provider: runner,
+        templAddress,
+        templArtifact,
+        onProposal: (p) => {
         setProposals((prev) => {
           if (prev.some((x) => x.id === p.id)) return prev;
           return [...prev, { ...p, yes: 0, no: 0 }];
@@ -3111,7 +3117,8 @@ function App() {
         setProposals((prev) => prev.map((p) => p.id === v.id ? { ...p, [v.support ? 'yes' : 'no']: (p[v.support ? 'yes' : 'no'] || 0) + 1 } : p));
         setProposalsById((map) => ({ ...map, [v.id]: { ...(map[v.id] || { id: v.id, yes:0, no:0 }), yes: (map[v.id]?.yes || 0) + (v.support ? 1 : 0), no: (map[v.id]?.no || 0) + (!v.support ? 1 : 0) } }));
       }
-    });
+      });
+    }
     // Poll on-chain proposal tallies to keep UI in sync even if events are missed
     const contract = new ethers.Contract(templAddress, templArtifact.abi, signer);
     const pollTallies = async () => {
@@ -3297,34 +3304,6 @@ function App() {
     };
   }, [templAddress, moderationEnabled, pathIsChat]);
 
-  // Load Telegram binding info and home link
-  useEffect(() => {
-    if (!pathIsChat || !templAddress) return;
-    let cancelled = false;
-    const loadBindingInfo = async () => {
-      try {
-        const response = await fetch(`${BACKEND_URL}/templs/${templAddress}/rebind`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' }
-        });
-        const data = await response.json();
-        if (!cancelled && response.ok) {
-          setBindingInfo(data);
-          // Load home link if available
-          if (data.homeLink) {
-            setHomeLink(data.homeLink);
-          }
-        }
-      } catch (err) {
-        // Binding info is optional, don't show errors
-        dlog('Failed to load binding info', err?.message || err);
-      }
-    };
-    loadBindingInfo();
-    return () => {
-      cancelled = true;
-    };
-  }, [templAddress, pathIsChat]);
 
   // Load templ list for landing/join
   useEffect(() => {
@@ -4835,86 +4814,25 @@ function App() {
                         <button className="btn" onClick={() => { navigator.clipboard?.writeText(`${window.location.origin}/join?address=${templAddress}`).catch(()=>{}); pushStatus('📋 Invite link copied'); }}>Copy Invite</button>
                       </div>
                       {/* Telegram Binding Section */}
-                      <div className="mt-4 pt-4 border-t border-black/10">
-                        <h4 className="text-sm font-medium mb-2">Telegram Integration</h4>
-                        {bindingInfo ? (
-                          <div className="space-y-2">
-                            <div className="text-sm">
-                              <span className="text-black/70">Status: </span>
-                              <span className={bindingInfo.bound ? 'text-green-600' : 'text-yellow-600'}>
-                                {bindingInfo.bound ? 'Bound' : 'Not bound'}
-                              </span>
-                            </div>
-                            {bindingInfo.bound && (
-                              <div className="text-sm">
-                                <span className="text-black/70">Group: </span>
-                                <span>{bindingInfo.groupName || 'Unknown'}</span>
-                              </div>
-                            )}
-                            <button
-                              className="btn btn-sm"
-                              onClick={async () => {
-                                try {
-                                  setRegisteringBinding(true);
-                                  const response = await fetch(`${BACKEND_URL}/templs/${templAddress}/rebind`, {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' }
-                                  });
-                                  const data = await response.json();
-                                  if (response.ok) {
-                                    setBindingInfo(data);
-                                    pushStatus('🔄 Telegram binding refreshed');
-                                  } else {
-                                    pushStatus(`❌ ${data.error || 'Failed to refresh binding'}`);
-                                  }
-                                } catch {
-                                  pushStatus('❌ Failed to refresh binding');
-                                } finally {
-                                  setRegisteringBinding(false);
-                                }
-                              }}
-                              disabled={registeringBinding}
-                            >
-                              {registeringBinding ? 'Refreshing...' : 'Refresh Binding'}
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="space-y-2">
-                            <div className="text-sm text-black/60">
-                              Connect this templ to a Telegram group for notifications
-                            </div>
-                            <button
-                              className="btn btn-sm btn-primary"
-                              onClick={async () => {
-                                try {
-                                  setRegisteringBinding(true);
-                                  const response = await fetch(`${BACKEND_URL}/templs/${templAddress}/auto`, {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' }
-                                  });
-                                  const data = await response.json();
-                                  if (response.ok) {
-                                    setBindingInfo(data);
-                                    if (data.bindingCode) {
-                                      pushStatus(`📱 Binding code: ${data.bindingCode}`);
-                                    } else {
-                                      pushStatus('✅ Telegram binding generated');
-                                    }
-                                  } else {
-                                    pushStatus(`❌ ${data.error || 'Failed to generate binding'}`);
-                                  }
-                                } catch {
-                                  pushStatus('❌ Failed to generate binding');
-                                } finally {
-                                  setRegisteringBinding(false);
-                                }
-                              }}
-                              disabled={registeringBinding}
-                            >
-                              {registeringBinding ? 'Generating...' : 'Generate Binding Code'}
-                            </button>
-                          </div>
-                        )}
+                      <div className="mt-4 pt-4 border-t border-black/10 space-y-2">
+                        <h4 className="text-sm font-medium">Telegram Integration</h4>
+                        <p className="text-xs text-black/60">
+                          Rotate Telegram bindings with the operator CLI so signatures stay verified. See
+                          <span> </span>
+                          <button
+                            type="button"
+                            className="underline text-black/70"
+                            onClick={() => {
+                              pushStatus('📚 Open docs/FRONTEND.md#telegram-integration for binding steps.');
+                            }}
+                          >
+                            docs/FRONTEND.md
+                          </button>
+                          <span> for step-by-step commands.</span>
+                        </p>
+                        <p className="text-xs text-black/60">
+                          Once a binding code is generated, share it with your Telegram bot to complete the rotation.
+                        </p>
                       </div>
 
                       {/* Home Link Management */}
