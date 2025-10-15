@@ -171,6 +171,38 @@ function formatInstallationRecord(inst) {
   };
 }
 
+async function pruneExcessInstallations({ address, signer, cache, env, keepInstallationId, pushStatus }) {
+  if (!cache?.inboxId || !signer) return false;
+  try {
+    const states = await Client.inboxStateFromInboxIds([cache.inboxId], env);
+    const state = Array.isArray(states) ? states[0] : null;
+    const installations = Array.isArray(state?.installations) ? state.installations : [];
+    if (installations.length < 10) return false;
+    const sorted = installations
+      .map(formatInstallationRecord)
+      .filter((inst) => inst.id && inst.id !== keepInstallationId);
+    sorted.sort((a, b) => a.timestamp - b.timestamp);
+    const maxOtherInstallations = 8;
+    const overflow = Math.max(0, sorted.length - maxOtherInstallations);
+    if (overflow <= 0) return false;
+    const targets = sorted.slice(0, overflow);
+    const payload = targets
+      .map((inst) => inst.bytes || installationIdToBytes(inst.id))
+      .filter((value) => value instanceof Uint8Array);
+    if (!payload.length) return false;
+    const nonce = getStableNonce(address);
+    const signerWrapper = makeXmtpSigner({ address, signer, nonce });
+    await Client.revokeInstallations(signerWrapper, cache.inboxId, payload, env);
+    if (pushStatus) {
+      pushStatus(`♻️ Revoked ${targets.length} older XMTP installation${targets.length === 1 ? '' : 's'}`);
+    }
+    return true;
+  } catch (err) {
+    console.warn('[app] prune installations failed', err?.message || err);
+    return false;
+  }
+}
+
 function resolveXmtpEnv() {
   const forced = import.meta.env.VITE_XMTP_ENV?.trim();
   if (forced) return forced;
@@ -1925,7 +1957,8 @@ function App() {
     const storageKey = `xmtp:nonce:${address.toLowerCase()}`;
     const baseOptions = {
       env: xmtpEnv,
-      appVersion: 'templ/0.1.0'
+      appVersion: 'templ/0.1.0',
+      dbPath: null
     };
 
     const candidateSet = new Set();
@@ -1956,6 +1989,20 @@ function App() {
     }
 
     async function createOrResumeXmtp() {
+      if (cache?.inboxId) {
+        try {
+          await pruneExcessInstallations({
+            address,
+            signer: nextSigner,
+            cache,
+            env: xmtpEnv,
+            keepInstallationId: cache?.installationId || '',
+            pushStatus
+          });
+        } catch (err) {
+          console.warn('[app] prune prior to client init failed', err?.message || err);
+        }
+      }
       let limitEncountered = false;
       for (const nonce of candidateNonces) {
         try {
