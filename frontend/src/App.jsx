@@ -575,6 +575,7 @@ function App() {
   const [templSummaries, setTemplSummaries] = useState({});
   const [approvalStage, setApprovalStage] = useState('unknown');
   const [approvalError, setApprovalError] = useState(null);
+  const [approvalAllowance, setApprovalAllowance] = useState(null);
   const [proposeBurnPercent, setProposeBurnPercent] = useState('');
   const [proposeTreasuryPercent, setProposeTreasuryPercent] = useState('');
   const [proposeMemberPercent, setProposeMemberPercent] = useState('');
@@ -719,6 +720,7 @@ function App() {
   useEffect(() => {
     setApprovalStage(needsTokenApproval ? 'checking' : 'approved');
     setApprovalError(null);
+    setApprovalAllowance(null);
   }, [templAddress, walletAddress, needsTokenApproval]);
   useEffect(() => {
     if (proposeAction !== 'moveTreasuryToMe') {
@@ -740,18 +742,22 @@ function App() {
     setApprovalError(null);
     if (!joinMembershipInfo.token) {
       setApprovalStage('unknown');
+      setApprovalAllowance(null);
       return;
     }
     if (joinMembershipInfo.isNative) {
       setApprovalStage('approved');
+      setApprovalAllowance(null);
       return;
     }
     if (!walletAddress || !templAddress || !ethers.isAddress(templAddress)) {
       setApprovalStage('unknown');
+      setApprovalAllowance(null);
       return;
     }
     if (!joinMembershipInfo.required) {
       setApprovalStage('checking');
+      setApprovalAllowance(null);
       return;
     }
     const provider = signer?.provider ?? signer;
@@ -772,6 +778,7 @@ function App() {
           spender: templAddress
         });
         if (cancelled) return;
+        setApprovalAllowance(allowance.toString());
         if (allowance >= joinMembershipInfo.required) {
           setApprovalStage('approved');
         } else {
@@ -781,6 +788,7 @@ function App() {
         if (cancelled) return;
         setApprovalStage('error');
         setApprovalError(err?.message || 'Failed to read allowance');
+        setApprovalAllowance(null);
       }
     })();
     return () => { cancelled = true; };
@@ -2249,6 +2257,7 @@ function App() {
       await tx.wait();
       pushStatus('✅ Token approved');
       setApprovalStage('approved');
+      setApprovalAllowance(joinMembershipInfo.required.toString());
     } catch (err) {
       const message = err?.message || 'Approval failed';
       setApprovalStage('error');
@@ -3955,6 +3964,11 @@ function App() {
                 <p className={`text-xs ${approvalStage === 'approved' ? 'text-green-700' : approvalStage === 'error' ? 'text-red-600' : 'text-black/60'}`}>
                   {approvalStatusText}
                 </p>
+                {approvalAllowance !== null && needsTokenApproval && joinMembershipInfo.required && (
+                  <p className="text-[11px] text-black/50">
+                    Allowance: {approvalAllowance} • Required: {joinMembershipInfo.required.toString()}
+                  </p>
+                )}
               </div>
             )}
             <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Contract address" value={templAddress} onChange={(e) => updateTemplAddress(e.target.value)} />
