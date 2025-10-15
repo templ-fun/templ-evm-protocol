@@ -2017,11 +2017,12 @@ function App() {
 
     const xmtpEnv = resolveXmtpEnv();
     const cache = loadXmtpCache(address);
-    const storageKey = `xmtp:nonce:${address.toLowerCase()}`;
+    const normalizedAddress = address.toLowerCase();
+    const storageKey = `xmtp:nonce:${normalizedAddress}`;
     const baseOptions = {
       env: xmtpEnv,
       appVersion: 'templ/0.1.0',
-      dbPath: null
+      dbPath: `xmtp/${normalizedAddress}`
     };
 
     const candidateSet = new Set();
@@ -2042,55 +2043,19 @@ function App() {
       const options = disableAutoRegister ? { ...baseOptions, disableAutoRegister: true } : baseOptions;
       dlog('[app] Creating XMTP client', { disableAutoRegister, nonce });
       const clientInstance = await Client.create(signerWrapper, options);
-      let forcedRegistration = false;
-      if (disableAutoRegister) {
-        let registrationNeeded = !clientInstance.installationId;
-        let validationError = '';
-        if (clientInstance.installationId) {
-          try {
-            const statuses = await clientInstance.getKeyPackageStatusesForInstallationIds?.([String(clientInstance.installationId)]);
-            const statusEntry = statuses instanceof Map
-              ? statuses.get(String(clientInstance.installationId))
-              : Array.isArray(statuses)
-                ? statuses.find(([key]) => key === String(clientInstance.installationId))?.[1]
-                : null;
-            if (!statusEntry) {
-              registrationNeeded = true;
-            }
-            const validation = statusEntry?.validationError || (statusEntry && typeof statusEntry === 'object' && 'validationError' in statusEntry ? statusEntry.validationError : '');
-            if (validation) {
-              validationError = String(validation);
-              registrationNeeded = true;
-            }
-          } catch (err) {
-            console.warn('[app] XMTP key package status check failed', err?.message || err);
-          }
-        }
-        if (!registrationNeeded) {
-          try {
-            const registered = await clientInstance.isRegistered?.();
-            if (!registered) {
-              registrationNeeded = true;
-            }
-          } catch (err) {
-            registrationNeeded = true;
-            console.warn('[app] XMTP isRegistered check failed', err?.message || err);
-          }
-        }
-        if (registrationNeeded) {
-          forcedRegistration = true;
-          pushStatus('♻️ XMTP installation revoked. Please approve the new registration prompt.');
-          dlog('[app] XMTP registration required, requesting new signature', { validationError });
-          await clientInstance.register();
-        }
-      }
       try { localStorage.setItem(storageKey, String(nonce)); } catch {}
       saveXmtpCache(address, {
         nonce,
         inboxId: clientInstance.inboxId,
         installationId: clientInstance.installationId ? String(clientInstance.installationId) : undefined
       });
-      return { client: clientInstance, forcedRegistration };
+      dlog('[app] XMTP client ready', {
+        disableAutoRegister,
+        nonce,
+        inboxId: clientInstance.inboxId,
+        installationId: clientInstance.installationId ? String(clientInstance.installationId) : null
+      });
+      return clientInstance;
     }
 
     async function createOrResumeXmtp() {
@@ -2107,6 +2072,10 @@ function App() {
           });
           if (Array.isArray(pruneResult?.installations)) {
             installationSnapshot = pruneResult.installations;
+            dlog('[app] XMTP installation snapshot', {
+              count: installationSnapshot.length,
+              keepInstallationId: cache?.installationId || ''
+            });
           }
         } catch (err) {
           console.warn('[app] prune prior to client init failed', err?.message || err);
@@ -2126,13 +2095,24 @@ function App() {
         reinstallReason = 'cached XMTP installation no longer registered';
         try { cache.installationId = null; } catch {}
         try { saveXmtpCache(address, { installationId: null }); } catch {}
+        dlog('[app] Cached XMTP installation missing from snapshot, forcing re-register', {
+          cachedInstallationId,
+          reinstallReason
+        });
       }
+      dlog('[app] XMTP resume checkpoint', {
+        hadCachedInstallation,
+        hadCachedInbox,
+        requireFreshInstallation,
+        reinstallReason,
+        installationStillRegistered
+      });
       let limitEncountered = false;
       if (!requireFreshInstallation) {
         for (const nonce of candidateNonces) {
           try {
-            const { client: resumedClient } = await createClientWithNonce(nonce, true);
-            return resumedClient;
+            dlog('[app] Attempting XMTP resume', { nonce });
+            return await createClientWithNonce(nonce, true);
           } catch (err) {
             const msg = String(err?.message || err);
             if (isAccessHandleError(err)) continue;
@@ -2145,6 +2125,7 @@ function App() {
               reinstallReason = msg;
               try { cache.installationId = null; } catch {}
               try { saveXmtpCache(address, { installationId: null }); } catch {}
+              dlog('[app] XMTP resume detected missing installation', { nonce, reinstallReason });
               break;
             }
             if (msg.toLowerCase().includes('register') || msg.toLowerCase().includes('inbox')) {
@@ -2161,15 +2142,20 @@ function App() {
       const fallbackNonce = candidateNonces[0] || 1;
       if (requireFreshInstallation && (hadCachedInstallation || hadCachedInbox || reinstallReason)) {
         pushStatus('♻️ XMTP installation revoked. Please approve the new registration prompt.');
+        dlog('[app] Falling back to XMTP auto-registration', {
+          reinstallReason,
+          hadCachedInstallation,
+          hadCachedInbox,
+          fallbackNonce
+        });
       }
       try {
-        const { client: freshClient } = await createClientWithNonce(fallbackNonce, false);
-        return freshClient;
+        return await createClientWithNonce(fallbackNonce, false);
       } catch (err) {
         const msg = String(err?.message || err);
         if (isAccessHandleError(err)) {
-          const { client: retriedClient } = await createClientWithNonce(fallbackNonce, false);
-          return retriedClient;
+          dlog('[app] XMTP fallback retry after access handle error', { fallbackNonce });
+          return await createClientWithNonce(fallbackNonce, false);
         }
         if (msg.includes('already registered 10/10 installations')) {
           const limitError = new Error('XMTP installation limit reached for this wallet. Please revoke older installations or switch wallets.');
