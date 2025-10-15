@@ -15,6 +15,18 @@ const dlog = (...args) => { if (__isDebug) { try { console.log(...args); } catch
  * @param {number} [retries=1] Number of attempts
  * @param {number} [delayMs=1000] Delay between attempts in ms
  */
+export const XMTP_CONSENT_STATES = {
+  UNKNOWN: 0,
+  ALLOWED: 1,
+  DENIED: 2
+};
+
+export const XMTP_CONVERSATION_TYPES = {
+  DM: 0,
+  GROUP: 1,
+  SYNC: 2
+};
+
 export async function syncXMTP(xmtp, retries = 1, delayMs = 1000) {
   // In e2e fast mode, avoid long retries
   if (isTemplE2EDebug()) {
@@ -28,7 +40,13 @@ export async function syncXMTP(xmtp, retries = 1, delayMs = 1000) {
     try { await xmtp?.preferences?.sync?.(); } catch (err) {
       dlog('preferences.sync failed:', err?.message || String(err));
     }
-    try { await xmtp?.conversations?.syncAll?.(['allowed','unknown','denied']); } catch (err) {
+    try {
+      await xmtp?.conversations?.syncAll?.([
+        XMTP_CONSENT_STATES.ALLOWED,
+        XMTP_CONSENT_STATES.UNKNOWN,
+        XMTP_CONSENT_STATES.DENIED
+      ]);
+    } catch (err) {
       dlog('conversations.syncAll failed:', err?.message || String(err));
     }
     if (i < retries - 1) await new Promise(r => setTimeout(r, delayMs));
@@ -71,7 +89,14 @@ export async function waitForConversation({ xmtp, groupId, retries = 60, delayMs
       }
       if (!conv) {
         try {
-          const conversations = await xmtp?.conversations?.list?.({ consentStates: ['allowed','unknown','denied'], conversationType: 1 /* Group */ }) || [];
+          const conversations = await xmtp?.conversations?.list?.({
+            consentStates: [
+              XMTP_CONSENT_STATES.ALLOWED,
+              XMTP_CONSENT_STATES.UNKNOWN,
+              XMTP_CONSENT_STATES.DENIED
+            ],
+            conversationType: XMTP_CONVERSATION_TYPES.GROUP
+          }) || [];
           dlog(`Sync attempt: Found ${conversations.length} conversations; firstIds=`, conversations.slice(0,3).map(c => c.id));
           conv = conversations.find(c => {
             const cid = String(c.id);

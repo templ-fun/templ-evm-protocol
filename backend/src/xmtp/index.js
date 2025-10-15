@@ -2,6 +2,7 @@
 import { ethers } from 'ethers';
 import { Client } from '@xmtp/node-sdk';
 import { waitFor } from '../../../shared/xmtp-wait.js';
+import { XMTP_CONSENT_STATES } from '../../../shared/xmtp.js';
 import { logger } from '../logger.js';
 import { resolveXmtpEnv } from './options.js';
 
@@ -128,7 +129,13 @@ export async function waitForXmtpClientReady(xmtp, tries = 30, delayMs = 500) {
         if (typeof agg === 'string' && agg.includes('Api Stats')) return true;
       } catch { /* ignore */ }
       try {
-        const list = await xmtp?.conversations?.list?.({ consentStates: ['allowed','unknown','denied'] });
+        const list = await xmtp?.conversations?.list?.({
+          consentStates: [
+            XMTP_CONSENT_STATES.ALLOWED,
+            XMTP_CONSENT_STATES.UNKNOWN,
+            XMTP_CONSENT_STATES.DENIED
+          ]
+        });
         if (Array.isArray(list)) return true;
       } catch { /* ignore */ }
       // As a last resort, try the static inboxId mapping endpoint

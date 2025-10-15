@@ -24,14 +24,21 @@ import {
   getClaimable,
   getExternalRewards
 } from './flows.js';
-import { syncXMTP, waitForConversation } from '@shared/xmtp.js';
+import { syncXMTP, waitForConversation, XMTP_CONSENT_STATES, XMTP_CONVERSATION_TYPES } from '@shared/xmtp.js';
 import './App.css';
 import { BACKEND_URL, FACTORY_CONFIG } from './config.js';
 import { useAppLocation } from './hooks/useAppLocation.js';
 import { useStatusLog } from './hooks/useStatusLog.js';
 
 const DEBUG_ENABLED = (() => {
-  try { return import.meta.env?.DEV || import.meta.env?.VITE_E2E_DEBUG === '1'; } catch { return false; }
+  try {
+    if (import.meta.env?.DEV || import.meta.env?.VITE_E2E_DEBUG === '1') return true;
+    if (typeof window !== 'undefined') {
+      const stored = window.localStorage?.getItem('templ:xmtpDebug');
+      if (stored === '1') return true;
+    }
+  } catch {}
+  return false;
 })();
 
 function dlog(...args) {
@@ -40,6 +47,15 @@ function dlog(...args) {
 }
 
 const JOINED_STORAGE_PREFIX = 'templ:joined';
+
+const XMTP_CONSENT_STATE_VALUES = [
+  XMTP_CONSENT_STATES.ALLOWED,
+  XMTP_CONSENT_STATES.UNKNOWN,
+  XMTP_CONSENT_STATES.DENIED
+];
+
+const XMTP_GROUP_CONVERSATION_TYPE = XMTP_CONVERSATION_TYPES.GROUP;
+const XMTP_SYNC_CONVERSATION_TYPE = XMTP_CONVERSATION_TYPES.SYNC;
 
 function normalizeAddressLower(address) {
   if (!address) return '';
@@ -2045,21 +2061,6 @@ function App() {
       let clientInstance = null;
       try {
         clientInstance = await Client.create(signerWrapper, options);
-        if (disableAutoRegister && clientInstance) {
-          let registered = true;
-          try {
-            registered = await clientInstance.isRegistered?.();
-          } catch (err) {
-            registered = false;
-            dlog('[app] XMTP isRegistered check failed', { nonce, message: err?.message || String(err) });
-          }
-          if (!registered) {
-            const reinstallError = new Error('XMTP installation unavailable for cached identity');
-            reinstallError.code = 'XMTP_REINSTALL';
-            reinstallError.nonce = nonce;
-            throw reinstallError;
-          }
-        }
         try { localStorage.setItem(storageKey, String(nonce)); } catch {}
         saveXmtpCache(address, {
           nonce,
@@ -2143,7 +2144,7 @@ function App() {
               limitEncountered = true;
               continue;
             }
-            if (err?.code === 'XMTP_REINSTALL' || isMissingInstallationError(err)) {
+            if (isMissingInstallationError(err)) {
               requireFreshInstallation = true;
               reinstallReason = msg;
               try { cache.installationId = null; } catch {}
@@ -2180,10 +2181,6 @@ function App() {
           dlog('[app] XMTP fallback retry after access handle error', { fallbackNonce });
           return await createClientWithNonce(fallbackNonce, false);
         }
-        if (err?.code === 'XMTP_REINSTALL') {
-          dlog('[app] XMTP fallback reported reinstall request even with auto register, retrying', { fallbackNonce });
-          return await createClientWithNonce(fallbackNonce, false);
-        }
         if (msg.includes('already registered 10/10 installations')) {
           const limitError = new Error('XMTP installation limit reached for this wallet. Please revoke older installations or switch wallets.');
           limitError.name = 'XMTP_LIMIT';
@@ -2199,12 +2196,16 @@ function App() {
         client = await creatingXmtpPromiseRef.current;
       } else {
         const p = (async () => {
-          return await createOrResumeXmtp();
+          const created = await createOrResumeXmtp();
+          return created;
         })().finally(() => { creatingXmtpPromiseRef.current = null; });
         creatingXmtpPromiseRef.current = p;
         client = await p;
       }
     } catch (err) {
+      if (client && typeof client.close === 'function') {
+        try { await client.close(); } catch {}
+      }
       creatingXmtpPromiseRef.current = null;
       setXmtp(undefined);
       setActiveInboxId('');
@@ -2274,7 +2275,10 @@ function App() {
           window.__XMTP = client;
           window.__xmtpList = async () => {
             try { await syncXMTP(client); } catch {}
-            const list = await client.conversations.list({ conversationType: 1, consentStates: ['allowed','unknown','denied'] });
+            const list = await client.conversations.list({
+              conversationType: XMTP_GROUP_CONVERSATION_TYPE,
+              consentStates: XMTP_CONSENT_STATE_VALUES
+            });
             return list.map(c => c.id);
           };
           window.__xmtpGetById = async (id) => {
@@ -2285,7 +2289,10 @@ function App() {
               if (c) return true;
             } catch {}
             try {
-              const list = await client.conversations.list?.({ consentStates: ['allowed','unknown','denied'], conversationType: 1 }) || [];
+              const list = await client.conversations.list?.({
+                consentStates: XMTP_CONSENT_STATE_VALUES,
+                conversationType: XMTP_GROUP_CONVERSATION_TYPE
+              }) || [];
               return list.some(c => String(c.id) === wanted || ('0x'+String(c.id)) === wanted || String(c.id) === wanted.replace(/^0x/i, ''));
             } catch {}
             return false;
@@ -2352,7 +2359,7 @@ function App() {
                 try {
                   conv = await tmp.conversations.getConversationById(wanted);
                   if (!conv) {
-                    const list = await tmp.conversations.list?.({ consentStates: ['allowed','unknown','denied'] }) || [];
+                    const list = await tmp.conversations.list?.({ consentStates: XMTP_CONSENT_STATE_VALUES }) || [];
                     conv = list.find((c) => String(c.id) === wanted || ('0x'+String(c.id)) === wanted || String(c.id) === wanted.replace(/^0x/i, '')) || null;
                   }
                 } catch {}
@@ -3249,7 +3256,10 @@ function App() {
           }
         } catch (e) { console.warn('[app] getById error', e?.message || e); }
         try {
-          const list = await xmtp.conversations.list?.({ consentStates: ['allowed','unknown','denied'], conversationType: 1 }) || [];
+          const list = await xmtp.conversations.list?.({
+            consentStates: XMTP_CONSENT_STATE_VALUES,
+            conversationType: XMTP_GROUP_CONVERSATION_TYPE
+          }) || [];
           dlog('[app] list size=', list?.length, 'firstIds=', (list||[]).slice(0,3).map(c=>c.id));
           const found = list.find((c) => String(c.id) === wanted || ('0x'+String(c.id))===wanted || String(c.id) === wanted.replace(/^0x/i, ''));
           if (found) {
@@ -3286,17 +3296,20 @@ function App() {
         // Proactively sync once before opening streams
         try { await syncXMTP(xmtp); } catch {}
         const convStream = await xmtp.conversations.streamGroups?.();
-        const stream = await xmtp.conversations.streamAllMessages?.({ consentStates: ['allowed','unknown','denied'], conversationType: 1 });
+        const stream = await xmtp.conversations.streamAllMessages?.({
+          consentStates: XMTP_CONSENT_STATE_VALUES,
+          conversationType: XMTP_GROUP_CONVERSATION_TYPE
+        });
         // Open short-lived preference-related streams to nudge identity/welcome processing
         let welcomeStream = null;
         try {
-          welcomeStream = await xmtp.conversations.streamAllMessages?.({ conversationType: 2 });
+          welcomeStream = await xmtp.conversations.streamAllMessages?.({ conversationType: XMTP_SYNC_CONVERSATION_TYPE });
         } catch {}
         // Also open a short-lived conversation stream for Sync type to nudge welcome processing
         let syncConvStream = null;
         try {
           // @ts-ignore stream supports conversationType on worker side
-          syncConvStream = await xmtp.conversations.stream?.({ conversationType: 2 });
+          syncConvStream = await xmtp.conversations.stream?.({ conversationType: XMTP_SYNC_CONVERSATION_TYPE });
         } catch {}
         // Preferences streams
         let prefStream = null;
