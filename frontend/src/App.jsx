@@ -2022,7 +2022,7 @@ function App() {
     const baseOptions = {
       env: xmtpEnv,
       appVersion: 'templ/0.1.0',
-      dbPath: `xmtp/${normalizedAddress}`
+      dbPath: null
     };
 
     const candidateSet = new Set();
@@ -2042,20 +2042,43 @@ function App() {
       const signerWrapper = makeXmtpSigner({ address, signer: nextSigner, nonce });
       const options = disableAutoRegister ? { ...baseOptions, disableAutoRegister: true } : baseOptions;
       dlog('[app] Creating XMTP client', { disableAutoRegister, nonce });
-      const clientInstance = await Client.create(signerWrapper, options);
-      try { localStorage.setItem(storageKey, String(nonce)); } catch {}
-      saveXmtpCache(address, {
-        nonce,
-        inboxId: clientInstance.inboxId,
-        installationId: clientInstance.installationId ? String(clientInstance.installationId) : undefined
-      });
-      dlog('[app] XMTP client ready', {
-        disableAutoRegister,
-        nonce,
-        inboxId: clientInstance.inboxId,
-        installationId: clientInstance.installationId ? String(clientInstance.installationId) : null
-      });
-      return clientInstance;
+      let clientInstance = null;
+      try {
+        clientInstance = await Client.create(signerWrapper, options);
+        if (disableAutoRegister && clientInstance) {
+          let registered = true;
+          try {
+            registered = await clientInstance.isRegistered?.();
+          } catch (err) {
+            registered = false;
+            dlog('[app] XMTP isRegistered check failed', { nonce, message: err?.message || String(err) });
+          }
+          if (!registered) {
+            const reinstallError = new Error('XMTP installation unavailable for cached identity');
+            reinstallError.code = 'XMTP_REINSTALL';
+            reinstallError.nonce = nonce;
+            throw reinstallError;
+          }
+        }
+        try { localStorage.setItem(storageKey, String(nonce)); } catch {}
+        saveXmtpCache(address, {
+          nonce,
+          inboxId: clientInstance.inboxId,
+          installationId: clientInstance.installationId ? String(clientInstance.installationId) : undefined
+        });
+        dlog('[app] XMTP client ready', {
+          disableAutoRegister,
+          nonce,
+          inboxId: clientInstance.inboxId,
+          installationId: clientInstance.installationId ? String(clientInstance.installationId) : null
+        });
+        return clientInstance;
+      } catch (err) {
+        if (clientInstance && typeof clientInstance.close === 'function') {
+          try { await clientInstance.close(); } catch (closeErr) { dlog('[app] XMTP client close after failure', closeErr?.message || closeErr); }
+        }
+        throw err;
+      }
     }
 
     async function createOrResumeXmtp() {
@@ -2120,7 +2143,7 @@ function App() {
               limitEncountered = true;
               continue;
             }
-            if (isMissingInstallationError(err)) {
+            if (err?.code === 'XMTP_REINSTALL' || isMissingInstallationError(err)) {
               requireFreshInstallation = true;
               reinstallReason = msg;
               try { cache.installationId = null; } catch {}
@@ -2155,6 +2178,10 @@ function App() {
         const msg = String(err?.message || err);
         if (isAccessHandleError(err)) {
           dlog('[app] XMTP fallback retry after access handle error', { fallbackNonce });
+          return await createClientWithNonce(fallbackNonce, false);
+        }
+        if (err?.code === 'XMTP_REINSTALL') {
+          dlog('[app] XMTP fallback reported reinstall request even with auto register, retrying', { fallbackNonce });
           return await createClientWithNonce(fallbackNonce, false);
         }
         if (msg.includes('already registered 10/10 installations')) {
