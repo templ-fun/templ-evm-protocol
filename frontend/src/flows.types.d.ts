@@ -36,11 +36,12 @@ export interface JoinRequest {
   ethers: any
   xmtp: any
   signer: any
-  walletAddress: Address
+  walletAddress?: Address
   templAddress: Address
   templArtifact: { abi: any }
   backendUrl?: string
   txOptions?: Record<string, any>
+  onProgress?: (stage: string) => void
 }
 
 export interface JoinResponse {

@@ -99,6 +99,13 @@ const CURVE_PREVIEW_SAMPLE_MEMBERS_BASIC = [1n, 2n, 3n, 5n, 10n, 20n, 50n, 100n,
 const CURVE_PREVIEW_MARKERS_BASIC = [1n, 10n, 100n, 249n];
 const CURVE_PREVIEW_GRADIENT_ID = 'curve-preview-gradient';
 const STABLE_SYMBOL_HINTS = ['USD', 'USDC', 'USDBC', 'USDT', 'DAI'];
+const STATUS_ICONS = { idle: '○', pending: '⏳', success: '✅', error: '⚠️' };
+const STATUS_DESCRIPTIONS = {
+  idle: 'Idle',
+  pending: 'In progress…',
+  success: 'Completed',
+  error: 'Needs attention'
+};
 
 const formatOrdinal = (value) => {
   const suffixLookup = { 1: 'st', 2: 'nd', 3: 'rd' };
@@ -564,6 +571,68 @@ function App() {
   const [proposeTreasuryPercent, setProposeTreasuryPercent] = useState('');
   const [proposeMemberPercent, setProposeMemberPercent] = useState('');
   const [isDictatorship, setIsDictatorship] = useState(null);
+  const [createSteps, setCreateSteps] = useState({ deploy: 'idle', error: null });
+  const [joinSteps, setJoinSteps] = useState({ purchase: 'idle', join: 'idle', error: null });
+  const [purchaseStatusNote, setPurchaseStatusNote] = useState(null);
+  const [joinStatusNote, setJoinStatusNote] = useState(null);
+  const [pendingJoinAddress, setPendingJoinAddress] = useState(null);
+  const pathIsChat = path === '/chat';
+  const moderationEnabled = false;
+  const renderStepStatus = useCallback((label, state, extra) => {
+    const icon = STATUS_ICONS[state] || STATUS_ICONS.idle;
+    const text = STATUS_DESCRIPTIONS[state] || STATUS_DESCRIPTIONS.idle;
+    return `${icon} ${label} — ${extra || text}`;
+  }, []);
+  const pendingJoinMatches = useMemo(() => {
+    if (!pendingJoinAddress || !templAddress) return false;
+    try {
+      return pendingJoinAddress === templAddress.toLowerCase();
+    } catch {
+      return false;
+    }
+  }, [pendingJoinAddress, templAddress]);
+  const joinStage = joinSteps.join;
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('templ:pendingJoin');
+      if (saved) {
+        setPendingJoinAddress(saved);
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      if (pendingJoinAddress) {
+        localStorage.setItem('templ:pendingJoin', pendingJoinAddress);
+      } else {
+        localStorage.removeItem('templ:pendingJoin');
+      }
+    } catch {}
+  }, [pendingJoinAddress]);
+
+  useEffect(() => {
+    const current = templAddress ? templAddress.toLowerCase() : '';
+    if (!pendingJoinAddress || !current || pendingJoinAddress !== current) {
+      setJoinSteps({ purchase: 'idle', join: 'idle', error: null });
+      setPurchaseStatusNote(null);
+      setJoinStatusNote(null);
+    }
+  }, [templAddress, pendingJoinAddress]);
+
+  useEffect(() => {
+    if (!pendingJoinMatches) return;
+    if (joinStage === 'success' || groupConnected) {
+      setPendingJoinAddress(null);
+    }
+  }, [pendingJoinMatches, joinStage, groupConnected]);
+
+  useEffect(() => {
+    if (path !== '/create') {
+      setCreateSteps({ deploy: 'idle', error: null });
+    }
+  }, [path]);
   const messagesRef = useRef(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [hasMoreHistory, setHasMoreHistory] = useState(false);
@@ -757,6 +826,13 @@ function App() {
   const joinedLoggedRef = useRef(false);
   const lastProfileBroadcastRef = useRef(0);
   const autoDeployTriggeredRef = useRef(false);
+  const chatProvisionState = useMemo(() => {
+    if (!pathIsChat || !templAddress || pendingJoinMatches) return null;
+    if (!groupId) return 'pending-group';
+    if (!groupConnected) return 'syncing-group';
+    return null;
+  }, [pathIsChat, templAddress, pendingJoinMatches, groupId, groupConnected]);
+  const joinRetryCountRef = useRef(0);
 
 
   const tokenAddressValid = (() => {
@@ -1509,6 +1585,9 @@ function App() {
   const handleDeploy = useCallback(async () => {
     dlog('[app] handleDeploy clicked', { signer: !!signer, xmtp: !!xmtp });
     try {
+      setCreateSteps({ deploy: 'pending', error: null });
+      setJoinSteps({ purchase: 'idle', join: 'idle', error: null });
+      pushStatus('🔄 Deploying templ (tx 1/1)');
       console.log('[app] handleDeploy start', {
         signer: !!signer,
         xmtp: !!xmtp,
@@ -1656,6 +1735,7 @@ function App() {
         curveConfig,
         templHomeLink: homeLink || undefined
       });
+      setCreateSteps({ deploy: 'success', error: null });
       dlog('[app] deployTempl returned', result);
       try {
         console.log('[app] handleDeploy success', {
@@ -1680,12 +1760,19 @@ function App() {
       setGroupId(result.groupId);
       pushStatus('✅ Templ deployed');
       if (result.groupId) pushStatus('✅ Group created');
+      if (result.contractAddress) {
+        const lower = String(result.contractAddress).toLowerCase();
+        setPendingJoinAddress(lower);
+        setJoinSteps({ purchase: 'idle', join: 'idle', error: null });
+        pushStatus('ℹ️ Next step: Purchase & join to activate chat');
+      }
       try {
         localStorage.setItem('templ:lastAddress', result.contractAddress);
         if (result.groupId) localStorage.setItem('templ:lastGroupId', String(result.groupId));
       } catch {}
       navigate(`/chat?address=${result.contractAddress}`);
     } catch (err) {
+      setCreateSteps({ deploy: 'error', error: err?.message || 'Deploy failed' });
       console.error('[app] deploy failed', err);
       alert(err.message);
     }
@@ -1756,6 +1843,13 @@ function App() {
     }
     updateTemplAddress(trimmedAddress);
     try {
+      const lower = trimmedAddress.toLowerCase();
+      setPendingJoinAddress(lower);
+      setGroupConnected(false);
+      setJoinSteps({ purchase: 'pending', join: 'idle', error: null });
+      joinRetryCountRef.current = 0;
+      setPurchaseStatusNote('Waiting for purchase transaction confirmation');
+      setJoinStatusNote(null);
       // Ensure browser identity is registered before joining
       try {
         if (identityReadyPromiseRef.current) {
@@ -1790,13 +1884,74 @@ function App() {
       if (!memberAddress) {
         try { memberAddress = await signer.getAddress(); } catch {}
       }
+      let lastStage = null;
       const result = await purchaseAndJoin({
         ethers,
         xmtp,
         signer,
         walletAddress: memberAddress,
         templAddress: trimmedAddress,
-        templArtifact
+        templArtifact,
+        onProgress: (stage) => {
+          if (stage !== 'join:submission:retry' && lastStage === stage) return;
+          switch (stage) {
+            case 'purchase:start':
+              setJoinSteps((prev) => ({ ...prev, purchase: 'pending', join: prev.join === 'success' ? prev.join : 'idle', error: null }));
+              setPurchaseStatusNote('Confirm the purchase transaction in your wallet');
+              pushStatus('🔄 Join step 1/2: purchasing access');
+              break;
+            case 'purchase:complete':
+              setJoinSteps((prev) => ({ ...prev, purchase: 'success' }));
+              setPurchaseStatusNote('Purchase transaction confirmed');
+              pushStatus('✅ Access purchased');
+              break;
+            case 'purchase:skipped':
+              setJoinSteps((prev) => ({ ...prev, purchase: 'success' }));
+              setPurchaseStatusNote('Access already purchased for this wallet');
+              pushStatus('ℹ️ Access already purchased');
+              break;
+            case 'join:signature:start':
+              setJoinSteps((prev) => ({ ...prev, join: 'pending', error: null }));
+              setJoinStatusNote('Sign the join request in your wallet');
+              pushStatus('🔄 Join step 2/2: signing join request');
+              break;
+            case 'join:signature:complete':
+              setJoinStatusNote('Signature captured; submitting to backend');
+              pushStatus('✅ Signature captured');
+              break;
+            case 'join:submission:start':
+              joinRetryCountRef.current = 0;
+              setJoinSteps((prev) => ({ ...prev, join: 'pending', error: null }));
+              setJoinStatusNote('Submitting join request to templ backend');
+              pushStatus('🔄 Submitting join request to templ backend');
+              break;
+            case 'join:submission:waiting':
+              setJoinSteps((prev) => ({ ...prev, join: 'pending', error: null }));
+              setJoinStatusNote('Waiting for XMTP identity to register');
+              pushStatus('⏳ Join request queued; waiting for XMTP identity to register');
+              break;
+            case 'join:submission:complete':
+              setJoinStatusNote('Join accepted; discovering XMTP conversation');
+              pushStatus('🔄 Waiting for XMTP group to connect');
+              break;
+            case 'join:submission:retry': {
+              joinRetryCountRef.current += 1;
+              const attempt = joinRetryCountRef.current;
+              setJoinSteps((prev) => ({ ...prev, join: 'pending', error: null }));
+              setJoinStatusNote(`Retry ${attempt}: XMTP still provisioning identity`);
+              pushStatus(`⏳ XMTP still provisioning identity (retry ${attempt})`);
+              break;
+            }
+            case 'join:complete':
+              setJoinSteps({ purchase: 'success', join: 'success', error: null });
+              setJoinStatusNote('Chat access granted');
+              pushStatus('✅ Joined templ');
+              break;
+            default:
+              break;
+          }
+          lastStage = stage;
+        }
       });
       dlog('[app] purchaseAndJoin returned', result);
       dlog('[app] purchaseAndJoin groupId details', { groupId: result.groupId, has0x: String(result.groupId).startsWith('0x'), len: String(result.groupId).length });
@@ -1811,6 +1966,7 @@ function App() {
         } else {
           pushStatus('🔄 Waiting for group discovery');
         }
+        setPendingJoinAddress(null);
         try {
           localStorage.setItem('templ:lastAddress', trimmedAddress);
           if (result.groupId) localStorage.setItem('templ:lastGroupId', String(result.groupId));
@@ -1825,13 +1981,21 @@ function App() {
         navigate(`/chat?address=${trimmedAddress}`);
       }
     } catch (err) {
-      alert(err.message);
+      const message = err?.message || 'Join failed';
+      setJoinSteps((prev) => ({ ...prev, join: 'error', error: message }));
+      if (/rejected/i.test(message)) {
+        pushStatus('⚠️ Join incomplete: signature declined. Complete from chat when ready.');
+      } else {
+        pushStatus(`⚠️ Join failed: ${message}`);
+      }
+      console.error('Join failed', err);
     }
   }, [signer, xmtp, templAddress, updateTemplAddress, walletAddress, pushStatus, navigate, rememberJoinedTempl, setTemplList]);
 
   // Passive discovery: if a groupId is known (e.g., after deploy) try to
   // discover the conversation without requiring an explicit join.
   useEffect(() => {
+    if (!pathIsChat) return;
     (async () => {
       if (!xmtp || group || groupConnected) return;
       let gid = '';
@@ -1846,7 +2010,7 @@ function App() {
         }
       } catch {}
     })();
-  }, [xmtp, group, groupConnected, pushStatus]);
+  }, [pathIsChat, xmtp, group, groupConnected, pushStatus]);
 
   // As soon as we have a groupId, surface a visible success status
   useEffect(() => {
@@ -1858,7 +2022,7 @@ function App() {
   }, [groupId, pushStatus]);
 
   useEffect(() => {
-    if (!group || !xmtp) return;
+    if (!pathIsChat || !group || !xmtp) return;
     let cancelled = false;
     // Load initial history (last 100)
     (async () => {
@@ -2072,10 +2236,11 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [group, xmtp, mutes, pushStatus]);
+  }, [pathIsChat, group, xmtp, mutes, pushStatus]);
 
   // When we know the `groupId`, keep trying to resolve the group locally until found.
   useEffect(() => {
+    if (!pathIsChat) return;
     if (!xmtp || !groupId || group) return;
     let cancelled = false;
     let attempts = 0;
@@ -2234,10 +2399,10 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [xmtp, groupId, group, templAddress, pushStatus]);
+  }, [pathIsChat, xmtp, groupId, group, templAddress, pushStatus]);
 
   useEffect(() => {
-    if (!templAddress || !signer) return;
+    if (!pathIsChat || !templAddress || !signer) return;
     const provider = signer.provider;
     const stopWatching = watchProposals({
       ethers,
@@ -2309,10 +2474,10 @@ function App() {
       clearInterval(id);
       clearInterval(idTallies);
     };
-  }, [templAddress, signer]);
+  }, [templAddress, signer, pathIsChat]);
 
   useEffect(() => {
-    if (!templAddress) return;
+    if (!moderationEnabled || !pathIsChat || !templAddress) return;
     let cancelled = false;
     const load = async () => {
       const data = await fetchActiveMutes({ contractAddress: templAddress });
@@ -2325,10 +2490,10 @@ function App() {
       cancelled = true;
       clearInterval(id);
     };
-  }, [templAddress]);
+  }, [templAddress, moderationEnabled, pathIsChat]);
 
   useEffect(() => {
-    if (!templAddress) return;
+    if (!moderationEnabled || !pathIsChat || !templAddress) return;
     let cancelled = false;
     const loadDelegates = async () => {
       try {
@@ -2353,11 +2518,11 @@ function App() {
       cancelled = true;
       clearInterval(id);
     };
-  }, [templAddress]);
+  }, [templAddress, moderationEnabled, pathIsChat]);
 
   // Load Telegram binding info and home link
   useEffect(() => {
-    if (!templAddress) return;
+    if (!pathIsChat || !templAddress) return;
     let cancelled = false;
     const loadBindingInfo = async () => {
       try {
@@ -2382,7 +2547,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [templAddress]);
+  }, [templAddress, pathIsChat]);
 
   // Load templ list for landing/join
   useEffect(() => {
@@ -2426,6 +2591,7 @@ function App() {
 
   // Fetch treasury and claimable stats when context is ready
   useEffect(() => {
+    if (!pathIsChat) return;
     (async () => {
       if (!signer || !templAddress) return;
       try {
@@ -2447,7 +2613,7 @@ function App() {
         }
       } catch {}
     })();
-  }, [signer, templAddress, walletAddress, proposals, groupConnected]);
+  }, [signer, templAddress, walletAddress, proposals, groupConnected, pathIsChat]);
 
   // Persist and restore chat state (messages + proposals) per group/templ for quick reloads
   useEffect(() => {
@@ -3110,6 +3276,22 @@ function App() {
                       Optional, but helps members discover your public group from templ.fun once the templ is live.
                     </p>
                   </div>
+                  {createSteps.deploy !== 'idle' && (
+                    <div className="rounded-lg border border-black/20 bg-white/80 p-3 text-xs text-black/70">
+                      <div>{renderStepStatus('Deploy templ (tx)', createSteps.deploy, createSteps.deploy === 'error' ? createSteps.error : undefined)}</div>
+                      {createSteps.deploy === 'success' && pendingJoinAddress && (
+                        (() => {
+                          const state = pendingJoinMatches ? (joinSteps.join === 'idle' ? 'pending' : joinSteps.join) : 'pending';
+                          const note = state === 'error'
+                            ? joinSteps.error || 'Join failed'
+                            : state === 'success'
+                              ? 'All set'
+                              : 'Complete purchase & join to access chat';
+                          return <div className="mt-1">{renderStepStatus('Join templ (next step)', state, note)}</div>;
+                        })()
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
               <div className="rounded-lg border border-black/20 p-4">
@@ -3321,7 +3503,19 @@ function App() {
           <div className="join space-y-3">
             <h2 className="text-xl font-semibold">Join Existing Templ</h2>
             <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Contract address" value={templAddress} onChange={(e) => updateTemplAddress(e.target.value)} />
-            <button className="px-4 py-2 rounded bg-primary text-black font-semibold w-full sm:w-auto" onClick={handlePurchaseAndJoin}>Purchase & Join</button>
+            <button
+              className="px-4 py-2 rounded bg-primary text-black font-semibold w-full sm:w-auto"
+              onClick={handlePurchaseAndJoin}
+              disabled={joinSteps.purchase === 'pending' || joinSteps.join === 'pending'}
+            >
+              Purchase & Join
+            </button>
+            {(joinSteps.purchase !== 'idle' || joinSteps.join !== 'idle') && pendingJoinMatches && (
+              <div className="mt-2 rounded border border-black/10 bg-white/70 p-3 text-xs text-black/70">
+                <div>{renderStepStatus('Purchase access (tx)', joinSteps.purchase, joinSteps.purchase === 'error' ? joinSteps.error : purchaseStatusNote || undefined)}</div>
+                <div>{renderStepStatus('Join & sync', joinSteps.join, joinSteps.join === 'error' ? joinSteps.error : joinStatusNote || undefined)}</div>
+              </div>
+            )}
             {/* Optional list if no prefill */}
             {(!templAddress || templAddress.trim() === '') && (
               <div className="space-y-2">
@@ -3369,6 +3563,39 @@ function App() {
                 <button className="btn" onClick={() => setShowInfo((v) => !v)}>{showInfo ? 'Hide' : 'Info'}</button>
               </div>
             </div>
+            {pendingJoinMatches && (
+            <div className="mb-3 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-black/80">
+              <div className="font-semibold">Join not completed yet</div>
+              <p className="mt-1">Finish the join flow to unlock chat features.</p>
+              <div className="mt-2 text-xs text-black/70">
+                  <div>{renderStepStatus('Purchase access (tx)', joinSteps.purchase, joinSteps.purchase === 'error' ? joinSteps.error : purchaseStatusNote || undefined)}</div>
+                  <div>{renderStepStatus('Join & sync', joinSteps.join, joinSteps.join === 'error' ? joinSteps.error : joinStatusNote || undefined)}</div>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="px-3 py-1 rounded border border-black/20 text-xs font-semibold"
+                    onClick={handlePurchaseAndJoin}
+                    disabled={joinSteps.purchase === 'pending' || joinSteps.join === 'pending'}
+                  >
+                    Complete join
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {chatProvisionState && (
+              <div className="mb-3 rounded border border-sky-300 bg-sky-50 p-3 text-sm text-black/80">
+                <div className="font-semibold">
+                  {chatProvisionState === 'pending-group' ? 'Chat setup pending' : 'Chat provisioning in progress'}
+                </div>
+                <p className="mt-1 text-xs text-black/70">
+                  {chatProvisionState === 'pending-group'
+                    ? 'Templ backend is finalizing the XMTP group. Check back shortly; chat unlocks as soon as the group is ready.'
+                    : 'XMTP is still syncing this conversation. Messages will appear as soon as the group becomes available.'}
+                </p>
+              </div>
+            )}
 
             {/* Always-on brief stats */}
             {templAddress && (
@@ -3751,7 +3978,14 @@ function App() {
             </div>
             <div className="chat-composer flex gap-2">
               <input className="flex-1 border border-black/20 rounded px-3 py-2" data-testid="chat-input" placeholder="Type a message" value={messageInput} onChange={(e) => setMessageInput(e.target.value)} />
-              <button className="px-3 py-2 rounded bg-primary text-black font-semibold" data-testid="chat-send" onClick={handleSend} disabled={!group && !groupId}>Send</button>
+              <button
+                className="px-3 py-2 rounded bg-primary text-black font-semibold"
+                data-testid="chat-send"
+                onClick={handleSend}
+                disabled={(!group && !groupId) || (pendingJoinMatches && joinSteps.join !== 'success')}
+              >
+                Send
+              </button>
             </div>
           </div>
           ) : (

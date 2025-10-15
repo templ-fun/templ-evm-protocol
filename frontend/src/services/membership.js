@@ -172,7 +172,8 @@ export async function purchaseAndJoin({
   templAddress,
   templArtifact,
   backendUrl = BACKEND_URL,
-  txOptions = {}
+  txOptions = {},
+  onProgress
 }) {
   async function fixKeyPackages(max = 30) {
     try {
@@ -201,6 +202,7 @@ export async function purchaseAndJoin({
   let normalizedMemberAddress = memberAddress;
   try { normalizedMemberAddress = ethers.getAddress(memberAddress); } catch {}
   if (!skipPurchase) {
+    onProgress?.('purchase:start');
     await purchaseAccess({
       ethers,
       signer,
@@ -209,6 +211,9 @@ export async function purchaseAndJoin({
       templArtifact,
       txOptions
     });
+    onProgress?.('purchase:complete');
+  } else {
+    onProgress?.('purchase:skipped');
   }
   if (isDebugEnabled()) {
     try {
@@ -220,7 +225,9 @@ export async function purchaseAndJoin({
   const network = await signer.provider?.getNetwork?.();
   const chainId = Number(network?.chainId || 1337);
   const joinTyped = buildJoinTypedData({ chainId, contractAddress: templAddress.toLowerCase() });
+  onProgress?.('join:signature:start');
   const signature = await signer.signTypedData(joinTyped.domain, joinTyped.types, joinTyped.message);
+  onProgress?.('join:signature:complete');
 
   const joinPayload = {
     contractAddress: templAddress,
@@ -233,6 +240,7 @@ export async function purchaseAndJoin({
     expiry: joinTyped.message.expiry
   };
   dlog('purchaseAndJoin: sending join payload', joinPayload);
+  onProgress?.('join:submission:start');
   const res = await postJson(`${backendUrl}/join`, joinPayload);
   try { console.log('[purchaseAndJoin] /join status', res.status); } catch {}
 
@@ -265,6 +273,7 @@ export async function purchaseAndJoin({
     const isFast = (() => { try { return import.meta?.env?.VITE_E2E_DEBUG === '1'; } catch { return false; } })();
     const tries = isFast ? 8 : 90;
     const delay = isFast ? 250 : 1000;
+    onProgress?.('join:submission:waiting');
     for (let i = 0; i < tries; i++) {
       try { await xmtp?.preferences?.inboxState?.(true); } catch {}
       try { await xmtp?.conversations?.sync?.(); } catch {}
@@ -274,6 +283,7 @@ export async function purchaseAndJoin({
         inboxId: xmtp?.inboxId?.replace?.(/^0x/i, '') || undefined
       };
       dlog('purchaseAndJoin: retry join payload', againPayload);
+      onProgress?.('join:submission:retry');
       const again = await postJson(`${backendUrl}/join`, againPayload);
       try { console.log('[purchaseAndJoin] retry /join status', again.status); } catch {}
       if (again.ok) {
@@ -303,7 +313,10 @@ export async function purchaseAndJoin({
     // Debug information removed - backend debug endpoints not available in current system
     dlog('purchaseAndJoin: completed join process successfully');
   } catch {}
-  return await finalizeJoin({ xmtp, groupId });
+  onProgress?.('join:submission:complete');
+  const result = await finalizeJoin({ xmtp, groupId });
+  onProgress?.('join:complete');
+  return result;
 }
 
 async function finalizeJoin({ xmtp, groupId }) {
