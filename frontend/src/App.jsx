@@ -4943,11 +4943,21 @@ function App() {
                       templAddress,
                       templArtifact,
                       action: actionKey,
-                      params: actionParams
+                      params: actionParams,
+                      title: metaTitle,
+                      description: metaDescription
                     });
                     proposalId = result?.proposalId ?? null;
                   } else if (callData) {
-                    const result = await proposeVote({ ethers, signer, templAddress, templArtifact, callData });
+                    const result = await proposeVote({
+                      ethers,
+                      signer,
+                      templAddress,
+                      templArtifact,
+                      callData,
+                      title: metaTitle,
+                      description: metaDescription
+                    });
                     proposalId = result?.proposalId ?? null;
                   } else {
                     alert('Unsupported proposal type');

@@ -227,7 +227,7 @@ function createStubEthers(state) {
       return { wait: async () => ({}) };
     }
 
-    async setPausedDAO(next) {
+    async setJoinPausedDAO(next) {
       const templ = state.templs[this.address];
       templ.paused = !!next;
       if (!templ.paused && templ.maxMembers > 0 && templ.members.size >= templ.maxMembers) {
