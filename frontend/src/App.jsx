@@ -717,6 +717,28 @@ function App() {
         return walletAddress ? 'Allowance status unavailable.' : 'Connect your wallet to check allowance.';
     }
   })();
+  function formatAllowance(raw, decimals, symbol) {
+    try {
+      if (!raw) return raw;
+      const value = BigInt(raw);
+      if (decimals === null || decimals === undefined) {
+        return `${value.toString()} raw units`;
+      }
+      const formatted = formatTokenAmount(value, decimals, symbol);
+      return formatted || `${value.toString()} raw units`;
+    } catch {
+      return raw;
+    }
+  }
+  const baseScanUrl = useCallback((address) => {
+    if (!address) return '#';
+    try { return `https://basescan.org/address/${ethers.getAddress(address)}`; } catch { return '#'; }
+  }, []);
+  const formatMembersLabel = useCallback((count, max) => {
+    const currentLabel = Number.isFinite(count) ? count.toString() : '…';
+    if (!max || max === '0') return currentLabel;
+    return `${currentLabel} / ${max}`;
+  }, []);
   useEffect(() => {
     setApprovalStage(needsTokenApproval ? 'checking' : 'approved');
     setApprovalError(null);
@@ -1118,11 +1140,14 @@ function App() {
       const members = summary?.status === 'ready' && summary.memberCount !== undefined
         ? Number(summary.memberCount)
         : null;
+      const maxMembers = summary?.status === 'ready' ? summary.maxMembers : null;
       return {
         ...item,
         contract,
         joined,
-        memberCount: members
+        memberCount: members,
+        maxMembers,
+        summary
       };
     });
     items.sort((a, b) => {
@@ -3918,6 +3943,19 @@ function App() {
               </div>
               <div className="grid gap-2">
                 <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium text-black/80">Templ contract</span>
+                  <div className="flex items-center gap-2">
+                    <a className="font-mono text-[11px] underline underline-offset-4" href={baseScanUrl(templAddress)} target="_blank" rel="noreferrer">
+                      {templAddress ? shorten(templAddress) : '…'}
+                    </a>
+                    {templAddress && (
+                      <button type="button" className="px-2 py-1 text-[11px] rounded border border-black/20" onClick={() => copyToClipboard(templAddress)}>
+                        Copy
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-2">
                   <span className="font-medium text-black/80">Token</span>
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-[11px]">
@@ -3964,11 +4002,22 @@ function App() {
                 </p>
                 {approvalAllowance !== null && joinMembershipInfo.required && (
                   <p className="text-[11px] text-black/50">
-                    Allowance: {approvalAllowance} • Required: {joinMembershipInfo.required.toString()}
+                    Allowance: {formatAllowance(approvalAllowance, joinMembershipInfo.decimals, joinMembershipInfo.symbol)} • Required: {formatAllowance(joinMembershipInfo.required.toString(), joinMembershipInfo.decimals, joinMembershipInfo.symbol)}
                   </p>
                 )}
               </div>
             )}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              {needsTokenApproval && (
+                <button
+                  type="button"
+                  className="px-4 py-2 rounded border border-black/20 text-sm font-semibold w-full sm:w-auto"
+                  onClick={handleApproveToken}
+                  disabled={approvalButtonDisabled}
+                >
+                  {approvalButtonLabel}
+                </button>
+              )}
             <div className="flex flex-col sm:flex-row sm:items-center gap-2">
               {needsTokenApproval && (
                 <button
@@ -3987,6 +4036,16 @@ function App() {
               >
                 Purchase & Join
               </button>
+              {templAddress && templAddress.toLowerCase && joinedTempls.some((addr) => addr === templAddress.toLowerCase()) && (
+                <button
+                  type="button"
+                  className="px-4 py-2 rounded border border-black/20 text-sm font-semibold w-full sm:w-auto"
+                  onClick={() => navigate(`/chat?address=${templAddress}`)}
+                >
+                  Go to Chat
+                </button>
+              )}
+            </div>
             </div>
             <p className="text-xs text-black/60">
               After the on-chain join confirms, the templ backend may take up to a minute to provision the XMTP group. The status panel below updates automatically once the chat is ready.
@@ -4000,46 +4059,63 @@ function App() {
             {/* Optional list if no prefill */}
               {(!templAddress || templAddress.trim() === '') && (
                 <div className="space-y-2">
-                  {templList.map((t) => (
-                  <div key={t.contract} className="flex flex-col gap-2 rounded border border-black/10 bg-white/70 p-2">
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                      <button type="button" title="Copy address" data-address={String(t.contract).toLowerCase()} className="text-left underline underline-offset-4 font-mono text-sm flex-1 break-words" onClick={() => copyToClipboard(t.contract)}>
-                        {shorten(t.contract)}
-                      </button>
-                      <button className="px-3 py-1 rounded border border-black/20 w-full sm:w-auto" onClick={() => navigate(`/join?address=${t.contract}`)}>Select</button>
-                    </div>
-                    {(() => {
-                      const key = String(t.contract || '').toLowerCase();
-                      const summary = templSummaries[key];
-                      if (!summary) {
-                        return <div className="text-xs text-black/60">Loading entry fee…</div>;
-                      }
-                      if (summary.status === 'loading') {
-                        return <div className="text-xs text-black/60">Loading entry fee…</div>;
-                      }
-                      if (summary.status === 'error') {
-                        return <div className="text-xs text-red-600">{summary.error || 'Failed to load entry fee'}</div>;
-                      }
-                      const tokenLabel = summary.symbol || (summary.token ? shorten(summary.token) : 'Unknown token');
-                      const members = Number.isFinite(summary.memberCount) ? summary.memberCount : null;
-                      const maxMembers = summary.maxMembers;
-                      let membersDisplay = '…';
-                      if (members !== null) {
-                        membersDisplay = maxMembers && maxMembers !== '0'
-                          ? `${members} / ${maxMembers}`
-                          : `${members}`;
-                      }
+                  {templCards.map((card) => {
+                    const summary = card.summary;
+                    if (!summary || summary.status === 'loading') {
                       return (
-                        <div className="text-xs text-black/60 space-y-1">
-                          <div>Token: {tokenLabel}</div>
-                          <div>Entry fee: {summary.formatted}</div>
-                          {summary.usd && <div>≈ {summary.usd}</div>}
-                          <div>Members: {membersDisplay}</div>
+                        <div key={card.contract} className="flex flex-col gap-2 rounded border border-black/10 bg-white/70 p-3 text-xs text-black/60">
+                          Loading templ metadata…
                         </div>
                       );
-                    })()}
-                  </div>
-                  ))}
+                    }
+                    if (summary.status === 'error') {
+                      return (
+                        <div key={card.contract} className="flex flex-col gap-2 rounded border border-black/10 bg-white/70 p-3 text-xs text-red-600">
+                          {summary.error || 'Failed to load templ metadata'}
+                        </div>
+                      );
+                    }
+                    const alreadyJoined = card.joined;
+                    const tokenLabel = summary.symbol || (summary.token ? shorten(summary.token) : 'Unknown token');
+                    const membersLabel = formatMembersLabel(summary.memberCount, summary.maxMembers);
+                    return (
+                      <div key={card.contract} className="flex flex-col gap-2 rounded border border-black/10 bg-white/70 p-3">
+                        <div className="flex flex-col gap-1">
+                          <div className="flex flex-wrap items-center gap-2 text-sm">
+                            <span className="font-semibold text-black/90">Templ</span>
+                            <a className="text-xs font-mono underline underline-offset-4" href={baseScanUrl(card.contract)} target="_blank" rel="noreferrer">
+                              {shorten(card.contract)}
+                            </a>
+                            <button type="button" className="text-[11px] underline" onClick={() => copyToClipboard(card.contract)}>Copy</button>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 text-sm">
+                            <span className="font-semibold text-black/90">Token</span>
+                            {summary.token ? (
+                              <>
+                                <a className="text-xs font-mono underline underline-offset-4" href={baseScanUrl(summary.token)} target="_blank" rel="noreferrer">
+                                  {shorten(summary.token)}
+                                </a>
+                                <span className="text-xs text-black/60">{tokenLabel}</span>
+                              </>
+                            ) : (
+                              <span className="text-xs text-black/60">Unknown</span>
+                            )}
+                          </div>
+                          <div className="text-xs text-black/60">Entry fee: {summary.formatted || summary.raw}</div>
+                          {summary.usd && <div className="text-xs text-black/60">≈ {summary.usd}</div>}
+                          <div className="text-xs text-black/60">Members: {membersLabel}</div>
+                        </div>
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                          <button className="px-3 py-1 rounded border border-black/20 w-full sm:w-auto" onClick={() => navigate(`/join?address=${card.contract}`)}>
+                            {alreadyJoined ? 'Review Join Flow' : 'Join'}
+                          </button>
+                          <button className="px-3 py-1 rounded border border-black/20 w-full sm:w-auto" onClick={() => navigate(`/chat?address=${card.contract}`)}>
+                            {alreadyJoined ? 'Go to Chat' : 'Open Chat'}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
