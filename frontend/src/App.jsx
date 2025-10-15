@@ -255,6 +255,17 @@ function isAccessHandleError(err) {
   return message.includes('createSyncAccessHandle');
 }
 
+function isMissingInstallationError(err) {
+  if (!err) return false;
+  const message = String(err?.message || err);
+  if (!message) return false;
+  const normalized = message.toLowerCase();
+  if (normalized.includes('missing installation')) return true;
+  if (normalized.includes('installation metadata')) return true;
+  if (normalized.includes('installation not found')) return true;
+  return message.includes('Database(NotFound');
+}
+
 // Curve configuration constants
 const CURVE_STYLE_INDEX = {
   static: 0,
@@ -2003,19 +2014,33 @@ function App() {
           console.warn('[app] prune prior to client init failed', err?.message || err);
         }
       }
+      const cachedInstallationId = typeof cache?.installationId === 'string' ? cache.installationId.trim() : '';
+      const hadCachedInstallation = Boolean(cachedInstallationId);
+      const hadCachedInbox = Boolean(cache?.inboxId);
+      let requireFreshInstallation = !hadCachedInstallation;
+      let reinstallReason = '';
       let limitEncountered = false;
-      for (const nonce of candidateNonces) {
-        try {
-          return await createClientWithNonce(nonce, true);
-        } catch (err) {
-          const msg = String(err?.message || err);
-          if (isAccessHandleError(err)) continue;
-          if (msg.includes('already registered 10/10 installations')) {
-            limitEncountered = true;
-            continue;
-          }
-          if (msg.toLowerCase().includes('register') || msg.toLowerCase().includes('inbox')) {
-            continue;
+      if (!requireFreshInstallation) {
+        for (const nonce of candidateNonces) {
+          try {
+            return await createClientWithNonce(nonce, true);
+          } catch (err) {
+            const msg = String(err?.message || err);
+            if (isAccessHandleError(err)) continue;
+            if (msg.includes('already registered 10/10 installations')) {
+              limitEncountered = true;
+              continue;
+            }
+            if (isMissingInstallationError(err)) {
+              requireFreshInstallation = true;
+              reinstallReason = msg;
+              try { cache.installationId = null; } catch {}
+              try { saveXmtpCache(address, { installationId: null }); } catch {}
+              break;
+            }
+            if (msg.toLowerCase().includes('register') || msg.toLowerCase().includes('inbox')) {
+              continue;
+            }
           }
         }
       }
@@ -2024,12 +2049,15 @@ function App() {
         limitError.name = 'XMTP_LIMIT';
         throw limitError;
       }
+      const fallbackNonce = candidateNonces[0] || 1;
+      if (requireFreshInstallation && (hadCachedInstallation || hadCachedInbox || reinstallReason)) {
+        pushStatus('♻️ XMTP installation revoked. Please approve the new registration prompt.');
+      }
       try {
-        const fallbackNonce = candidateNonces[0] || 1;
         return await createClientWithNonce(fallbackNonce, false);
       } catch (err) {
         const msg = String(err?.message || err);
-        if (isAccessHandleError(err)) return await createClientWithNonce(candidateNonces[0] || 1, false);
+        if (isAccessHandleError(err)) return await createClientWithNonce(fallbackNonce, false);
         if (msg.includes('already registered 10/10 installations')) {
           const limitError = new Error('XMTP installation limit reached for this wallet. Please revoke older installations or switch wallets.');
           limitError.name = 'XMTP_LIMIT';
