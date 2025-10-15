@@ -113,6 +113,22 @@ function saveXmtpCache(address, data) {
   } catch {}
 }
 
+async function clearXmtpOpfs() {
+  if (typeof navigator === 'undefined') return;
+  const storage = navigator.storage;
+  if (!storage || typeof storage.getDirectory !== 'function') return;
+  try {
+    const root = await storage.getDirectory();
+    for await (const [name] of root.entries()) {
+      if (typeof name === 'string' && name.startsWith('xmtp-')) {
+        try {
+          await root.removeEntry(name, { recursive: true });
+        } catch {}
+      }
+    }
+  } catch {}
+}
+
 function resolveXmtpEnv() {
   const forced = import.meta.env.VITE_XMTP_ENV?.trim();
   if (forced) return forced;
@@ -194,9 +210,18 @@ async function pruneExcessInstallations({ address, signer, cache, env, keepInsta
     }
     return true;
   } catch (err) {
+    if (isAccessHandleError(err)) {
+      throw err;
+    }
     console.warn('[app] prune installations failed', err?.message || err);
     return false;
   }
+}
+
+function isAccessHandleError(err) {
+  if (!err) return false;
+  const message = String(err?.message || err);
+  return message.includes('createSyncAccessHandle');
 }
 
 // Curve configuration constants
@@ -745,7 +770,17 @@ function App() {
     setInstallationsError(null);
     try {
       const env = resolveXmtpEnv();
-      const states = await Client.inboxStateFromInboxIds([cache.inboxId], env);
+      let states;
+      try {
+        states = await Client.inboxStateFromInboxIds([cache.inboxId], env);
+      } catch (err) {
+        if (isAccessHandleError(err)) {
+          await clearXmtpOpfs();
+          states = await Client.inboxStateFromInboxIds([cache.inboxId], env);
+        } else {
+          throw err;
+        }
+      }
       const state = Array.isArray(states) ? states[0] : null;
       const list = Array.isArray(state?.installations) ? state.installations : [];
       setInstallations(list.map((inst) => {
@@ -785,10 +820,20 @@ function App() {
       const env = resolveXmtpEnv();
       const nonce = getStableNonce(walletAddress);
       const signerWrapper = makeXmtpSigner({ address: walletAddress, signer, nonce });
-      await Client.revokeInstallations(signerWrapper, cache.inboxId, [installationId], env);
-      if (cache?.installationId && cache.installationId === installationId) {
-        saveXmtpCache(walletAddress, { installationId: null });
+      try {
+        await Client.revokeInstallations(signerWrapper, cache.inboxId, [installationId], env);
+      } catch (err) {
+        if (isAccessHandleError(err)) {
+          await clearXmtpOpfs();
+          await Client.revokeInstallations(signerWrapper, cache.inboxId, [installationId], env);
+        } else {
+          throw err;
+        }
       }
+      saveXmtpCache(walletAddress, {
+        installationId: cache?.installationId && cache.installationId === installationId ? null : cache?.installationId
+      });
+      setInstallations((prev) => prev.filter((inst) => inst.id !== installationId));
       pushStatus('✅ Installation revoked');
       await loadInstallationsState();
     } catch (err) {
@@ -819,10 +864,20 @@ function App() {
       }
       const nonce = getStableNonce(walletAddress);
       const signerWrapper = makeXmtpSigner({ address: walletAddress, signer, nonce });
-      await Client.revokeInstallations(signerWrapper, cache.inboxId, idsToRevoke, env);
+      try {
+        await Client.revokeInstallations(signerWrapper, cache.inboxId, idsToRevoke, env);
+      } catch (err) {
+        if (isAccessHandleError(err)) {
+          await clearXmtpOpfs();
+          await Client.revokeInstallations(signerWrapper, cache.inboxId, idsToRevoke, env);
+        } else {
+          throw err;
+        }
+      }
       if (idsToRevoke.includes(cache?.installationId)) {
         saveXmtpCache(walletAddress, { installationId: null });
       }
+      setInstallations((prev) => prev.filter((inst) => !idsToRevoke.includes(inst.id)));
       pushStatus('✅ Other installations revoked');
       await loadInstallationsState();
     } catch (err) {
@@ -1900,15 +1955,27 @@ function App() {
     }
 
     async function createOrResumeXmtp() {
+      let clearedOpfs = false;
+      const ensureOpfsCleared = async () => {
+        if (clearedOpfs) return;
+        await clearXmtpOpfs();
+        clearedOpfs = true;
+      };
       if (cache?.inboxId) {
-        await pruneExcessInstallations({
-          address,
-          signer: nextSigner,
-          cache,
-          env: xmtpEnv,
-          keepInstallationId: cache?.installationId || '',
-          pushStatus
-        });
+        try {
+          await pruneExcessInstallations({
+            address,
+            signer: nextSigner,
+            cache,
+            env: xmtpEnv,
+            keepInstallationId: cache?.installationId || '',
+            pushStatus
+          });
+        } catch (err) {
+          if (isAccessHandleError(err)) {
+            await ensureOpfsCleared();
+          }
+        }
       }
       let limitEncountered = false;
       for (const nonce of candidateNonces) {
@@ -1916,6 +1983,9 @@ function App() {
           return await createClientWithNonce(nonce, true);
         } catch (err) {
           const msg = String(err?.message || err);
+          if (isAccessHandleError(err)) {
+            await ensureOpfsCleared();
+          }
           if (msg.includes('already registered 10/10 installations')) {
             limitEncountered = true;
             continue;
@@ -1935,6 +2005,9 @@ function App() {
         return await createClientWithNonce(fallbackNonce, false);
       } catch (err) {
         const msg = String(err?.message || err);
+        if (isAccessHandleError(err)) {
+          await ensureOpfsCleared();
+        }
         if (msg.includes('already registered 10/10 installations')) {
           const limitError = new Error('XMTP installation limit reached for this wallet. Please revoke older installations or switch wallets.');
           limitError.name = 'XMTP_LIMIT';
