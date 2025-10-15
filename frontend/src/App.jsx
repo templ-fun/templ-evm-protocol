@@ -588,6 +588,7 @@ function App() {
   const joinedLoggedRef = useRef(false);
   const lastProfileBroadcastRef = useRef(0);
   const autoDeployTriggeredRef = useRef(false);
+  const pathIsChat = path === '/chat';
   const pendingJoinMatches = useMemo(() => {
     if (!pendingJoinAddress || !templAddress) return false;
     try {
@@ -604,7 +605,6 @@ function App() {
     return null;
   }, [pathIsChat, templAddress, pendingJoinMatches, groupId, groupConnected]);
   const joinRetryCountRef = useRef(0);
-  const pathIsChat = path === '/chat';
   const moderationEnabled = false;
   const renderStepStatus = useCallback((label, state, extra) => {
     const icon = STATUS_ICONS[state] || STATUS_ICONS.idle;
