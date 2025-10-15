@@ -615,41 +615,6 @@ function App() {
   const joinRetryCountRef = useRef(0);
   const moderationEnabled = false;
   const zeroAddressLower = ethers.ZeroAddress.toLowerCase();
-  const needsTokenApproval = !!joinMembershipInfo.token && !joinMembershipInfo.isNative;
-  const approvalButtonLabel = approvalStage === 'pending'
-    ? 'Approving…'
-    : approvalStage === 'approved'
-      ? 'Approved'
-      : `Approve ${joinMembershipInfo.symbol || 'token'}`;
-  const approvalButtonDisabled = approvalStage === 'pending'
-    || approvalStage === 'checking'
-    || approvalStage === 'approved'
-    || !walletAddress
-    || !templAddress
-    || !joinMembershipInfo.required;
-  const approvalStatusText = (() => {
-    if (!needsTokenApproval) {
-      return 'No approval needed for native token entry fees.';
-    }
-    switch (approvalStage) {
-      case 'approved':
-        return 'Allowance ready. You can join now.';
-      case 'needs':
-        return 'Approval required before purchasing access.';
-      case 'pending':
-        return 'Waiting for approval confirmation…';
-      case 'checking':
-        return 'Checking token allowance…';
-      case 'error':
-        return approvalError || 'Unable to read allowance.';
-      default:
-        return walletAddress ? 'Allowance status unavailable.' : 'Connect your wallet to check allowance.';
-    }
-  })();
-  useEffect(() => {
-    setApprovalStage(needsTokenApproval ? 'checking' : 'approved');
-    setApprovalError(null);
-  }, [templAddress, walletAddress, needsTokenApproval]);
   const joinMembershipInfo = useMemo(() => {
     if (!templAddress || !ethers.isAddress(templAddress)) {
       return {
@@ -720,6 +685,41 @@ function App() {
       };
     }
   }, [templAddress, currentFee, tokenDecimals, currentTokenSymbol, currentAccessToken, zeroAddressLower]);
+  const needsTokenApproval = !!joinMembershipInfo.token && !joinMembershipInfo.isNative;
+  const approvalButtonLabel = approvalStage === 'pending'
+    ? 'Approving…'
+    : approvalStage === 'approved'
+      ? 'Approved'
+      : `Approve ${joinMembershipInfo.symbol || 'token'}`;
+  const approvalButtonDisabled = approvalStage === 'pending'
+    || approvalStage === 'checking'
+    || approvalStage === 'approved'
+    || !walletAddress
+    || !templAddress
+    || !joinMembershipInfo.required;
+  const approvalStatusText = (() => {
+    if (!needsTokenApproval) {
+      return 'No approval needed for native token entry fees.';
+    }
+    switch (approvalStage) {
+      case 'approved':
+        return 'Allowance ready. You can join now.';
+      case 'needs':
+        return 'Approval required before purchasing access.';
+      case 'pending':
+        return 'Waiting for approval confirmation…';
+      case 'checking':
+        return 'Checking token allowance…';
+      case 'error':
+        return approvalError || 'Unable to read allowance.';
+      default:
+        return walletAddress ? 'Allowance status unavailable.' : 'Connect your wallet to check allowance.';
+    }
+  })();
+  useEffect(() => {
+    setApprovalStage(needsTokenApproval ? 'checking' : 'approved');
+    setApprovalError(null);
+  }, [templAddress, walletAddress, needsTokenApproval]);
   useEffect(() => {
     if (proposeAction !== 'moveTreasuryToMe') {
       setProposeAmount('');
