@@ -569,6 +569,8 @@ function App() {
   const [currentProtocolPercent, setCurrentProtocolPercent] = useState(null);
   const [currentMaxMembers, setCurrentMaxMembers] = useState(null);
   const [currentMemberCount, setCurrentMemberCount] = useState(null);
+  const [currentAccessToken, setCurrentAccessToken] = useState(null);
+  const [currentTokenSymbol, setCurrentTokenSymbol] = useState(null);
   const [proposeBurnPercent, setProposeBurnPercent] = useState('');
   const [proposeTreasuryPercent, setProposeTreasuryPercent] = useState('');
   const [proposeMemberPercent, setProposeMemberPercent] = useState('');
@@ -608,6 +610,59 @@ function App() {
   }, [pathIsChat, templAddress, pendingJoinMatches, groupId, groupConnected]);
   const joinRetryCountRef = useRef(0);
   const moderationEnabled = false;
+  const joinMembershipInfo = useMemo(() => {
+    if (!templAddress || !ethers.isAddress(templAddress)) {
+      return {
+        token: null,
+        formatted: null,
+        raw: null,
+        usd: null,
+        decimals: null,
+        symbol: null
+      };
+    }
+    if (!currentFee) {
+      return {
+        token: currentAccessToken || null,
+        formatted: null,
+        raw: null,
+        usd: null,
+        decimals: tokenDecimals,
+        symbol: currentTokenSymbol || null
+      };
+    }
+    try {
+      const feeValue = BigInt(currentFee);
+      const formatted = Number.isInteger(tokenDecimals)
+        ? formatTokenAmount(feeValue, tokenDecimals, currentTokenSymbol)
+        : null;
+      const rawUnits = Number.isInteger(tokenDecimals)
+        ? formatRawUnitsDisplay(feeValue, tokenDecimals, currentTokenSymbol)
+        : null;
+      const raw = rawUnits
+        ? `${rawUnits.amount} ${rawUnits.unit}`
+        : `${feeValue.toString()} raw units`;
+      const usdRate = inferUsdRateForToken(currentTokenSymbol, (currentAccessToken || '').toLowerCase());
+      const usd = formatUsdFromBigInt(feeValue, tokenDecimals, usdRate);
+      return {
+        token: currentAccessToken || null,
+        formatted: formatted || null,
+        raw,
+        usd,
+        decimals: tokenDecimals,
+        symbol: currentTokenSymbol || null
+      };
+    } catch {
+      return {
+        token: currentAccessToken || null,
+        formatted: null,
+        raw: `${currentFee} raw units`,
+        usd: null,
+        decimals: tokenDecimals,
+        symbol: currentTokenSymbol || null
+      };
+    }
+  }, [templAddress, currentFee, tokenDecimals, currentTokenSymbol, currentAccessToken]);
   useEffect(() => {
     if (proposeAction !== 'moveTreasuryToMe') {
       setProposeAmount('');
@@ -1216,6 +1271,10 @@ function App() {
 
   // Fetch entry fee and token decimals for display in reprice UI
   useEffect(() => {
+    setCurrentFee(null);
+    setTokenDecimals(null);
+    setCurrentAccessToken(null);
+    setCurrentTokenSymbol(null);
     let cancelled = false;
     (async () => {
       try {
@@ -1254,10 +1313,25 @@ function App() {
           dictatorshipState = await c.priestIsDictator();
         } catch {}
         let dec = null;
-        try {
-          const erc20 = new ethers.Contract(tokenAddr, ['function decimals() view returns (uint8)'], providerOrSigner);
-          dec = Number(await erc20.decimals());
-        } catch { dec = null; }
+        let symbol = null;
+        if (tokenAddr && String(tokenAddr).toLowerCase() === ethers.ZeroAddress.toLowerCase()) {
+          dec = 18;
+          symbol = 'ETH';
+        } else if (tokenAddr) {
+          try {
+            const erc20Meta = new ethers.Contract(tokenAddr, ['function decimals() view returns (uint8)', 'function symbol() view returns (string)'], providerOrSigner);
+            dec = Number(await erc20Meta.decimals());
+            const rawSymbol = await erc20Meta.symbol();
+            if (typeof rawSymbol === 'string' && rawSymbol.trim()) {
+              symbol = rawSymbol.trim();
+            }
+          } catch {
+            try {
+              const erc20Decimals = new ethers.Contract(tokenAddr, ['function decimals() view returns (uint8)'], providerOrSigner);
+              dec = Number(await erc20Decimals.decimals());
+            } catch {}
+          }
+        }
         if (!cancelled) {
           const normalizedBurn = Number.isFinite(burnPct) ? Number((burnPct / 100).toFixed(2)) : null;
           const normalizedTreasury = Number.isFinite(treasuryPct) ? Number((treasuryPct / 100).toFixed(2)) : null;
@@ -1265,6 +1339,12 @@ function App() {
           const normalizedProtocol = Number.isFinite(protocolPct) ? Number((protocolPct / 100).toFixed(2)) : null;
           setCurrentFee(fee.toString());
           setTokenDecimals(dec);
+          try {
+            setCurrentAccessToken(tokenAddr ? ethers.getAddress(tokenAddr) : null);
+          } catch {
+            setCurrentAccessToken(tokenAddr || null);
+          }
+          setCurrentTokenSymbol(symbol);
           setCurrentBurnPercent(normalizedBurn);
           setCurrentTreasuryPercent(normalizedTreasury);
           setCurrentMemberPercent(normalizedMember);
@@ -2001,16 +2081,29 @@ function App() {
         navigate(`/chat?address=${trimmedAddress}`);
       }
     } catch (err) {
-      const message = err?.message || 'Join failed';
-      setJoinSteps((prev) => ({ ...prev, join: 'error', error: message }));
-      if (/rejected/i.test(message)) {
+      const rawMessage = err?.message || 'Join failed';
+      const revertMatch = /require\(false\)/i.test(rawMessage) || /CALL_EXCEPTION/i.test(rawMessage);
+      const message = revertMatch
+        ? 'Purchase reverted on-chain. Check token balance, allowances, and member limit.'
+        : rawMessage;
+      const wasPurchasePending = joinSteps.purchase === 'pending';
+      setJoinSteps({
+        purchase: wasPurchasePending ? 'error' : joinSteps.purchase,
+        join: 'error',
+        error: message
+      });
+      if (wasPurchasePending) {
+        setPurchaseStatusNote(message);
+      }
+      setJoinStatusNote(message);
+      if (/rejected/i.test(rawMessage)) {
         pushStatus('⚠️ Join incomplete: signature declined. Complete from chat when ready.');
       } else {
         pushStatus(`⚠️ Join failed: ${message}`);
       }
       console.error('Join failed', err);
     }
-  }, [signer, xmtp, templAddress, updateTemplAddress, walletAddress, pushStatus, navigate, rememberJoinedTempl, setTemplList]);
+  }, [signer, xmtp, templAddress, updateTemplAddress, walletAddress, pushStatus, navigate, rememberJoinedTempl, setTemplList, joinSteps]);
 
   // Passive discovery: if a groupId is known (e.g., after deploy) try to
   // discover the conversation without requiring an explicit join.
@@ -3537,6 +3630,51 @@ function App() {
         {path === '/join' && (
           <div className="join space-y-3">
             <h2 className="text-xl font-semibold">Join Existing Templ</h2>
+            <div className="rounded border border-black/20 bg-white/80 p-3 text-xs text-black/70 space-y-2">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="text-sm font-semibold text-black/90">Membership cost</div>
+                  <p className="mt-1 text-xs text-black/60">
+                    Pay the entry fee once to become a member, then sign a message so templ.fun can invite you into the XMTP group chat.
+                  </p>
+                </div>
+              </div>
+              <div className="grid gap-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium text-black/80">Token</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[11px]">
+                      {joinMembershipInfo.token ? shorten(joinMembershipInfo.token) : '…'}
+                    </span>
+                    {joinMembershipInfo.token && (
+                      <button
+                        type="button"
+                        className="px-2 py-1 text-[11px] rounded border border-black/20"
+                        onClick={() => copyToClipboard(joinMembershipInfo.token)}
+                      >
+                        Copy
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium text-black/80">Entry fee</span>
+                  <span className="text-black/80">
+                    {joinMembershipInfo.formatted || joinMembershipInfo.raw || 'Loading…'}
+                  </span>
+                </div>
+                {joinMembershipInfo.usd && (
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-black/80">Approx. USD</span>
+                    <span>{joinMembershipInfo.usd}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium text-black/80">Decimals</span>
+                  <span>{Number.isInteger(joinMembershipInfo.decimals) ? joinMembershipInfo.decimals : 'Unknown'}</span>
+                </div>
+              </div>
+            </div>
             <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Contract address" value={templAddress} onChange={(e) => updateTemplAddress(e.target.value)} />
             <button
               className="px-4 py-2 rounded bg-primary text-black font-semibold w-full sm:w-auto"
