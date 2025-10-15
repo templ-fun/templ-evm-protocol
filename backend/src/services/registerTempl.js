@@ -35,13 +35,65 @@ function normaliseChatId(value) {
   return trimmed;
 }
 
+function normaliseInboxId(value) {
+  if (!value || typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return trimmed.toLowerCase();
+}
+
+async function addCreatorToGroup({ group, inboxId, priestAddress, logger }) {
+  if (!group || !inboxId) return;
+  const attempts = [
+    async () => {
+      if (typeof group.addMembersByInboxId === 'function') {
+        await group.addMembersByInboxId([inboxId]);
+        return true;
+      }
+      return false;
+    },
+    async () => {
+      if (typeof group.addMembers === 'function') {
+        await group.addMembers([inboxId]);
+        return true;
+      }
+      return false;
+    },
+    async () => {
+      if (typeof group.addMembersByIdentifiers === 'function' && priestAddress) {
+        await group.addMembersByIdentifiers([{ identifier: priestAddress.toLowerCase(), identifierKind: 0 }]);
+        return true;
+      }
+      return false;
+    }
+  ];
+  for (const attempt of attempts) {
+    try {
+      const applied = await attempt();
+      if (applied) {
+        logger?.info?.({ inboxId }, 'Added creator to XMTP group');
+        return;
+      }
+    } catch (err) {
+      const message = String(err?.message || err);
+      if (message.toLowerCase().includes('already')) {
+        logger?.info?.({ inboxId }, 'Creator already present in XMTP group');
+        return;
+      }
+      logger?.debug?.({ err: message, inboxId }, 'Failed to add creator via current method; trying fallback');
+    }
+  }
+  logger?.warn?.({ inboxId }, 'Unable to add creator inbox to XMTP group');
+}
+
 export async function registerTempl(body, context) {
   const { contractAddress, priestAddress } = body;
-  const { provider, logger, templs, persist, watchContract, findBinding, skipFactoryValidation } = context;
+  const { provider, logger, templs, persist, watchContract, findBinding, skipFactoryValidation, ensureGroup } = context;
 
   const contract = normaliseAddress(contractAddress, 'contractAddress');
   const priest = normaliseAddress(priestAddress, 'priestAddress');
   const telegramChatId = normaliseChatId(body.telegramChatId ?? body.chatId);
+  const creatorInboxId = normaliseInboxId(body.creatorInboxId);
   const providedGroupId = typeof body.groupId === 'string' && body.groupId.trim() ? String(body.groupId).trim() : null;
   logger?.info?.({ contract, priest, telegramChatId, groupId: providedGroupId }, 'Register templ request received');
 
@@ -103,12 +155,16 @@ export async function registerTempl(body, context) {
   }
   existing.templHomeLink = resolvedHomeLink;
 
-  if (typeof context.ensureGroup === 'function') {
+  if (typeof ensureGroup === 'function') {
     try {
-      const group = await context.ensureGroup(existing);
+      const group = await ensureGroup(existing);
       if (group?.id) {
         existing.groupId = String(group.id);
         existing.group = group;
+        if (creatorInboxId) {
+          await addCreatorToGroup({ group, inboxId: creatorInboxId, priestAddress: priest, logger });
+          try { await group.sync?.(); } catch {/* ignore */}
+        }
       }
     } catch (err) {
       logger?.warn?.({ err: String(err?.message || err), contract }, 'ensureGroup failed during registration');

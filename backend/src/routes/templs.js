@@ -7,7 +7,7 @@ import { registerTempl } from '../services/registerTempl.js';
 import { requestTemplRebind } from '../services/requestTemplRebind.js';
 import { extractTypedRequestParams } from './typed.js';
 
-export default function templsRouter({ templs, persist, provider, watchContract, signatureStore, findBinding, listBindings }) {
+export default function templsRouter({ templs, persist, provider, watchContract, signatureStore, findBinding, listBindings, ensureGroup }) {
   const router = express.Router();
 
   router.get('/templs', async (req, res) => {
@@ -89,7 +89,8 @@ export default function templsRouter({ templs, persist, provider, watchContract,
           templs,
           persist,
           watchContract,
-          findBinding
+          findBinding,
+          ensureGroup
         });
         const { templ, bindingCode } = result;
         res.json({
