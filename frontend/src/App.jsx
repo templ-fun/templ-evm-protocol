@@ -79,6 +79,77 @@ function joinedStorageKeyForWallet(walletLower) {
   return walletLower ? `${JOINED_STORAGE_PREFIX}:${walletLower}` : JOINED_STORAGE_PREFIX;
 }
 
+function xmtpCacheKeyForWallet(address) {
+  return address ? `xmtp:cache:${address.toLowerCase()}` : null;
+}
+
+function loadXmtpCache(address) {
+  const key = xmtpCacheKeyForWallet(address);
+  if (!key) return null;
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveXmtpCache(address, data) {
+  const key = xmtpCacheKeyForWallet(address);
+  if (!key) return;
+  try {
+    localStorage.setItem(key, JSON.stringify(data));
+  } catch {}
+}
+
+function resolveXmtpEnv() {
+  const forced = import.meta.env.VITE_XMTP_ENV?.trim();
+  if (forced) return forced;
+  if (typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+    return 'dev';
+  }
+  return 'production';
+}
+
+function makeXmtpSigner({ address, signer, nonce }) {
+  return {
+    type: 'EOA',
+    getAddress: () => address,
+    getIdentifier: () => ({
+      identifier: address.toLowerCase(),
+      identifierKind: 'Ethereum',
+      nonce
+    }),
+    signMessage: async (message) => {
+      let toSign;
+      if (message instanceof Uint8Array) {
+        try { toSign = ethers.toUtf8String(message); } catch { toSign = ethers.hexlify(message); }
+      } else if (typeof message === 'string') {
+        toSign = message;
+      } else {
+        toSign = String(message);
+      }
+      const signature = await signer.signMessage(toSign);
+      return ethers.getBytes(signature);
+    }
+  };
+}
+
+function getStableNonce(address) {
+  if (!address) return 1;
+  const cache = loadXmtpCache(address);
+  if (cache?.nonce) return cache.nonce;
+  try {
+    const saved = Number.parseInt(localStorage.getItem(`xmtp:nonce:${address.toLowerCase()}`) || '1', 10);
+    if (Number.isFinite(saved) && saved > 0) {
+      return saved;
+    }
+  } catch {}
+  return 1;
+}
+
 // Curve configuration constants
 const CURVE_STYLE_INDEX = {
   static: 0,
@@ -543,6 +614,11 @@ function App() {
   const [currentQuorumPercent, setCurrentQuorumPercent] = useState(null);
   const [activeInboxId, setActiveInboxId] = useState('');
   const [xmtpLimitWarning, setXmtpLimitWarning] = useState(null);
+  const [activeInstallationId, setActiveInstallationId] = useState('');
+  const [installationsOpen, setInstallationsOpen] = useState(false);
+  const [installations, setInstallations] = useState([]);
+  const [installationsLoading, setInstallationsLoading] = useState(false);
+  const [installationsError, setInstallationsError] = useState(null);
   const messageSeenRef = useRef(new Set());
   const [profilesByAddress, setProfilesByAddress] = useState({}); // { [addressLower]: { name, avatar } }
   const [profileName, setProfileName] = useState('');
@@ -604,6 +680,100 @@ function App() {
   const lastProfileBroadcastRef = useRef(0);
   const autoDeployTriggeredRef = useRef(false);
   const pathIsChat = path === '/chat';
+  const loadInstallationsState = useCallback(async () => {
+    if (!walletAddress) {
+      setInstallations([]);
+      setInstallationsError('Connect a wallet to manage XMTP installations.');
+      return;
+    }
+    const cache = loadXmtpCache(walletAddress);
+    if (!cache?.inboxId) {
+      setInstallations([]);
+      setInstallationsError('No XMTP inbox found for this wallet yet. Join or create a templ first.');
+      return;
+    }
+    setInstallationsLoading(true);
+    setInstallationsError(null);
+    try {
+      const env = resolveXmtpEnv();
+      const states = await Client.inboxStateFromInboxIds([cache.inboxId], env);
+      const state = Array.isArray(states) ? states[0] : null;
+      const list = Array.isArray(state?.installations) ? state.installations : [];
+      setInstallations(list.map((inst) => {
+        let timestampMs = null;
+        try {
+          if (typeof inst.clientTimestampNs === 'bigint') {
+            timestampMs = Number(inst.clientTimestampNs / 1000000n);
+          }
+        } catch {}
+        return {
+          id: inst.id,
+          timestamp: timestampMs
+        };
+      }));
+    } catch (err) {
+      setInstallationsError(err?.message || String(err));
+    } finally {
+      setInstallationsLoading(false);
+    }
+  }, [walletAddress]);
+  const handleOpenInstallations = useCallback(async () => {
+    setInstallationsOpen(true);
+    await loadInstallationsState();
+  }, [loadInstallationsState]);
+  const handleRevokeInstallation = useCallback(async (installationId) => {
+    if (!walletAddress || !signer) {
+      setInstallationsError('Connect a wallet to revoke installations.');
+      return;
+    }
+    const cache = loadXmtpCache(walletAddress);
+    if (!cache?.inboxId) {
+      setInstallationsError('No XMTP inbox found for this wallet.');
+      return;
+    }
+    try {
+      setInstallationsError(null);
+      const env = resolveXmtpEnv();
+      const nonce = getStableNonce(walletAddress);
+      const signerWrapper = makeXmtpSigner({ address: walletAddress, signer, nonce });
+      await Client.revokeInstallations(signerWrapper, cache.inboxId, [installationId], env);
+      pushStatus('✅ Installation revoked');
+      await loadInstallationsState();
+    } catch (err) {
+      setInstallationsError(err?.message || String(err));
+    }
+  }, [walletAddress, signer, loadInstallationsState, pushStatus]);
+  const handleRevokeOtherInstallations = useCallback(async () => {
+    if (!walletAddress || !signer) {
+      setInstallationsError('Connect a wallet to revoke installations.');
+      return;
+    }
+    const cache = loadXmtpCache(walletAddress);
+    if (!cache?.inboxId) {
+      setInstallationsError('No XMTP inbox found for this wallet.');
+      return;
+    }
+    try {
+      setInstallationsError(null);
+      const env = resolveXmtpEnv();
+      const states = await Client.inboxStateFromInboxIds([cache.inboxId], env);
+      const state = Array.isArray(states) ? states[0] : null;
+      const idsToRevoke = (state?.installations || [])
+        .map((inst) => inst.id)
+        .filter((id) => id && id !== activeInstallationId);
+      if (!idsToRevoke.length) {
+        setInstallationsError('No other installations to revoke.');
+        return;
+      }
+      const nonce = getStableNonce(walletAddress);
+      const signerWrapper = makeXmtpSigner({ address: walletAddress, signer, nonce });
+      await Client.revokeInstallations(signerWrapper, cache.inboxId, idsToRevoke, env);
+      pushStatus('✅ Other installations revoked');
+      await loadInstallationsState();
+    } catch (err) {
+      setInstallationsError(err?.message || String(err));
+    }
+  }, [walletAddress, signer, activeInstallationId, loadInstallationsState, pushStatus]);
   const normalizedGroupId = useMemo(() => (groupId ? String(groupId).toLowerCase() : ''), [groupId]);
   const normalizedTemplAddress = useMemo(() => {
     if (!templAddress) return '';
@@ -1629,46 +1799,56 @@ function App() {
     setXmtp(undefined);
     setActiveInboxId('');
     resetChatState();
+    setPendingJoinAddress(null);
+    setPurchaseStatusNote(null);
+    setJoinStatusNote(null);
+    setProfileOpen(false);
 
-    const forcedEnv = import.meta.env.VITE_XMTP_ENV?.trim();
-    const xmtpEnv = forcedEnv || (['localhost', '127.0.0.1'].includes(window.location.hostname) ? 'dev' : 'production');
+    const xmtpEnv = resolveXmtpEnv();
+    const cache = loadXmtpCache(address);
+    const storageKey = `xmtp:nonce:${address.toLowerCase()}`;
+    const baseOptions = { env: xmtpEnv, appVersion: 'templ/0.1.0' };
 
-    async function createXmtpStable() {
-      const storageKey = `xmtp:nonce:${address.toLowerCase()}`;
-      let stableNonce = 1;
-      try {
-        const saved = Number.parseInt(localStorage.getItem(storageKey) || '1', 10);
-        if (Number.isFinite(saved) && saved > 0) stableNonce = saved;
-      } catch {}
+    const candidateSet = new Set();
+    if (cache?.nonce) candidateSet.add(Number(cache.nonce));
+    try {
+      const saved = Number.parseInt(localStorage.getItem(storageKey) || '1', 10);
+      if (Number.isFinite(saved) && saved > 0) {
+        candidateSet.add(saved);
+      }
+    } catch {}
+    for (let i = 1; i <= 12; i++) {
+      candidateSet.add(i);
+    }
+    const candidateNonces = Array.from(candidateSet).filter((value) => Number.isFinite(value) && value > 0);
 
-      const xmtpSigner = {
-        type: 'EOA',
-        getAddress: () => address,
-        getIdentifier: () => ({
-          identifier: address.toLowerCase(),
-          identifierKind: 'Ethereum',
-          nonce: stableNonce
-        }),
-        signMessage: async (message) => {
-          let toSign;
-          if (message instanceof Uint8Array) {
-            try { toSign = ethers.toUtf8String(message); }
-            catch { toSign = ethers.hexlify(message); }
-          } else if (typeof message === 'string') {
-            toSign = message;
-          } else {
-            toSign = String(message);
+    async function createClientWithNonce(nonce, disableAutoRegister) {
+      const signerWrapper = makeXmtpSigner({ address, signer: nextSigner, nonce });
+      const options = disableAutoRegister ? { ...baseOptions, disableAutoRegister: true } : baseOptions;
+      dlog('[app] Creating XMTP client', { disableAutoRegister, nonce });
+      const clientInstance = await Client.create(signerWrapper, options);
+      try { localStorage.setItem(storageKey, String(nonce)); } catch {}
+      saveXmtpCache(address, { nonce, inboxId: clientInstance.inboxId });
+      return clientInstance;
+    }
+
+    async function createOrResumeXmtp() {
+      for (const nonce of candidateNonces) {
+        try {
+          return await createClientWithNonce(nonce, true);
+        } catch (err) {
+          const msg = String(err?.message || err);
+          if (msg.includes('already registered 10/10 installations')) {
+            continue;
           }
-          const signature = await nextSigner.signMessage(toSign);
-          return ethers.getBytes(signature);
+          if (msg.toLowerCase().includes('register') || msg.toLowerCase().includes('inbox')) {
+            continue;
+          }
         }
-      };
-
+      }
       try {
-        dlog('[app] Creating XMTP client with stable nonce', stableNonce);
-        const client = await Client.create(xmtpSigner, { env: xmtpEnv, appVersion: 'templ/0.1.0' });
-        try { localStorage.setItem(storageKey, String(stableNonce)); } catch {}
-        return client;
+        const fallbackNonce = candidateNonces[0] || 1;
+        return await createClientWithNonce(fallbackNonce, false);
       } catch (err) {
         const msg = String(err?.message || err);
         if (msg.includes('already registered 10/10 installations')) {
@@ -1686,9 +1866,7 @@ function App() {
         client = await creatingXmtpPromiseRef.current;
       } else {
         const p = (async () => {
-          const c = await createXmtpStable();
-          setXmtp(c);
-          return c;
+          return await createOrResumeXmtp();
         })().finally(() => { creatingXmtpPromiseRef.current = null; });
         creatingXmtpPromiseRef.current = p;
         client = await p;
@@ -1697,6 +1875,7 @@ function App() {
       creatingXmtpPromiseRef.current = null;
       setXmtp(undefined);
       setActiveInboxId('');
+      setActiveInstallationId('');
       const message = String(err?.message || err);
       if (err?.name === 'XMTP_LIMIT' || message.includes('installation limit')) {
         setXmtpLimitWarning(message);
@@ -1707,7 +1886,11 @@ function App() {
       return;
     }
     setActiveInboxId(client?.inboxId || '');
+    setActiveInstallationId(client?.installationId ? String(client.installationId) : '');
+    setXmtp(client);
     setXmtpLimitWarning(null);
+    setInstallationsError(null);
+    setInstallations([]);
     dlog('[app] XMTP client created', { env: xmtpEnv, inboxId: client.inboxId });
     // Kick off identity readiness check in background so deploy/join can await it later
     try {
@@ -3365,6 +3548,9 @@ function App() {
     identityReadyPromiseRef.current = null;
     setXmtp(undefined);
     setActiveInboxId('');
+    setActiveInstallationId('');
+    setInstallations([]);
+    setInstallationsError(null);
     setXmtpLimitWarning(null);
     setSigner(undefined);
     setWalletAddress('');
@@ -3373,10 +3559,7 @@ function App() {
     setPurchaseStatusNote(null);
     setJoinStatusNote(null);
     setProfileOpen(false);
-    setPendingJoinAddress(null);
-    setPurchaseStatusNote(null);
-    setJoinStatusNote(null);
-    setProfileOpen(false);
+    setInstallationsOpen(false);
     pushStatus('👋 Wallet disconnected');
   }
 
@@ -3774,7 +3957,17 @@ function App() {
         {/* Routes */}
         {path === '/templs' && (
           <div data-testid="templ-list" className="space-y-3">
-            <h2 className="text-xl font-semibold">Templs</h2>
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-xl font-semibold">Templs</h2>
+              {walletAddress && (
+                <button
+                  className="px-3 py-1 rounded border border-black/20 text-xs"
+                  onClick={handleOpenInstallations}
+                >
+                  Manage XMTP Slots
+                </button>
+              )}
+            </div>
             {templCards.length === 0 && <p>No templs yet</p>}
             {templCards.map((t) => {
               const isJoined = Boolean(t.joined);
@@ -4297,6 +4490,9 @@ function App() {
         {path === '/join' && (
           <div className="join space-y-3">
             <h2 className="text-xl font-semibold">Join Existing Templ</h2>
+            <p className="text-sm text-black/70">
+              You were invited to join this templ! Pay the tithe once to unlock its private chat, follow live proposals, and vote on treasury actions.
+            </p>
             <div className="rounded border border-black/20 bg-white/80 p-3 text-xs text-black/70 space-y-2">
               <div className="flex items-start justify-between gap-2">
                 <div>
@@ -5059,6 +5255,69 @@ function App() {
             <div className="modal__footer">
               <button className="btn" onClick={() => setProfileOpen(false)}>Cancel</button>
               <button className="btn btn-primary" onClick={async () => { saveProfileLocally({ name: profileName, avatar: profileAvatar }); await broadcastProfileToGroup(); setProfileOpen(false); }}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* XMTP Installations Modal */}
+      {installationsOpen && (
+        <div className="modal" role="dialog" aria-modal="true">
+          <div className="modal__backdrop" onClick={() => setInstallationsOpen(false)} />
+          <div className="modal__card">
+            <div className="modal__header">
+              <div className="modal__title">XMTP Installations</div>
+              <button className="modal__close" onClick={() => setInstallationsOpen(false)}>×</button>
+            </div>
+            <div className="modal__body space-y-3 text-sm">
+              <p className="text-xs text-black/60">
+                XMTP wallets can keep up to 10 active installations. Revoke older installations to free space for new devices.
+              </p>
+              {installationsLoading ? (
+                <div className="text-xs text-black/60">Loading installations…</div>
+              ) : installationsError ? (
+                <div className="text-xs text-red-600">{installationsError}</div>
+              ) : (
+                <div className="space-y-2">
+                  {installations.length === 0 && (
+                    <div className="text-xs text-black/60">No installations found for this wallet.</div>
+                  )}
+                  {installations.map((inst) => {
+                    const isActive = inst.id === activeInstallationId;
+                    let relative = null;
+                    if (inst.timestamp) {
+                      const seconds = Math.floor(inst.timestamp / 1_000_000_000);
+                      relative = formatRelativeTimeFromSeconds(seconds, nowSeconds);
+                    }
+                    return (
+                      <div key={inst.id} className="flex items-center justify-between gap-3 border border-black/10 rounded px-3 py-2">
+                        <div>
+                          <div className="text-xs font-mono break-all">{inst.id}</div>
+                          {relative && <div className="text-[11px] text-black/60">Last activity {relative}</div>}
+                        </div>
+                        {isActive ? (
+                          <span className="text-xs text-black/50 uppercase tracking-wide">Active</span>
+                        ) : (
+                          <button className="btn btn-xs" onClick={() => handleRevokeInstallation(inst.id)}>Revoke</button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            <div className="modal__footer">
+              <button className="btn" onClick={() => setInstallationsOpen(false)}>Close</button>
+              <div className="flex gap-2">
+                <button className="btn" onClick={loadInstallationsState} disabled={installationsLoading}>Refresh</button>
+                <button
+                  className="btn btn-primary"
+                  onClick={handleRevokeOtherInstallations}
+                  disabled={installationsLoading || installations.length <= 1}
+                >
+                  Revoke Others
+                </button>
+              </div>
             </div>
           </div>
         </div>
