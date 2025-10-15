@@ -2415,6 +2415,9 @@ function App() {
           if (mutes.includes(from)) continue;
           const raw = String(msg.content || '');
           let parsed = null;
+          if (typeof raw === 'string' && raw.length === 0) {
+            continue;
+          }
           try { parsed = JSON.parse(raw); } catch {}
           if (parsed && parsed.type === 'profile') {
             const name = String(parsed.name || '').slice(0, 64);
@@ -2486,13 +2489,17 @@ function App() {
           if (parsed && (parsed.type === 'templ-created' || parsed.type === 'member-joined')) {
             setMessages((m) => {
               if (m.some((it) => it.mid === msg.id)) return m;
-              return [...m, { mid: msg.id, kind: 'system', senderAddress: from, content: parsed.type === 'templ-created' ? 'Templ created' : `${shorten(parsed.address)} joined` }];
+              const content = parsed.type === 'templ-created'
+                ? 'Templ created'
+                : parsed.address
+                  ? `${shorten(parsed.address)} joined`
+                  : 'Member joined';
+              return [...m, { mid: msg.id, kind: 'system', senderAddress: from, content }];
             });
             continue;
           }
           setMessages((m) => {
             if (m.some((it) => it.mid === msg.id)) return m;
-            // Replace local echo if present
             const idx = m.findIndex((it) => it.localEcho && it.kind === 'text' && it.content === raw && ((it.senderAddress || '').toLowerCase() === from || !it.senderAddress));
             if (idx !== -1) {
               const copy = m.slice();
@@ -3076,16 +3083,20 @@ function App() {
       const normalizedSender = senderAddress ? senderAddress.toLowerCase() : '';
       const localNonce = `local-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
       // Local echo to ensure immediate UI feedback; mark with localEcho so the stream can replace it
-      setMessages((m) => [
-        ...m,
-        {
-          kind: 'text',
-          senderAddress: normalizedSender || senderAddress || '',
-          content: body,
-          localEcho: true,
-          localNonce
-        }
-      ]);
+      setMessages((m) => {
+        const exists = m.some((item) => item.localEcho && item.content === body && ((item.senderAddress || '').toLowerCase() === normalizedSender || !item.senderAddress));
+        if (exists) return m;
+        return [
+          ...m,
+          {
+            kind: 'text',
+            senderAddress: normalizedSender || senderAddress || '',
+            content: body,
+            localEcho: true,
+            localNonce
+          }
+        ];
+      });
       setMessageInput('');
       pushStatus('✅ Message sent');
     } catch (err) {
