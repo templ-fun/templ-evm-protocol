@@ -2007,9 +2007,11 @@ function App() {
     const xmtpEnv = resolveXmtpEnv();
     const cache = loadXmtpCache(address);
     const storageKey = `xmtp:nonce:${address.toLowerCase()}`;
+    const uniqueDbPath = `xmtp-${xmtpEnv}-${Date.now()}-${Math.random().toString(36).slice(2)}.db3`;
     const baseOptions = {
       env: xmtpEnv,
-      appVersion: 'templ/0.1.0'
+      appVersion: 'templ/0.1.0',
+      dbOptions: { type: 'opfs', path: uniqueDbPath }
     };
 
     await clearXmtpOpfs();
