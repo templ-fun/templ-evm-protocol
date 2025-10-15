@@ -3945,40 +3945,38 @@ function App() {
                 </div>
               </div>
             </div>
+            <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Contract address" value={templAddress} onChange={(e) => updateTemplAddress(e.target.value)} />
             {needsTokenApproval && (
-              <div className="rounded border border-black/20 bg-white/80 p-3 text-xs text-black/70 space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-semibold text-black/90">Token approval</span>
-                  <button
-                    type="button"
-                    className="px-3 py-1 rounded border border-black/20 text-xs font-semibold"
-                    onClick={handleApproveToken}
-                    disabled={approvalButtonDisabled}
-                  >
-                    {approvalButtonLabel}
-                  </button>
-                </div>
-                <p className="text-xs text-black/60">
-                  Grant the templ contract permission to pull the entry fee from your wallet once. Approval only needs to be signed the first time.
-                </p>
+              <div className="rounded border border-black/20 bg-white/80 p-3 text-xs text-black/70 space-y-1">
                 <p className={`text-xs ${approvalStage === 'approved' ? 'text-green-700' : approvalStage === 'error' ? 'text-red-600' : 'text-black/60'}`}>
                   {approvalStatusText}
                 </p>
-                {approvalAllowance !== null && needsTokenApproval && joinMembershipInfo.required && (
+                {approvalAllowance !== null && joinMembershipInfo.required && (
                   <p className="text-[11px] text-black/50">
                     Allowance: {approvalAllowance} • Required: {joinMembershipInfo.required.toString()}
                   </p>
                 )}
               </div>
             )}
-            <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Contract address" value={templAddress} onChange={(e) => updateTemplAddress(e.target.value)} />
-            <button
-              className="px-4 py-2 rounded bg-primary text-black font-semibold w-full sm:w-auto"
-              onClick={handlePurchaseAndJoin}
-              disabled={joinSteps.purchase === 'pending' || joinSteps.join === 'pending' || (needsTokenApproval && approvalStage !== 'approved')}
-            >
-              Purchase & Join
-            </button>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              {needsTokenApproval && (
+                <button
+                  type="button"
+                  className="px-4 py-2 rounded border border-black/20 text-sm font-semibold w-full sm:w-auto"
+                  onClick={handleApproveToken}
+                  disabled={approvalButtonDisabled}
+                >
+                  {approvalButtonLabel}
+                </button>
+              )}
+              <button
+                className="px-4 py-2 rounded bg-primary text-black font-semibold w-full sm:w-auto"
+                onClick={handlePurchaseAndJoin}
+                disabled={joinSteps.purchase === 'pending' || joinSteps.join === 'pending' || (needsTokenApproval && approvalStage !== 'approved')}
+              >
+                Purchase & Join
+              </button>
+            </div>
             {(joinSteps.purchase !== 'idle' || joinSteps.join !== 'idle') && pendingJoinMatches && (
               <div className="mt-2 rounded border border-black/10 bg-white/70 p-3 text-xs text-black/70">
                 <div>{renderStepStatus('Purchase access (tx)', joinSteps.purchase, joinSteps.purchase === 'error' ? joinSteps.error : purchaseStatusNote || undefined)}</div>

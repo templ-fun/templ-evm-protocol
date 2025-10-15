@@ -130,6 +130,31 @@ async function hasSufficientAllowance({ ethers, providerOrSigner, owner, token, 
   }
 }
 
+async function assertSufficientBalance({ ethers, providerOrSigner, token, owner, amount }) {
+  const zeroAddress = (typeof ethers?.ZeroAddress === 'string'
+    ? ethers.ZeroAddress
+    : '0x0000000000000000000000000000000000000000').toLowerCase();
+  if (!providerOrSigner) {
+    throw new Error('Join failed: missing provider to check balances');
+  }
+  if (String(token).toLowerCase() === zeroAddress) {
+    const balance = await providerOrSigner.getBalance(owner);
+    if (BigInt(balance) < amount) {
+      throw new Error('Insufficient native balance for entry fee');
+    }
+    return;
+  }
+  const erc20 = new ethers.Contract(
+    token,
+    ['function balanceOf(address owner) view returns (uint256)'],
+    providerOrSigner
+  );
+  const balance = await erc20.balanceOf(owner);
+  if (BigInt(balance) < amount) {
+    throw new Error('Insufficient token balance for entry fee');
+  }
+}
+
 /**
  * Approve entry fee (if needed) and purchase templ access.
  * @param {import('../flows.types').PurchaseAccessRequest} params
@@ -190,6 +215,44 @@ export async function purchaseAccess({
     });
     if (!allowanceOk) {
       throw new Error('Token approval required before joining');
+    }
+  }
+
+  await assertSufficientBalance({
+    ethers,
+    providerOrSigner: signer.provider ?? signer,
+    token: resolvedToken,
+    owner: memberAddress,
+    amount: resolvedAmount
+  });
+
+  try {
+    const maxMembersRaw = await contract.MAX_MEMBERS();
+    if (maxMembersRaw !== undefined && maxMembersRaw !== null) {
+      const maxMembers = BigInt(maxMembersRaw);
+      if (maxMembers > 0n) {
+        try {
+          const totalPurchases = BigInt(await contract.totalPurchases());
+          if (totalPurchases >= maxMembers) {
+            throw new Error('Member limit reached for this templ');
+          }
+        } catch (err) {
+          if (err instanceof Error && err.message === 'Member limit reached for this templ') throw err;
+        }
+      }
+    }
+  } catch {}
+
+  try {
+    if (typeof contract.paused === 'function') {
+      const paused = await contract.paused();
+      if (paused) {
+        throw new Error('Templ is currently paused; ask the priest to unpause before joining');
+      }
+    }
+  } catch (err) {
+    if (err instanceof Error && /Templ is currently paused/.test(err.message)) {
+      throw err;
     }
   }
 
