@@ -128,17 +128,21 @@ export async function deployTempl({
     throw new Error('Max members must be non-negative');
   }
   const normalizedToken = String(tokenAddress);
+  const zeroAddress = ethers.ZeroAddress ?? '0x0000000000000000000000000000000000000000';
   const normalizedBurnAddress = burnAddress && ethers.isAddress?.(burnAddress)
     ? burnAddress
-    : undefined;
+    : null;
   const useCustomCurve = Boolean(curveProvided && curveConfig);
   const defaultCurve = { primary: { style: 0, rateBps: 0 } };
   const curveStruct = useCustomCurve ? curveConfig : defaultCurve;
-  const quorumValue = quorumPercent !== undefined && quorumPercent !== null ? Number(quorumPercent) : undefined;
+  const quorumValue = quorumPercent !== undefined && quorumPercent !== null ? Number(quorumPercent) : null;
   const executionDelayValue = executionDelaySeconds !== undefined && executionDelaySeconds !== null
     ? Number(executionDelaySeconds)
-    : undefined;
+    : null;
   const homeLinkValue = templHomeLink ? String(templHomeLink) : '';
+  const hasCustomQuorum = quorumValue !== null;
+  const hasCustomDelay = executionDelayValue !== null;
+  const hasCustomBurn = normalizedBurnAddress !== null;
 
   const config = {
     priest: walletAddress,
@@ -147,31 +151,24 @@ export async function deployTempl({
     burnPercent: burnBps,
     treasuryPercent: treasuryBps,
     memberPoolPercent: memberBps,
+    quorumPercent: hasCustomQuorum ? quorumValue : 0,
+    executionDelaySeconds: hasCustomDelay ? executionDelayValue : 0,
+    burnAddress: hasCustomBurn ? normalizedBurnAddress : zeroAddress,
     priestIsDictator: priestIsDictator === true,
     maxMembers: normalizedMaxMembers,
     curveProvided: useCustomCurve,
     curve: curveStruct,
     homeLink: homeLinkValue
   };
-  if (quorumValue !== undefined) {
-    config.quorumPercent = quorumValue;
-  }
-  if (executionDelayValue !== undefined) {
-    config.executionDelaySeconds = executionDelayValue;
-  }
-  if (normalizedBurnAddress) {
-    config.burnAddress = normalizedBurnAddress;
-  }
 
-  const zeroAddress = ethers.ZeroAddress ?? '0x0000000000000000000000000000000000000000';
   const defaultsRequested =
     burnBps === 3_000 &&
     treasuryBps === 3_000 &&
     memberBps === 3_000 &&
     config.priest === walletAddress &&
-    (config.burnAddress === undefined || config.burnAddress === zeroAddress) &&
-    config.quorumPercent === undefined &&
-    config.executionDelaySeconds === undefined &&
+    !hasCustomBurn &&
+    !hasCustomQuorum &&
+    !hasCustomDelay &&
     config.priestIsDictator === false &&
     normalizedMaxMembers === 0n &&
     !useCustomCurve &&

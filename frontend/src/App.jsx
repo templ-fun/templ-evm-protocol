@@ -1548,6 +1548,9 @@ function App() {
     let normalizedMaxMembers = 0n;
     try {
       normalizedMaxMembers = limitInput ? BigInt(limitInput) : 0n;
+      if (!showAdvanced && normalizedMaxMembers === 249n) {
+        normalizedMaxMembers = 0n;
+      }
     } catch {
       alert('Invalid max members value');
       return;
