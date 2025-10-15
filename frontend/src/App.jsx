@@ -157,49 +157,101 @@ function installationIdToBytes(id) {
 }
 
 function formatInstallationRecord(inst) {
-  if (!inst) return { id: '', timestamp: 0, bytes: null };
+  if (!inst) return { id: '', timestamp: 0, bytes: null, revokedAt: 0 };
   let timestamp = 0;
+  let revokedAt = 0;
   try {
     if (typeof inst.clientTimestampNs === 'bigint') {
       timestamp = Number(inst.clientTimestampNs / 1000000n);
     }
   } catch {}
+  try {
+    if (typeof inst.revokedAtNs === 'bigint') {
+      revokedAt = Number(inst.revokedAtNs / 1000000n);
+    } else if (typeof inst.revokedTimestampNs === 'bigint') {
+      revokedAt = Number(inst.revokedTimestampNs / 1000000n);
+    } else if (typeof inst.revokedAtMs === 'number') {
+      revokedAt = inst.revokedAtMs;
+    } else if (typeof inst.revokedAt === 'number') {
+      revokedAt = inst.revokedAt;
+    }
+  } catch {}
   return {
     id: inst.id || '',
     timestamp,
-    bytes: inst.bytes instanceof Uint8Array ? inst.bytes : null
+    bytes: inst.bytes instanceof Uint8Array ? inst.bytes : null,
+    revokedAt
   };
 }
 
+function areUint8ArraysEqual(a, b) {
+  if (!(a instanceof Uint8Array) || !(b instanceof Uint8Array)) return false;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+function installationMatches(inst, targetId, targetBytes) {
+  if (!inst) return false;
+  const id = inst.id ? String(inst.id) : '';
+  if (inst.revokedAt && inst.revokedAt > 0) {
+    return false;
+  }
+  if (id && targetId) {
+    if (id === targetId) {
+      return true;
+    }
+    const bothHex = /^0x/i.test(id) && /^0x/i.test(targetId);
+    if (bothHex && id.toLowerCase() === targetId.toLowerCase()) {
+      return true;
+    }
+  }
+  const instBytes = inst.bytes instanceof Uint8Array ? inst.bytes : installationIdToBytes(id);
+  if (instBytes && targetBytes) {
+    return areUint8ArraysEqual(instBytes, targetBytes);
+  }
+  return false;
+}
+
 async function pruneExcessInstallations({ address, signer, cache, env, keepInstallationId, pushStatus }) {
-  if (!cache?.inboxId || !signer) return false;
+  if (!cache?.inboxId || !signer) {
+    return { revoked: false, installations: null };
+  }
   try {
     const states = await Client.inboxStateFromInboxIds([cache.inboxId], env);
     const state = Array.isArray(states) ? states[0] : null;
     const installations = Array.isArray(state?.installations) ? state.installations : [];
-    if (installations.length < 10) return false;
-    const sorted = installations
-      .map(formatInstallationRecord)
-      .filter((inst) => inst.id && inst.id !== keepInstallationId);
+    const formatted = installations.map(formatInstallationRecord).filter((inst) => inst.id);
+    if (formatted.length < 10) {
+      return { revoked: false, installations: formatted };
+    }
+    const sorted = formatted.filter((inst) => inst.id && inst.id !== keepInstallationId);
     sorted.sort((a, b) => a.timestamp - b.timestamp);
     const maxOtherInstallations = 8;
     const overflow = Math.max(0, sorted.length - maxOtherInstallations);
-    if (overflow <= 0) return false;
+    if (overflow <= 0) {
+      return { revoked: false, installations: formatted };
+    }
     const targets = sorted.slice(0, overflow);
     const payload = targets
       .map((inst) => inst.bytes || installationIdToBytes(inst.id))
       .filter((value) => value instanceof Uint8Array);
-    if (!payload.length) return false;
+    if (!payload.length) {
+      return { revoked: false, installations: formatted };
+    }
     const nonce = getStableNonce(address);
     const signerWrapper = makeXmtpSigner({ address, signer, nonce });
     await Client.revokeInstallations(signerWrapper, cache.inboxId, payload, env);
     if (pushStatus) {
       pushStatus(`♻️ Revoked ${targets.length} older XMTP installation${targets.length === 1 ? '' : 's'}`);
     }
-    return true;
+    const remaining = formatted.filter((inst) => !targets.some((target) => inst.id === target.id));
+    return { revoked: true, installations: remaining };
   } catch (err) {
     console.warn('[app] prune installations failed', err?.message || err);
-    return false;
+    return { revoked: false, installations: null };
   }
 }
 
@@ -1990,19 +2042,62 @@ function App() {
       const options = disableAutoRegister ? { ...baseOptions, disableAutoRegister: true } : baseOptions;
       dlog('[app] Creating XMTP client', { disableAutoRegister, nonce });
       const clientInstance = await Client.create(signerWrapper, options);
+      let forcedRegistration = false;
+      if (disableAutoRegister) {
+        let registrationNeeded = !clientInstance.installationId;
+        let validationError = '';
+        if (clientInstance.installationId) {
+          try {
+            const statuses = await clientInstance.getKeyPackageStatusesForInstallationIds?.([String(clientInstance.installationId)]);
+            const statusEntry = statuses instanceof Map
+              ? statuses.get(String(clientInstance.installationId))
+              : Array.isArray(statuses)
+                ? statuses.find(([key]) => key === String(clientInstance.installationId))?.[1]
+                : null;
+            if (!statusEntry) {
+              registrationNeeded = true;
+            }
+            const validation = statusEntry?.validationError || (statusEntry && typeof statusEntry === 'object' && 'validationError' in statusEntry ? statusEntry.validationError : '');
+            if (validation) {
+              validationError = String(validation);
+              registrationNeeded = true;
+            }
+          } catch (err) {
+            console.warn('[app] XMTP key package status check failed', err?.message || err);
+          }
+        }
+        if (!registrationNeeded) {
+          try {
+            const registered = await clientInstance.isRegistered?.();
+            if (!registered) {
+              registrationNeeded = true;
+            }
+          } catch (err) {
+            registrationNeeded = true;
+            console.warn('[app] XMTP isRegistered check failed', err?.message || err);
+          }
+        }
+        if (registrationNeeded) {
+          forcedRegistration = true;
+          pushStatus('♻️ XMTP installation revoked. Please approve the new registration prompt.');
+          dlog('[app] XMTP registration required, requesting new signature', { validationError });
+          await clientInstance.register();
+        }
+      }
       try { localStorage.setItem(storageKey, String(nonce)); } catch {}
       saveXmtpCache(address, {
         nonce,
         inboxId: clientInstance.inboxId,
         installationId: clientInstance.installationId ? String(clientInstance.installationId) : undefined
       });
-      return clientInstance;
+      return { client: clientInstance, forcedRegistration };
     }
 
     async function createOrResumeXmtp() {
+      let installationSnapshot = null;
       if (cache?.inboxId) {
         try {
-          await pruneExcessInstallations({
+          const pruneResult = await pruneExcessInstallations({
             address,
             signer: nextSigner,
             cache,
@@ -2010,6 +2105,9 @@ function App() {
             keepInstallationId: cache?.installationId || '',
             pushStatus
           });
+          if (Array.isArray(pruneResult?.installations)) {
+            installationSnapshot = pruneResult.installations;
+          }
         } catch (err) {
           console.warn('[app] prune prior to client init failed', err?.message || err);
         }
@@ -2017,13 +2115,24 @@ function App() {
       const cachedInstallationId = typeof cache?.installationId === 'string' ? cache.installationId.trim() : '';
       const hadCachedInstallation = Boolean(cachedInstallationId);
       const hadCachedInbox = Boolean(cache?.inboxId);
+      const cachedInstallationBytes = hadCachedInstallation ? installationIdToBytes(cachedInstallationId) : null;
+      const installationStillRegistered = hadCachedInstallation && Array.isArray(installationSnapshot)
+        ? installationSnapshot.some((inst) => installationMatches(inst, cachedInstallationId, cachedInstallationBytes))
+        : null;
       let requireFreshInstallation = !hadCachedInstallation;
       let reinstallReason = '';
+      if (hadCachedInstallation && installationStillRegistered === false) {
+        requireFreshInstallation = true;
+        reinstallReason = 'cached XMTP installation no longer registered';
+        try { cache.installationId = null; } catch {}
+        try { saveXmtpCache(address, { installationId: null }); } catch {}
+      }
       let limitEncountered = false;
       if (!requireFreshInstallation) {
         for (const nonce of candidateNonces) {
           try {
-            return await createClientWithNonce(nonce, true);
+            const { client: resumedClient } = await createClientWithNonce(nonce, true);
+            return resumedClient;
           } catch (err) {
             const msg = String(err?.message || err);
             if (isAccessHandleError(err)) continue;
@@ -2054,10 +2163,14 @@ function App() {
         pushStatus('♻️ XMTP installation revoked. Please approve the new registration prompt.');
       }
       try {
-        return await createClientWithNonce(fallbackNonce, false);
+        const { client: freshClient } = await createClientWithNonce(fallbackNonce, false);
+        return freshClient;
       } catch (err) {
         const msg = String(err?.message || err);
-        if (isAccessHandleError(err)) return await createClientWithNonce(fallbackNonce, false);
+        if (isAccessHandleError(err)) {
+          const { client: retriedClient } = await createClientWithNonce(fallbackNonce, false);
+          return retriedClient;
+        }
         if (msg.includes('already registered 10/10 installations')) {
           const limitError = new Error('XMTP installation limit reached for this wallet. Please revoke older installations or switch wallets.');
           limitError.name = 'XMTP_LIMIT';
