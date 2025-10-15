@@ -153,22 +153,21 @@ describe('templ flows', () => {
       Contract: vi.fn().mockImplementation(() => factoryContract)
     };
     mockFetchSuccess({});
-    await expect(
-      deployTempl({
-        ethers,
-        xmtp: undefined,
-        signer,
-        walletAddress: '0xabc',
-        tokenAddress: '0xdef',
-        entryFee: '1',
-        burnPercent: '30',
-        treasuryPercent: '30',
-        memberPoolPercent: '30',
-        factoryAddress: '0xFactory',
-        factoryArtifact: { abi: [] },
-        templArtifact
-      })
-    ).rejects.toThrow(/Invalid \/templs response/);
+    const result = await deployTempl({
+      ethers,
+      xmtp: undefined,
+      signer,
+      walletAddress: '0xabc',
+      tokenAddress: '0xdef',
+      entryFee: '1',
+      burnPercent: '30',
+      treasuryPercent: '30',
+      memberPoolPercent: '30',
+      factoryAddress: '0xFactory',
+      factoryArtifact: { abi: [] },
+      templArtifact
+    });
+    expect(result).toEqual({ contractAddress: '0xDeAd', group: null, groupId: null });
   });
 
   it('deployTempl forwards maxMembers when provided', async () => {

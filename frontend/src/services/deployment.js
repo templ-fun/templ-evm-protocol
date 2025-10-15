@@ -218,13 +218,16 @@ export async function deployTempl({
       `Templ registration failed: ${res.status} ${res.statusText} ${body}`.trim()
     );
   }
-  const data = await res.json();
+  const data = await res.json().catch(() => ({}));
   dlog('deployTempl: /templs response', data);
-  if (!data || typeof data.groupId !== 'string' || data.groupId.length === 0) {
-    throw new Error('Invalid /templs response: missing groupId');
-  }
+  const hasGroupId = typeof data?.groupId === 'string' && data.groupId.length > 0;
   if (isDebugEnabled()) {
-    dlog('deployTempl: templs registration completed successfully');
+    dlog('deployTempl: templs registration completed', { hasGroupId, groupId: data?.groupId });
+  }
+  if (!hasGroupId) {
+    dlog('deployTempl: backend did not return groupId; continuing without group binding');
+    // XMTP group creation may fail independently; surface deploy result without group linkage
+    return { contractAddress, group: null, groupId: null };
   }
   const groupId = String(data.groupId);
   // In e2e fast mode, return immediately; conversation discovery can happen later

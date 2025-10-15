@@ -5,7 +5,10 @@ import { waitFor } from '../../../shared/xmtp-wait.js';
 import { logger } from '../logger.js';
 import { resolveXmtpEnv } from './options.js';
 
-export const XMTP_ENV = resolveXmtpEnv();
+const resolvedEnv = resolveXmtpEnv();
+export const XMTP_ENV = /** @type {'local' | 'dev' | 'production'} */ (
+  ['local', 'dev', 'production'].includes(resolvedEnv) ? resolvedEnv : 'dev'
+);
 
 // Linearize: wait until the target inbox is visible on the XMTP network
 export async function waitForInboxReady(inboxId, tries = 60) {
@@ -62,38 +65,28 @@ export async function createXmtpWithRotation(wallet, maxAttempts = 20) {
     dbEncryptionKey = new Uint8Array(32);
   }
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const xmtpSigner = {
+    /** @type {import('@xmtp/node-sdk').Signer} */
+    const xmtpSigner = /** @type {import('@xmtp/node-sdk').Signer} */ ({
       type: 'EOA',
-      getAddress: () => wallet.address,
       getIdentifier: () => ({
         identifier: wallet.address.toLowerCase(),
         identifierKind: 0, // Ethereum enum
         nonce: attempt
       }),
       signMessage: async (message) => {
-        let messageToSign;
-        if (message instanceof Uint8Array) {
-          try {
-            messageToSign = ethers.toUtf8String(message);
-          } catch {
-            messageToSign = ethers.hexlify(message);
-          }
-        } else if (typeof message === 'string') {
-          messageToSign = message;
-        } else {
-          messageToSign = String(message);
-        }
+        const messageToSign = typeof message === 'string' ? message : String(message);
         const signature = await wallet.signMessage(messageToSign);
         return ethers.getBytes(signature);
       }
-    };
+    });
     try {
       // @ts-ignore - Node SDK accepts EOA-like signers; our JS object matches at runtime
-      const env = resolveXmtpEnv();
+      const env = XMTP_ENV;
       // @ts-ignore - TS cannot discriminate the 'EOA' literal on JS object; safe at runtime
-      const loggingLevel =
+      const loggingLevel = /** @type {any} */ (
         process.env.XMTP_LOG_LEVEL ||
-        (process.env.NODE_ENV === 'production' ? 'warn' : 'debug');
+        (process.env.NODE_ENV === 'production' ? 'warn' : 'debug')
+      );
       const structuredLogging = process.env.XMTP_STRUCTURED_LOGGING === '1';
       const appVersion = process.env.XMTP_APP_VERSION || 'templ/1.0.1';
       const apiUrl = process.env.XMTP_API_URL;

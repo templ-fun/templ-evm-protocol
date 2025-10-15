@@ -942,7 +942,9 @@ async function restoreGroupsFromPersistence({ listBindings, templs, watchContrac
         lastDigestAt: 0,
         contractAddress: key,
         templHomeLink: '',
-        bindingCode: row?.bindingCode ? String(row.bindingCode) : null
+        bindingCode: row?.bindingCode ? String(row.bindingCode) : null,
+        groupId: row?.groupId ? String(row.groupId) : null,
+        group: null
       };
       templs.set(key, record);
       if (watchContract) {
@@ -1463,8 +1465,9 @@ export async function createApp(opts) {
 
       // Add XMTP helper function to context
       context.ensureGroup = async (record) => {
-        if (record?.group) return record.group;
-        if (record?.groupId && xmtp?.conversations?.getConversationById) {
+        if (!record) return null;
+        if (record.group) return record.group;
+        if (record.groupId && xmtp?.conversations?.getConversationById) {
           try {
             const maybe = await xmtp.conversations.getConversationById(record.groupId);
             if (maybe) {
@@ -1475,7 +1478,25 @@ export async function createApp(opts) {
             logger.warn({ err: err?.message || err, groupId: record.groupId }, 'Failed to hydrate group conversation');
           }
         }
-        return record?.group || null;
+        if (!record.groupId && xmtp?.conversations?.newGroup && process.env.XMTP_ENABLED !== '0') {
+          try {
+            const group = await xmtp.conversations.newGroup([], {
+              name: `templ:${record.contractAddress?.slice?.(0, 10) ?? 'templ'}`,
+              description: record.templHomeLink ? `templ.fun • ${record.templHomeLink}` : 'templ.fun group'
+            });
+            if (group?.id) {
+              record.groupId = String(group.id);
+              record.group = group;
+              templs.set(record.contractAddress || record.contract || '', record);
+              await persist(record.contractAddress || record.contract || '', record);
+              logger.info({ contract: record.contractAddress, groupId: record.groupId }, 'Created XMTP group for templ');
+              return group;
+            }
+          } catch (err) {
+            logger.warn({ err: err?.message || err, contract: record.contractAddress }, 'Failed to create XMTP group');
+          }
+        }
+        return record.group || null;
       };
 
     } catch (err) {

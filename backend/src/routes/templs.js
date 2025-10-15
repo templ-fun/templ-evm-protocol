@@ -96,7 +96,7 @@ export default function templsRouter({ templs, persist, provider, watchContract,
           contract: templ.contract,
           priest: templ.priest,
           telegramChatId: templ.telegramChatId,
-          groupId: templ.telegramChatId,
+          groupId: templ.groupId || null,
           templHomeLink: templ.templHomeLink,
           bindingCode
         });

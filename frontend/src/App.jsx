@@ -651,7 +651,7 @@ function App() {
       const suggested = (10n ** BigInt(createTokenDecimals)).toString();
       setEntryFee(suggested);
     } catch {}
-  }, [createTokenDecimals, tokenAddress]);
+  }, [createTokenDecimals, tokenAddress, entryFee]);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
