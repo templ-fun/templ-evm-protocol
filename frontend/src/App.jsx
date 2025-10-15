@@ -240,11 +240,15 @@ async function pruneExcessInstallations({ address, signer, cache, env, keepInsta
       })
       .filter((inst) => inst.id && inst.id !== keepInstallationId);
     sorted.sort((a, b) => a.timestamp - b.timestamp);
-    const maxAllowed = 9; // leave room for current device
-    const overflow = sorted.length - maxAllowed;
+    const maxOtherInstallations = 8; // keep at most 8 other devices so total stays under the limit
+    let overflow = sorted.length - maxOtherInstallations;
+    if (overflow <= 0 && installations.length > 9) {
+      overflow = 1; // still above the limit, drop the oldest fallback
+    }
     if (overflow <= 0) return false;
     const idsToRevoke = sorted.slice(0, overflow).map((inst) => inst.id);
     if (!idsToRevoke.length) return false;
+    dlog('[app] pruneExcessInstallations', { overflow, idsToRevoke });
     const nonce = getStableNonce(address);
     const signerWrapper = makeXmtpSigner({ address, signer, nonce });
     const payload = idsToRevoke
@@ -260,7 +264,7 @@ async function pruneExcessInstallations({ address, signer, cache, env, keepInsta
     if (isAccessHandleError(err)) {
       throw err;
     }
-    console.warn('[app] prune installations failed', err?.message || err);
+    console.error('[app] prune installations failed', err?.message || err, err);
     return false;
   }
 }
@@ -844,6 +848,7 @@ function App() {
         };
       }));
     } catch (err) {
+      console.error('[app] loadInstallationsState failed', err?.message || err, err);
       setInstallationsError(err?.message || String(err));
     } finally {
       setInstallationsLoading(false);
@@ -892,6 +897,7 @@ function App() {
       pushStatus('✅ Installation revoked');
       await loadInstallationsState();
     } catch (err) {
+      console.error('[app] handleRevokeInstallation error', err?.message || err, err);
       setInstallationsError(err?.message || String(err));
     }
   }, [walletAddress, signer, loadInstallationsState, pushStatus]);
@@ -908,7 +914,18 @@ function App() {
     try {
       setInstallationsError(null);
       const env = resolveXmtpEnv();
-      const states = await Client.inboxStateFromInboxIds([cache.inboxId], env);
+      let states;
+      try {
+        states = await Client.inboxStateFromInboxIds([cache.inboxId], env);
+      } catch (err) {
+        if (isAccessHandleError(err)) {
+          await clearXmtpOpfs();
+          states = await Client.inboxStateFromInboxIds([cache.inboxId], env);
+        } else {
+          console.error('[app] inboxStateFromInboxIds (bulk revoke) failed', err?.message || err, err);
+          throw err;
+        }
+      }
       const state = Array.isArray(states) ? states[0] : null;
       const idsToRevoke = (state?.installations || [])
         .map((inst) => inst.id)
@@ -947,6 +964,7 @@ function App() {
       pushStatus('✅ Other installations revoked');
       await loadInstallationsState();
     } catch (err) {
+      console.error('[app] handleRevokeOtherInstallations error', err?.message || err, err);
       setInstallationsError(err?.message || String(err));
     }
   }, [walletAddress, signer, activeInstallationId, loadInstallationsState, pushStatus]);
@@ -2102,6 +2120,7 @@ function App() {
       setActiveInboxId('');
       setActiveInstallationId('');
       const message = String(err?.message || err);
+      console.error('[app] XMTP client initialisation failed', err?.message || err, err);
       if (err?.name === 'XMTP_LIMIT' || message.includes('installation limit')) {
         setXmtpLimitWarning(message);
         pushStatus('⚠️ XMTP limit reached. Use a different wallet or revoke old inboxes.');
