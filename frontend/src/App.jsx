@@ -113,6 +113,49 @@ function saveXmtpCache(address, data) {
   } catch {}
 }
 
+function installationIdToBytes(id) {
+  if (!id) return null;
+  try {
+    if (/^0x/i.test(id)) {
+      return ethers.getBytes(id);
+    }
+  } catch {}
+  try {
+    const normalized = id.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized + '==='.slice((normalized.length + 3) % 4);
+    if (typeof window !== 'undefined' && typeof window.atob === 'function') {
+      const binary = window.atob(padded);
+      const out = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) {
+        out[i] = binary.charCodeAt(i);
+      }
+      return out;
+    }
+    if (typeof globalThis !== 'undefined' && typeof globalThis.Buffer !== 'undefined') {
+      return globalThis.Buffer.from(padded, 'base64');
+    }
+    // Fallback manual decode
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    const bytes = [];
+    let buffer = 0;
+    let bits = 0;
+    for (const char of padded) {
+      if (char === '=') break;
+      const index = alphabet.indexOf(char);
+      if (index === -1) continue;
+      buffer = (buffer << 6) | index;
+      bits += 6;
+      if (bits >= 8) {
+        bits -= 8;
+        bytes.push((buffer >> bits) & 0xff);
+      }
+    }
+    return Uint8Array.from(bytes);
+  } catch {
+    return null;
+  }
+}
+
 async function clearXmtpOpfs() {
   if (typeof navigator === 'undefined') return;
   const storage = navigator.storage;
@@ -204,7 +247,11 @@ async function pruneExcessInstallations({ address, signer, cache, env, keepInsta
     if (!idsToRevoke.length) return false;
     const nonce = getStableNonce(address);
     const signerWrapper = makeXmtpSigner({ address, signer, nonce });
-    await Client.revokeInstallations(signerWrapper, cache.inboxId, idsToRevoke, env);
+    const payload = idsToRevoke
+      .map((id) => installationIdToBytes(id))
+      .filter((value) => value instanceof Uint8Array);
+    if (!payload.length) return false;
+    await Client.revokeInstallations(signerWrapper, cache.inboxId, payload, env);
     if (pushStatus) {
       pushStatus(`♻️ Revoked ${idsToRevoke.length} older XMTP installation${idsToRevoke.length === 1 ? '' : 's'}`);
     }
@@ -778,6 +825,7 @@ function App() {
           await clearXmtpOpfs();
           states = await Client.inboxStateFromInboxIds([cache.inboxId], env);
         } else {
+          console.error('[app] inboxStateFromInboxIds failed', err);
           throw err;
         }
       }
@@ -821,12 +869,19 @@ function App() {
       const nonce = getStableNonce(walletAddress);
       const signerWrapper = makeXmtpSigner({ address: walletAddress, signer, nonce });
       try {
-        await Client.revokeInstallations(signerWrapper, cache.inboxId, [installationId], env);
+        const payload = [installationIdToBytes(installationId)].filter((value) => value instanceof Uint8Array);
+        if (!payload.length) {
+          throw new Error('Unable to parse installation id for revocation');
+        }
+        await Client.revokeInstallations(signerWrapper, cache.inboxId, payload, env);
       } catch (err) {
         if (isAccessHandleError(err)) {
           await clearXmtpOpfs();
-          await Client.revokeInstallations(signerWrapper, cache.inboxId, [installationId], env);
+          const payload = [installationIdToBytes(installationId)].filter((value) => value instanceof Uint8Array);
+          if (!payload.length) throw err;
+          await Client.revokeInstallations(signerWrapper, cache.inboxId, payload, env);
         } else {
+          console.error('[app] revokeInstallations failed', err);
           throw err;
         }
       }
@@ -865,12 +920,23 @@ function App() {
       const nonce = getStableNonce(walletAddress);
       const signerWrapper = makeXmtpSigner({ address: walletAddress, signer, nonce });
       try {
-        await Client.revokeInstallations(signerWrapper, cache.inboxId, idsToRevoke, env);
+        const payload = idsToRevoke
+          .map((id) => installationIdToBytes(id))
+          .filter((value) => value instanceof Uint8Array);
+        if (!payload.length) {
+          throw new Error('Unable to parse installation ids for revocation');
+        }
+        await Client.revokeInstallations(signerWrapper, cache.inboxId, payload, env);
       } catch (err) {
         if (isAccessHandleError(err)) {
           await clearXmtpOpfs();
-          await Client.revokeInstallations(signerWrapper, cache.inboxId, idsToRevoke, env);
+          const payload = idsToRevoke
+            .map((id) => installationIdToBytes(id))
+            .filter((value) => value instanceof Uint8Array);
+          if (!payload.length) throw err;
+          await Client.revokeInstallations(signerWrapper, cache.inboxId, payload, env);
         } else {
+          console.error('[app] bulk revoke failed', err);
           throw err;
         }
       }
@@ -1985,6 +2051,7 @@ function App() {
           const msg = String(err?.message || err);
           if (isAccessHandleError(err)) {
             await ensureOpfsCleared();
+            continue;
           }
           if (msg.includes('already registered 10/10 installations')) {
             limitEncountered = true;
@@ -2007,6 +2074,7 @@ function App() {
         const msg = String(err?.message || err);
         if (isAccessHandleError(err)) {
           await ensureOpfsCleared();
+          return await createClientWithNonce(candidateNonces[0] || 1, false);
         }
         if (msg.includes('already registered 10/10 installations')) {
           const limitError = new Error('XMTP installation limit reached for this wallet. Please revoke older installations or switch wallets.');
