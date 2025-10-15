@@ -557,6 +557,8 @@ function App() {
   const [proposeAction, setProposeAction] = useState('none'); // none | pause | unpause | moveTreasuryToMe | reprice | disband | changePriest | enableDictatorship | disableDictatorship | setMaxMembers
   const [proposeFee, setProposeFee] = useState('');
   const [proposeToken, setProposeToken] = useState('');
+  const [proposeAmount, setProposeAmount] = useState('');
+  const [proposeReason, setProposeReason] = useState('');
   const [proposeNewPriest, setProposeNewPriest] = useState('');
   const [proposeMaxMembers, setProposeMaxMembers] = useState('');
   const [currentFee, setCurrentFee] = useState(null);
@@ -606,6 +608,22 @@ function App() {
   }, [pathIsChat, templAddress, pendingJoinMatches, groupId, groupConnected]);
   const joinRetryCountRef = useRef(0);
   const moderationEnabled = false;
+  useEffect(() => {
+    if (proposeAction !== 'moveTreasuryToMe') {
+      setProposeAmount('');
+      setProposeReason('');
+    }
+    if (proposeAction !== 'moveTreasuryToMe' && proposeAction !== 'disband') {
+      setProposeToken('');
+    }
+  }, [proposeAction]);
+  useEffect(() => {
+    if (!proposeOpen) {
+      setProposeAmount('');
+      setProposeReason('');
+      setProposeToken('');
+    }
+  }, [proposeOpen]);
   const renderStepStatus = useCallback((label, state, extra) => {
     const icon = STATUS_ICONS[state] || STATUS_ICONS.idle;
     const text = STATUS_DESCRIPTIONS[state] || STATUS_DESCRIPTIONS.idle;
@@ -1859,8 +1877,7 @@ function App() {
         const env = forcedEnv || (onLocalhost ? 'dev' : null);
         if (!env) {
           identityReadyRef.current = true;
-          return;
-        }
+        } else {
           const inboxId = xmtp.inboxId.replace(/^0x/i, '');
           let max = import.meta.env?.VITE_E2E_DEBUG === '1' ? 120 : 90;
           let delay = 1000;
@@ -1877,7 +1894,11 @@ function App() {
             await new Promise((r) => setTimeout(r, delay));
           }
         }
+        }
       } catch {}
+      if (!identityReadyRef.current) {
+        identityReadyRef.current = true;
+      }
       dlog('[app] starting purchaseAndJoin', { inboxId: xmtp?.inboxId, address: walletAddress, templAddress });
       let memberAddress = walletAddress;
       if (!memberAddress) {
@@ -2218,7 +2239,7 @@ function App() {
           setMessages((m) => {
             if (m.some((it) => it.mid === msg.id)) return m;
             // Replace local echo if present
-            const idx = m.findIndex((it) => !it.mid && it.kind === 'text' && (it.senderAddress||'').toLowerCase() === from && it.content === raw);
+            const idx = m.findIndex((it) => it.localEcho && it.kind === 'text' && it.content === raw && ((it.senderAddress || '').toLowerCase() === from || !it.senderAddress));
             if (idx !== -1) {
               const copy = m.slice();
               copy[idx] = { mid: msg.id, kind: 'text', senderAddress: from, content: raw };
@@ -2643,7 +2664,7 @@ function App() {
     try {
       const gid = (groupId || '').toLowerCase();
       if (!gid) return;
-      const toSave = messages.slice(-200); // cap
+      const toSave = messages.filter((msg) => !msg?.localEcho).slice(-200); // cap and drop unsent local echoes
       localStorage.setItem(`templ:messages:${gid}`, JSON.stringify(toSave));
     } catch {}
   }, [messages, groupId]);
@@ -2689,8 +2710,23 @@ function App() {
       }
       const body = messageInput;
       await sendMessage({ group: activeGroup, content: body });
-      // Local echo to ensure immediate UI feedback; mark without mid so it can be replaced by stream
-      setMessages((m) => [...m, { kind: 'text', senderAddress: walletAddress, content: body }]);
+      let senderAddress = walletAddress;
+      if (!senderAddress && signer?.getAddress) {
+        try { senderAddress = await signer.getAddress(); } catch {}
+      }
+      const normalizedSender = senderAddress ? senderAddress.toLowerCase() : '';
+      const localNonce = `local-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      // Local echo to ensure immediate UI feedback; mark with localEcho so the stream can replace it
+      setMessages((m) => [
+        ...m,
+        {
+          kind: 'text',
+          senderAddress: normalizedSender || senderAddress || '',
+          content: body,
+          localEcho: true,
+          localNonce
+        }
+      ]);
       setMessageInput('');
       pushStatus('✅ Message sent');
     } catch (err) {
@@ -4099,9 +4135,32 @@ function App() {
               {proposeAction === 'moveTreasuryToMe' && (
                 <div className="text-xs text-black/80 mt-1 flex flex-col gap-2">
                   <div className="flex gap-2 items-center">
-                    <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Token address or ETH" value={proposeToken} onChange={(e) => setProposeToken(e.target.value)} />
+                    <input
+                      className="w-full border border-black/20 rounded px-3 py-2"
+                      placeholder="Token address or ETH (defaults to entry token)"
+                      value={proposeToken}
+                      onChange={(e) => setProposeToken(e.target.value)}
+                    />
                   </div>
-                  <div className="text-xs text-black/60">Leave blank to use entry fee token.</div>
+                  <div className="flex gap-2 items-center">
+                    <input
+                      className="w-full border border-black/20 rounded px-3 py-2"
+                      placeholder="Amount to withdraw (raw units, blank = max)"
+                      value={proposeAmount}
+                      onChange={(e) => setProposeAmount(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex gap-2 items-center">
+                    <input
+                      className="w-full border border-black/20 rounded px-3 py-2"
+                      placeholder="Reason (optional)"
+                      value={proposeReason}
+                      onChange={(e) => setProposeReason(e.target.value)}
+                    />
+                  </div>
+                  <div className="text-xs text-black/60">
+                    Amount is interpreted as raw token units. For the entry token, subtracts the member pool before calculating “blank = max”.
+                  </div>
                 </div>
               )}
               {proposeAction === 'disband' && (
@@ -4149,33 +4208,57 @@ function App() {
                     try {
                       const me = await signer.getAddress();
                       const templ = new ethers.Contract(templAddress, templArtifact.abi, signer);
+                      const tokenInput = proposeToken.trim();
                       let tokenAddr;
-                      if (!proposeToken.trim()) {
+                      if (!tokenInput) {
                         tokenAddr = await templ.accessToken();
-                      } else if (proposeToken.trim().toLowerCase() === 'eth') {
+                      } else if (tokenInput.toLowerCase() === 'eth') {
                         tokenAddr = ethers.ZeroAddress;
                       } else {
-                        tokenAddr = proposeToken.trim();
+                        if (!ethers.isAddress(tokenInput)) {
+                          throw new Error('Invalid treasury token address');
+                        }
+                        tokenAddr = ethers.getAddress(tokenInput);
                       }
-                      // Determine full withdrawable amount for the chosen token
+                      const amountInput = proposeAmount.trim();
                       let amount = 0n;
-                      if (tokenAddr === ethers.ZeroAddress) {
-                        amount = BigInt(await signer.provider.getBalance(templAddress));
+                      if (amountInput) {
+                        try {
+                          amount = BigInt(amountInput);
+                        } catch {
+                          throw new Error('Invalid withdrawal amount');
+                        }
+                        if (amount < 0n) {
+                          throw new Error('Withdrawal amount must be non-negative');
+                        }
                       } else {
-                        const erc20 = new ethers.Contract(tokenAddr, ['function balanceOf(address) view returns (uint256)'], signer);
-                        const bal = BigInt(await erc20.balanceOf(templAddress));
-                        // For access token, available = balance - memberPoolBalance
-                        if (tokenAddr.toLowerCase() === (await templ.accessToken()).toLowerCase()) {
-                          const pool = BigInt(await templ.memberPoolBalance());
-                          amount = bal > pool ? (bal - pool) : 0n;
+                        const provider = signer.provider;
+                        if (!provider) {
+                          throw new Error('Unable to read balances (no provider)');
+                        }
+                        if (tokenAddr === ethers.ZeroAddress) {
+                          amount = BigInt(await provider.getBalance(templAddress));
                         } else {
-                          amount = bal;
+                          const erc20 = new ethers.Contract(tokenAddr, ['function balanceOf(address) view returns (uint256)'], signer);
+                          const bal = BigInt(await erc20.balanceOf(templAddress));
+                          const accessToken = (await templ.accessToken()).toLowerCase();
+                          if (tokenAddr.toLowerCase() === accessToken) {
+                            const pool = BigInt(await templ.memberPoolBalance());
+                            amount = bal > pool ? (bal - pool) : 0n;
+                          } else {
+                            amount = bal;
+                          }
                         }
                       }
+                      const reason = proposeReason.trim() || 'Treasury withdrawal';
                       const iface = new ethers.Interface(['function withdrawTreasuryDAO(address token, address recipient, uint256 amount, string reason)']);
-                      callData = iface.encodeFunctionData('withdrawTreasuryDAO', [tokenAddr, me, amount, 'Tech demo payout']);
+                      callData = iface.encodeFunctionData('withdrawTreasuryDAO', [tokenAddr, me, amount, reason]);
                       if (!proposeTitle) setProposeTitle('Move Treasury to me');
-                    } catch {}
+                      if (!proposeDesc) setProposeDesc(reason);
+                    } catch (e) {
+                      alert(e?.message || 'Failed to encode treasury withdrawal');
+                      return;
+                    }
                   } else if (proposeAction === 'reprice') {
                     try {
                       const newFee = BigInt(String(proposeFee || '0'));
@@ -4326,6 +4409,8 @@ function App() {
                   setProposeAction('none');
                   setProposeFee('');
                   setProposeToken('');
+                  setProposeAmount('');
+                  setProposeReason('');
                   setProposeNewPriest('');
                   setProposeBurnPercent('');
                   setProposeTreasuryPercent('');
