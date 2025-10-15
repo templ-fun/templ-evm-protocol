@@ -186,6 +186,11 @@ export async function purchaseAccess({
     if (typeof contract.hasAccess === 'function') {
       const already = await contract.hasAccess(memberAddress);
       if (already) return false;
+    } else if (typeof contract.members === 'function') {
+      try {
+        const info = await contract.members(memberAddress);
+        if (info && info.joined) return false;
+      } catch {}
     }
   } catch {}
   const { token: resolvedToken, amount: resolvedAmount } = await resolveAccessConfig({
@@ -257,8 +262,15 @@ export async function purchaseAccess({
   }
 
   const purchaseOverrides = { ...txOptions };
-  dlog('purchaseAccess: sending purchase', { overrides: purchaseOverrides });
-  const tx = await contract.purchaseAccess(purchaseOverrides);
+  dlog('purchaseAccess: sending join()', { overrides: purchaseOverrides });
+  let tx;
+  if (typeof contract.join === 'function') {
+    tx = await contract.join(purchaseOverrides);
+  } else if (typeof contract.purchaseAccess === 'function') {
+    tx = await contract.purchaseAccess(purchaseOverrides);
+  } else {
+    throw new Error('Join failed: contract does not expose join()');
+  }
   await tx.wait();
   dlog('purchaseAccess: tx mined');
   return true;
