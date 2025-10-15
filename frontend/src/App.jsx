@@ -2009,10 +2009,10 @@ function App() {
     const storageKey = `xmtp:nonce:${address.toLowerCase()}`;
     const baseOptions = {
       env: xmtpEnv,
-      appVersion: 'templ/0.1.0',
-      dbOptions: { type: 'memory' },
-      disableDeviceSync: true
+      appVersion: 'templ/0.1.0'
     };
+
+    await clearXmtpOpfs();
 
     const candidateSet = new Set();
     if (cache?.nonce) candidateSet.add(Number(cache.nonce));
