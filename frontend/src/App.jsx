@@ -2037,8 +2037,7 @@ function App() {
     const storageKey = `xmtp:nonce:${normalizedAddress}`;
     const baseOptions = {
       env: xmtpEnv,
-      appVersion: 'templ/0.1.0',
-      dbPath: null
+      appVersion: 'templ/0.1.0'
     };
 
     const candidateSet = new Set();
