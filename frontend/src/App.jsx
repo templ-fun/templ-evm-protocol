@@ -100,7 +100,16 @@ function saveXmtpCache(address, data) {
   const key = xmtpCacheKeyForWallet(address);
   if (!key) return;
   try {
-    localStorage.setItem(key, JSON.stringify(data));
+    const existing = (() => {
+      try {
+        const raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : {};
+      } catch {
+        return {};
+      }
+    })();
+    const next = { ...existing, ...data };
+    localStorage.setItem(key, JSON.stringify(next));
   } catch {}
 }
 
@@ -148,6 +157,46 @@ function getStableNonce(address) {
     }
   } catch {}
   return 1;
+}
+
+async function pruneExcessInstallations({ address, signer, cache, env, keepInstallationId, pushStatus }) {
+  if (!cache?.inboxId || !signer) return false;
+  try {
+    const states = await Client.inboxStateFromInboxIds([cache.inboxId], env);
+    const state = Array.isArray(states) ? states[0] : null;
+    const installations = Array.isArray(state?.installations) ? state.installations : [];
+    if (installations.length < 10) {
+      return false;
+    }
+    const sorted = installations
+      .map((inst) => {
+        let timestamp = 0;
+        try {
+          if (typeof inst.clientTimestampNs === 'bigint') timestamp = Number(inst.clientTimestampNs / 1000000n);
+        } catch {}
+        return {
+          id: inst.id,
+          timestamp
+        };
+      })
+      .filter((inst) => inst.id && inst.id !== keepInstallationId);
+    sorted.sort((a, b) => a.timestamp - b.timestamp);
+    const maxAllowed = 9; // leave room for current device
+    const overflow = sorted.length - maxAllowed;
+    if (overflow <= 0) return false;
+    const idsToRevoke = sorted.slice(0, overflow).map((inst) => inst.id);
+    if (!idsToRevoke.length) return false;
+    const nonce = getStableNonce(address);
+    const signerWrapper = makeXmtpSigner({ address, signer, nonce });
+    await Client.revokeInstallations(signerWrapper, cache.inboxId, idsToRevoke, env);
+    if (pushStatus) {
+      pushStatus(`♻️ Revoked ${idsToRevoke.length} older XMTP installation${idsToRevoke.length === 1 ? '' : 's'}`);
+    }
+    return true;
+  } catch (err) {
+    console.warn('[app] prune installations failed', err?.message || err);
+    return false;
+  }
 }
 
 // Curve configuration constants
@@ -737,6 +786,9 @@ function App() {
       const nonce = getStableNonce(walletAddress);
       const signerWrapper = makeXmtpSigner({ address: walletAddress, signer, nonce });
       await Client.revokeInstallations(signerWrapper, cache.inboxId, [installationId], env);
+      if (cache?.installationId && cache.installationId === installationId) {
+        saveXmtpCache(walletAddress, { installationId: null });
+      }
       pushStatus('✅ Installation revoked');
       await loadInstallationsState();
     } catch (err) {
@@ -768,6 +820,9 @@ function App() {
       const nonce = getStableNonce(walletAddress);
       const signerWrapper = makeXmtpSigner({ address: walletAddress, signer, nonce });
       await Client.revokeInstallations(signerWrapper, cache.inboxId, idsToRevoke, env);
+      if (idsToRevoke.includes(cache?.installationId)) {
+        saveXmtpCache(walletAddress, { installationId: null });
+      }
       pushStatus('✅ Other installations revoked');
       await loadInstallationsState();
     } catch (err) {
@@ -1814,7 +1869,7 @@ function App() {
     const baseOptions = {
       env: xmtpEnv,
       appVersion: 'templ/0.1.0',
-      dbOptions: { type: 'idb' }
+      dbPath: null
     };
 
     const candidateSet = new Set();
@@ -1845,6 +1900,16 @@ function App() {
     }
 
     async function createOrResumeXmtp() {
+      if (cache?.inboxId) {
+        await pruneExcessInstallations({
+          address,
+          signer: nextSigner,
+          cache,
+          env: xmtpEnv,
+          keepInstallationId: cache?.installationId || '',
+          pushStatus
+        });
+      }
       let limitEncountered = false;
       for (const nonce of candidateNonces) {
         try {
