@@ -19,6 +19,7 @@ import {
   delegateMute,
   muteMember,
   listTempls,
+  getTokenAllowance,
   getTreasuryInfo,
   getClaimable,
   getExternalRewards
@@ -557,6 +558,8 @@ function App() {
   const [proposeAction, setProposeAction] = useState('none'); // none | pause | unpause | moveTreasuryToMe | reprice | disband | changePriest | enableDictatorship | disableDictatorship | setMaxMembers
   const [proposeFee, setProposeFee] = useState('');
   const [proposeToken, setProposeToken] = useState('');
+  const [proposeAmount, setProposeAmount] = useState('');
+  const [proposeReason, setProposeReason] = useState('');
   const [proposeNewPriest, setProposeNewPriest] = useState('');
   const [proposeMaxMembers, setProposeMaxMembers] = useState('');
   const [currentFee, setCurrentFee] = useState(null);
@@ -567,6 +570,11 @@ function App() {
   const [currentProtocolPercent, setCurrentProtocolPercent] = useState(null);
   const [currentMaxMembers, setCurrentMaxMembers] = useState(null);
   const [currentMemberCount, setCurrentMemberCount] = useState(null);
+  const [currentAccessToken, setCurrentAccessToken] = useState(null);
+  const [currentTokenSymbol, setCurrentTokenSymbol] = useState(null);
+  const [templSummaries, setTemplSummaries] = useState({});
+  const [approvalStage, setApprovalStage] = useState('unknown');
+  const [approvalError, setApprovalError] = useState(null);
   const [proposeBurnPercent, setProposeBurnPercent] = useState('');
   const [proposeTreasuryPercent, setProposeTreasuryPercent] = useState('');
   const [proposeMemberPercent, setProposeMemberPercent] = useState('');
@@ -606,6 +614,177 @@ function App() {
   }, [pathIsChat, templAddress, pendingJoinMatches, groupId, groupConnected]);
   const joinRetryCountRef = useRef(0);
   const moderationEnabled = false;
+  const zeroAddressLower = ethers.ZeroAddress.toLowerCase();
+  const needsTokenApproval = !!joinMembershipInfo.token && !joinMembershipInfo.isNative;
+  const approvalButtonLabel = approvalStage === 'pending'
+    ? 'Approving…'
+    : approvalStage === 'approved'
+      ? 'Approved'
+      : `Approve ${joinMembershipInfo.symbol || 'token'}`;
+  const approvalButtonDisabled = approvalStage === 'pending'
+    || approvalStage === 'checking'
+    || approvalStage === 'approved'
+    || !walletAddress
+    || !templAddress
+    || !joinMembershipInfo.required;
+  const approvalStatusText = (() => {
+    if (!needsTokenApproval) {
+      return 'No approval needed for native token entry fees.';
+    }
+    switch (approvalStage) {
+      case 'approved':
+        return 'Allowance ready. You can join now.';
+      case 'needs':
+        return 'Approval required before purchasing access.';
+      case 'pending':
+        return 'Waiting for approval confirmation…';
+      case 'checking':
+        return 'Checking token allowance…';
+      case 'error':
+        return approvalError || 'Unable to read allowance.';
+      default:
+        return walletAddress ? 'Allowance status unavailable.' : 'Connect your wallet to check allowance.';
+    }
+  })();
+  useEffect(() => {
+    setApprovalStage(needsTokenApproval ? 'checking' : 'approved');
+    setApprovalError(null);
+  }, [templAddress, walletAddress, needsTokenApproval]);
+  const joinMembershipInfo = useMemo(() => {
+    if (!templAddress || !ethers.isAddress(templAddress)) {
+      return {
+        token: null,
+        formatted: null,
+        raw: null,
+        usd: null,
+        decimals: null,
+        symbol: null,
+        required: null,
+        isNative: false
+      };
+    }
+    let required = null;
+    try {
+      if (currentFee) required = BigInt(currentFee);
+    } catch {
+      required = null;
+    }
+    const token = currentAccessToken || null;
+    const isNative = token ? token.toLowerCase() === zeroAddressLower : false;
+    if (!required) {
+      return {
+        token,
+        formatted: null,
+        raw: null,
+        usd: null,
+        decimals: tokenDecimals,
+        symbol: currentTokenSymbol || (isNative ? 'ETH' : null),
+        required: null,
+        isNative
+      };
+    }
+    try {
+      const decimals = Number.isInteger(tokenDecimals) ? tokenDecimals : null;
+      const symbol = currentTokenSymbol || (isNative ? 'ETH' : null);
+      const formatted = decimals !== null
+        ? formatTokenAmount(required, decimals, symbol)
+        : null;
+      const rawUnits = decimals !== null
+        ? formatRawUnitsDisplay(required, decimals, symbol)
+        : null;
+      const raw = rawUnits
+        ? `${rawUnits.amount} ${rawUnits.unit}`
+        : `${required.toString()} raw units`;
+      const usdRate = inferUsdRateForToken(symbol, (token || '').toLowerCase());
+      const usd = decimals !== null ? formatUsdFromBigInt(required, decimals, usdRate) : null;
+      return {
+        token,
+        formatted: formatted || null,
+        raw,
+        usd,
+        decimals,
+        symbol,
+        required,
+        isNative
+      };
+    } catch {
+      return {
+        token,
+        formatted: null,
+        raw: `${required.toString()} raw units`,
+        usd: null,
+        decimals: tokenDecimals,
+        symbol: currentTokenSymbol || (isNative ? 'ETH' : null),
+        required,
+        isNative
+      };
+    }
+  }, [templAddress, currentFee, tokenDecimals, currentTokenSymbol, currentAccessToken, zeroAddressLower]);
+  useEffect(() => {
+    if (proposeAction !== 'moveTreasuryToMe') {
+      setProposeAmount('');
+      setProposeReason('');
+    }
+    if (proposeAction !== 'moveTreasuryToMe' && proposeAction !== 'disband') {
+      setProposeToken('');
+    }
+  }, [proposeAction]);
+  useEffect(() => {
+    if (!proposeOpen) {
+      setProposeAmount('');
+      setProposeReason('');
+      setProposeToken('');
+    }
+  }, [proposeOpen]);
+  useEffect(() => {
+    setApprovalError(null);
+    if (!joinMembershipInfo.token) {
+      setApprovalStage('unknown');
+      return;
+    }
+    if (joinMembershipInfo.isNative) {
+      setApprovalStage('approved');
+      return;
+    }
+    if (!walletAddress || !templAddress || !ethers.isAddress(templAddress)) {
+      setApprovalStage('unknown');
+      return;
+    }
+    if (!joinMembershipInfo.required) {
+      setApprovalStage('checking');
+      return;
+    }
+    const provider = signer?.provider ?? signer;
+    if (!provider) {
+      setApprovalStage('error');
+      setApprovalError('Connect a wallet to check token allowance');
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setApprovalStage('checking');
+      try {
+        const allowance = await getTokenAllowance({
+          ethers,
+          providerOrSigner: provider,
+          owner: walletAddress,
+          token: joinMembershipInfo.token,
+          spender: templAddress
+        });
+        if (cancelled) return;
+        if (allowance >= joinMembershipInfo.required) {
+          setApprovalStage('approved');
+        } else {
+          setApprovalStage('needs');
+        }
+      } catch (err) {
+        if (cancelled) return;
+        setApprovalStage('error');
+        setApprovalError(err?.message || 'Failed to read allowance');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [signer, walletAddress, templAddress, joinMembershipInfo.token, joinMembershipInfo.required, joinMembershipInfo.isNative]);
   const renderStepStatus = useCallback((label, state, extra) => {
     const icon = STATUS_ICONS[state] || STATUS_ICONS.idle;
     const text = STATUS_DESCRIPTIONS[state] || STATUS_DESCRIPTIONS.idle;
@@ -927,19 +1106,27 @@ function App() {
     const items = templList.map((item) => {
       const contract = String(item.contract || '').toLowerCase();
       const joined = joinedTemplSet.has(contract) || (current && contract === current);
+      const summary = templSummaries[contract];
+      const members = summary?.status === 'ready' && summary.memberCount !== undefined
+        ? Number(summary.memberCount)
+        : null;
       return {
         ...item,
         contract,
-        joined
+        joined,
+        memberCount: members
       };
     });
     items.sort((a, b) => {
       if (a.joined && !b.joined) return -1;
       if (!a.joined && b.joined) return 1;
+      const aCount = Number.isFinite(a.memberCount) ? a.memberCount : -1;
+      const bCount = Number.isFinite(b.memberCount) ? b.memberCount : -1;
+      if (aCount !== bCount) return bCount - aCount;
       return a.contract.localeCompare(b.contract);
     });
     return items;
-  }, [templList, joinedTemplSet, templAddress]);
+  }, [templList, joinedTemplSet, templAddress, templSummaries]);
   const maxMembersValue = currentMaxMembers === null ? null : String(currentMaxMembers);
   const memberCountValue = currentMemberCount === null ? null : String(currentMemberCount);
   const maxMembersLabel = maxMembersValue === null ? '…' : (maxMembersValue === '0' ? 'Unlimited' : maxMembersValue);
@@ -1198,6 +1385,10 @@ function App() {
 
   // Fetch entry fee and token decimals for display in reprice UI
   useEffect(() => {
+    setCurrentFee(null);
+    setTokenDecimals(null);
+    setCurrentAccessToken(null);
+    setCurrentTokenSymbol(null);
     let cancelled = false;
     (async () => {
       try {
@@ -1236,10 +1427,25 @@ function App() {
           dictatorshipState = await c.priestIsDictator();
         } catch {}
         let dec = null;
-        try {
-          const erc20 = new ethers.Contract(tokenAddr, ['function decimals() view returns (uint8)'], providerOrSigner);
-          dec = Number(await erc20.decimals());
-        } catch { dec = null; }
+        let symbol = null;
+        if (tokenAddr && String(tokenAddr).toLowerCase() === ethers.ZeroAddress.toLowerCase()) {
+          dec = 18;
+          symbol = 'ETH';
+        } else if (tokenAddr) {
+          try {
+            const erc20Meta = new ethers.Contract(tokenAddr, ['function decimals() view returns (uint8)', 'function symbol() view returns (string)'], providerOrSigner);
+            dec = Number(await erc20Meta.decimals());
+            const rawSymbol = await erc20Meta.symbol();
+            if (typeof rawSymbol === 'string' && rawSymbol.trim()) {
+              symbol = rawSymbol.trim();
+            }
+          } catch {
+            try {
+              const erc20Decimals = new ethers.Contract(tokenAddr, ['function decimals() view returns (uint8)'], providerOrSigner);
+              dec = Number(await erc20Decimals.decimals());
+            } catch {}
+          }
+        }
         if (!cancelled) {
           const normalizedBurn = Number.isFinite(burnPct) ? Number((burnPct / 100).toFixed(2)) : null;
           const normalizedTreasury = Number.isFinite(treasuryPct) ? Number((treasuryPct / 100).toFixed(2)) : null;
@@ -1247,6 +1453,12 @@ function App() {
           const normalizedProtocol = Number.isFinite(protocolPct) ? Number((protocolPct / 100).toFixed(2)) : null;
           setCurrentFee(fee.toString());
           setTokenDecimals(dec);
+          try {
+            setCurrentAccessToken(tokenAddr ? ethers.getAddress(tokenAddr) : null);
+          } catch {
+            setCurrentAccessToken(tokenAddr || null);
+          }
+          setCurrentTokenSymbol(symbol);
           setCurrentBurnPercent(normalizedBurn);
           setCurrentTreasuryPercent(normalizedTreasury);
           setCurrentMemberPercent(normalizedMember);
@@ -1835,6 +2047,12 @@ function App() {
       stateAddress: templAddress
     });
     if (!signer || !xmtp) return;
+    const requiresApproval = joinMembershipInfo.token && !joinMembershipInfo.isNative;
+    if (requiresApproval && approvalStage !== 'approved') {
+      setJoinStatusNote('Awaiting token approval');
+      pushStatus('⚠️ Approve the membership token before joining.');
+      return;
+    }
     const rawAddress = templAddressRef.current || templAddress;
     const trimmedAddress = typeof rawAddress === 'string' ? rawAddress.trim() : '';
     if (!trimmedAddress || !ethers.isAddress(trimmedAddress)) {
@@ -1859,8 +2077,7 @@ function App() {
         const env = forcedEnv || (onLocalhost ? 'dev' : null);
         if (!env) {
           identityReadyRef.current = true;
-          return;
-        }
+        } else {
           const inboxId = xmtp.inboxId.replace(/^0x/i, '');
           let max = import.meta.env?.VITE_E2E_DEBUG === '1' ? 120 : 90;
           let delay = 1000;
@@ -1877,7 +2094,11 @@ function App() {
             await new Promise((r) => setTimeout(r, delay));
           }
         }
+        }
       } catch {}
+      if (!identityReadyRef.current) {
+        identityReadyRef.current = true;
+      }
       dlog('[app] starting purchaseAndJoin', { inboxId: xmtp?.inboxId, address: walletAddress, templAddress });
       let memberAddress = walletAddress;
       if (!memberAddress) {
@@ -1891,6 +2112,7 @@ function App() {
         walletAddress: memberAddress,
         templAddress: trimmedAddress,
         templArtifact,
+        autoApprove: false,
         onProgress: (stage) => {
           if (stage !== 'join:submission:retry' && lastStage === stage) return;
           switch (stage) {
@@ -1980,16 +2202,60 @@ function App() {
         navigate(`/chat?address=${trimmedAddress}`);
       }
     } catch (err) {
-      const message = err?.message || 'Join failed';
-      setJoinSteps((prev) => ({ ...prev, join: 'error', error: message }));
-      if (/rejected/i.test(message)) {
+      const rawMessage = err?.message || 'Join failed';
+      const revertMatch = /require\(false\)/i.test(rawMessage) || /CALL_EXCEPTION/i.test(rawMessage);
+      const message = revertMatch
+        ? 'Purchase reverted on-chain. Check token balance, allowances, and member limit.'
+        : rawMessage;
+      const wasPurchasePending = joinSteps.purchase === 'pending';
+      setJoinSteps({
+        purchase: wasPurchasePending ? 'error' : joinSteps.purchase,
+        join: 'error',
+        error: message
+      });
+      if (wasPurchasePending) {
+        setPurchaseStatusNote(message);
+      }
+      setJoinStatusNote(message);
+      if (/rejected/i.test(rawMessage)) {
         pushStatus('⚠️ Join incomplete: signature declined. Complete from chat when ready.');
       } else {
         pushStatus(`⚠️ Join failed: ${message}`);
       }
       console.error('Join failed', err);
     }
-  }, [signer, xmtp, templAddress, updateTemplAddress, walletAddress, pushStatus, navigate, rememberJoinedTempl, setTemplList]);
+  }, [signer, xmtp, templAddress, updateTemplAddress, walletAddress, pushStatus, navigate, rememberJoinedTempl, setTemplList, joinSteps, joinMembershipInfo.isNative, joinMembershipInfo.token, approvalStage]);
+
+  const handleApproveToken = useCallback(async () => {
+    if (joinMembershipInfo.isNative) {
+      setApprovalStage('approved');
+      return;
+    }
+    if (!signer || !templAddress) {
+      pushStatus('⚠️ Connect your wallet before approving.');
+      return;
+    }
+    if (!joinMembershipInfo.token || !joinMembershipInfo.required) {
+      pushStatus('⚠️ Membership cost still loading.');
+      return;
+    }
+    try {
+      const tokenAddress = ethers.getAddress(joinMembershipInfo.token);
+      const erc20 = new ethers.Contract(tokenAddress, ['function approve(address spender, uint256 value) returns (bool)'], signer);
+      setApprovalError(null);
+      setApprovalStage('pending');
+      pushStatus('🔄 Approving membership token');
+      const tx = await erc20.approve(templAddress, joinMembershipInfo.required);
+      await tx.wait();
+      pushStatus('✅ Token approved');
+      setApprovalStage('approved');
+    } catch (err) {
+      const message = err?.message || 'Approval failed';
+      setApprovalStage('error');
+      setApprovalError(message);
+      pushStatus(`⚠️ Approval failed: ${message}`);
+    }
+  }, [joinMembershipInfo.isNative, joinMembershipInfo.token, joinMembershipInfo.required, signer, templAddress, pushStatus]);
 
   // Passive discovery: if a groupId is known (e.g., after deploy) try to
   // discover the conversation without requiring an explicit join.
@@ -2218,7 +2484,7 @@ function App() {
           setMessages((m) => {
             if (m.some((it) => it.mid === msg.id)) return m;
             // Replace local echo if present
-            const idx = m.findIndex((it) => !it.mid && it.kind === 'text' && (it.senderAddress||'').toLowerCase() === from && it.content === raw);
+            const idx = m.findIndex((it) => it.localEcho && it.kind === 'text' && it.content === raw && ((it.senderAddress || '').toLowerCase() === from || !it.senderAddress));
             if (idx !== -1) {
               const copy = m.slice();
               copy[idx] = { mid: msg.id, kind: 'text', senderAddress: from, content: raw };
@@ -2643,7 +2909,7 @@ function App() {
     try {
       const gid = (groupId || '').toLowerCase();
       if (!gid) return;
-      const toSave = messages.slice(-200); // cap
+      const toSave = messages.filter((msg) => !msg?.localEcho).slice(-200); // cap and drop unsent local echoes
       localStorage.setItem(`templ:messages:${gid}`, JSON.stringify(toSave));
     } catch {}
   }, [messages, groupId]);
@@ -2655,6 +2921,111 @@ function App() {
       localStorage.setItem(`templ:proposals:${addr}`, JSON.stringify(proposalsById));
     } catch {}
   }, [proposalsById, templAddress]);
+
+  useEffect(() => {
+    const reader = signer?.provider ?? signer ?? (window?.ethereum ? new ethers.BrowserProvider(window.ethereum) : null);
+    if (!templList.length || !reader) {
+      return;
+    }
+    let cancelled = false;
+    const tasks = [];
+    templList.forEach((item) => {
+      const raw = String(item.contract || '').trim();
+      if (!raw) return;
+      let checksum;
+      try {
+        checksum = ethers.getAddress(raw);
+      } catch {
+        return;
+      }
+      const key = checksum.toLowerCase();
+      const existing = templSummaries[key];
+      if (existing && (existing.status === 'ready' || existing.status === 'loading')) {
+        return;
+      }
+      tasks.push({ key, checksum });
+    });
+    tasks.forEach(({ key, checksum }) => {
+      setTemplSummaries((prev) => ({ ...prev, [key]: { status: 'loading', contract: checksum } }));
+      (async () => {
+        try {
+          const contract = new ethers.Contract(checksum, templArtifact.abi, reader);
+          let tokenAddr;
+          let entryFee;
+          let totalMembers = null;
+          let maxMembersRaw = null;
+          try {
+            const cfg = await contract.getConfig();
+            tokenAddr = cfg[0];
+            entryFee = BigInt(cfg[1] ?? 0n);
+          } catch {
+            tokenAddr = await contract.accessToken();
+            entryFee = BigInt(await contract.entryFee());
+          }
+          try {
+            const count = await contract.totalPurchases();
+            totalMembers = Number(count);
+          } catch {}
+          try {
+            maxMembersRaw = await contract.MAX_MEMBERS();
+          } catch {}
+          let symbol = null;
+          let decimals = null;
+          const tokenLower = tokenAddr ? String(tokenAddr).toLowerCase() : null;
+          if (tokenLower === zeroAddressLower) {
+            symbol = 'ETH';
+            decimals = 18;
+          } else if (tokenAddr) {
+            const erc20Meta = new ethers.Contract(
+              tokenAddr,
+              ['function symbol() view returns (string)', 'function decimals() view returns (uint8)'],
+              reader
+            );
+            try {
+              const rawSymbol = await erc20Meta.symbol();
+              if (typeof rawSymbol === 'string' && rawSymbol.trim()) symbol = rawSymbol.trim();
+            } catch {}
+            try {
+              decimals = Number(await erc20Meta.decimals());
+            } catch {}
+          }
+          const formatted = decimals !== null ? formatTokenAmount(entryFee, decimals, symbol) : null;
+          const rawUnits = decimals !== null ? formatRawUnitsDisplay(entryFee, decimals, symbol) : null;
+          const rawLabel = rawUnits ? `${rawUnits.amount} ${rawUnits.unit}` : `${entryFee.toString()} raw units`;
+          const usdRate = inferUsdRateForToken(symbol, (tokenAddr || '').toLowerCase());
+          const usd = decimals !== null ? formatUsdFromBigInt(entryFee, decimals, usdRate) : null;
+          if (cancelled) return;
+          setTemplSummaries((prev) => ({
+            ...prev,
+            [key]: {
+              status: 'ready',
+              contract: checksum,
+              token: tokenAddr,
+              symbol,
+              formatted: formatted || rawLabel,
+              raw: rawLabel,
+              usd,
+              decimals,
+              required: entryFee,
+              memberCount: Number.isFinite(totalMembers) ? totalMembers : null,
+              maxMembers: maxMembersRaw !== null && maxMembersRaw !== undefined ? maxMembersRaw.toString() : null
+            }
+          }));
+        } catch (err) {
+          if (cancelled) return;
+          setTemplSummaries((prev) => ({
+            ...prev,
+            [key]: {
+              status: 'error',
+              contract: checksum,
+              error: err?.message || 'Failed to load token info'
+            }
+          }));
+        }
+      })();
+    });
+    return () => { cancelled = true; };
+  }, [templList, signer, templSummaries, zeroAddressLower]);
 
   async function handleSend() {
     if (!messageInput) return;
@@ -2689,8 +3060,23 @@ function App() {
       }
       const body = messageInput;
       await sendMessage({ group: activeGroup, content: body });
-      // Local echo to ensure immediate UI feedback; mark without mid so it can be replaced by stream
-      setMessages((m) => [...m, { kind: 'text', senderAddress: walletAddress, content: body }]);
+      let senderAddress = walletAddress;
+      if (!senderAddress && signer?.getAddress) {
+        try { senderAddress = await signer.getAddress(); } catch {}
+      }
+      const normalizedSender = senderAddress ? senderAddress.toLowerCase() : '';
+      const localNonce = `local-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      // Local echo to ensure immediate UI feedback; mark with localEcho so the stream can replace it
+      setMessages((m) => [
+        ...m,
+        {
+          kind: 'text',
+          senderAddress: normalizedSender || senderAddress || '',
+          content: body,
+          localEcho: true,
+          localNonce
+        }
+      ]);
       setMessageInput('');
       pushStatus('✅ Message sent');
     } catch (err) {
@@ -3501,11 +3887,81 @@ function App() {
         {path === '/join' && (
           <div className="join space-y-3">
             <h2 className="text-xl font-semibold">Join Existing Templ</h2>
+            <div className="rounded border border-black/20 bg-white/80 p-3 text-xs text-black/70 space-y-2">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="text-sm font-semibold text-black/90">Membership cost</div>
+                  <p className="mt-1 text-xs text-black/60">
+                    Pay the entry fee once to become a member, then sign a message so templ.fun can invite you into the XMTP group chat.
+                  </p>
+                </div>
+              </div>
+              <div className="grid gap-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium text-black/80">Token</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[11px]">
+                      {joinMembershipInfo.token ? shorten(joinMembershipInfo.token) : '…'}
+                    </span>
+                    {joinMembershipInfo.token && (
+                      <button
+                        type="button"
+                        className="px-2 py-1 text-[11px] rounded border border-black/20"
+                        onClick={() => copyToClipboard(joinMembershipInfo.token)}
+                      >
+                        Copy
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium text-black/80">Entry fee</span>
+                  <span className="text-black/80">
+                    {joinMembershipInfo.formatted || joinMembershipInfo.raw || 'Loading…'}
+                  </span>
+                </div>
+                {joinMembershipInfo.usd && (
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-black/80">Approx. USD</span>
+                    <span>{joinMembershipInfo.usd}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium text-black/80">Decimals</span>
+                  <span>{Number.isInteger(joinMembershipInfo.decimals) ? joinMembershipInfo.decimals : 'Unknown'}</span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium text-black/80">Members</span>
+                  <span>{memberCountWithLimit}</span>
+                </div>
+              </div>
+            </div>
+            {needsTokenApproval && (
+              <div className="rounded border border-black/20 bg-white/80 p-3 text-xs text-black/70 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-semibold text-black/90">Token approval</span>
+                  <button
+                    type="button"
+                    className="px-3 py-1 rounded border border-black/20 text-xs font-semibold"
+                    onClick={handleApproveToken}
+                    disabled={approvalButtonDisabled}
+                  >
+                    {approvalButtonLabel}
+                  </button>
+                </div>
+                <p className="text-xs text-black/60">
+                  Grant the templ contract permission to pull the entry fee from your wallet once. Approval only needs to be signed the first time.
+                </p>
+                <p className={`text-xs ${approvalStage === 'approved' ? 'text-green-700' : approvalStage === 'error' ? 'text-red-600' : 'text-black/60'}`}>
+                  {approvalStatusText}
+                </p>
+              </div>
+            )}
             <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Contract address" value={templAddress} onChange={(e) => updateTemplAddress(e.target.value)} />
             <button
               className="px-4 py-2 rounded bg-primary text-black font-semibold w-full sm:w-auto"
               onClick={handlePurchaseAndJoin}
-              disabled={joinSteps.purchase === 'pending' || joinSteps.join === 'pending'}
+              disabled={joinSteps.purchase === 'pending' || joinSteps.join === 'pending' || (needsTokenApproval && approvalStage !== 'approved')}
             >
               Purchase & Join
             </button>
@@ -3516,20 +3972,52 @@ function App() {
               </div>
             )}
             {/* Optional list if no prefill */}
-            {(!templAddress || templAddress.trim() === '') && (
-              <div className="space-y-2">
-                {templList.map((t) => (
-                  <div key={t.contract} className="flex flex-col sm:flex-row sm:items-center gap-2">
-                    <button type="button" title="Copy address" data-address={String(t.contract).toLowerCase()} className="text-left underline underline-offset-4 font-mono text-sm flex-1 break-words" onClick={() => copyToClipboard(t.contract)}>
-                      {shorten(t.contract)}
-                    </button>
-                    <button className="px-3 py-1 rounded border border-black/20 w-full sm:w-auto" onClick={() => navigate(`/join?address=${t.contract}`)}>Select</button>
+              {(!templAddress || templAddress.trim() === '') && (
+                <div className="space-y-2">
+                  {templList.map((t) => (
+                  <div key={t.contract} className="flex flex-col gap-2 rounded border border-black/10 bg-white/70 p-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                      <button type="button" title="Copy address" data-address={String(t.contract).toLowerCase()} className="text-left underline underline-offset-4 font-mono text-sm flex-1 break-words" onClick={() => copyToClipboard(t.contract)}>
+                        {shorten(t.contract)}
+                      </button>
+                      <button className="px-3 py-1 rounded border border-black/20 w-full sm:w-auto" onClick={() => navigate(`/join?address=${t.contract}`)}>Select</button>
+                    </div>
+                    {(() => {
+                      const key = String(t.contract || '').toLowerCase();
+                      const summary = templSummaries[key];
+                      if (!summary) {
+                        return <div className="text-xs text-black/60">Loading entry fee…</div>;
+                      }
+                      if (summary.status === 'loading') {
+                        return <div className="text-xs text-black/60">Loading entry fee…</div>;
+                      }
+                      if (summary.status === 'error') {
+                        return <div className="text-xs text-red-600">{summary.error || 'Failed to load entry fee'}</div>;
+                      }
+                      const tokenLabel = summary.symbol || (summary.token ? shorten(summary.token) : 'Unknown token');
+                      const members = Number.isFinite(summary.memberCount) ? summary.memberCount : null;
+                      const maxMembers = summary.maxMembers;
+                      let membersDisplay = '…';
+                      if (members !== null) {
+                        membersDisplay = maxMembers && maxMembers !== '0'
+                          ? `${members} / ${maxMembers}`
+                          : `${members}`;
+                      }
+                      return (
+                        <div className="text-xs text-black/60 space-y-1">
+                          <div>Token: {tokenLabel}</div>
+                          <div>Entry fee: {summary.formatted}</div>
+                          {summary.usd && <div>≈ {summary.usd}</div>}
+                          <div>Members: {membersDisplay}</div>
+                        </div>
+                      );
+                    })()}
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
         {path === '/chat' && (
           templAddress ? (
@@ -4099,9 +4587,32 @@ function App() {
               {proposeAction === 'moveTreasuryToMe' && (
                 <div className="text-xs text-black/80 mt-1 flex flex-col gap-2">
                   <div className="flex gap-2 items-center">
-                    <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Token address or ETH" value={proposeToken} onChange={(e) => setProposeToken(e.target.value)} />
+                    <input
+                      className="w-full border border-black/20 rounded px-3 py-2"
+                      placeholder="Token address or ETH (defaults to entry token)"
+                      value={proposeToken}
+                      onChange={(e) => setProposeToken(e.target.value)}
+                    />
                   </div>
-                  <div className="text-xs text-black/60">Leave blank to use entry fee token.</div>
+                  <div className="flex gap-2 items-center">
+                    <input
+                      className="w-full border border-black/20 rounded px-3 py-2"
+                      placeholder="Amount to withdraw (raw units, blank = max)"
+                      value={proposeAmount}
+                      onChange={(e) => setProposeAmount(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex gap-2 items-center">
+                    <input
+                      className="w-full border border-black/20 rounded px-3 py-2"
+                      placeholder="Reason (optional)"
+                      value={proposeReason}
+                      onChange={(e) => setProposeReason(e.target.value)}
+                    />
+                  </div>
+                  <div className="text-xs text-black/60">
+                    Amount is interpreted as raw token units. For the entry token, subtracts the member pool before calculating “blank = max”.
+                  </div>
                 </div>
               )}
               {proposeAction === 'disband' && (
@@ -4149,33 +4660,57 @@ function App() {
                     try {
                       const me = await signer.getAddress();
                       const templ = new ethers.Contract(templAddress, templArtifact.abi, signer);
+                      const tokenInput = proposeToken.trim();
                       let tokenAddr;
-                      if (!proposeToken.trim()) {
+                      if (!tokenInput) {
                         tokenAddr = await templ.accessToken();
-                      } else if (proposeToken.trim().toLowerCase() === 'eth') {
+                      } else if (tokenInput.toLowerCase() === 'eth') {
                         tokenAddr = ethers.ZeroAddress;
                       } else {
-                        tokenAddr = proposeToken.trim();
+                        if (!ethers.isAddress(tokenInput)) {
+                          throw new Error('Invalid treasury token address');
+                        }
+                        tokenAddr = ethers.getAddress(tokenInput);
                       }
-                      // Determine full withdrawable amount for the chosen token
+                      const amountInput = proposeAmount.trim();
                       let amount = 0n;
-                      if (tokenAddr === ethers.ZeroAddress) {
-                        amount = BigInt(await signer.provider.getBalance(templAddress));
+                      if (amountInput) {
+                        try {
+                          amount = BigInt(amountInput);
+                        } catch {
+                          throw new Error('Invalid withdrawal amount');
+                        }
+                        if (amount < 0n) {
+                          throw new Error('Withdrawal amount must be non-negative');
+                        }
                       } else {
-                        const erc20 = new ethers.Contract(tokenAddr, ['function balanceOf(address) view returns (uint256)'], signer);
-                        const bal = BigInt(await erc20.balanceOf(templAddress));
-                        // For access token, available = balance - memberPoolBalance
-                        if (tokenAddr.toLowerCase() === (await templ.accessToken()).toLowerCase()) {
-                          const pool = BigInt(await templ.memberPoolBalance());
-                          amount = bal > pool ? (bal - pool) : 0n;
+                        const provider = signer.provider;
+                        if (!provider) {
+                          throw new Error('Unable to read balances (no provider)');
+                        }
+                        if (tokenAddr === ethers.ZeroAddress) {
+                          amount = BigInt(await provider.getBalance(templAddress));
                         } else {
-                          amount = bal;
+                          const erc20 = new ethers.Contract(tokenAddr, ['function balanceOf(address) view returns (uint256)'], signer);
+                          const bal = BigInt(await erc20.balanceOf(templAddress));
+                          const accessToken = (await templ.accessToken()).toLowerCase();
+                          if (tokenAddr.toLowerCase() === accessToken) {
+                            const pool = BigInt(await templ.memberPoolBalance());
+                            amount = bal > pool ? (bal - pool) : 0n;
+                          } else {
+                            amount = bal;
+                          }
                         }
                       }
+                      const reason = proposeReason.trim() || 'Treasury withdrawal';
                       const iface = new ethers.Interface(['function withdrawTreasuryDAO(address token, address recipient, uint256 amount, string reason)']);
-                      callData = iface.encodeFunctionData('withdrawTreasuryDAO', [tokenAddr, me, amount, 'Tech demo payout']);
+                      callData = iface.encodeFunctionData('withdrawTreasuryDAO', [tokenAddr, me, amount, reason]);
                       if (!proposeTitle) setProposeTitle('Move Treasury to me');
-                    } catch {}
+                      if (!proposeDesc) setProposeDesc(reason);
+                    } catch (e) {
+                      alert(e?.message || 'Failed to encode treasury withdrawal');
+                      return;
+                    }
                   } else if (proposeAction === 'reprice') {
                     try {
                       const newFee = BigInt(String(proposeFee || '0'));
@@ -4326,6 +4861,8 @@ function App() {
                   setProposeAction('none');
                   setProposeFee('');
                   setProposeToken('');
+                  setProposeAmount('');
+                  setProposeReason('');
                   setProposeNewPriest('');
                   setProposeBurnPercent('');
                   setProposeTreasuryPercent('');

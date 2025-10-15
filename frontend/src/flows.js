@@ -4,6 +4,7 @@ export {
   purchaseAccess,
   purchaseAndJoin,
   sendMessage,
+  getTokenAllowance,
   getTreasuryInfo,
   getClaimable,
   getExternalRewards,

@@ -42,6 +42,7 @@ export interface JoinRequest {
   backendUrl?: string
   txOptions?: Record<string, any>
   onProgress?: (stage: string) => void
+  autoApprove?: boolean
 }
 
 export interface JoinResponse {
@@ -58,6 +59,7 @@ export interface PurchaseAccessRequest {
   tokenAddress?: Address
   amount?: number | string | bigint
   txOptions?: any
+  autoApprove?: boolean
 }
 
 export function deployTempl(req: DeployRequest): Promise<DeployResponse>

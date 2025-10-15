@@ -53,6 +53,26 @@ async function resolveAccessConfig({ contract, tokenAddress, amount }) {
   return { token: resolvedToken, amount: resolvedAmount };
 }
 
+export async function getTokenAllowance({ ethers, providerOrSigner, owner, token, spender }) {
+  const zeroAddress = (typeof ethers?.ZeroAddress === 'string'
+    ? ethers.ZeroAddress
+    : '0x0000000000000000000000000000000000000000').toLowerCase();
+  if (!token || String(token).toLowerCase() === zeroAddress) {
+    return BigInt(ethers?.MaxUint256 ?? (2n ** 256n - 1n));
+  }
+  if (!providerOrSigner || !owner || !spender) {
+    throw new Error('getTokenAllowance: missing provider, owner, or spender');
+  }
+  const reader = providerOrSigner;
+  const erc20 = new ethers.Contract(
+    token,
+    ['function allowance(address owner, address spender) view returns (uint256)'],
+    reader
+  );
+  const current = await erc20.allowance(owner, spender);
+  return BigInt(current);
+}
+
 async function ensureTokenAllowance({ ethers, signer, owner, token, spender, amount, txOptions }) {
   const zeroAddress = (typeof ethers?.ZeroAddress === 'string'
     ? ethers.ZeroAddress
@@ -60,17 +80,9 @@ async function ensureTokenAllowance({ ethers, signer, owner, token, spender, amo
   if (String(token).toLowerCase() === zeroAddress) {
     return txOptions;
   }
-  const erc20 = new ethers.Contract(
-    token,
-    [
-      'function allowance(address owner, address spender) view returns (uint256)',
-      'function approve(address spender, uint256 value) returns (bool)'
-    ],
-    signer
-  );
   let nextOptions = { ...txOptions };
   try {
-    const current = BigInt(await erc20.allowance(owner, spender));
+    const current = await getTokenAllowance({ ethers, providerOrSigner: signer.provider ?? signer, owner, token, spender });
     if (current >= amount) {
       dlog('purchaseAccess: allowance sufficient', { allowance: current.toString(), required: amount.toString() });
       return nextOptions;
@@ -79,6 +91,11 @@ async function ensureTokenAllowance({ ethers, signer, owner, token, spender, amo
     if (approvalOverrides && Object.prototype.hasOwnProperty.call(approvalOverrides, 'value')) {
       delete approvalOverrides.value;
     }
+    const erc20 = new ethers.Contract(
+      token,
+      ['function approve(address spender, uint256 value) returns (bool)'],
+      signer
+    );
     const approval = await erc20.approve(spender, amount, approvalOverrides);
     let overrideNonce = null;
     if (approval?.nonce !== undefined && approval?.nonce !== null) {
@@ -103,6 +120,16 @@ async function ensureTokenAllowance({ ethers, signer, owner, token, spender, amo
   return nextOptions;
 }
 
+async function hasSufficientAllowance({ ethers, providerOrSigner, owner, token, spender, amount }) {
+  try {
+    const allowance = await getTokenAllowance({ ethers, providerOrSigner, owner, token, spender });
+    return allowance >= amount;
+  } catch (err) {
+    dlog('hasSufficientAllowance: failed to read allowance', err?.message || err);
+    return false;
+  }
+}
+
 /**
  * Approve entry fee (if needed) and purchase templ access.
  * @param {import('../flows.types').PurchaseAccessRequest} params
@@ -116,7 +143,8 @@ export async function purchaseAccess({
   templArtifact,
   tokenAddress,
   amount,
-  txOptions = {}
+  txOptions = {},
+  autoApprove = true
 }) {
   if (!ethers || !signer || !templAddress || !templArtifact) {
     throw new Error('Missing required purchaseAccess parameters');
@@ -141,15 +169,29 @@ export async function purchaseAccess({
     amount
   });
 
-  txOptions = await ensureTokenAllowance({
-    ethers,
-    signer,
-    owner: memberAddress,
-    token: resolvedToken,
-    spender: templAddress,
-    amount: resolvedAmount,
-    txOptions
-  });
+  if (autoApprove) {
+    txOptions = await ensureTokenAllowance({
+      ethers,
+      signer,
+      owner: memberAddress,
+      token: resolvedToken,
+      spender: templAddress,
+      amount: resolvedAmount,
+      txOptions
+    });
+  } else {
+    const allowanceOk = await hasSufficientAllowance({
+      ethers,
+      providerOrSigner: signer.provider ?? signer,
+      owner: memberAddress,
+      token: resolvedToken,
+      spender: templAddress,
+      amount: resolvedAmount
+    });
+    if (!allowanceOk) {
+      throw new Error('Token approval required before joining');
+    }
+  }
 
   const purchaseOverrides = { ...txOptions };
   dlog('purchaseAccess: sending purchase', { overrides: purchaseOverrides });
@@ -173,7 +215,8 @@ export async function purchaseAndJoin({
   templArtifact,
   backendUrl = BACKEND_URL,
   txOptions = {},
-  onProgress
+  onProgress,
+  autoApprove = true
 }) {
   async function fixKeyPackages(max = 30) {
     try {
@@ -209,7 +252,8 @@ export async function purchaseAndJoin({
       walletAddress: normalizedMemberAddress,
       templAddress,
       templArtifact,
-      txOptions
+      txOptions,
+      autoApprove
     });
     onProgress?.('purchase:complete');
   } else {
