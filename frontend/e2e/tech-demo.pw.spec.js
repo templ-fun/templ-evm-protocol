@@ -188,7 +188,7 @@ test.describe('Tech Demo: Realtime multi-user flow', () => {
     // Ensure all purchases accounted
     {
       const templPriest = new ethers.Contract(templAddress, templAbi, wallets.priest);
-      await expect.poll(async () => Number(await templPriest.totalPurchases()), { timeout: 20000 }).toBe(6);
+      await expect.poll(async () => Number(await templPriest.getMemberCount()), { timeout: 20000 }).toBe(6);
     }
 
     // Priest purchases and joins via UI

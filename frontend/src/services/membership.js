@@ -236,17 +236,17 @@ export async function purchaseAccess({
     if (maxMembersRaw !== undefined && maxMembersRaw !== null) {
       const maxMembers = BigInt(maxMembersRaw);
       if (maxMembers > 0n) {
-        try {
-          const totalPurchases = BigInt(await contract.totalPurchases());
-          if (totalPurchases >= maxMembers) {
-            throw new Error('Member limit reached for this templ');
-          }
-        } catch (err) {
-          if (err instanceof Error && err.message === 'Member limit reached for this templ') throw err;
+        const currentMembers = BigInt(await contract.getMemberCount());
+        if (currentMembers >= maxMembers) {
+          throw new Error('Member limit reached for this templ');
         }
       }
     }
-  } catch {}
+  } catch (err) {
+    if (err instanceof Error && err.message === 'Member limit reached for this templ') {
+      throw err;
+    }
+  }
 
   try {
     if (typeof contract.paused === 'function') {

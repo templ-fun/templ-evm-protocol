@@ -208,7 +208,7 @@ function createStubEthers(state) {
       return BigInt(templ.maxMembers);
     }
 
-    async totalPurchases() {
+    async getMemberCount() {
       const templ = state.templs[this.address];
       return BigInt(templ.members.size);
     }

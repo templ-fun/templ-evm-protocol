@@ -79,6 +79,77 @@ function joinedStorageKeyForWallet(walletLower) {
   return walletLower ? `${JOINED_STORAGE_PREFIX}:${walletLower}` : JOINED_STORAGE_PREFIX;
 }
 
+function xmtpCacheKeyForWallet(address) {
+  return address ? `xmtp:cache:${address.toLowerCase()}` : null;
+}
+
+function loadXmtpCache(address) {
+  const key = xmtpCacheKeyForWallet(address);
+  if (!key) return null;
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveXmtpCache(address, data) {
+  const key = xmtpCacheKeyForWallet(address);
+  if (!key) return;
+  try {
+    localStorage.setItem(key, JSON.stringify(data));
+  } catch {}
+}
+
+function resolveXmtpEnv() {
+  const forced = import.meta.env.VITE_XMTP_ENV?.trim();
+  if (forced) return forced;
+  if (typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+    return 'dev';
+  }
+  return 'production';
+}
+
+function makeXmtpSigner({ address, signer, nonce }) {
+  return {
+    type: 'EOA',
+    getAddress: () => address,
+    getIdentifier: () => ({
+      identifier: address.toLowerCase(),
+      identifierKind: 'Ethereum',
+      nonce
+    }),
+    signMessage: async (message) => {
+      let toSign;
+      if (message instanceof Uint8Array) {
+        try { toSign = ethers.toUtf8String(message); } catch { toSign = ethers.hexlify(message); }
+      } else if (typeof message === 'string') {
+        toSign = message;
+      } else {
+        toSign = String(message);
+      }
+      const signature = await signer.signMessage(toSign);
+      return ethers.getBytes(signature);
+    }
+  };
+}
+
+function getStableNonce(address) {
+  if (!address) return 1;
+  const cache = loadXmtpCache(address);
+  if (cache?.nonce) return cache.nonce;
+  try {
+    const saved = Number.parseInt(localStorage.getItem(`xmtp:nonce:${address.toLowerCase()}`) || '1', 10);
+    if (Number.isFinite(saved) && saved > 0) {
+      return saved;
+    }
+  } catch {}
+  return 1;
+}
+
 // Curve configuration constants
 const CURVE_STYLE_INDEX = {
   static: 0,
@@ -538,6 +609,17 @@ function App() {
   const [messageInput, setMessageInput] = useState('');
   const [proposals, setProposals] = useState([]);
   const [proposalsById, setProposalsById] = useState({});
+  const [nowSeconds, setNowSeconds] = useState(() => Math.floor(Date.now() / 1000));
+  const [currentExecutionDelay, setCurrentExecutionDelay] = useState(null);
+  const [currentQuorumPercent, setCurrentQuorumPercent] = useState(null);
+  const [activeInboxId, setActiveInboxId] = useState('');
+  const [xmtpLimitWarning, setXmtpLimitWarning] = useState(null);
+  const [activeInstallationId, setActiveInstallationId] = useState('');
+  const [installationsOpen, setInstallationsOpen] = useState(false);
+  const [installations, setInstallations] = useState([]);
+  const [installationsLoading, setInstallationsLoading] = useState(false);
+  const [installationsError, setInstallationsError] = useState(null);
+  const messageSeenRef = useRef(new Set());
   const [profilesByAddress, setProfilesByAddress] = useState({}); // { [addressLower]: { name, avatar } }
   const [profileName, setProfileName] = useState('');
   const [profileAvatar, setProfileAvatar] = useState('');
@@ -598,6 +680,126 @@ function App() {
   const lastProfileBroadcastRef = useRef(0);
   const autoDeployTriggeredRef = useRef(false);
   const pathIsChat = path === '/chat';
+  const loadInstallationsState = useCallback(async () => {
+    if (!walletAddress) {
+      setInstallations([]);
+      setInstallationsError('Connect a wallet to manage XMTP installations.');
+      return;
+    }
+    const cache = loadXmtpCache(walletAddress);
+    if (!cache?.inboxId) {
+      setInstallations([]);
+      setInstallationsError('No XMTP inbox found for this wallet yet. Join or create a templ first.');
+      return;
+    }
+    setInstallationsLoading(true);
+    setInstallationsError(null);
+    try {
+      const env = resolveXmtpEnv();
+      const states = await Client.inboxStateFromInboxIds([cache.inboxId], env);
+      const state = Array.isArray(states) ? states[0] : null;
+      const list = Array.isArray(state?.installations) ? state.installations : [];
+      setInstallations(list.map((inst) => {
+        let timestampMs = null;
+        try {
+          if (typeof inst.clientTimestampNs === 'bigint') {
+            timestampMs = Number(inst.clientTimestampNs / 1000000n);
+          }
+        } catch {}
+        return {
+          id: inst.id,
+          timestamp: timestampMs
+        };
+      }));
+    } catch (err) {
+      setInstallationsError(err?.message || String(err));
+    } finally {
+      setInstallationsLoading(false);
+    }
+  }, [walletAddress]);
+  const handleOpenInstallations = useCallback(async () => {
+    setInstallationsOpen(true);
+    await loadInstallationsState();
+  }, [loadInstallationsState]);
+  const handleRevokeInstallation = useCallback(async (installationId) => {
+    if (!walletAddress || !signer) {
+      setInstallationsError('Connect a wallet to revoke installations.');
+      return;
+    }
+    const cache = loadXmtpCache(walletAddress);
+    if (!cache?.inboxId) {
+      setInstallationsError('No XMTP inbox found for this wallet.');
+      return;
+    }
+    try {
+      setInstallationsError(null);
+      const env = resolveXmtpEnv();
+      const nonce = getStableNonce(walletAddress);
+      const signerWrapper = makeXmtpSigner({ address: walletAddress, signer, nonce });
+      await Client.revokeInstallations(signerWrapper, cache.inboxId, [installationId], env);
+      pushStatus('✅ Installation revoked');
+      await loadInstallationsState();
+    } catch (err) {
+      setInstallationsError(err?.message || String(err));
+    }
+  }, [walletAddress, signer, loadInstallationsState, pushStatus]);
+  const handleRevokeOtherInstallations = useCallback(async () => {
+    if (!walletAddress || !signer) {
+      setInstallationsError('Connect a wallet to revoke installations.');
+      return;
+    }
+    const cache = loadXmtpCache(walletAddress);
+    if (!cache?.inboxId) {
+      setInstallationsError('No XMTP inbox found for this wallet.');
+      return;
+    }
+    try {
+      setInstallationsError(null);
+      const env = resolveXmtpEnv();
+      const states = await Client.inboxStateFromInboxIds([cache.inboxId], env);
+      const state = Array.isArray(states) ? states[0] : null;
+      const idsToRevoke = (state?.installations || [])
+        .map((inst) => inst.id)
+        .filter((id) => id && id !== activeInstallationId);
+      if (!idsToRevoke.length) {
+        setInstallationsError('No other installations to revoke.');
+        return;
+      }
+      const nonce = getStableNonce(walletAddress);
+      const signerWrapper = makeXmtpSigner({ address: walletAddress, signer, nonce });
+      await Client.revokeInstallations(signerWrapper, cache.inboxId, idsToRevoke, env);
+      pushStatus('✅ Other installations revoked');
+      await loadInstallationsState();
+    } catch (err) {
+      setInstallationsError(err?.message || String(err));
+    }
+  }, [walletAddress, signer, activeInstallationId, loadInstallationsState, pushStatus]);
+  const normalizedGroupId = useMemo(() => (groupId ? String(groupId).toLowerCase() : ''), [groupId]);
+  const normalizedTemplAddress = useMemo(() => {
+    if (!templAddress) return '';
+    try {
+      return ethers.getAddress(templAddress).toLowerCase();
+    } catch {
+      try {
+        return templAddress.toLowerCase();
+      } catch {
+        return '';
+      }
+    }
+  }, [templAddress]);
+  const chatStorageKey = useMemo(() => {
+    if (normalizedGroupId) return `group:${normalizedGroupId}`;
+    if (normalizedTemplAddress) return `templ:${normalizedTemplAddress}`;
+    return null;
+  }, [normalizedGroupId, normalizedTemplAddress]);
+  const resetChatState = useCallback(() => {
+    messageSeenRef.current = new Set();
+    setMessages([]);
+    setProposals([]);
+    setProposalsById({});
+    setGroup(null);
+    setGroupConnected(false);
+  }, []);
   const pendingJoinMatches = useMemo(() => {
     if (!pendingJoinAddress || !templAddress) return false;
     try {
@@ -739,6 +941,19 @@ function App() {
     if (!max || max === '0') return currentLabel;
     return `${currentLabel} / ${max}`;
   }, []);
+  useEffect(() => {
+    const id = setInterval(() => {
+      setNowSeconds(Math.floor(Date.now() / 1000));
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
+  useEffect(() => {
+    if (!chatStorageKey) return;
+    messageSeenRef.current = new Set();
+    setMessages([]);
+    setProposals([]);
+    setProposalsById({});
+  }, [chatStorageKey, normalizedTemplAddress]);
   useEffect(() => {
     setApprovalStage(needsTokenApproval ? 'checking' : 'approved');
     setApprovalError(null);
@@ -1141,13 +1356,28 @@ function App() {
         ? Number(summary.memberCount)
         : null;
       const maxMembers = summary?.status === 'ready' ? summary.maxMembers : null;
+      const tokenAddrRaw = summary?.status === 'ready' ? summary.token : null;
+      const tokenAddress = tokenAddrRaw ? String(tokenAddrRaw).toLowerCase() : null;
+      const tokenSymbol = summary?.status === 'ready'
+        ? (summary.symbol || (tokenAddress === zeroAddressLower ? 'ETH' : null))
+        : null;
+      const entryFeeDisplay = summary?.status === 'ready' ? (summary.formatted || summary.raw || null) : null;
+      const entryFeeRaw = summary?.status === 'ready' ? summary.raw : null;
+      const entryFeeUsd = summary?.status === 'ready' ? summary.usd : null;
+      const decimals = summary?.status === 'ready' ? summary.decimals : null;
       return {
         ...item,
         contract,
         joined,
         memberCount: members,
         maxMembers,
-        summary
+        summary,
+        tokenAddress,
+        tokenSymbol,
+        entryFeeDisplay,
+        entryFeeRaw,
+        entryFeeUsd,
+        decimals
       };
     });
     items.sort((a, b) => {
@@ -1159,7 +1389,7 @@ function App() {
       return a.contract.localeCompare(b.contract);
     });
     return items;
-  }, [templList, joinedTemplSet, templAddress, templSummaries]);
+  }, [templList, joinedTemplSet, templAddress, templSummaries, zeroAddressLower]);
   const maxMembersValue = currentMaxMembers === null ? null : String(currentMaxMembers);
   const memberCountValue = currentMemberCount === null ? null : String(currentMemberCount);
   const maxMembersLabel = maxMembersValue === null ? '…' : (maxMembersValue === '0' ? 'Unlimited' : maxMembersValue);
@@ -1454,7 +1684,11 @@ function App() {
           try { protocolPct = Number(await c.protocolPercent()); } catch {}
         }
         try { maxMembersRaw = await c.MAX_MEMBERS(); } catch {}
-        try { memberCountRaw = await c.totalPurchases(); } catch {}
+        try {
+          memberCountRaw = await c.getMemberCount();
+        } catch {
+          memberCountRaw = null;
+        }
         let dictatorshipState = null;
         try {
           dictatorshipState = await c.priestIsDictator();
@@ -1540,88 +1774,123 @@ function App() {
     if (!window.ethereum) return;
     const provider = new ethers.BrowserProvider(window.ethereum);
     await provider.send('eth_requestAccounts', []);
-    const signer = await provider.getSigner();
-    setSigner(signer);
-    const address = await signer.getAddress();
+    const nextSigner = await provider.getSigner();
+    const address = await nextSigner.getAddress();
+    setSigner(nextSigner);
     setWalletAddress(address);
+    setXmtpLimitWarning(null);
     pushStatus('✅ Wallet connected');
-    
-    // Proactively close any existing XMTP client before switching identities to avoid
-    // OPFS/db handle contention and duplicate streams across wallets during e2e runs.
+
+    // Tear down any existing XMTP session before rotating wallets.
     try {
+      if (creatingXmtpPromiseRef.current) {
+        try {
+          const pendingClient = await creatingXmtpPromiseRef.current;
+          await pendingClient?.close?.();
+        } catch {}
+      }
+      creatingXmtpPromiseRef.current = null;
       if (xmtp && typeof xmtp.close === 'function') {
         await xmtp.close();
       }
     } catch {}
+    identityReadyRef.current = false;
+    identityReadyPromiseRef.current = null;
+    setXmtp(undefined);
+    setActiveInboxId('');
+    resetChatState();
+    setPendingJoinAddress(null);
+    setPurchaseStatusNote(null);
+    setJoinStatusNote(null);
+    setProfileOpen(false);
 
-    // Use an XMTP-compatible signer wrapper for the browser SDK with inbox rotation
-    const forcedEnv = import.meta.env.VITE_XMTP_ENV?.trim();
-    const xmtpEnv = forcedEnv || (['localhost', '127.0.0.1'].includes(window.location.hostname) ? 'dev' : 'production');
-    async function createXmtpStable() {
-      // Use a stable installation nonce per wallet to avoid exhausting the
-      // XMTP dev network's 10-installation cap and to prevent OPFS handle
-      // conflicts from repeated Client.create() attempts.
-      const storageKey = `xmtp:nonce:${address.toLowerCase()}`;
-      let stableNonce = 1;
-      try {
-        const saved = Number.parseInt(localStorage.getItem(storageKey) || '1', 10);
-        if (Number.isFinite(saved) && saved > 0) stableNonce = saved;
-      } catch {}
+    const xmtpEnv = resolveXmtpEnv();
+    const cache = loadXmtpCache(address);
+    const storageKey = `xmtp:nonce:${address.toLowerCase()}`;
+    const baseOptions = { env: xmtpEnv, appVersion: 'templ/0.1.0' };
 
-      const xmtpSigner = {
-        type: 'EOA',
-        getAddress: () => address,
-        getIdentifier: () => ({
-          identifier: address.toLowerCase(),
-          identifierKind: 'Ethereum',
-          nonce: stableNonce
-        }),
-        signMessage: async (message) => {
-          let toSign;
-          if (message instanceof Uint8Array) {
-            try { toSign = ethers.toUtf8String(message); }
-            catch { toSign = ethers.hexlify(message); }
-          } else if (typeof message === 'string') {
-            toSign = message;
-          } else {
-            toSign = String(message);
+    const candidateSet = new Set();
+    if (cache?.nonce) candidateSet.add(Number(cache.nonce));
+    try {
+      const saved = Number.parseInt(localStorage.getItem(storageKey) || '1', 10);
+      if (Number.isFinite(saved) && saved > 0) {
+        candidateSet.add(saved);
+      }
+    } catch {}
+    for (let i = 1; i <= 12; i++) {
+      candidateSet.add(i);
+    }
+    const candidateNonces = Array.from(candidateSet).filter((value) => Number.isFinite(value) && value > 0);
+
+    async function createClientWithNonce(nonce, disableAutoRegister) {
+      const signerWrapper = makeXmtpSigner({ address, signer: nextSigner, nonce });
+      const options = disableAutoRegister ? { ...baseOptions, disableAutoRegister: true } : baseOptions;
+      dlog('[app] Creating XMTP client', { disableAutoRegister, nonce });
+      const clientInstance = await Client.create(signerWrapper, options);
+      try { localStorage.setItem(storageKey, String(nonce)); } catch {}
+      saveXmtpCache(address, { nonce, inboxId: clientInstance.inboxId });
+      return clientInstance;
+    }
+
+    async function createOrResumeXmtp() {
+      for (const nonce of candidateNonces) {
+        try {
+          return await createClientWithNonce(nonce, true);
+        } catch (err) {
+          const msg = String(err?.message || err);
+          if (msg.includes('already registered 10/10 installations')) {
+            continue;
           }
-          const signature = await signer.signMessage(toSign);
-          return ethers.getBytes(signature);
+          if (msg.toLowerCase().includes('register') || msg.toLowerCase().includes('inbox')) {
+            continue;
+          }
         }
-      };
-
+      }
       try {
-        dlog('[app] Creating XMTP client with stable nonce', stableNonce);
-        const client = await Client.create(xmtpSigner, { env: xmtpEnv, appVersion: 'templ/0.1.0' });
-        // Persist the nonce we successfully used so future runs reuse the same installation
-        try { localStorage.setItem(storageKey, String(stableNonce)); } catch {}
-        return client;
+        const fallbackNonce = candidateNonces[0] || 1;
+        return await createClientWithNonce(fallbackNonce, false);
       } catch (err) {
         const msg = String(err?.message || err);
-        // If the identity already has 10/10 installations, do not spin — surface a clear error.
-        // Re-running with the same nonce avoids creating new installations.
         if (msg.includes('already registered 10/10 installations')) {
-          throw new Error('XMTP installation limit reached for this wallet. Please revoke older installations for dev or switch account.');
+          const limitError = new Error('XMTP installation limit reached for this wallet. Please revoke older installations or switch wallets.');
+          limitError.name = 'XMTP_LIMIT';
+          throw limitError;
         }
         throw err;
       }
     }
-    // Reset conversation state so the new identity discovers and streams afresh
-    setGroup(null);
-    setGroupConnected(false);
+
     let client;
-    if (creatingXmtpPromiseRef.current) {
-      client = await creatingXmtpPromiseRef.current;
-    } else {
-      const p = (async () => {
-        const c = await createXmtpStable();
-        setXmtp(c);
-        return c;
-      })().finally(() => { creatingXmtpPromiseRef.current = null; });
-      creatingXmtpPromiseRef.current = p;
-      client = await p;
+    try {
+      if (creatingXmtpPromiseRef.current) {
+        client = await creatingXmtpPromiseRef.current;
+      } else {
+        const p = (async () => {
+          return await createOrResumeXmtp();
+        })().finally(() => { creatingXmtpPromiseRef.current = null; });
+        creatingXmtpPromiseRef.current = p;
+        client = await p;
+      }
+    } catch (err) {
+      creatingXmtpPromiseRef.current = null;
+      setXmtp(undefined);
+      setActiveInboxId('');
+      setActiveInstallationId('');
+      const message = String(err?.message || err);
+      if (err?.name === 'XMTP_LIMIT' || message.includes('installation limit')) {
+        setXmtpLimitWarning(message);
+        pushStatus('⚠️ XMTP limit reached. Use a different wallet or revoke old inboxes.');
+      } else {
+        pushStatus('❌ Failed to initialise XMTP: ' + message);
+      }
+      return;
     }
+    setActiveInboxId(client?.inboxId || '');
+    setActiveInstallationId(client?.installationId ? String(client.installationId) : '');
+    setXmtp(client);
+    setXmtpLimitWarning(null);
+    setInstallationsError(null);
+    setInstallations([]);
     dlog('[app] XMTP client created', { env: xmtpEnv, inboxId: client.inboxId });
     // Kick off identity readiness check in background so deploy/join can await it later
     try {
@@ -1763,7 +2032,10 @@ function App() {
           };
           window.__pushMessage = (from, content) => {
             try {
-              setMessages((m) => [...m, { kind: 'text', senderAddress: String(from || '').toLowerCase(), content: String(content || '') }]);
+              const debugMid = `debug:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`;
+              if (messageSeenRef.current.has(`mid:${debugMid}`)) return;
+              messageSeenRef.current.add(`mid:${debugMid}`);
+              setMessages((m) => [...m, { mid: debugMid, kind: 'text', senderAddress: String(from || '').toLowerCase(), content: String(content || '') }]);
             } catch {}
           };
         }
@@ -2401,15 +2673,19 @@ function App() {
           return { mid: dm.id, kind: 'text', senderAddress: from, content: raw };
         }).filter(Boolean);
         setMessages((prev) => {
-          let next;
-          if (prev.length === 0) {
-            next = [...transformed];
-          } else {
-            // Prepend any new items not already present by message id; keep existing order
-            const prevIds = new Set(prev.map((m) => m.mid).filter(Boolean));
-            const deduped = transformed.filter((m) => !m.mid || !prevIds.has(m.mid));
-            next = [...deduped, ...prev];
+          const prevIds = new Set(prev.map((m) => m.mid).filter(Boolean));
+          const additions = [];
+          for (const item of transformed) {
+            const key = messageIdentityKey(item);
+            if (item?.mid && prevIds.has(item.mid)) continue;
+            if (key && messageSeenRef.current.has(key)) continue;
+            if (key) messageSeenRef.current.add(key);
+            additions.push(item);
           }
+          if (!additions.length && !metaUpdates.length) {
+            return prev;
+          }
+          let next = additions.length ? [...additions, ...prev] : prev.slice();
           if (metaUpdates.length) {
             next = next.map((item) => {
               if (item?.kind === 'proposal') {
@@ -2470,7 +2746,11 @@ function App() {
             });
             setMessages((m) => {
               if (m.some((it) => it.kind === 'proposal' && Number(it.proposalId) === id)) return m;
-              return [...m, { mid: msg.id, kind: 'proposal', senderAddress: from, proposalId: id, title, description }];
+              const newMessage = { mid: msg.id, kind: 'proposal', senderAddress: from, proposalId: id, title, description };
+              const key = messageIdentityKey(newMessage);
+              if (key && messageSeenRef.current.has(key)) return m;
+              if (key) messageSeenRef.current.add(key);
+              return [...m, newMessage];
             });
             continue;
           }
@@ -2513,24 +2793,29 @@ function App() {
           }
           if (parsed && (parsed.type === 'templ-created' || parsed.type === 'member-joined')) {
             setMessages((m) => {
-              if (m.some((it) => it.mid === msg.id)) return m;
+              const key = `mid:${msg.id}`;
+              if (messageSeenRef.current.has(key)) return m;
               const content = parsed.type === 'templ-created'
                 ? 'Templ created'
                 : parsed.address
                   ? `${shorten(parsed.address)} joined`
                   : 'Member joined';
+              messageSeenRef.current.add(key);
               return [...m, { mid: msg.id, kind: 'system', senderAddress: from, content }];
             });
             continue;
           }
           setMessages((m) => {
-            if (m.some((it) => it.mid === msg.id)) return m;
+            const key = `mid:${msg.id}`;
+            if (messageSeenRef.current.has(key)) return m;
             const idx = m.findIndex((it) => it.localEcho && it.kind === 'text' && it.content === raw && ((it.senderAddress || '').toLowerCase() === from || !it.senderAddress));
             if (idx !== -1) {
               const copy = m.slice();
               copy[idx] = { mid: msg.id, kind: 'text', senderAddress: from, content: raw };
+              messageSeenRef.current.add(key);
               return copy;
             }
+            messageSeenRef.current.add(key);
             return [...m, { mid: msg.id, kind: 'text', senderAddress: from, content: raw }];
           });
         }
@@ -2720,10 +3005,68 @@ function App() {
           if (prev.some((x) => x.id === p.id)) return prev;
           return [...prev, { ...p, yes: 0, no: 0 }];
         });
-        setProposalsById((map) => ({ ...map, [p.id]: { id: p.id, title: map[p.id]?.title || `Proposal #${p.id}`, yes: map[p.id]?.yes || 0, no: map[p.id]?.no || 0 } }));
+        setProposalsById((map) => {
+          const existing = map[p.id] || {};
+          const derivedTitle = (() => {
+            const eventTitle = typeof p.title === 'string' && p.title.trim().length ? p.title : '';
+            if (existing.title && existing.title !== `Proposal #${p.id}`) return existing.title;
+            return eventTitle || existing.title || `Proposal #${p.id}`;
+          })();
+          const derivedDescription = (() => {
+            if (existing.description && existing.description.length) return existing.description;
+            if (typeof p.description === 'string') return p.description;
+            return existing.description || '';
+          })();
+          return {
+            ...map,
+            [p.id]: {
+              ...existing,
+              id: p.id,
+              proposer: existing.proposer || normalizeAddressLower(p.proposer) || '',
+              title: derivedTitle,
+              description: derivedDescription,
+              yes: existing.yes ?? 0,
+              no: existing.no ?? 0,
+              endTime: Number.isFinite(p.endTime) ? Number(p.endTime) : existing.endTime ?? null
+            }
+          };
+        });
         setMessages((m) => {
-          if (m.some((it) => it.kind === 'proposal' && Number(it.proposalId) === p.id)) return m;
-          return [...m, { kind: 'proposal', senderAddress: p.proposer?.toLowerCase?.() || '', proposalId: p.id, title: `Proposal #${p.id}` }];
+          let found = false;
+          const updated = m.map((it) => {
+            if (it.kind === 'proposal' && Number(it.proposalId) === p.id) {
+              found = true;
+              const next = { ...it };
+              if (typeof p.title === 'string' && p.title.trim().length) {
+                next.title = p.title;
+              }
+              if (typeof p.description === 'string') {
+                next.description = p.description;
+              }
+              if (p.proposer) {
+                const normalizedProposer = normalizeAddressLower(p.proposer);
+                next.senderAddress = normalizedProposer || next.senderAddress;
+              }
+              return next;
+            }
+            return it;
+          });
+          if (found) return updated;
+          const newMessage = {
+            mid: `proposal:${p.id}`,
+            kind: 'proposal',
+            senderAddress: normalizeAddressLower(p.proposer) || '',
+            proposalId: p.id,
+            title: (typeof p.title === 'string' && p.title.trim().length) ? p.title : `Proposal #${p.id}`,
+            description: typeof p.description === 'string' ? p.description : ''
+          };
+          const key = messageIdentityKey(newMessage);
+          if (key && messageSeenRef.current.has(key)) return updated;
+          if (key) messageSeenRef.current.add(key);
+          return [
+            ...updated,
+            newMessage
+          ];
         });
       },
       onVote: (v) => {
@@ -2741,14 +3084,81 @@ function App() {
             const p = await contract.getProposal(i);
             const yes = Number(p.yesVotes ?? p[1] ?? 0);
             const no = Number(p.noVotes ?? p[2] ?? 0);
-            const title = `Proposal #${i}`;
+            const endTime = Number(p.endTime ?? p[3] ?? 0);
+            const executed = Boolean(p.executed ?? p[4]);
+            const passed = Boolean(p.passed ?? p[5]);
+            const proposer = p.proposer ?? p[0] ?? '';
+            const chainTitle = (() => {
+              const raw = p.title ?? p[6];
+              return typeof raw === 'string' && raw.trim().length ? raw : `Proposal #${i}`;
+            })();
+            const chainDescription = (() => {
+              const raw = p.description ?? p[7];
+              return typeof raw === 'string' ? raw : '';
+            })();
+            let snapshotData = [null, null, null, null, null, null];
+            try {
+              snapshotData = await contract.getProposalSnapshots(i);
+            } catch {/* snapshot data optional */}
+            const [
+              eligiblePreRaw,
+              eligiblePostRaw,
+              preSnapshotBlockRaw,
+              quorumSnapshotBlockRaw,
+              createdAtRaw,
+              quorumReachedAtRaw
+            ] = snapshotData;
+            const title = chainTitle;
             if (cancelled) return;
-            setProposalsById((map) => ({ ...map, [i]: { ...(map[i] || { id: i }), id: i, title: (map[i]?.title || title), yes, no } }));
+            setProposalsById((map) => {
+              const existing = map[i] || { id: i };
+              const mergedTitle = existing.title && existing.title !== `Proposal #${i}`
+                ? existing.title
+                : (existing.title || title);
+              const mergedDescription = existing.description && existing.description.length
+                ? existing.description
+                : chainDescription;
+              return {
+                ...map,
+                [i]: {
+                  ...existing,
+                  id: i,
+                  proposer: existing.proposer || normalizeAddressLower(proposer) || '',
+                  title: mergedTitle,
+                  description: mergedDescription,
+                  yes,
+                  no,
+                  endTime,
+                  executed,
+                  passed,
+                  quorumReachedAt: toNumeric(quorumReachedAtRaw),
+                  createdAt: toNumeric(createdAtRaw),
+                  eligibleVotersPreQuorum: toNumeric(eligiblePreRaw),
+                  eligibleVotersPostQuorum: toNumeric(eligiblePostRaw),
+                  preQuorumSnapshotBlock: toNumeric(preSnapshotBlockRaw),
+                  quorumSnapshotBlock: toNumeric(quorumSnapshotBlockRaw)
+                }
+              };
+            });
             setProposals((prev) => prev.map((it) => it.id === i ? { ...it, yes, no } : it));
             // Ensure a poll bubble exists in chat
             setMessages((m) => {
               if (m.some((it) => it.kind === 'proposal' && Number(it.proposalId) === i)) return m;
-              return [...m, { kind: 'proposal', senderAddress: '', proposalId: i, title }];
+              const newMessage = {
+                mid: `proposal:${i}`,
+                kind: 'proposal',
+                senderAddress: normalizeAddressLower(proposer) || '',
+                proposalId: i,
+                title,
+                description: chainDescription
+              };
+              const key = messageIdentityKey(newMessage);
+              if (key && messageSeenRef.current.has(key)) return m;
+              if (key) messageSeenRef.current.add(key);
+              return [
+                ...m,
+                newMessage
+              ];
             });
           } catch {}
         }
@@ -2759,15 +3169,38 @@ function App() {
     let cancelled = false;
     const checkPaused = async () => {
       try {
-        const [p, maxRaw, countRaw] = await Promise.all([
+        const [p, maxRaw, execDelayRaw, quorumRaw] = await Promise.all([
           contract.paused(),
           contract.MAX_MEMBERS(),
-          contract.totalPurchases()
+          contract.executionDelayAfterQuorum(),
+          contract.quorumPercent()
         ]);
+        let countRaw = null;
+        try {
+          countRaw = await contract.getMemberCount();
+        } catch {
+          countRaw = null;
+        }
         if (!cancelled) {
           setPaused(Boolean(p));
           try { setCurrentMaxMembers(String(maxRaw)); } catch { setCurrentMaxMembers(null); }
-          try { setCurrentMemberCount(String(countRaw)); } catch { setCurrentMemberCount(null); }
+          if (countRaw !== null && countRaw !== undefined) {
+            try { setCurrentMemberCount(String(countRaw)); } catch { setCurrentMemberCount(null); }
+          } else {
+            setCurrentMemberCount(null);
+          }
+          try {
+            const numeric = Number(execDelayRaw);
+            setCurrentExecutionDelay(Number.isFinite(numeric) ? numeric : null);
+          } catch {
+            setCurrentExecutionDelay(null);
+          }
+          try {
+            const numeric = Number(quorumRaw);
+            setCurrentQuorumPercent(Number.isFinite(numeric) ? numeric : null);
+          } catch {
+            setCurrentQuorumPercent(null);
+          }
         }
       } catch {}
     };
@@ -2921,47 +3354,67 @@ function App() {
     })();
   }, [signer, templAddress, walletAddress, proposals, groupConnected, pathIsChat]);
 
-  // Persist and restore chat state (messages + proposals) per group/templ for quick reloads
+  // Persist and restore chat state (messages + proposals) per chat context
   useEffect(() => {
-    // restore when groupId or templAddress available
-    try {
-      const gid = (groupId || '').toLowerCase();
-      if (gid) {
-        const raw = localStorage.getItem(`templ:messages:${gid}`);
-        if (raw) {
-          const arr = JSON.parse(raw);
-          if (Array.isArray(arr)) setMessages(arr);
+    if (!chatStorageKey) return;
+    const suffix = chatStorageKey.includes(':') ? chatStorageKey.split(':').slice(1).join(':') : chatStorageKey;
+    const messageKeys = [`templ:messages:${chatStorageKey}`];
+    if (suffix) messageKeys.push(`templ:messages:${suffix}`);
+    if (normalizedTemplAddress) messageKeys.push(`templ:messages:${normalizedTemplAddress}`);
+    for (const key of messageKeys) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) continue;
+        const arr = JSON.parse(raw);
+        if (!Array.isArray(arr)) continue;
+        const restored = [];
+        for (const entry of arr) {
+          if (!entry) continue;
+          const msgKey = messageIdentityKey(entry);
+          if (msgKey && messageSeenRef.current.has(msgKey)) {
+            continue;
+          }
+          if (msgKey) messageSeenRef.current.add(msgKey);
+          restored.push(entry);
         }
-      }
-    } catch {}
-    try {
-      const addr = (templAddress || '').toLowerCase();
-      if (addr) {
-        const raw = localStorage.getItem(`templ:proposals:${addr}`);
-        if (raw) {
-          const map = JSON.parse(raw);
-          if (map && typeof map === 'object') setProposalsById(map);
+        if (restored.length) {
+          setMessages(restored);
         }
-      }
-    } catch {}
-  }, [groupId, templAddress]);
+        break;
+      } catch {/* ignore parse errors */}
+    }
+    const proposalKeys = [`templ:proposals:${chatStorageKey}`];
+    if (suffix) proposalKeys.push(`templ:proposals:${suffix}`);
+    if (normalizedTemplAddress) proposalKeys.push(`templ:proposals:${normalizedTemplAddress}`);
+    for (const key of proposalKeys) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) continue;
+        const map = JSON.parse(raw);
+        if (map && typeof map === 'object') {
+          setProposalsById(map);
+          break;
+        }
+      } catch {/* ignore */}
+    }
+  }, [chatStorageKey, normalizedTemplAddress]);
 
   useEffect(() => {
+    if (!chatStorageKey) return;
     try {
-      const gid = (groupId || '').toLowerCase();
-      if (!gid) return;
-      const toSave = messages.filter((msg) => !msg?.localEcho).slice(-200); // cap and drop unsent local echoes
-      localStorage.setItem(`templ:messages:${gid}`, JSON.stringify(toSave));
-    } catch {}
-  }, [messages, groupId]);
+      const toSave = messages
+        .filter((msg) => !msg?.localEcho)
+        .slice(-200);
+      localStorage.setItem(`templ:messages:${chatStorageKey}`, JSON.stringify(toSave));
+    } catch {/* ignore */}
+  }, [messages, chatStorageKey]);
 
   useEffect(() => {
+    if (!chatStorageKey) return;
     try {
-      const addr = (templAddress || '').toLowerCase();
-      if (!addr) return;
-      localStorage.setItem(`templ:proposals:${addr}`, JSON.stringify(proposalsById));
-    } catch {}
-  }, [proposalsById, templAddress]);
+      localStorage.setItem(`templ:proposals:${chatStorageKey}`, JSON.stringify(proposalsById));
+    } catch {/* ignore */}
+  }, [proposalsById, chatStorageKey]);
 
   useEffect(() => {
     const reader = signer?.provider ?? signer ?? (window?.ethereum ? new ethers.BrowserProvider(window.ethereum) : null);
@@ -3004,9 +3457,11 @@ function App() {
             entryFee = BigInt(await contract.entryFee());
           }
           try {
-            const count = await contract.totalPurchases();
+            const count = await contract.getMemberCount();
             totalMembers = Number(count);
-          } catch {}
+          } catch {
+            totalMembers = null;
+          }
           try {
             maxMembersRaw = await contract.MAX_MEMBERS();
           } catch {}
@@ -3049,7 +3504,14 @@ function App() {
               decimals,
               required: entryFee,
               memberCount: Number.isFinite(totalMembers) ? totalMembers : null,
-              maxMembers: maxMembersRaw !== null && maxMembersRaw !== undefined ? maxMembersRaw.toString() : null
+              maxMembers: (() => {
+                if (maxMembersRaw === null || maxMembersRaw === undefined) return null;
+                try {
+                  return BigInt(maxMembersRaw).toString();
+                } catch {
+                  try { return String(maxMembersRaw); } catch { return null; }
+                }
+              })()
             }
           }));
         } catch (err) {
@@ -3067,6 +3529,40 @@ function App() {
     });
     return () => { cancelled = true; };
   }, [templList, signer, templSummaries, zeroAddressLower]);
+
+
+  async function disconnectWallet() {
+    try {
+      if (creatingXmtpPromiseRef.current) {
+        try {
+          const pendingClient = await creatingXmtpPromiseRef.current;
+          await pendingClient?.close?.();
+        } catch {}
+        creatingXmtpPromiseRef.current = null;
+      }
+      if (xmtp && typeof xmtp.close === 'function') {
+        await xmtp.close();
+      }
+    } catch {}
+    identityReadyRef.current = false;
+    identityReadyPromiseRef.current = null;
+    setXmtp(undefined);
+    setActiveInboxId('');
+    setActiveInstallationId('');
+    setInstallations([]);
+    setInstallationsError(null);
+    setXmtpLimitWarning(null);
+    setSigner(undefined);
+    setWalletAddress('');
+    resetChatState();
+    setPendingJoinAddress(null);
+    setPurchaseStatusNote(null);
+    setJoinStatusNote(null);
+    setProfileOpen(false);
+    setInstallationsOpen(false);
+    pushStatus('👋 Wallet disconnected');
+  }
+
 
   async function handleSend() {
     if (!messageInput) return;
@@ -3428,15 +3924,18 @@ function App() {
       {/* Header / Nav */}
       <div className="w-full border-b border-black/10">
         <div className="max-w-screen-md mx-auto px-4 py-2 flex items-center justify-between">
-          <div className="flex gap-2">
-            <button className="px-3 py-1 rounded border border-black/20" onClick={() => navigate('/templs')}>List</button>
-            <button className="px-3 py-1 rounded border border-black/20" onClick={() => navigate('/create')}>Create</button>
-          </div>
+          <div className="text-lg font-semibold text-black/80">Templ</div>
           <div className="flex items-center gap-2">
             {walletAddress && (
-              <button className="px-3 py-1 rounded border border-black/20" onClick={() => setProfileOpen(true)}>Profile</button>
+              <>
+                <span className="hidden sm:inline text-xs font-mono text-black/70">{shorten(walletAddress)}</span>
+                <button className="px-3 py-1 rounded border border-black/20" onClick={() => setProfileOpen(true)}>Profile</button>
+                <button className="px-3 py-1 rounded border border-black/20" onClick={disconnectWallet}>Disconnect</button>
+              </>
             )}
-            <button className="px-3 py-1 rounded bg-primary text-black font-semibold" onClick={connectWallet}>Connect Wallet</button>
+            {!walletAddress && (
+              <button className="px-3 py-1 rounded bg-primary text-black font-semibold" onClick={connectWallet}>Connect Wallet</button>
+            )}
           </div>
         </div>
       </div>
@@ -3458,32 +3957,91 @@ function App() {
         {/* Routes */}
         {path === '/templs' && (
           <div data-testid="templ-list" className="space-y-3">
-            <h2 className="text-xl font-semibold">Templs</h2>
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-xl font-semibold">Templs</h2>
+              {walletAddress && (
+                <button
+                  className="px-3 py-1 rounded border border-black/20 text-xs"
+                  onClick={handleOpenInstallations}
+                >
+                  Manage XMTP Slots
+                </button>
+              )}
+            </div>
             {templCards.length === 0 && <p>No templs yet</p>}
             {templCards.map((t) => {
               const isJoined = Boolean(t.joined);
               const contractLower = String(t.contract).toLowerCase();
+              const templHref = baseScanUrl(t.contract);
+              const tokenZero = t.tokenAddress === zeroAddressLower;
+              const tokenHref = t.tokenAddress && !tokenZero ? baseScanUrl(t.tokenAddress) : null;
+              const tokenShort = t.tokenAddress ? shorten(t.tokenAddress) : 'Loading…';
+              const tokenDisplay = !t.tokenAddress
+                ? 'Loading…'
+                : tokenZero
+                  ? `${t.tokenSymbol || 'ETH'} (native)`
+                  : t.tokenSymbol
+                    ? `${t.tokenSymbol} • ${tokenShort}`
+                    : tokenShort;
+              const feeDisplay = t.entryFeeDisplay || t.entryFeeRaw || '…';
+              const feeUsd = t.entryFeeUsd || null;
+              const memberLabel = Number.isFinite(t.memberCount) ? t.memberCount.toLocaleString() : '…';
+              let maxLabel = 'Unlimited';
+              if (t.maxMembers && t.maxMembers !== '0') {
+                const parsed = Number(t.maxMembers);
+                maxLabel = Number.isFinite(parsed) ? parsed.toLocaleString() : t.maxMembers;
+              }
+              const showMax = t.maxMembers && t.maxMembers !== '0';
               const action = isJoined
                 ? () => navigate(`/chat?address=${contractLower}`)
                 : () => navigate(`/join?address=${contractLower}`);
+
               return (
                 <div
                   key={t.contract}
-                  className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border border-black/10 rounded px-3 py-2"
+                  className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 border border-black/10 rounded px-3 py-3"
                 >
-                  <div className="flex items-center gap-2 flex-1">
-                    <button
-                      type="button"
-                      title="Copy address"
-                      data-address={contractLower}
-                      className="text-left underline underline-offset-4 font-mono text-sm flex-1 break-words"
-                      onClick={() => copyToClipboard(t.contract)}
-                    >
-                      {shorten(t.contract)}
-                    </button>
-                    {isJoined && <span className="text-xs font-semibold uppercase tracking-wide text-primary">Joined</span>}
+                  <div className="flex-1 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <a
+                        href={templHref}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-mono text-sm underline underline-offset-4 break-all"
+                      >
+                        {shorten(t.contract)}
+                      </a>
+                      <button
+                        type="button"
+                        className="text-xs px-2 py-1 border border-black/20 rounded"
+                        onClick={() => copyToClipboard(t.contract)}
+                      >
+                        Copy
+                      </button>
+                      {isJoined && <span className="text-xs font-semibold uppercase tracking-wide text-primary">Joined</span>}
+                    </div>
+                    <div className="text-xs text-black/70">
+                      Access token: {tokenHref ? (
+                        <a
+                          href={tokenHref}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="underline underline-offset-4"
+                        >
+                          {tokenDisplay}
+                        </a>
+                      ) : (
+                        <span className="font-medium">{tokenDisplay}</span>
+                      )}
+                    </div>
+                    <div className="text-xs text-black/70">
+                      Join fee: <span className="font-medium">{feeDisplay}</span>{feeUsd ? <span className="text-black/50"> • {feeUsd}</span> : null}
+                    </div>
+                    <div className="text-xs text-black/70">
+                      Members: <span className="font-medium">{memberLabel}</span>{showMax ? <span className="text-black/50"> / {maxLabel}</span> : null}
+                    </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 sm:flex-col sm:items-end">
                     <button
                       className="px-3 py-1 rounded bg-primary text-black font-semibold w-full sm:w-auto"
                       onClick={action}
@@ -3932,6 +4490,9 @@ function App() {
         {path === '/join' && (
           <div className="join space-y-3">
             <h2 className="text-xl font-semibold">Join Existing Templ</h2>
+            <p className="text-sm text-black/70">
+              You were invited to join this templ! Pay the tithe once to unlock its private chat, follow live proposals, and vote on treasury actions.
+            </p>
             <div className="rounded border border-black/20 bg-white/80 p-3 text-xs text-black/70 space-y-2">
               <div className="flex items-start justify-between gap-2">
                 <div>
@@ -4488,12 +5049,74 @@ function App() {
                 const total = (poll.yes || 0) + (poll.no || 0);
                 const yesPct = total ? Math.round((poll.yes || 0) * 100 / total) : 0;
                 const noPct = total ? 100 - yesPct : 0;
+                const endTimeSec = Number.isFinite(poll.endTime) ? poll.endTime : null;
+                const executed = Boolean(poll.executed);
+                const passed = Boolean(poll.passed);
+                const quorumReachedAt = Number.isFinite(poll.quorumReachedAt) ? poll.quorumReachedAt : null;
+                const executionDelay = Number.isFinite(currentExecutionDelay) ? currentExecutionDelay : null;
+                const unlockAt = (() => {
+                  if (quorumReachedAt !== null) {
+                    if (endTimeSec !== null && endTimeSec >= quorumReachedAt) return endTimeSec;
+                    if (executionDelay !== null) return quorumReachedAt + executionDelay;
+                  }
+                  return endTimeSec;
+                })();
+                const votingCountdown = endTimeSec !== null ? Math.ceil(endTimeSec - nowSeconds) : null;
+                const unlockCountdown = unlockAt !== null ? Math.ceil(unlockAt - nowSeconds) : null;
+                let statusLine = '';
+                if (executed) {
+                  statusLine = 'Executed on-chain';
+                } else if (quorumReachedAt !== null) {
+                  if (passed) {
+                    statusLine = 'Post-quorum · Execution ready';
+                  } else if (unlockCountdown !== null && unlockCountdown > 0) {
+                    statusLine = `Post-quorum · Timelock unlocks in ${formatDurationShort(unlockCountdown)}`;
+                  } else {
+                    statusLine = 'Post-quorum · Execution ready';
+                  }
+                } else if (votingCountdown !== null && votingCountdown > 0) {
+                  statusLine = `Pre-quorum · Voting closes in ${formatDurationShort(votingCountdown)}`;
+                } else if (votingCountdown !== null) {
+                  statusLine = 'Pre-quorum · Voting window ended';
+                } else {
+                  statusLine = 'Pre-quorum';
+                }
+                if (!executed && passed && !statusLine.includes('Execution ready')) {
+                  statusLine = statusLine.includes('Post-quorum') ? 'Post-quorum · Execution ready' : 'Execution ready';
+                }
+                const eligiblePre = Number.isFinite(poll.eligibleVotersPreQuorum) ? poll.eligibleVotersPreQuorum : null;
+                const eligiblePost = Number.isFinite(poll.eligibleVotersPostQuorum) ? poll.eligibleVotersPostQuorum : null;
+                const quorumPieces = [];
+                if (Number.isFinite(currentQuorumPercent)) {
+                  quorumPieces.push(`${currentQuorumPercent}% quorum target`);
+                }
+                if (eligiblePre !== null) {
+                  const eligibleLabel = eligiblePost !== null && eligiblePost !== eligiblePre
+                    ? `Eligible voters: ${eligiblePre} → ${eligiblePost}`
+                    : `Eligible voters: ${eligiblePre}`;
+                  quorumPieces.push(eligibleLabel);
+                }
+                if (quorumReachedAt !== null) {
+                  const rel = formatRelativeTimeFromSeconds(quorumReachedAt, nowSeconds);
+                  if (rel) quorumPieces.push(`Quorum reached ${rel}`);
+                }
+                if (quorumReachedAt !== null && executionDelay !== null) {
+                  quorumPieces.push(`Timelock ${formatDurationShort(executionDelay)}`);
+                }
+                const quorumLine = quorumPieces.filter(Boolean).join(' · ');
+
                 return (
                   <div key={i} className="chat-item chat-item--poll">
                     <div className="chat-poll">
                       <div className="chat-poll__title">{m.title || `Proposal #${pid}`}</div>
                       {poll.description && (
                         <div className="chat-poll__description" data-testid={`proposal-description-${pid}`}>{poll.description}</div>
+                      )}
+                      {statusLine && (
+                        <div className="text-xs text-black/60 mt-2">{statusLine}</div>
+                      )}
+                      {quorumLine && (
+                        <div className="text-xs text-black/50 mt-1">{quorumLine}</div>
                       )}
                       <div className="chat-poll__bars">
                         <div className="chat-poll__bar is-yes" style={{ width: `${yesPct}%` }} />
@@ -4504,7 +5127,11 @@ function App() {
                         <button className="btn" onClick={() => handleVote(pid, true)}>Vote Yes</button>
                         <button className="btn" onClick={() => handleVote(pid, false)}>Vote No</button>
                         {isPriest && (
-                          <button className="btn btn-primary" onClick={() => handleExecuteProposal(pid)}>Execute</button>
+                          <button
+                            className="btn btn-primary"
+                            onClick={() => handleExecuteProposal(pid)}
+                            disabled={!passed || executed}
+                          >Execute</button>
                         )}
                       </div>
                     </div>
@@ -4604,6 +5231,23 @@ function App() {
               <button className="modal__close" onClick={() => setProfileOpen(false)}>×</button>
             </div>
             <div className="modal__body">
+              <div className="mb-3 border border-black/10 rounded px-3 py-2 text-xs text-black/70">
+                <div className="font-semibold text-black/80">XMTP Status</div>
+                <div className="mt-1">
+                  {xmtpLimitWarning ? (
+                    <span className="text-red-600">{xmtpLimitWarning}</span>
+                  ) : xmtp ? (
+                    <span>
+                      Connected{activeInboxId ? <span> • Inbox {shorten(activeInboxId)}</span> : null}
+                    </span>
+                  ) : (
+                    <span>Not connected</span>
+                  )}
+                </div>
+                <div className="mt-1 text-black/60">
+                  XMTP wallets can maintain up to 10 active inbox installations. If you reach the limit, revoke an older installation or switch wallets before creating new templ chats.
+                </div>
+              </div>
               <div className="mb-2 text-sm text-black/70">Set a display name and an optional avatar URL. This will be reused across all Templs. We’ll also broadcast it to the current group so others can see it.</div>
               <input className="w-full border border-black/20 rounded px-3 py-2 mb-2" placeholder="Display name" value={profileName} onChange={(e) => setProfileName(e.target.value)} />
               <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Avatar URL (optional)" value={profileAvatar} onChange={(e) => setProfileAvatar(e.target.value)} />
@@ -4611,6 +5255,69 @@ function App() {
             <div className="modal__footer">
               <button className="btn" onClick={() => setProfileOpen(false)}>Cancel</button>
               <button className="btn btn-primary" onClick={async () => { saveProfileLocally({ name: profileName, avatar: profileAvatar }); await broadcastProfileToGroup(); setProfileOpen(false); }}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* XMTP Installations Modal */}
+      {installationsOpen && (
+        <div className="modal" role="dialog" aria-modal="true">
+          <div className="modal__backdrop" onClick={() => setInstallationsOpen(false)} />
+          <div className="modal__card">
+            <div className="modal__header">
+              <div className="modal__title">XMTP Installations</div>
+              <button className="modal__close" onClick={() => setInstallationsOpen(false)}>×</button>
+            </div>
+            <div className="modal__body space-y-3 text-sm">
+              <p className="text-xs text-black/60">
+                XMTP wallets can keep up to 10 active installations. Revoke older installations to free space for new devices.
+              </p>
+              {installationsLoading ? (
+                <div className="text-xs text-black/60">Loading installations…</div>
+              ) : installationsError ? (
+                <div className="text-xs text-red-600">{installationsError}</div>
+              ) : (
+                <div className="space-y-2">
+                  {installations.length === 0 && (
+                    <div className="text-xs text-black/60">No installations found for this wallet.</div>
+                  )}
+                  {installations.map((inst) => {
+                    const isActive = inst.id === activeInstallationId;
+                    let relative = null;
+                    if (inst.timestamp) {
+                      const seconds = Math.floor(inst.timestamp / 1_000_000_000);
+                      relative = formatRelativeTimeFromSeconds(seconds, nowSeconds);
+                    }
+                    return (
+                      <div key={inst.id} className="flex items-center justify-between gap-3 border border-black/10 rounded px-3 py-2">
+                        <div>
+                          <div className="text-xs font-mono break-all">{inst.id}</div>
+                          {relative && <div className="text-[11px] text-black/60">Last activity {relative}</div>}
+                        </div>
+                        {isActive ? (
+                          <span className="text-xs text-black/50 uppercase tracking-wide">Active</span>
+                        ) : (
+                          <button className="btn btn-xs" onClick={() => handleRevokeInstallation(inst.id)}>Revoke</button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            <div className="modal__footer">
+              <button className="btn" onClick={() => setInstallationsOpen(false)}>Close</button>
+              <div className="flex gap-2">
+                <button className="btn" onClick={loadInstallationsState} disabled={installationsLoading}>Refresh</button>
+                <button
+                  className="btn btn-primary"
+                  onClick={handleRevokeOtherInstallations}
+                  disabled={installationsLoading || installations.length <= 1}
+                >
+                  Revoke Others
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -5033,10 +5740,94 @@ function App() {
 export default App;
 
 // UI helpers kept at bottom to avoid re-renders
+function toNumeric(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === 'bigint') {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
+  }
+  const asString = (() => {
+    if (typeof value === 'string') return value.trim();
+    if (typeof value === 'object' && value !== null) {
+      try {
+        const str = value.toString?.();
+        return typeof str === 'string' ? str.trim() : '';
+      } catch {
+        return '';
+      }
+    }
+    return '';
+  })();
+  if (!asString) return null;
+  const parsed = Number(asString);
+  if (Number.isFinite(parsed)) return parsed;
+  try {
+    const num = Number(BigInt(asString));
+    return Number.isFinite(num) ? num : null;
+  } catch {
+    return null;
+  }
+}
+
+function messageIdentityKey(message) {
+  if (!message || typeof message !== 'object') return null;
+  if (message.mid !== undefined && message.mid !== null) {
+    try { return `mid:${String(message.mid)}`; } catch { return null; }
+  }
+  if (message.localNonce) {
+    try { return `local:${String(message.localNonce)}`; } catch { return null; }
+  }
+  if (message.kind === 'proposal' && message.proposalId !== undefined) {
+    try { return `proposal:${String(message.proposalId)}`; } catch { return null; }
+  }
+  if (message.kind === 'system' && message.content) {
+    const sender = message.senderAddress ? String(message.senderAddress).toLowerCase() : '';
+    return `system:${sender}:${String(message.content)}`;
+  }
+  if (message.kind === 'text' && message.content && message.senderAddress) {
+    return `text:${String(message.senderAddress).toLowerCase()}:${String(message.content)}`;
+  }
+  return null;
+}
+
 function formatTime(d) {
   try {
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   } catch { return ''; }
+}
+
+function formatDurationShort(seconds) {
+  if (!Number.isFinite(seconds)) return '…';
+  const total = Math.max(0, Math.floor(seconds));
+  if (total === 0) return '0s';
+  const units = [
+    { label: 'd', value: 86400 },
+    { label: 'h', value: 3600 },
+    { label: 'm', value: 60 },
+    { label: 's', value: 1 }
+  ];
+  const parts = [];
+  let remainder = total;
+  for (const unit of units) {
+    if (remainder < unit.value) continue;
+    const count = Math.floor(remainder / unit.value);
+    remainder -= count * unit.value;
+    parts.push(`${count}${unit.label}`);
+    if (parts.length === 2) break;
+  }
+  if (parts.length === 0) return '0s';
+  return parts.join(' ');
+}
+
+function formatRelativeTimeFromSeconds(timestamp, nowSeconds) {
+  if (!Number.isFinite(timestamp) || !Number.isFinite(nowSeconds)) return '';
+  const diff = Math.floor(nowSeconds - timestamp);
+  if (Math.abs(diff) < 1) return 'just now';
+  const label = formatDurationShort(Math.abs(diff));
+  return diff >= 0 ? `${label} ago` : `in ${label}`;
 }
 
 function avatarFallback(url, label) {

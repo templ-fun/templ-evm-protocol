@@ -252,8 +252,14 @@ export async function executeProposal({
 
 export function watchProposals({ ethers, provider, templAddress, templArtifact, onProposal, onVote }) {
   const contract = new ethers.Contract(templAddress, templArtifact.abi, provider);
-  const proposalHandler = (id, proposer, endTime) => {
-    onProposal({ id: Number(id), proposer, endTime: Number(endTime) });
+  const proposalHandler = (id, proposer, endTime, title, description) => {
+    onProposal({
+      id: Number(id),
+      proposer,
+      endTime: Number(endTime),
+      title,
+      description
+    });
   };
   const voteHandler = (id, voter, support, timestamp) => {
     onVote({ id: Number(id), voter, support: Boolean(support), timestamp: Number(timestamp) });
