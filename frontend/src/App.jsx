@@ -2009,7 +2009,9 @@ function App() {
     const storageKey = `xmtp:nonce:${address.toLowerCase()}`;
     const baseOptions = {
       env: xmtpEnv,
-      appVersion: 'templ/0.1.0'
+      appVersion: 'templ/0.1.0',
+      dbOptions: { type: 'memory' },
+      disableDeviceSync: true
     };
 
     const candidateSet = new Set();
