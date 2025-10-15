@@ -774,6 +774,10 @@ function App() {
       setInstallationsError(err?.message || String(err));
     }
   }, [walletAddress, signer, activeInstallationId, loadInstallationsState, pushStatus]);
+  useEffect(() => {
+    if (!walletAddress || !activeInboxId) return;
+    loadInstallationsState();
+  }, [walletAddress, activeInboxId, loadInstallationsState]);
   const normalizedGroupId = useMemo(() => (groupId ? String(groupId).toLowerCase() : ''), [groupId]);
   const normalizedTemplAddress = useMemo(() => {
     if (!templAddress) return '';
@@ -1830,23 +1834,34 @@ function App() {
       dlog('[app] Creating XMTP client', { disableAutoRegister, nonce });
       const clientInstance = await Client.create(signerWrapper, options);
       try { localStorage.setItem(storageKey, String(nonce)); } catch {}
-      saveXmtpCache(address, { nonce, inboxId: clientInstance.inboxId });
+      saveXmtpCache(address, {
+        nonce,
+        inboxId: clientInstance.inboxId,
+        installationId: clientInstance.installationId ? String(clientInstance.installationId) : undefined
+      });
       return clientInstance;
     }
 
     async function createOrResumeXmtp() {
+      let limitEncountered = false;
       for (const nonce of candidateNonces) {
         try {
           return await createClientWithNonce(nonce, true);
         } catch (err) {
           const msg = String(err?.message || err);
           if (msg.includes('already registered 10/10 installations')) {
+            limitEncountered = true;
             continue;
           }
           if (msg.toLowerCase().includes('register') || msg.toLowerCase().includes('inbox')) {
             continue;
           }
         }
+      }
+      if (limitEncountered) {
+        const limitError = new Error('XMTP installation limit reached for this wallet. Please revoke older installations or switch wallets.');
+        limitError.name = 'XMTP_LIMIT';
+        throw limitError;
       }
       try {
         const fallbackNonce = candidateNonces[0] || 1;
@@ -5251,25 +5266,42 @@ function App() {
             <div className="modal__body">
               <div className="mb-3 border border-black/10 rounded px-3 py-2 text-xs text-black/70">
                 <div className="font-semibold text-black/80">XMTP Status</div>
-                <div className="mt-1">
-                  {xmtpLimitWarning ? (
-                    <span className="text-red-600">{xmtpLimitWarning}</span>
-                  ) : xmtp ? (
-                    <span>
-                      Connected{activeInboxId ? <span> • Inbox {shorten(activeInboxId)}</span> : null}
-                    </span>
-                  ) : (
-                    <span>Not connected</span>
-                  )}
-                </div>
-                <div className="mt-1 text-black/60">
-                  XMTP wallets can maintain up to 10 active inbox installations. If you reach the limit, revoke an older installation or switch wallets before creating new templ chats.
-                </div>
+              <div className="mt-1">
+                {xmtpLimitWarning ? (
+                  <span className="text-red-600">{xmtpLimitWarning}</span>
+                ) : xmtp ? (
+                  <span>
+                    Connected{activeInboxId ? <span> • Inbox {shorten(activeInboxId)}</span> : null}
+                  </span>
+                ) : (
+                  <span>Not connected</span>
+                )}
               </div>
-              <div className="mb-2 text-sm text-black/70">Set a display name and an optional avatar URL. This will be reused across all Templs. We’ll also broadcast it to the current group so others can see it.</div>
-              <input className="w-full border border-black/20 rounded px-3 py-2 mb-2" placeholder="Display name" value={profileName} onChange={(e) => setProfileName(e.target.value)} />
-              <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Avatar URL (optional)" value={profileAvatar} onChange={(e) => setProfileAvatar(e.target.value)} />
+              <div className="mt-1 text-black/60">
+                One XMTP inbox supports every templ you join. Wallets can maintain up to 10 active installations across all devices—revoke older installs to stay below the cap.
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="btn btn-xs"
+                  onClick={handleOpenInstallations}
+                >
+                  Manage XMTP Installations
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-xs btn-outline"
+                  onClick={handleRevokeOtherInstallations}
+                  disabled={!walletAddress || installationsLoading}
+                >
+                  Revoke Other Devices
+                </button>
+              </div>
             </div>
+            <div className="mb-2 text-sm text-black/70">Set a display name and an optional avatar URL. This will be reused across all Templs. We’ll also broadcast it to the current group so others can see it.</div>
+            <input className="w-full border border-black/20 rounded px-3 py-2 mb-2" placeholder="Display name" value={profileName} onChange={(e) => setProfileName(e.target.value)} />
+            <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Avatar URL (optional)" value={profileAvatar} onChange={(e) => setProfileAvatar(e.target.value)} />
+          </div>
             <div className="modal__footer">
               <button className="btn" onClick={() => setProfileOpen(false)}>Cancel</button>
               <button className="btn btn-primary" onClick={async () => { saveProfileLocally({ name: profileName, avatar: profileAvatar }); await broadcastProfileToGroup(); setProfileOpen(false); }}>Save</button>
