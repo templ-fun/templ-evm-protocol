@@ -30,3 +30,6 @@ dist-ssr
 /screenshots/
 /videos/
 /e2e-results/
+
+# XMTP databases
+xmtp-*.db3*

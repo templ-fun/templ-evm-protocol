@@ -1,6 +1,6 @@
 // Shared helpers for frontend flows
 
-import { isTemplDebugEnabled, isTemplE2EDebug, isTemplTestEnv, readTemplEnv } from '../../../shared/debug.js';
+import { isTemplDebugEnabled, isTemplE2EDebug, isTemplTestEnv, readTemplEnv } from '@shared/debug.js';
 
 // Minimal debug logger usable in both browser and Node tests
 export const dlog = (...args) => {

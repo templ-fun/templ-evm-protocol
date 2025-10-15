@@ -35,14 +35,23 @@ function normaliseChatId(value) {
   return trimmed;
 }
 
+function normaliseInboxId(value) {
+  if (!value || typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return trimmed.toLowerCase();
+}
+
 export async function registerTempl(body, context) {
   const { contractAddress, priestAddress } = body;
-  const { provider, logger, templs, persist, watchContract, findBinding, skipFactoryValidation } = context;
+  const { provider, logger, templs, persist, watchContract, findBinding, skipFactoryValidation, ensureGroup } = context;
 
   const contract = normaliseAddress(contractAddress, 'contractAddress');
   const priest = normaliseAddress(priestAddress, 'priestAddress');
-  const telegramChatId = normaliseChatId(body.telegramChatId ?? body.groupId ?? body.chatId);
-  logger?.info?.({ contract, priest, telegramChatId }, 'Register templ request received');
+  const telegramChatId = normaliseChatId(body.telegramChatId ?? body.chatId);
+  const creatorInboxId = normaliseInboxId(body.creatorInboxId);
+  const providedGroupId = typeof body.groupId === 'string' && body.groupId.trim() ? String(body.groupId).trim() : null;
+  logger?.info?.({ contract, priest, telegramChatId, groupId: providedGroupId }, 'Register templ request received');
 
   if (shouldVerifyContracts()) {
     await ensureContractDeployed({ provider, contractAddress: contract, chainId: Number(body?.chainId) });
@@ -55,7 +64,10 @@ export async function registerTempl(body, context) {
   }
 
   let existing = templs.get(contract);
-  if (!existing) {
+  if (existing) {
+    if (typeof existing.groupId === 'undefined') existing.groupId = null;
+    if (typeof existing.group === 'undefined') existing.group = null;
+  } else {
     const persisted = typeof findBinding === 'function' ? await findBinding(contract) : null;
     existing = {
       telegramChatId: null,
@@ -63,13 +75,19 @@ export async function registerTempl(body, context) {
       proposalsMeta: new Map(),
       lastDigestAt: 0,
       templHomeLink: '',
-      bindingCode: persisted?.bindingCode ?? null
+      bindingCode: persisted?.bindingCode ?? null,
+      groupId: persisted?.groupId ?? null,
+      group: null,
+      creatorInboxId: null
     };
     if (persisted?.telegramChatId) {
       existing.telegramChatId = String(persisted.telegramChatId);
     }
     if (persisted?.priest) {
       existing.priest = String(persisted.priest).toLowerCase();
+    }
+    if (persisted?.groupId) {
+      existing.groupId = String(persisted.groupId);
     }
   }
   if (!existing.proposalsMeta) existing.proposalsMeta = new Map();
@@ -78,6 +96,8 @@ export async function registerTempl(body, context) {
   }
   existing.priest = priest;
   existing.telegramChatId = telegramChatId ?? existing.telegramChatId ?? null;
+  existing.groupId = providedGroupId ?? existing.groupId ?? null;
+  existing.creatorInboxId = creatorInboxId ?? existing.creatorInboxId ?? null;
   existing.contractAddress = contract;
   let resolvedHomeLink = existing.templHomeLink || '';
   if (provider) {
@@ -92,6 +112,18 @@ export async function registerTempl(body, context) {
     }
   }
   existing.templHomeLink = resolvedHomeLink;
+
+  if (typeof ensureGroup === 'function') {
+    try {
+      const group = await ensureGroup(existing);
+      if (group?.id) {
+        existing.groupId = String(group.id);
+        existing.group = group;
+      }
+    } catch (err) {
+      logger?.warn?.({ err: String(err?.message || err), contract }, 'ensureGroup failed during registration');
+    }
+  }
 
   let bindingCode = existing.bindingCode || null;
   if (!existing.telegramChatId) {
@@ -114,7 +146,8 @@ export async function registerTempl(body, context) {
       contract,
       priest,
       telegramChatId: existing.telegramChatId,
-      templHomeLink: resolvedHomeLink
+      templHomeLink: resolvedHomeLink,
+      groupId: existing.groupId || null
     },
     bindingCode
   };

@@ -1,6 +1,22 @@
 /* eslint-env node */
 /* global process */
+import { randomBytes } from 'crypto';
 import { defineConfig, devices } from '@playwright/test';
+
+const USE_LOCAL = process.env.E2E_XMTP_LOCAL === '1';
+// Default to 'dev' for more deterministic tests; allow override via E2E_XMTP_ENV
+const XMTP_ENV = USE_LOCAL ? 'local' : (process.env.E2E_XMTP_ENV || 'dev');
+
+// Generate a fresh secp256k1 private key per run to avoid XMTP installation limits
+const N = BigInt('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141');
+function randomPrivKeyHex() {
+  let d;
+  do {
+    d = BigInt('0x' + randomBytes(32).toString('hex'));
+  } while (d === 0n || d >= N);
+  return '0x' + d.toString(16).padStart(64, '0');
+}
+const BOT_PK = randomPrivKeyHex();
 
 export default defineConfig({
   timeout: 240 * 1000,
@@ -22,8 +38,8 @@ export default defineConfig({
 
   projects: [
     {
-      name: 'basic-flows',
-      use: {
+      name: 'tech-demo',
+      use: { 
         ...devices['Desktop Chrome'],
         viewport: { width: 1920, height: 1080 },
         video: {
@@ -32,7 +48,7 @@ export default defineConfig({
         }
       },
     },
-    // TODO: enable when real UI design work begins; the current UI exists only to prove the idea works and has no design
+    // TODO: This should be enabled when real UI design begins, right now our UI exists only to prove the idea works and has no design
     // {
     //   name: 'tech-demo-mobile',
     //   use: {
@@ -49,6 +65,16 @@ export default defineConfig({
   ],
 
   webServer: [
+    // Optional: start XMTP local node via docker-compose, helps debug app <-> xmtp node behavior
+    ...(USE_LOCAL
+      ? [{
+          command: './up',
+          cwd: '../xmtp-local-node',
+          port: 5555,
+          reuseExistingServer: true,
+          timeout: 180 * 1000,
+        }]
+      : []),
     {
       command: 'npx hardhat node',
       port: 8545,
@@ -62,10 +88,15 @@ export default defineConfig({
       cwd: '../backend',
       env: {
         RPC_URL: 'http://127.0.0.1:8545',
+        BOT_PRIVATE_KEY: BOT_PK,
         PORT: '3001',
         ALLOWED_ORIGINS: 'http://localhost:5179',
         BACKEND_SERVER_ID: 'templ-dev',
+        DB_PATH: 'e2e-groups.db',
+        CLEAR_DB: '1',
+        ENABLE_DEBUG_ENDPOINTS: '1',
         LOG_LEVEL: 'info',
+        XMTP_ENV,
         NODE_ENV: 'test',
       },
       reuseExistingServer: false,
@@ -76,10 +107,9 @@ export default defineConfig({
       port: 5179,
       env: {
         VITE_E2E_DEBUG: '1',
+        VITE_XMTP_ENV: XMTP_ENV,
         VITE_BACKEND_SERVER_ID: 'templ-dev',
         VITE_ENABLE_BACKEND_FALLBACK: '0',
-        VITE_BACKEND_URL: 'http://localhost:3001',
-        VITE_RPC_URL: 'http://127.0.0.1:8545'
       },
       reuseExistingServer: false,
       timeout: 180 * 1000,

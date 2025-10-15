@@ -1,4 +1,5 @@
 // @ts-check
+import { setDefaultResultOrder } from 'dns';
 import express from 'express';
 import dotenv from 'dotenv';
 import { ethers } from 'ethers';
@@ -7,6 +8,13 @@ import rateLimit, { MemoryStore } from 'express-rate-limit';
 import { createRateLimitStore } from './config.js';
 import cors from 'cors';
 import { randomUUID } from 'crypto';
+
+try {
+  // Force IPv4 lookups first; XMTP endpoints only publish A records.
+  setDefaultResultOrder('ipv4first');
+} catch {
+  /* ignore environments that do not support tweaking DNS result order */
+}
 
 import templsRouter from './routes/templs.js';
 import joinRouter from './routes/join.js';
@@ -74,6 +82,122 @@ function buildAllowedOrigins() {
     .split(',')
     .map((o) => o.trim())
     .filter(Boolean);
+}
+
+function resolveTrustProxySetting() {
+  const raw = process.env.TRUST_PROXY;
+  if (raw === undefined) {
+    return process.env.NODE_ENV === 'production' ? 'loopback' : false;
+  }
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return process.env.NODE_ENV === 'production' ? 'loopback' : false;
+  }
+  const lower = trimmed.toLowerCase();
+  if (lower === 'false' || lower === '0') {
+    return false;
+  }
+  if (lower === 'true') {
+    return true;
+  }
+  const numeric = Number(trimmed);
+  if (Number.isFinite(numeric)) {
+    return numeric;
+  }
+  return trimmed;
+}
+
+function mapMetadata(metadata) {
+  if (!metadata || typeof metadata !== 'object') return undefined;
+  try {
+    if (typeof metadata.getMap === 'function') {
+      return metadata.getMap();
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    if (metadata instanceof Map) {
+      return Object.fromEntries(metadata.entries());
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    if (metadata.internalRepr instanceof Map) {
+      return Object.fromEntries(metadata.internalRepr.entries());
+    }
+  } catch {
+    /* ignore */
+  }
+  const plain = {};
+  let hasValue = false;
+  for (const key of Object.keys(metadata)) {
+    const value = metadata[key];
+    if (typeof value === 'function') continue;
+    plain[key] = value;
+    hasValue = true;
+  }
+  return hasValue ? plain : undefined;
+}
+
+function describeError(err) {
+  if (!err || typeof err !== 'object') {
+    return { message: String(err) };
+  }
+  const plain = {};
+  const copy = (key) => {
+    if (err[key] !== undefined) {
+      plain[key] = err[key];
+    }
+  };
+  copy('name');
+  copy('message');
+  copy('code');
+  copy('status');
+  copy('details');
+  if (err.stack) {
+    plain.stack = err.stack;
+  }
+  if (err.cause && err.cause !== err) {
+    plain.cause = describeError(err.cause);
+  }
+  const metadata = mapMetadata(err.metadata);
+  if (metadata) {
+    plain.metadata = metadata;
+  }
+  const debugInformation = err.debugInformation;
+  if (debugInformation && typeof debugInformation === 'object') {
+    const debug = {};
+    const capture = (label, fn) => {
+      if (typeof fn !== 'function') return;
+      try {
+        const value = fn.call(debugInformation);
+        if (value) {
+          debug[label] = value;
+        }
+      } catch (e) {
+        debug[`${label}Error`] = e?.message || String(e);
+      }
+    };
+    capture('apiStats', debugInformation.apiAggregateStatistics);
+    capture('identityStats', debugInformation.identityAggregateStatistics);
+    capture('streamStats', debugInformation.streamAggregateStatistics);
+    if (Object.keys(debug).length > 0) {
+      plain.debug = debug;
+    }
+  }
+  const extraKeys = Object.getOwnPropertyNames(err).filter(
+    (key) => !['name', 'message', 'code', 'status', 'details', 'stack', 'metadata', 'debugInformation', 'cause'].includes(key)
+  );
+  for (const key of extraKeys) {
+    const value = err[key];
+    if (value === undefined || typeof value === 'function') continue;
+    if (plain[key] === undefined) {
+      plain[key] = value;
+    }
+  }
+  return plain;
 }
 
 function toNumber(value) {
@@ -818,7 +942,10 @@ async function restoreGroupsFromPersistence({ listBindings, templs, watchContrac
         lastDigestAt: 0,
         contractAddress: key,
         templHomeLink: '',
-        bindingCode: row?.bindingCode ? String(row.bindingCode) : null
+        bindingCode: row?.bindingCode ? String(row.bindingCode) : null,
+        groupId: row?.groupId ? String(row.groupId) : null,
+        group: null,
+        creatorInboxId: null
       };
       templs.set(key, record);
       if (watchContract) {
@@ -1014,6 +1141,10 @@ export async function createApp(opts) {
     return `templ-${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`;
   })();
   const app = express();
+  const trustProxySetting = resolveTrustProxySetting();
+  if (trustProxySetting !== false) {
+    app.set('trust proxy', trustProxySetting);
+  }
   app.use(cors({ origin: buildAllowedOrigins() }));
   app.use(express.json());
   app.use(helmet());
@@ -1262,8 +1393,122 @@ export async function createApp(opts) {
     notifier,
     signatureStore,
     findBinding,
-    listBindings
+    listBindings,
+    xmtp: null,
+    lastJoin: { at: 0, payload: null },
+    ensureGroup: async () => null
   };
+
+  // XMTP setup - add to context if enabled
+  let xmtp = null;
+  let lastJoin = { at: 0, payload: null };
+
+  if (process.env.XMTP_ENABLED === '1') {
+    try {
+      // Dynamically import XMTP modules only when enabled
+      const { createXmtpWithRotation, waitForXmtpClientReady } = await import('./xmtp/index.js');
+
+      // Generate or load a persistent bot private key tied to this server instance
+      let botPrivateKey = process.env.BOT_PRIVATE_KEY;
+      try {
+        const db = persistenceAdapter?.db;
+        if (db && typeof db.exec === 'function') {
+          try { db.exec('CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT)'); } catch { /* ignore */ }
+          if (!botPrivateKey) {
+            try {
+              const row = db.prepare('SELECT value FROM kv WHERE key = ?').get('bot_private_key');
+              if (row && row.value) {
+                botPrivateKey = String(row.value);
+              }
+            } catch { /* ignore */ }
+          }
+          if (!botPrivateKey) {
+            // Create a fresh key and persist it so the "invite bot" is stable across restarts
+            const w = ethers.Wallet.createRandom();
+            botPrivateKey = w.privateKey;
+            try {
+              db.prepare('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)').run('bot_private_key', botPrivateKey);
+              logger.info('Generated and persisted new invite-bot key');
+            } catch { /* ignore */ }
+          }
+        }
+      } catch (e) {
+        // Fall back to env-only key if DB init fails
+        if (!botPrivateKey) throw e;
+      }
+
+      const wallet = new ethers.Wallet(botPrivateKey, provider);
+      const envMax = Number(process.env.XMTP_MAX_ATTEMPTS);
+      const bootTries = Number.isFinite(Number(process.env.XMTP_BOOT_MAX_TRIES))
+        ? Number(process.env.XMTP_BOOT_MAX_TRIES)
+        : 30;
+
+      for (let i = 1; i <= bootTries; i++) {
+        try {
+          xmtp = await createXmtpWithRotation(
+            wallet,
+            Number.isFinite(envMax) && envMax > 0 ? envMax : undefined
+          );
+          const ready = await waitForXmtpClientReady(xmtp, 30, 500);
+          if (!ready) throw new Error('XMTP client not ready');
+          logger.info({ instanceId, inboxId: xmtp.inboxId }, 'XMTP client ready');
+          break;
+        } catch (e) {
+          logger.warn({ attempt: i, err: describeError(e) }, 'XMTP boot not ready; retrying');
+          if (i === bootTries) throw e;
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+      }
+
+      // Add XMTP context
+      context.xmtp = xmtp;
+      context.lastJoin = lastJoin;
+
+      // Add XMTP helper function to context
+      context.ensureGroup = async (record) => {
+        if (!record) return null;
+        if (record.group) return record.group;
+        if (record.groupId && xmtp?.conversations?.getConversationById) {
+          try {
+            const maybe = await xmtp.conversations.getConversationById(record.groupId);
+            if (maybe) {
+              record.group = maybe;
+              return maybe;
+            }
+          } catch (err) {
+            logger.warn({ err: err?.message || err, groupId: record.groupId }, 'Failed to hydrate group conversation');
+          }
+        }
+        if (!record.groupId && xmtp?.conversations?.newGroup && process.env.XMTP_ENABLED !== '0') {
+          try {
+            const initialMembers = [];
+            if (record.creatorInboxId) {
+              initialMembers.push(record.creatorInboxId);
+            }
+            const group = await xmtp.conversations.newGroup(initialMembers, {
+              name: `templ:${record.contractAddress?.slice?.(0, 10) ?? 'templ'}`,
+              description: record.templHomeLink ? `templ.fun • ${record.templHomeLink}` : 'templ.fun group'
+            });
+            if (group?.id) {
+              record.groupId = String(group.id);
+              record.group = group;
+              templs.set(record.contractAddress || record.contract || '', record);
+              await persist(record.contractAddress || record.contract || '', record);
+              logger.info({ contract: record.contractAddress, groupId: record.groupId }, 'Created XMTP group for templ');
+              return group;
+            }
+          } catch (err) {
+            logger.warn({ err: err?.message || err, contract: record.contractAddress }, 'Failed to create XMTP group');
+          }
+        }
+        return record.group || null;
+      };
+
+    } catch (err) {
+      logger.error({ err: describeError(err), instanceId }, 'Failed to initialize XMTP client');
+      // Continue without XMTP if initialization fails
+    }
+  }
 
   app.use(waitForRestoration);
   app.use(templsRouter(context));
@@ -1302,11 +1547,20 @@ export async function createApp(opts) {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   dotenv.config();
-  const { RPC_URL } = process.env;
+  const { RPC_URL, RPC_CHAIN_ID } = process.env;
   if (!RPC_URL) {
     throw new Error('Missing RPC_URL environment variable');
   }
-  const provider = new ethers.JsonRpcProvider(RPC_URL);
+  let provider;
+  if (RPC_CHAIN_ID) {
+    const parsedChainId = Number(RPC_CHAIN_ID);
+    if (!Number.isFinite(parsedChainId) || parsedChainId <= 0) {
+      throw new Error(`Invalid RPC_CHAIN_ID "${RPC_CHAIN_ID}"`);
+    }
+    provider = new ethers.JsonRpcProvider(RPC_URL, { chainId: parsedChainId, name: `chain-${parsedChainId}` });
+  } else {
+    provider = new ethers.JsonRpcProvider(RPC_URL);
+  }
 
   const hasJoined = async (contractAddress, memberAddress) => {
     const contract = new ethers.Contract(

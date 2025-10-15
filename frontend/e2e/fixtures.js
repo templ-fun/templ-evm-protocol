@@ -35,9 +35,10 @@ export const test = base.extend({
       );
       const priest = ethers.Wallet.createRandom().connect(provider);
       const member = ethers.Wallet.createRandom().connect(provider);
+      const delegate = ethers.Wallet.createRandom().connect(provider);
 
       let nonce = await funder.getNonce();
-      for (const w of [priest, member]) {
+      for (const w of [priest, member, delegate]) {
         const tx = await funder.sendTransaction({
           to: await w.getAddress(),
           value: ethers.parseEther('100'),
@@ -45,16 +46,18 @@ export const test = base.extend({
         });
         await tx.wait();
       }
-      await use({ priest, member });
+      await use({ priest, member, delegate });
     } else {
-      // Use deterministic Hardhat accounts that stay clear of the default deployer (#0)
+      // Use accounts that are different from backend's BOT_PRIVATE_KEY (which uses #0)
       const accounts = [
         '0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6', // Priest (Account #3)
         '0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a', // Member (Account #4)
+        '0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba', // Delegate (Account #5)
       ];
       const wallets = {
         priest: new ethers.Wallet(accounts[0], provider),
-        member: new ethers.Wallet(accounts[1], provider)
+        member: new ethers.Wallet(accounts[1], provider),
+        delegate: new ethers.Wallet(accounts[2], provider)
       };
       await use(wallets);
     }

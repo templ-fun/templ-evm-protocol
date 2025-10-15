@@ -46,6 +46,10 @@ backend/e2e-groups.db*
 coverage/
 frontend/coverage/
 backend/coverage/
+backend/**/*.db3*
+xmtp-*.db3*
+backend/.data/
+backend/local-templ.db*
 frontend/.vitest-cache/
 frontend/.vite-cache/
 frontend/npm-cache/
@@ -58,3 +62,7 @@ coverage.json
 # Local logs
 backend-test.log
 backend.test.log
+
+# AI
+WARP.md
+.claude

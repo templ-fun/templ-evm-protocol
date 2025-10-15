@@ -64,7 +64,7 @@ This guide promotes templ to production with a Fly-hosted backend and a Cloudfla
    cp backend/fly.example.toml backend/fly.toml
    ```
 
-   Update `app`, `primary_region`, and any sizing preferences to match your Fly account. The template references `backend/Dockerfile`, exposes port `3001`, and mounts `/var/lib/templ` for SQLite.
+   Update `app`, `primary_region`, and any sizing preferences to match your Fly account. The template references `Dockerfile` (in `backend/`), exposes port `3001`, and mounts `/var/lib/templ` for SQLite.
 
 2. Create a persistent volume so the SQLite database survives deploys and restarts:
 
@@ -85,6 +85,23 @@ This guide promotes templ to production with a Fly-hosted backend and a Cloudfla
      ALLOWED_ORIGINS=https://app.templ.example \
      TELEGRAM_BOT_TOKEN=<bot token or omit for no Telegram>
    ```
+
+   **Optional: Enable XMTP Messaging**
+
+   To enable automatic member invitations to XMTP groups when users join templs, add these XMTP configuration variables:
+
+   ```bash
+   fly secrets set \
+     XMTP_ENABLED=1 \
+     XMTP_ENV=production \
+     # Optional: XMTP_API_URL=https://grpc.production.xmtp.network:443 # Override XMTP endpoint if your network requires custom routing
+     # Optional: BACKEND_DB_ENC_KEY=0x... # 32-byte hex key for encrypting XMTP database (generate in production)
+     # Optional: BOT_PRIVATE_KEY=0x... # Optional: provide your own bot private key
+     # Optional: XMTP_MAX_ATTEMPTS=20 # Maximum installation rotation attempts
+     # Optional: XMTP_BOOT_MAX_TRIES=30 # Maximum boot attempts
+   ```
+
+   ⚠️ **Security Note**: If you omit `BACKEND_DB_ENC_KEY`, the system will derive one from the bot's private key. In production, it's recommended to explicitly provide a secure 32-byte hex key.
 
    Add `REDIS_URL` and `RATE_LIMIT_STORE=redis` if you plan to attach a managed Redis instance for distributed rate limiting. All other environment variables listed in `docs/BACKEND.md` may also be supplied through Fly secrets.
 
@@ -150,10 +167,15 @@ This guide promotes templ to production with a Fly-hosted backend and a Cloudfla
 
 4. Bind Telegram notifications by inviting `@templfunbot` to the target group and either tapping `https://t.me/templfunbot?startgroup=<bindingCode>` or sending `/templ <bindingCode>` in the chat. The backend persists the chat id in SQLite and acknowledges the binding.
 
+5. **XMTP Group Setup (Optional)**
+
+   If XMTP is enabled, the backend automatically creates XMTP groups for each templ and invites members when they join. No additional setup is required - the system handles group creation, member invitation, and synchronization automatically. Members will receive XMTP invitations in addition to any Telegram notifications.
+
 ## 6. Production smoke checks
 
 - Load the Cloudflare Pages URL and confirm templ discovery works with the production factory.
 - Join a templ, cast a proposal, execute it, and watch Telegram notifications roll through.
+- **XMTP Testing (if enabled)**: Join a templ and verify you receive an XMTP group invitation. Check that the backend logs show successful XMTP client initialization and member invitation.
 - Run Playwright smoke tests against production endpoints (requires the same Vite environment variables used for the build):
 
   ```bash
@@ -190,13 +212,61 @@ Keep these snippets handy for routine updates:
 
 Run the trio in that order whenever a release touches the schema, API, or UI.
 
-## 8. Final checklist
+## 9. XMTP Configuration and Monitoring
+
+If you've enabled XMTP functionality, here are additional operational considerations:
+
+### XMTP Environment Variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `XMTP_ENABLED` | No | `0` | Set to `1` to enable XMTP functionality |
+| `XMTP_ENV` | No | `dev` | XMTP environment (`dev`, `production`, `local`) |
+| `BACKEND_DB_ENC_KEY` | No | Derived | 32-byte hex key for encrypting XMTP database |
+| `BOT_PRIVATE_KEY` | No | Generated | Optional: provide your own bot private key |
+| `XMTP_MAX_ATTEMPTS` | No | `20` | Maximum installation rotation attempts |
+| `XMTP_BOOT_MAX_TRIES` | No | `30` | Maximum boot attempts for XMTP client |
+| `DISABLE_XMTP_WAIT` | No | `0` | Disable inbox readiness waits (for testing) |
+| `FAST_XMTP` | No | `0` | Use faster XMTP timeouts (for development) |
+
+### Monitoring XMTP
+
+Check your backend logs for XMTP-related messages:
+
+```bash
+fly logs --app <app-name> | grep -i xmtp
+```
+
+Look for these key messages:
+- `XMTP client ready` - Successful initialization
+- `Member joined successfully` - Successful member invitation
+- `Installing XMTP invite bot` - Bot key generation
+- `XMTP installation limit reached, rotating inbox` - Installation rotation
+
+### Troubleshooting XMTP
+
+If XMTP isn't working:
+
+1. **Check Environment Variables**: Verify `XMTP_ENABLED=1` is set
+2. **Verify Network**: Ensure the Fly app can reach XMTP network endpoints
+3. **Check Logs**: Look for initialization errors or invitation failures
+4. **Test Installation**: Try joining a templ and check if you receive an XMTP invitation
+
+### Security Considerations
+
+- The `BACKEND_DB_ENC_KEY` should be a cryptographically secure 32-byte hex string
+- If omitted, the system derives a key from the bot's private key
+- In production, explicitly set `BACKEND_DB_ENC_KEY` for better security
+- The bot private key is persisted in SQLite for stability across restarts
+
+## 10. Final checklist
 
 - Contracts deployed (and optionally verified) on the target network.
 - Fly backend healthy with SQLite volume attached and required secrets set (`RPC_URL`, `APP_BASE_URL`, `BACKEND_SERVER_ID`, `TRUSTED_FACTORY_ADDRESS`, etc.).
 - Cloudflare Pages serving the built SPA that targets the Fly API.
 - Telegram bindings confirmed for each templ that needs alerts.
+- **XMTP functionality (if enabled)**: XMTP client initialized successfully and member invitations working.
 - `npm run test:all` completed successfully on the code that you shipped.
 - DNS updated so `api.templ.example` points to the Fly app and `app.templ.example` points to the Pages project.
 
-Once every item is complete, templ is live with a persistent backend, globally cached frontend, and full Telegram supervision.
+Once every item is complete, templ is live with a persistent backend, globally cached frontend, full Telegram supervision, and optional XMTP member group invitations.
