@@ -206,7 +206,8 @@ export async function deployTempl({
     chainId,
     nonce: createTyped.message.nonce,
     issuedAt: createTyped.message.issuedAt,
-    expiry: createTyped.message.expiry
+    expiry: createTyped.message.expiry,
+    creatorInboxId: priestInboxId || null
   };
   dlog('deployTempl: sending register payload', registerPayload);
   const res = await postJson(`${backendUrl}/templs`, registerPayload);
