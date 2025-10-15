@@ -1266,6 +1266,8 @@ function App() {
     }
   })();
   const joinedTemplSet = useMemo(() => new Set(joinedTempls), [joinedTempls]);
+  const alreadyMember = normalizedTemplAddress ? joinedTemplSet.has(normalizedTemplAddress) : false;
+  const showApprovalPrompt = needsTokenApproval && !alreadyMember;
   useEffect(() => {
     if (!walletAddress || !walletAddressLower || !signer) return;
     const memberAddress = walletAddress;
@@ -2685,7 +2687,28 @@ function App() {
           if (!additions.length && !metaUpdates.length) {
             return prev;
           }
-          let next = additions.length ? [...additions, ...prev] : prev.slice();
+          let basePrev;
+          if (additions.length) {
+            const additionTextKeys = new Set(
+              additions
+                .filter((item) => item?.kind === 'text')
+                .map((item) => {
+                  const sender = (item?.senderAddress || '').toLowerCase();
+                  return `text:${sender}:${String(item?.content ?? '')}`;
+                })
+            );
+            basePrev = additionTextKeys.size
+              ? prev.filter((item) => {
+                if (!item?.localEcho || item.kind !== 'text') return true;
+                const sender = (item?.senderAddress || '').toLowerCase();
+                const key = `text:${sender}:${String(item?.content ?? '')}`;
+                return !additionTextKeys.has(key);
+              })
+              : prev.slice();
+          } else {
+            basePrev = prev.slice();
+          }
+          let next = additions.length ? [...additions, ...basePrev] : basePrev;
           if (metaUpdates.length) {
             next = next.map((item) => {
               if (item?.kind === 'proposal') {
@@ -4556,7 +4579,7 @@ function App() {
               </div>
             </div>
             <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Contract address" value={templAddress} onChange={(e) => updateTemplAddress(e.target.value)} />
-            {needsTokenApproval && (
+            {showApprovalPrompt && (
               <div className="rounded border border-black/20 bg-white/80 p-3 text-xs text-black/70 space-y-1">
                 <p className={`text-xs ${approvalStage === 'approved' ? 'text-green-700' : approvalStage === 'error' ? 'text-red-600' : 'text-black/60'}`}>
                   {approvalStatusText}
@@ -4568,8 +4591,13 @@ function App() {
                 )}
               </div>
             )}
+            {alreadyMember && (
+              <div className="rounded border border-black/20 bg-white/80 p-3 text-xs text-black/70">
+                You already have access to this templ. Use the chat to coordinate with members.
+              </div>
+            )}
             <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-              {needsTokenApproval && (
+              {showApprovalPrompt && (
                 <button
                   type="button"
                   className="px-4 py-2 rounded border border-black/20 text-sm font-semibold w-full sm:w-auto"
@@ -4579,25 +4607,16 @@ function App() {
                   {approvalButtonLabel}
                 </button>
               )}
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-              {needsTokenApproval && (
+              {!alreadyMember && (
                 <button
-                  type="button"
-                  className="px-4 py-2 rounded border border-black/20 text-sm font-semibold w-full sm:w-auto"
-                  onClick={handleApproveToken}
-                  disabled={approvalButtonDisabled}
+                  className="px-4 py-2 rounded bg-primary text-black font-semibold w-full sm:w-auto"
+                  onClick={handlePurchaseAndJoin}
+                  disabled={joinSteps.purchase === 'pending' || joinSteps.join === 'pending' || (needsTokenApproval && approvalStage !== 'approved')}
                 >
-                  {approvalButtonLabel}
+                  Purchase & Join
                 </button>
               )}
-              <button
-                className="px-4 py-2 rounded bg-primary text-black font-semibold w-full sm:w-auto"
-                onClick={handlePurchaseAndJoin}
-                disabled={joinSteps.purchase === 'pending' || joinSteps.join === 'pending' || (needsTokenApproval && approvalStage !== 'approved')}
-              >
-                Purchase & Join
-              </button>
-              {templAddress && templAddress.toLowerCase && joinedTempls.some((addr) => addr === templAddress.toLowerCase()) && (
+              {alreadyMember && (
                 <button
                   type="button"
                   className="px-4 py-2 rounded border border-black/20 text-sm font-semibold w-full sm:w-auto"
@@ -4606,7 +4625,6 @@ function App() {
                   Go to Chat
                 </button>
               )}
-            </div>
             </div>
             <p className="text-xs text-black/60">
               After the on-chain join confirms, the templ backend may take up to a minute to provision the XMTP group. The status panel below updates automatically once the chat is ready.
