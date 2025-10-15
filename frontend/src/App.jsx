@@ -576,13 +576,18 @@ function App() {
   const [purchaseStatusNote, setPurchaseStatusNote] = useState(null);
   const [joinStatusNote, setJoinStatusNote] = useState(null);
   const [pendingJoinAddress, setPendingJoinAddress] = useState(null);
-  const pathIsChat = path === '/chat';
-  const moderationEnabled = false;
-  const renderStepStatus = useCallback((label, state, extra) => {
-    const icon = STATUS_ICONS[state] || STATUS_ICONS.idle;
-    const text = STATUS_DESCRIPTIONS[state] || STATUS_DESCRIPTIONS.idle;
-    return `${icon} ${label} — ${extra || text}`;
+  const [templAddress, setTemplAddress] = useState('');
+  const templAddressRef = useRef('');
+  const updateTemplAddress = useCallback((value) => {
+    const next = typeof value === 'string' ? value.trim() : String(value || '').trim();
+    dlog('[app] updateTemplAddress', next);
+    templAddressRef.current = next;
+    setTemplAddress(next);
   }, []);
+  const [groupId, setGroupId] = useState('');
+  const joinedLoggedRef = useRef(false);
+  const lastProfileBroadcastRef = useRef(0);
+  const autoDeployTriggeredRef = useRef(false);
   const pendingJoinMatches = useMemo(() => {
     if (!pendingJoinAddress || !templAddress) return false;
     try {
@@ -592,6 +597,20 @@ function App() {
     }
   }, [pendingJoinAddress, templAddress]);
   const joinStage = joinSteps.join;
+  const chatProvisionState = useMemo(() => {
+    if (!pathIsChat || !templAddress || pendingJoinMatches) return null;
+    if (!groupId) return 'pending-group';
+    if (!groupConnected) return 'syncing-group';
+    return null;
+  }, [pathIsChat, templAddress, pendingJoinMatches, groupId, groupConnected]);
+  const joinRetryCountRef = useRef(0);
+  const pathIsChat = path === '/chat';
+  const moderationEnabled = false;
+  const renderStepStatus = useCallback((label, state, extra) => {
+    const icon = STATUS_ICONS[state] || STATUS_ICONS.idle;
+    const text = STATUS_DESCRIPTIONS[state] || STATUS_DESCRIPTIONS.idle;
+    return `${icon} ${label} — ${extra || text}`;
+  }, []);
 
   useEffect(() => {
     try {
@@ -813,26 +832,6 @@ function App() {
 
   // Governance: all members have 1 vote
 
-  // joining form
-  const [templAddress, setTemplAddress] = useState('');
-  const templAddressRef = useRef('');
-  const updateTemplAddress = useCallback((value) => {
-    const next = typeof value === 'string' ? value.trim() : String(value || '').trim();
-    dlog('[app] updateTemplAddress', next);
-    templAddressRef.current = next;
-    setTemplAddress(next);
-  }, [setTemplAddress]);
-  const [groupId, setGroupId] = useState('');
-  const joinedLoggedRef = useRef(false);
-  const lastProfileBroadcastRef = useRef(0);
-  const autoDeployTriggeredRef = useRef(false);
-  const chatProvisionState = useMemo(() => {
-    if (!pathIsChat || !templAddress || pendingJoinMatches) return null;
-    if (!groupId) return 'pending-group';
-    if (!groupConnected) return 'syncing-group';
-    return null;
-  }, [pathIsChat, templAddress, pendingJoinMatches, groupId, groupConnected]);
-  const joinRetryCountRef = useRef(0);
 
 
   const tokenAddressValid = (() => {
