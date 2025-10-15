@@ -187,10 +187,26 @@ export function createFactoryIndexer(options = {}) {
           cursor = end + 1;
         } catch (err) {
           logger?.warn?.({ err: String(err?.message || err), fromBlock: cursor, toBlock: end }, 'Factory indexer log scan failed');
-          if (window <= 1_000) {
-            break;
+          const previousWindow = window;
+          const message = String(err?.message || err);
+          const rangeMatch = /up to a (\d+)\s+block range/i.exec(message);
+          if (rangeMatch) {
+            const limit = Number.parseInt(rangeMatch[1], 10);
+            if (Number.isFinite(limit) && limit > 0) {
+              window = Math.max(1, Math.min(limit, window));
+            }
           }
-          window = Math.max(1, Math.floor(window / 2));
+          if (window >= previousWindow) {
+            window = Math.max(1, Math.floor(previousWindow / 2));
+          }
+          if (window < previousWindow) {
+            continue;
+          }
+          if (window > 1) {
+            window = 1;
+            continue;
+          }
+          cursor = end + 1;
         }
       }
     })();

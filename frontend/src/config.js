@@ -25,16 +25,7 @@ function readEnv(key, fallback = '') {
 }
 
 export const FACTORY_CONFIG = (() => {
-  let runtimeAddress = '';
-  try {
-    if (typeof globalThis !== 'undefined' && typeof globalThis.TEMPL_FACTORY_ADDRESS === 'string') {
-      runtimeAddress = globalThis.TEMPL_FACTORY_ADDRESS;
-    }
-  } catch {}
-  const address = readEnv(
-    'VITE_TEMPL_FACTORY_ADDRESS',
-    readEnv('TEMPL_FACTORY_ADDRESS', runtimeAddress)
-  ).trim();
+  const address = readEnv('VITE_TEMPL_FACTORY_ADDRESS', readEnv('TEMPL_FACTORY_ADDRESS', '')).trim();
   const protocolRecipient = readEnv('VITE_TEMPL_FACTORY_PROTOCOL_RECIPIENT', readEnv('TEMPL_FACTORY_PROTOCOL_RECIPIENT', '')).trim();
   const protocolPercentRaw = readEnv('VITE_TEMPL_FACTORY_PROTOCOL_PERCENT', readEnv('TEMPL_FACTORY_PROTOCOL_BP', ''));
   let protocolPercent = undefined;
@@ -44,24 +35,9 @@ export const FACTORY_CONFIG = (() => {
       protocolPercent = parsed;
     }
   }
-  const deploymentBlockRaw = readEnv(
-    'VITE_TEMPL_FACTORY_DEPLOYMENT_BLOCK',
-    readEnv('TEMPL_FACTORY_DEPLOYMENT_BLOCK', '')
-  ).trim();
-  let deploymentBlock = undefined;
-  if (deploymentBlockRaw !== '') {
-    const parsed = Number(deploymentBlockRaw);
-    if (Number.isFinite(parsed) && parsed >= 0) {
-      deploymentBlock = Math.floor(parsed);
-    }
-  }
   return {
     address,
     protocolFeeRecipient: protocolRecipient,
-    protocolPercent,
-    deploymentBlock
+    protocolPercent
   };
 })();
-
-const rawRpcUrl = readEnv('VITE_RPC_URL', readEnv('RPC_URL', '')).trim();
-export const RPC_URL = rawRpcUrl.length ? rawRpcUrl : null;

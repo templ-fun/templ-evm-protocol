@@ -5,6 +5,7 @@ const DEFAULT_SIGNATURE_RETENTION_MS = 6 * 60 * 60 * 1000; // 6 hours
 /**
  * @typedef {{
  *   telegramChatId: string | null,
+ *   groupId?: string | null,
  *   bindingCode: string | null,
  *   priest?: string | null
  * }} BindingRecord
@@ -14,6 +15,7 @@ const DEFAULT_SIGNATURE_RETENTION_MS = 6 * 60 * 60 * 1000; // 6 hours
  * @typedef {{
  *   contract: string,
  *   telegramChatId: string | null,
+ *   groupId?: string | null,
  *   bindingCode: string | null,
  *   priest?: string | null
  * }} BindingRow
@@ -32,6 +34,7 @@ const DEFAULT_SIGNATURE_RETENTION_MS = 6 * 60 * 60 * 1000; // 6 hours
  *   refreshLeadership?: (owner: string, ttlMs: number, now?: number) => Promise<boolean>,
  *   releaseLeadership?: (owner: string) => Promise<void>,
  *   getLeadershipState?: () => Promise<{ owner: string | null, expiresAt: number }>,
+ *   db?: any,
  *   dispose(): Promise<void> | void
  * }} PersistenceAdapter
  */
@@ -63,7 +66,8 @@ async function createSQLitePersistence({ sqlitePath, retentionMs = DEFAULT_SIGNA
     CREATE TABLE IF NOT EXISTS templ_bindings (
       contract TEXT PRIMARY KEY,
       telegramChatId TEXT,
-      bindingCode TEXT
+      bindingCode TEXT,
+      groupId TEXT
     );
     CREATE TABLE IF NOT EXISTS used_signatures (
       signature TEXT PRIMARY KEY,
@@ -77,15 +81,24 @@ async function createSQLitePersistence({ sqlitePath, retentionMs = DEFAULT_SIGNA
     CREATE INDEX IF NOT EXISTS idx_leader_election_expires ON leader_election(expiresAt);
   `);
 
+  try {
+    db.exec('ALTER TABLE templ_bindings ADD COLUMN groupId TEXT');
+  } catch (err) {
+    const message = String(err?.message || '');
+    if (!message.includes('duplicate column name')) {
+      throw err;
+    }
+  }
+
   const insertBinding = db.prepare(
-    'INSERT INTO templ_bindings (contract, telegramChatId, bindingCode) VALUES (?, ?, ?) ' +
-      'ON CONFLICT(contract) DO UPDATE SET telegramChatId = excluded.telegramChatId, bindingCode = excluded.bindingCode'
+    'INSERT INTO templ_bindings (contract, telegramChatId, bindingCode, groupId) VALUES (?, ?, ?, ?) ' +
+      'ON CONFLICT(contract) DO UPDATE SET telegramChatId = excluded.telegramChatId, bindingCode = excluded.bindingCode, groupId = excluded.groupId'
   );
   const listBindingsStmt = db.prepare(
-    'SELECT contract, telegramChatId, bindingCode FROM templ_bindings ORDER BY contract'
+    'SELECT contract, telegramChatId, bindingCode, groupId FROM templ_bindings ORDER BY contract'
   );
   const findBindingStmt = db.prepare(
-    'SELECT contract, telegramChatId, bindingCode FROM templ_bindings WHERE contract = ?'
+    'SELECT contract, telegramChatId, bindingCode, groupId FROM templ_bindings WHERE contract = ?'
   );
   const pruneSignaturesStmt = db.prepare('DELETE FROM used_signatures WHERE expiresAt <= ?');
   const insertSignatureStmt = db.prepare(
@@ -107,8 +120,9 @@ async function createSQLitePersistence({ sqlitePath, retentionMs = DEFAULT_SIGNA
     if (!key) return;
     const chatId = record?.telegramChatId != null ? String(record.telegramChatId) : null;
     const bindingCode = record?.bindingCode != null ? String(record.bindingCode) : null;
+    const groupId = record?.groupId != null ? String(record.groupId) : null;
     try {
-      insertBinding.run(key, chatId, bindingCode);
+      insertBinding.run(key, chatId, bindingCode, groupId);
     } catch (err) {
       const message = String(err?.message || '');
       if (message.includes('UNIQUE constraint failed: templ_bindings.telegramChatId')) {
@@ -121,13 +135,15 @@ async function createSQLitePersistence({ sqlitePath, retentionMs = DEFAULT_SIGNA
   };
 
   const listBindings = async () => {
-    return listBindingsStmt
+    const bindings = listBindingsStmt
       .all()
-      .map(/** @returns {BindingRow} */ (row) => ({
+      .map((row) => /** @type {BindingRow} */ ({
         contract: String(row.contract || '').toLowerCase(),
         telegramChatId: row.telegramChatId != null ? String(row.telegramChatId) : null,
-        bindingCode: row.bindingCode != null ? String(row.bindingCode) : null
+        bindingCode: row.bindingCode != null ? String(row.bindingCode) : null,
+        groupId: row.groupId != null ? String(row.groupId) : null
       }));
+    return /** @type {BindingRow[]} */ (bindings);
   };
 
   const findBinding = async (contract) => {
@@ -135,11 +151,13 @@ async function createSQLitePersistence({ sqlitePath, retentionMs = DEFAULT_SIGNA
     if (!key) return null;
     const row = findBindingStmt.get(key);
     if (!row) return null;
-    return {
+    const binding = /** @type {BindingRow} */ ({
       contract: key,
       telegramChatId: row.telegramChatId != null ? String(row.telegramChatId) : null,
-      bindingCode: row.bindingCode != null ? String(row.bindingCode) : null
-    };
+      bindingCode: row.bindingCode != null ? String(row.bindingCode) : null,
+      groupId: row.groupId != null ? String(row.groupId) : null
+    });
+    return binding;
   };
 
   const prune = async (now = Date.now()) => {
@@ -197,6 +215,7 @@ async function createSQLitePersistence({ sqlitePath, retentionMs = DEFAULT_SIGNA
     refreshLeadership,
     releaseLeadership,
     getLeadershipState,
+    db,
     async dispose() {
       try {
         db.close();

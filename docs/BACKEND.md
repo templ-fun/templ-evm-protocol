@@ -89,7 +89,7 @@ Only one backend instance should emit Telegram notifications at a time. When mul
 
 ### Trusted factory indexing
 
-Providing both `RPC_URL` and `TRUSTED_FACTORY_ADDRESS` enables an indexer that tails every `TemplCreated` signature emitted by the factory. The server registers new templs automatically (re-using the same validation path as manual `/templs` calls) and attaches contract watchers as soon as the factory log lands. Set `TRUSTED_FACTORY_DEPLOYMENT_BLOCK` so the historical scan stays within provider limits. With this configuration, deployers only sign when requesting Telegram bindings or later rebinds—the creation flow no longer surfaces the registration signature prompt in the frontend.
+Providing both `RPC_URL` and `TRUSTED_FACTORY_ADDRESS` enables an indexer that tails every `TemplCreated` signature emitted by the factory. The server registers new templs automatically (re-using the same validation path as manual `/templs` calls) and attaches contract watchers as soon as the factory log lands. Set `TRUSTED_FACTORY_DEPLOYMENT_BLOCK` so the historical scan stays within provider limits. With this configuration, deployers sign a registration payload only when they request Telegram bindings or later rebinds—the creation flow skips the registration signature prompt in the frontend.
 
 ## Routes
 

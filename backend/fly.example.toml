@@ -3,7 +3,7 @@ app = "templ-backend-example"
 primary_region = "iad"
 
 [build]
-  dockerfile = "backend/Dockerfile"
+  dockerfile = "Dockerfile"
 
 [env]
   NODE_ENV = "production"

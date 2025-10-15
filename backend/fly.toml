@@ -1,6 +1,8 @@
-# Copy this file to fly.toml and update the placeholders before deploying.
-app = "templ-backend-example"
-primary_region = "iad"
+# fly.toml app configuration for the templ backend
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+
+app = "backend-dry-paper-4514"
+primary_region = "gru"
 
 [build]
   dockerfile = "Dockerfile"
@@ -16,14 +18,17 @@ primary_region = "iad"
   internal_port = 3001
   force_https = true
   auto_start_machines = true
-  auto_stop_machines = false
+  auto_stop_machines = "off"
   min_machines_running = 1
   processes = ["app"]
+
+[http_options]
+  h2_backend = true
 
 [[vm]]
   cpu_kind = "shared"
   cpus = 1
-  memory = "512m"
+  memory = "1gb"
 
 [[mounts]]
   source = "templ_data"

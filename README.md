@@ -1,6 +1,6 @@
 # templ.fun
 
-Templ lets any ERC-20 community spin up a gated club with transparent economics, one-member/one-vote governance, and optional Telegram alerts. A single factory mints templs, each templ tracks its own members and fee splits, and the surrounding tooling keeps every surface in sync.
+Templ lets any ERC-20 community spin up a gated club with transparent economics, one-member/one-vote governance, and optional Telegram + XMTP coordination. A single factory mints templs, each templ tracks its own members and fee splits, and the surrounding tooling keeps every surface in sync.
 
 ---
 
@@ -8,20 +8,22 @@ Templ lets any ERC-20 community spin up a gated club with transparent economics,
 
 | Area | What ships |
 | --- | --- |
-| On-chain | `TemplFactory` deployments with configurable priest, entry fee, burn/treasury/member splits, quorum, execution delay, optional caps, and home links. Each templ wires membership, treasury, and typed-governance modules together so communities can join, vote, withdraw, or disband without bespoke code. |
-| Frontend | Static Vite + React SPA that handles templ creation, join + gifting flows, proposal creation/voting/execution, reward claims, and Telegram rebinding. |
-| Backend | Node 22 Express service that verifies typed signatures, persists templ ↔ Telegram bindings in SQLite, streams contract events, and emits MarkdownV2 Telegram notifications. Designed to run as a long-lived process (Fly, Render, Railway, bare metal) with optional Redis-backed rate limiting. |
-| Shared utilities | Signing helpers, factories for typed data, and Hardhat/Vitest/Playwright harnesses that keep the stack coherent. |
+| On-chain | `TemplFactory` deployments with configurable priest, entry fee, burn/treasury/member splits, quorum, execution delay, optional caps, dynamic entry-fee curves, and home links. Each templ wires membership, treasury, and typed-governance modules together so communities can join, vote, withdraw, or disband without bespoke code. |
+| Frontend | Static Vite + React console that lists templs, deploys new ones, joins existing groups, runs governance flows, manages Telegram bindings, and hosts the live XMTP chat (including vote broadcasts, moderation controls, and status logging). |
+| Backend | Node 22 Express service that verifies typed signatures, persists templ ↔ Telegram bindings in SQLite, streams contract events, manages Telegram + XMTP notifications, and coordinates optional XMTP group invites. Designed to run as a long-lived process (Fly, Render, Railway, bare metal) with optional Redis-backed rate limiting. |
+| Shared utilities | Signing helpers, XMTP sync helpers, factories for typed data (create/join/rebind/moderation), and Hardhat/Vitest/Playwright harnesses that keep the stack coherent. |
 
 ## Architecture snapshot
 
 ```mermaid
 flowchart LR
-  wallet[Member Wallet] -->|Deploy / Join / Vote| frontend[React SPA]
+  wallet[Member Wallet] -->|Deploy / Join / Vote| frontend[React Console]
   frontend -->|Factory calls + templ reads| contracts[Solidity Contracts]
   frontend -->|Typed API calls| backend[Express API]
   backend -->|Membership checks / metadata| contracts
   backend -->|Notifications| telegram[Telegram Bot]
+  backend -->|Group provision + invites| xmtp[XMTP Network]
+  frontend <-->|Messages| xmtp
 ```
 
 More detailed diagrams and sequence charts live in [`docs/CORE_FLOW_DOCS.MD`](docs/CORE_FLOW_DOCS.MD).
