@@ -1,6 +1,8 @@
 // XMTP helper functions
 import { ethers } from 'ethers';
-import { Client } from '@xmtp/node-sdk';
+import { Client, getInboxIdForIdentifier } from '@xmtp/node-sdk';
+import { promises as fs } from 'fs';
+import { join, dirname } from 'path';
 import { waitFor } from '../../../shared/xmtp-wait.js';
 import { XMTP_CONSENT_STATES } from '../../../shared/xmtp.js';
 import { logger } from '../logger.js';
@@ -39,6 +41,81 @@ export async function waitForInboxReady(inboxId, tries = 60) {
   return Boolean(result);
 }
 
+async function ensureDirectoryExists(pathname) {
+  try {
+    await fs.mkdir(pathname, { recursive: true });
+  } catch (err) {
+    if (err && err.code !== 'EEXIST') {
+      throw err;
+    }
+  }
+}
+
+async function revokeStaleInstallations({ wallet, env }) {
+  try {
+    const identifier = {
+      identifier: wallet.address.toLowerCase(),
+      identifierKind: 0
+    };
+    const inboxId = await getInboxIdForIdentifier(identifier, env);
+    if (!inboxId) {
+      logger.warn('No XMTP inbox found while attempting revocation');
+      return false;
+    }
+    const states = await Client.inboxStateFromInboxIds([inboxId], env);
+    const state = Array.isArray(states) && states[0] ? states[0] : null;
+    const installations = Array.isArray(state?.installations) ? state.installations : [];
+    if (!installations.length) {
+      logger.warn({ inboxId }, 'XMTP inbox has no installations to revoke');
+      return false;
+    }
+    const payload = installations
+      .map((inst) => {
+        if (inst?.bytes instanceof Uint8Array) return inst.bytes;
+        if (typeof inst?.bytes === 'string') {
+          try { return ethers.getBytes(inst.bytes); }
+          catch { return null; }
+        }
+        if (inst?.id) {
+          try { return ethers.getBytes(inst.id); }
+          catch { return null; }
+        }
+        return null;
+      })
+      .filter((value) => value instanceof Uint8Array);
+    if (!payload.length) {
+      logger.warn({ inboxId }, 'Unable to derive installation bytes for revocation');
+      return false;
+    }
+    const revoker = {
+      type: 'EOA',
+      getIdentifier: () => ({
+        identifier: wallet.address.toLowerCase(),
+        identifierKind: 0,
+        nonce: Date.now()
+      }),
+      signMessage: async (message) => {
+        let toSign;
+        if (message instanceof Uint8Array) {
+          try { toSign = ethers.toUtf8String(message); } catch { toSign = ethers.hexlify(message); }
+        } else if (typeof message === 'string') {
+          toSign = message;
+        } else {
+          toSign = String(message);
+        }
+        const signature = await wallet.signMessage(toSign);
+        return ethers.getBytes(signature);
+      }
+    };
+    await Client.revokeInstallations(revoker, inboxId, payload, env);
+    logger.warn({ inboxId, revokedCount: payload.length }, 'Revoked stale XMTP installations');
+    return true;
+  } catch (err) {
+    logger.error({ err: err?.message || err }, 'Failed to revoke stale XMTP installations');
+    return false;
+  }
+}
+
 export async function createXmtpWithRotation(wallet, maxAttempts = 20) {
   // Derive a stable 32-byte SQLCipher key for the XMTP Node DB.
   // Priority: explicit BACKEND_DB_ENC_KEY (hex) -> keccak256(privateKey + env) -> zero key (last resort)
@@ -65,6 +142,15 @@ export async function createXmtpWithRotation(wallet, maxAttempts = 20) {
   } catch {
     dbEncryptionKey = new Uint8Array(32);
   }
+  const baseDir = process.env.XMTP_DB_DIR || '/var/lib/templ/xmtp';
+  const dbPath = process.env.XMTP_DB_PATH || join(baseDir, `${XMTP_ENV}-${wallet.address.toLowerCase()}.db3`);
+  try {
+    await ensureDirectoryExists(dirname(dbPath));
+  } catch (err) {
+    logger.warn({ err: err?.message || err, dbPath }, 'Failed to prepare XMTP db directory');
+  }
+
+  let revocationAttempted = false;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     /** @type {import('@xmtp/node-sdk').Signer} */
     const xmtpSigner = /** @type {import('@xmtp/node-sdk').Signer} */ ({
@@ -75,8 +161,19 @@ export async function createXmtpWithRotation(wallet, maxAttempts = 20) {
         nonce: attempt
       }),
       signMessage: async (message) => {
-        const messageToSign = typeof message === 'string' ? message : String(message);
-        const signature = await wallet.signMessage(messageToSign);
+        let toSign;
+        if (message instanceof Uint8Array) {
+          try {
+            toSign = ethers.toUtf8String(message);
+          } catch {
+            toSign = ethers.hexlify(message);
+          }
+        } else if (typeof message === 'string') {
+          toSign = message;
+        } else {
+          toSign = String(message);
+        }
+        const signature = await wallet.signMessage(toSign);
         return ethers.getBytes(signature);
       }
     });
@@ -96,6 +193,7 @@ export async function createXmtpWithRotation(wallet, maxAttempts = 20) {
       }
       return await Client.create(xmtpSigner, {
         dbEncryptionKey,
+        dbPath,
         env,
         loggingLevel,
         structuredLogging,
@@ -106,6 +204,13 @@ export async function createXmtpWithRotation(wallet, maxAttempts = 20) {
       const msg = String(err?.message || err);
       if (msg.includes('already registered 10/10 installations')) {
         logger.warn({ attempt }, 'XMTP installation limit reached, rotating inbox');
+        if (!revocationAttempted) {
+          const revoked = await revokeStaleInstallations({ wallet, env: XMTP_ENV });
+          revocationAttempted = true;
+          if (revoked) {
+            await new Promise((resolve) => setTimeout(resolve, 750));
+          }
+        }
         continue;
       }
       throw err;

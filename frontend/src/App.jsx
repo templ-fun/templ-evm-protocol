@@ -1407,7 +1407,7 @@ function App() {
   const canModerate = isPriest || isDelegate;
 
   // deployment form
-  const [tokenAddress, setTokenAddress] = useState('');
+  const [tokenAddress, setTokenAddress] = useState('0x4200000000000000000000000000000000000006');
   const [factoryAddress, setFactoryAddress] = useState(() => FACTORY_CONFIG.address || '');
   const [protocolFeeRecipient, setProtocolFeeRecipient] = useState(() => FACTORY_CONFIG.protocolFeeRecipient || '');
   const [protocolPercent, setProtocolPercent] = useState(() => {
@@ -1416,7 +1416,7 @@ function App() {
     const normalized = percent > 100 ? percent / 100 : percent;
     return Number(normalized.toFixed(2));
   });
-  const [entryFee, setEntryFee] = useState('');
+  const [entryFee, setEntryFee] = useState('1000000000000000000');
   const [burnPercent, setBurnPercent] = useState('30');
   const [treasuryPercent, setTreasuryPercent] = useState('30');
   const [memberPoolPercent, setMemberPoolPercent] = useState('30');
@@ -4561,7 +4561,12 @@ function App() {
                 {Number.isInteger(createTokenDecimals) && (
                   <p className="text-xs text-black/60 mt-1">
                     Detected token decimals: {createTokenDecimals}
-                    {createTokenSymbol ? ` • Symbol ${createTokenSymbol}` : ''}
+                    {createTokenSymbol ? (
+                      <>
+                        {' • Symbol: '}
+                        <span className="font-semibold">{createTokenSymbol}</span>
+                      </>
+                    ) : null}
                   </p>
                 )}
                 {!Number.isInteger(createTokenDecimals) && tokenAddressValid && (
