@@ -24,14 +24,21 @@ import {
   getClaimable,
   getExternalRewards
 } from './flows.js';
-import { syncXMTP, waitForConversation } from '@shared/xmtp.js';
+import { syncXMTP, waitForConversation, XMTP_CONSENT_STATES, XMTP_CONVERSATION_TYPES } from '@shared/xmtp.js';
 import './App.css';
 import { BACKEND_URL, FACTORY_CONFIG } from './config.js';
 import { useAppLocation } from './hooks/useAppLocation.js';
 import { useStatusLog } from './hooks/useStatusLog.js';
 
 const DEBUG_ENABLED = (() => {
-  try { return import.meta.env?.DEV || import.meta.env?.VITE_E2E_DEBUG === '1'; } catch { return false; }
+  try {
+    if (import.meta.env?.DEV || import.meta.env?.VITE_E2E_DEBUG === '1') return true;
+    if (typeof window !== 'undefined') {
+      const stored = window.localStorage?.getItem('templ:xmtpDebug');
+      if (stored === '1') return true;
+    }
+  } catch {}
+  return false;
 })();
 
 function dlog(...args) {
@@ -40,6 +47,15 @@ function dlog(...args) {
 }
 
 const JOINED_STORAGE_PREFIX = 'templ:joined';
+
+const XMTP_CONSENT_STATE_VALUES = [
+  XMTP_CONSENT_STATES.ALLOWED,
+  XMTP_CONSENT_STATES.UNKNOWN,
+  XMTP_CONSENT_STATES.DENIED
+];
+
+const XMTP_GROUP_CONVERSATION_TYPE = XMTP_CONVERSATION_TYPES.GROUP;
+const XMTP_SYNC_CONVERSATION_TYPE = XMTP_CONVERSATION_TYPES.SYNC;
 
 function normalizeAddressLower(address) {
   if (!address) return '';
@@ -100,8 +116,159 @@ function saveXmtpCache(address, data) {
   const key = xmtpCacheKeyForWallet(address);
   if (!key) return;
   try {
-    localStorage.setItem(key, JSON.stringify(data));
+    const existing = (() => {
+      try {
+        const raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : {};
+      } catch {
+        return {};
+      }
+    })();
+    const next = { ...existing, ...data };
+    localStorage.setItem(key, JSON.stringify(next));
   } catch {}
+}
+
+function installationIdToBytes(id) {
+  if (!id) return null;
+  try {
+    if (/^0x/i.test(id)) {
+      return ethers.getBytes(id);
+    }
+  } catch {}
+  try {
+    const normalized = id.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized + '==='.slice((normalized.length + 3) % 4);
+    if (typeof window !== 'undefined' && typeof window.atob === 'function') {
+      const binary = window.atob(padded);
+      const out = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) {
+        out[i] = binary.charCodeAt(i);
+      }
+      return out;
+    }
+    if (typeof globalThis !== 'undefined' && typeof globalThis.Buffer !== 'undefined') {
+      return globalThis.Buffer.from(padded, 'base64');
+    }
+    // Fallback manual decode
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    const bytes = [];
+    let buffer = 0;
+    let bits = 0;
+    for (const char of padded) {
+      if (char === '=') break;
+      const index = alphabet.indexOf(char);
+      if (index === -1) continue;
+      buffer = (buffer << 6) | index;
+      bits += 6;
+      if (bits >= 8) {
+        bits -= 8;
+        bytes.push((buffer >> bits) & 0xff);
+      }
+    }
+    return Uint8Array.from(bytes);
+  } catch {
+    return null;
+  }
+}
+
+function formatInstallationRecord(inst) {
+  if (!inst) return { id: '', timestamp: 0, bytes: null, revokedAt: 0 };
+  let timestamp = 0;
+  let revokedAt = 0;
+  try {
+    if (typeof inst.clientTimestampNs === 'bigint') {
+      timestamp = Number(inst.clientTimestampNs / 1000000n);
+    }
+  } catch {}
+  try {
+    if (typeof inst.revokedAtNs === 'bigint') {
+      revokedAt = Number(inst.revokedAtNs / 1000000n);
+    } else if (typeof inst.revokedTimestampNs === 'bigint') {
+      revokedAt = Number(inst.revokedTimestampNs / 1000000n);
+    } else if (typeof inst.revokedAtMs === 'number') {
+      revokedAt = inst.revokedAtMs;
+    } else if (typeof inst.revokedAt === 'number') {
+      revokedAt = inst.revokedAt;
+    }
+  } catch {}
+  return {
+    id: inst.id || '',
+    timestamp,
+    bytes: inst.bytes instanceof Uint8Array ? inst.bytes : null,
+    revokedAt
+  };
+}
+
+function areUint8ArraysEqual(a, b) {
+  if (!(a instanceof Uint8Array) || !(b instanceof Uint8Array)) return false;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+function installationMatches(inst, targetId, targetBytes) {
+  if (!inst) return false;
+  const id = inst.id ? String(inst.id) : '';
+  if (inst.revokedAt && inst.revokedAt > 0) {
+    return false;
+  }
+  if (id && targetId) {
+    if (id === targetId) {
+      return true;
+    }
+    const bothHex = /^0x/i.test(id) && /^0x/i.test(targetId);
+    if (bothHex && id.toLowerCase() === targetId.toLowerCase()) {
+      return true;
+    }
+  }
+  const instBytes = inst.bytes instanceof Uint8Array ? inst.bytes : installationIdToBytes(id);
+  if (instBytes && targetBytes) {
+    return areUint8ArraysEqual(instBytes, targetBytes);
+  }
+  return false;
+}
+
+async function pruneExcessInstallations({ address, signer, cache, env, keepInstallationId, pushStatus }) {
+  if (!cache?.inboxId || !signer) {
+    return { revoked: false, installations: null };
+  }
+  try {
+    const states = await Client.inboxStateFromInboxIds([cache.inboxId], env);
+    const state = Array.isArray(states) ? states[0] : null;
+    const installations = Array.isArray(state?.installations) ? state.installations : [];
+    const formatted = installations.map(formatInstallationRecord).filter((inst) => inst.id);
+    if (formatted.length < 10) {
+      return { revoked: false, installations: formatted };
+    }
+    const sorted = formatted.filter((inst) => inst.id && inst.id !== keepInstallationId);
+    sorted.sort((a, b) => a.timestamp - b.timestamp);
+    const maxOtherInstallations = 8;
+    const overflow = Math.max(0, sorted.length - maxOtherInstallations);
+    if (overflow <= 0) {
+      return { revoked: false, installations: formatted };
+    }
+    const targets = sorted.slice(0, overflow);
+    const payload = targets
+      .map((inst) => inst.bytes || installationIdToBytes(inst.id))
+      .filter((value) => value instanceof Uint8Array);
+    if (!payload.length) {
+      return { revoked: false, installations: formatted };
+    }
+    const nonce = getStableNonce(address);
+    const signerWrapper = makeXmtpSigner({ address, signer, nonce });
+    await Client.revokeInstallations(signerWrapper, cache.inboxId, payload, env);
+    if (pushStatus) {
+      pushStatus(`♻️ Revoked ${targets.length} older XMTP installation${targets.length === 1 ? '' : 's'}`);
+    }
+    const remaining = formatted.filter((inst) => !targets.some((target) => inst.id === target.id));
+    return { revoked: true, installations: remaining };
+  } catch (err) {
+    console.warn('[app] prune installations failed', err?.message || err);
+    return { revoked: false, installations: null };
+  }
 }
 
 function resolveXmtpEnv() {
@@ -148,6 +315,112 @@ function getStableNonce(address) {
     }
   } catch {}
   return 1;
+}
+
+function isAccessHandleError(err) {
+  if (!err) return false;
+  const message = String(err?.message || err);
+  return message.includes('createSyncAccessHandle');
+}
+
+function isMissingInstallationError(err) {
+  if (!err) return false;
+  const message = String(err?.message || err);
+  if (!message) return false;
+  const normalized = message.toLowerCase();
+  if (normalized.includes('missing installation')) return true;
+  if (normalized.includes('installation metadata')) return true;
+  if (normalized.includes('installation not found')) return true;
+  return message.includes('Database(NotFound');
+}
+
+function createReinstallError(details = 'Missing XMTP installation metadata') {
+  const error = new Error(details);
+  error.name = 'XMTP_REINSTALL';
+  return error;
+}
+
+function extractKeyPackageStatus(statuses, installationId) {
+  if (!statuses) return null;
+  const target = String(installationId || '');
+  const candidates = [target, target.toLowerCase(), target.replace(/^0x/i, '')];
+  const matchKey = (key) => {
+    if (!key) return false;
+    const val = String(key);
+    return candidates.includes(val) || candidates.includes(val.toLowerCase()) || candidates.includes(val.replace(/^0x/i, ''));
+  };
+  if (statuses instanceof Map) {
+    for (const [key, value] of statuses.entries()) {
+      if (matchKey(key)) return value;
+    }
+    return null;
+  }
+  if (Array.isArray(statuses)) {
+    for (const entry of statuses) {
+      if (!entry) continue;
+      if (Array.isArray(entry) && entry.length >= 2) {
+        const [key, value] = entry;
+        if (matchKey(key)) return value;
+      } else if (entry.installationId || entry.id) {
+        const key = entry.installationId || entry.id;
+        if (matchKey(key)) return entry;
+      }
+    }
+    return null;
+  }
+  if (typeof statuses === 'object') {
+    for (const key of Object.keys(statuses)) {
+      if (matchKey(key)) return statuses[key];
+    }
+  }
+  return null;
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, typeof ms === 'number' && ms > 0 ? ms : 0));
+}
+
+let activePersistenceClear = null;
+async function clearXmtpPersistence(tag) {
+  if (typeof navigator === 'undefined' || !navigator?.storage?.getDirectory) {
+    return false;
+  }
+  const runner = (async () => {
+    let cleared = false;
+    try {
+      const root = await navigator.storage.getDirectory();
+      if (!root || typeof root.entries !== 'function') return false;
+      for await (const [name, handle] of root.entries()) {
+        if (!name || typeof name !== 'string') continue;
+        if (!name.startsWith('xmtp-')) continue;
+        try {
+          if (handle?.kind === 'directory') {
+            await root.removeEntry(name, { recursive: true });
+          } else {
+            await root.removeEntry(name);
+          }
+          cleared = true;
+        } catch (err) {
+          dlog('[app] Failed to remove XMTP persistence entry', { name, message: err?.message || err });
+        }
+      }
+      if (cleared) {
+        dlog('[app] Cleared XMTP persistence', tag ? { tag } : undefined);
+      }
+    } catch (err) {
+      dlog('[app] clearXmtpPersistence error', err?.message || err);
+    }
+    return cleared;
+  })();
+  try {
+    if (activePersistenceClear) {
+      try { await activePersistenceClear; } catch {}
+    }
+    activePersistenceClear = runner;
+    return await activePersistenceClear;
+  } finally {
+    activePersistenceClear = null;
+  }
 }
 
 // Curve configuration constants
@@ -696,22 +969,18 @@ function App() {
     setInstallationsError(null);
     try {
       const env = resolveXmtpEnv();
-      const states = await Client.inboxStateFromInboxIds([cache.inboxId], env);
+      let states;
+      try {
+        states = await Client.inboxStateFromInboxIds([cache.inboxId], env);
+      } catch (err) {
+        console.error('[app] inboxStateFromInboxIds failed', err);
+        throw err;
+      }
       const state = Array.isArray(states) ? states[0] : null;
       const list = Array.isArray(state?.installations) ? state.installations : [];
-      setInstallations(list.map((inst) => {
-        let timestampMs = null;
-        try {
-          if (typeof inst.clientTimestampNs === 'bigint') {
-            timestampMs = Number(inst.clientTimestampNs / 1000000n);
-          }
-        } catch {}
-        return {
-          id: inst.id,
-          timestamp: timestampMs
-        };
-      }));
+      setInstallations(list.map(formatInstallationRecord));
     } catch (err) {
+      console.error('[app] loadInstallationsState failed', err?.message || err, err);
       setInstallationsError(err?.message || String(err));
     } finally {
       setInstallationsLoading(false);
@@ -736,13 +1005,32 @@ function App() {
       const env = resolveXmtpEnv();
       const nonce = getStableNonce(walletAddress);
       const signerWrapper = makeXmtpSigner({ address: walletAddress, signer, nonce });
-      await Client.revokeInstallations(signerWrapper, cache.inboxId, [installationId], env);
+      const target = installations.find((inst) => inst.id === installationId);
+      const derivePayload = () => {
+        const candidate = target?.bytes || installationIdToBytes(installationId);
+        return candidate instanceof Uint8Array ? [candidate] : [];
+      };
+      try {
+        const payload = derivePayload();
+        if (!payload.length) {
+          throw new Error('Unable to parse installation id for revocation');
+        }
+        await Client.revokeInstallations(signerWrapper, cache.inboxId, payload, env);
+      } catch (err) {
+        console.error('[app] revokeInstallations failed', err);
+        throw err;
+      }
+      saveXmtpCache(walletAddress, {
+        installationId: cache?.installationId && cache.installationId === installationId ? null : cache?.installationId
+      });
+      setInstallations((prev) => prev.filter((inst) => inst.id !== installationId));
       pushStatus('✅ Installation revoked');
       await loadInstallationsState();
     } catch (err) {
+      console.error('[app] handleRevokeInstallation error', err?.message || err, err);
       setInstallationsError(err?.message || String(err));
     }
-  }, [walletAddress, signer, loadInstallationsState, pushStatus]);
+  }, [walletAddress, signer, loadInstallationsState, pushStatus, installations]);
   const handleRevokeOtherInstallations = useCallback(async () => {
     if (!walletAddress || !signer) {
       setInstallationsError('Connect a wallet to revoke installations.');
@@ -756,24 +1044,52 @@ function App() {
     try {
       setInstallationsError(null);
       const env = resolveXmtpEnv();
-      const states = await Client.inboxStateFromInboxIds([cache.inboxId], env);
+      let states;
+      try {
+        states = await Client.inboxStateFromInboxIds([cache.inboxId], env);
+      } catch (err) {
+        console.error('[app] inboxStateFromInboxIds (bulk revoke) failed', err?.message || err, err);
+        throw err;
+      }
       const state = Array.isArray(states) ? states[0] : null;
-      const idsToRevoke = (state?.installations || [])
-        .map((inst) => inst.id)
-        .filter((id) => id && id !== activeInstallationId);
-      if (!idsToRevoke.length) {
+      const targets = (state?.installations || [])
+        .map(formatInstallationRecord)
+        .filter((inst) => inst.id && inst.id !== activeInstallationId);
+      if (!targets.length) {
         setInstallationsError('No other installations to revoke.');
         return;
       }
+      dlog('[app] handleRevokeOtherInstallations', { targets });
       const nonce = getStableNonce(walletAddress);
       const signerWrapper = makeXmtpSigner({ address: walletAddress, signer, nonce });
-      await Client.revokeInstallations(signerWrapper, cache.inboxId, idsToRevoke, env);
+      try {
+        const payload = targets
+          .map((inst) => inst.bytes || installationIdToBytes(inst.id))
+          .filter((value) => value instanceof Uint8Array);
+        if (!payload.length) {
+          throw new Error('Unable to parse installation ids for revocation');
+        }
+        await Client.revokeInstallations(signerWrapper, cache.inboxId, payload, env);
+      } catch (err) {
+        console.error('[app] bulk revoke failed', err);
+        throw err;
+      }
+      const revokedIds = targets.map((inst) => inst.id);
+      if (revokedIds.includes(cache?.installationId)) {
+        saveXmtpCache(walletAddress, { installationId: null });
+      }
+      setInstallations((prev) => prev.filter((inst) => !revokedIds.includes(inst.id)));
       pushStatus('✅ Other installations revoked');
       await loadInstallationsState();
     } catch (err) {
+      console.error('[app] handleRevokeOtherInstallations error', err?.message || err, err);
       setInstallationsError(err?.message || String(err));
     }
   }, [walletAddress, signer, activeInstallationId, loadInstallationsState, pushStatus]);
+  useEffect(() => {
+    if (!walletAddress || !activeInboxId) return;
+    loadInstallationsState();
+  }, [walletAddress, activeInboxId, loadInstallationsState]);
   const normalizedGroupId = useMemo(() => (groupId ? String(groupId).toLowerCase() : ''), [groupId]);
   const normalizedTemplAddress = useMemo(() => {
     if (!templAddress) return '';
@@ -809,6 +1125,7 @@ function App() {
     }
   }, [pendingJoinAddress, templAddress]);
   const joinStage = joinSteps.join;
+  const deployInProgress = createSteps.deploy === 'pending';
   const chatProvisionState = useMemo(() => {
     if (!pathIsChat || !templAddress || pendingJoinMatches) return null;
     if (!groupId) return 'pending-group';
@@ -816,6 +1133,7 @@ function App() {
     return null;
   }, [pathIsChat, templAddress, pendingJoinMatches, groupId, groupConnected]);
   const joinRetryCountRef = useRef(0);
+  const autoJoinAttemptRef = useRef(false);
   const moderationEnabled = false;
   const zeroAddressLower = ethers.ZeroAddress.toLowerCase();
   const joinMembershipInfo = useMemo(() => {
@@ -1091,7 +1409,7 @@ function App() {
   const canModerate = isPriest || isDelegate;
 
   // deployment form
-  const [tokenAddress, setTokenAddress] = useState('');
+  const [tokenAddress, setTokenAddress] = useState('0x4200000000000000000000000000000000000006');
   const [factoryAddress, setFactoryAddress] = useState(() => FACTORY_CONFIG.address || '');
   const [protocolFeeRecipient, setProtocolFeeRecipient] = useState(() => FACTORY_CONFIG.protocolFeeRecipient || '');
   const [protocolPercent, setProtocolPercent] = useState(() => {
@@ -1100,7 +1418,7 @@ function App() {
     const normalized = percent > 100 ? percent / 100 : percent;
     return Number(normalized.toFixed(2));
   });
-  const [entryFee, setEntryFee] = useState('');
+  const [entryFee, setEntryFee] = useState('1000000000000000000');
   const [burnPercent, setBurnPercent] = useState('30');
   const [treasuryPercent, setTreasuryPercent] = useState('30');
   const [memberPoolPercent, setMemberPoolPercent] = useState('30');
@@ -1250,9 +1568,7 @@ function App() {
     };
   }, [tokenAddress, signer]);
 
-  // telegram binding
-  const [bindingInfo, setBindingInfo] = useState(null);
-  const [registeringBinding, setRegisteringBinding] = useState(false);
+  // telegram binding handled via external operator tooling
 
   // Governance: all members have 1 vote
 
@@ -1266,6 +1582,8 @@ function App() {
     }
   })();
   const joinedTemplSet = useMemo(() => new Set(joinedTempls), [joinedTempls]);
+  const alreadyMember = normalizedTemplAddress ? joinedTemplSet.has(normalizedTemplAddress) : false;
+  const showApprovalPrompt = needsTokenApproval && !alreadyMember;
   useEffect(() => {
     if (!walletAddress || !walletAddressLower || !signer) return;
     const memberAddress = walletAddress;
@@ -1806,8 +2124,12 @@ function App() {
 
     const xmtpEnv = resolveXmtpEnv();
     const cache = loadXmtpCache(address);
-    const storageKey = `xmtp:nonce:${address.toLowerCase()}`;
-    const baseOptions = { env: xmtpEnv, appVersion: 'templ/0.1.0' };
+    const normalizedAddress = address.toLowerCase();
+    const storageKey = `xmtp:nonce:${normalizedAddress}`;
+    const baseOptions = {
+      env: xmtpEnv,
+      appVersion: 'templ/0.1.0'
+    };
 
     const candidateSet = new Set();
     if (cache?.nonce) candidateSet.add(Number(cache.nonce));
@@ -1826,31 +2148,184 @@ function App() {
       const signerWrapper = makeXmtpSigner({ address, signer: nextSigner, nonce });
       const options = disableAutoRegister ? { ...baseOptions, disableAutoRegister: true } : baseOptions;
       dlog('[app] Creating XMTP client', { disableAutoRegister, nonce });
-      const clientInstance = await Client.create(signerWrapper, options);
-      try { localStorage.setItem(storageKey, String(nonce)); } catch {}
-      saveXmtpCache(address, { nonce, inboxId: clientInstance.inboxId });
-      return clientInstance;
+      let clientInstance = null;
+      try {
+        clientInstance = await Client.create(signerWrapper, options);
+        if (disableAutoRegister) {
+          let reinstall = false;
+          if (!clientInstance?.installationId) {
+            reinstall = true;
+            dlog('[app] Cached XMTP client missing installationId after resume attempt', { nonce });
+          } else {
+            try {
+              const statuses = await clientInstance.getKeyPackageStatusesForInstallationIds?.([String(clientInstance.installationId)]);
+              const status = extractKeyPackageStatus(statuses, clientInstance.installationId);
+              if (!status || status?.validationError) {
+                reinstall = true;
+                dlog('[app] XMTP key package status invalid after resume', {
+                  nonce,
+                  validationError: status?.validationError || null,
+                  statusAvailable: Boolean(status)
+                });
+              }
+            } catch (err) {
+              reinstall = true;
+              dlog('[app] XMTP key package status check threw during resume', err?.message || err);
+            }
+          }
+          if (reinstall) {
+            try { await clientInstance.close?.(); } catch {}
+            throw createReinstallError('Cached XMTP installation invalid or revoked');
+          }
+        }
+        try { localStorage.setItem(storageKey, String(nonce)); } catch {}
+        saveXmtpCache(address, {
+          nonce,
+          inboxId: clientInstance.inboxId,
+          installationId: clientInstance.installationId ? String(clientInstance.installationId) : undefined
+        });
+        dlog('[app] XMTP client ready', {
+          disableAutoRegister,
+          nonce,
+          inboxId: clientInstance.inboxId,
+          installationId: clientInstance.installationId ? String(clientInstance.installationId) : null
+        });
+        return clientInstance;
+      } catch (err) {
+        if (clientInstance && typeof clientInstance.close === 'function') {
+          try { await clientInstance.close(); } catch (closeErr) { dlog('[app] XMTP client close after failure', closeErr?.message || closeErr); }
+        }
+        throw err;
+      }
     }
 
     async function createOrResumeXmtp() {
-      for (const nonce of candidateNonces) {
+      let installationSnapshot = null;
+      let accessHandleErrorCount = 0;
+      if (cache?.inboxId) {
         try {
-          return await createClientWithNonce(nonce, true);
-        } catch (err) {
-          const msg = String(err?.message || err);
-          if (msg.includes('already registered 10/10 installations')) {
-            continue;
+          const pruneResult = await pruneExcessInstallations({
+            address,
+            signer: nextSigner,
+            cache,
+            env: xmtpEnv,
+            keepInstallationId: cache?.installationId || '',
+            pushStatus
+          });
+          if (Array.isArray(pruneResult?.installations)) {
+            installationSnapshot = pruneResult.installations;
+            dlog('[app] XMTP installation snapshot', {
+              count: installationSnapshot.length,
+              keepInstallationId: cache?.installationId || ''
+            });
           }
-          if (msg.toLowerCase().includes('register') || msg.toLowerCase().includes('inbox')) {
-            continue;
+        } catch (err) {
+          console.warn('[app] prune prior to client init failed', err?.message || err);
+        }
+      }
+      const cachedInstallationId = typeof cache?.installationId === 'string' ? cache.installationId.trim() : '';
+      const hadCachedInstallation = Boolean(cachedInstallationId);
+      const hadCachedInbox = Boolean(cache?.inboxId);
+      const cachedInstallationBytes = hadCachedInstallation ? installationIdToBytes(cachedInstallationId) : null;
+      const installationStillRegistered = hadCachedInstallation && Array.isArray(installationSnapshot)
+        ? installationSnapshot.some((inst) => installationMatches(inst, cachedInstallationId, cachedInstallationBytes))
+        : null;
+      let requireFreshInstallation = !hadCachedInstallation;
+      let reinstallReason = '';
+      if (hadCachedInstallation && installationStillRegistered === false) {
+        requireFreshInstallation = true;
+        reinstallReason = 'cached XMTP installation no longer registered';
+        try { cache.installationId = null; } catch {}
+        try { saveXmtpCache(address, { installationId: null }); } catch {}
+        dlog('[app] Cached XMTP installation missing from snapshot, forcing re-register', {
+          cachedInstallationId,
+          reinstallReason
+        });
+      }
+      dlog('[app] XMTP resume checkpoint', {
+        hadCachedInstallation,
+        hadCachedInbox,
+        requireFreshInstallation,
+        reinstallReason,
+        installationStillRegistered
+      });
+      let limitEncountered = false;
+      if (!requireFreshInstallation) {
+        for (const nonce of candidateNonces) {
+          try {
+            dlog('[app] Attempting XMTP resume', { nonce });
+            const resumedClient = await createClientWithNonce(nonce, true);
+            accessHandleErrorCount = 0;
+            return resumedClient;
+          } catch (err) {
+            const msg = String(err?.message || err);
+            if (isAccessHandleError(err)) {
+              accessHandleErrorCount += 1;
+              dlog('[app] XMTP resume encountered AccessHandle error', { nonce, attempt: accessHandleErrorCount, message: msg });
+              if (accessHandleErrorCount >= 2) {
+                await clearXmtpPersistence(`resume-access-handle-${nonce}`);
+              }
+              await delay(accessHandleErrorCount >= 2 ? 450 : 180);
+              continue;
+            }
+            if (msg.includes('already registered 10/10 installations')) {
+              limitEncountered = true;
+              continue;
+            }
+            if (err?.name === 'XMTP_REINSTALL' || isMissingInstallationError(err)) {
+              requireFreshInstallation = true;
+              reinstallReason = msg;
+              try { cache.installationId = null; } catch {}
+              try { saveXmtpCache(address, { installationId: null }); } catch {}
+              dlog('[app] XMTP resume detected missing installation', { nonce, reinstallReason });
+              break;
+            }
+            if (msg.toLowerCase().includes('register') || msg.toLowerCase().includes('inbox')) {
+              continue;
+            }
           }
         }
       }
+      if (limitEncountered) {
+        const limitError = new Error('XMTP installation limit reached for this wallet. Please revoke older installations or switch wallets.');
+        limitError.name = 'XMTP_LIMIT';
+        throw limitError;
+      }
+      const fallbackNonce = candidateNonces[0] || 1;
+      if (requireFreshInstallation && (hadCachedInstallation || hadCachedInbox || reinstallReason)) {
+        pushStatus('♻️ XMTP installation revoked. Please approve the new registration prompt.');
+        dlog('[app] Falling back to XMTP auto-registration', {
+          reinstallReason,
+          hadCachedInstallation,
+          hadCachedInbox,
+          fallbackNonce
+        });
+        await clearXmtpPersistence('fallback-reinstall');
+      }
       try {
-        const fallbackNonce = candidateNonces[0] || 1;
-        return await createClientWithNonce(fallbackNonce, false);
+        const freshClient = await createClientWithNonce(fallbackNonce, false);
+        accessHandleErrorCount = 0;
+        return freshClient;
       } catch (err) {
         const msg = String(err?.message || err);
+        if (isAccessHandleError(err)) {
+          dlog('[app] XMTP fallback retry after access handle error', { fallbackNonce });
+          accessHandleErrorCount += 1;
+          if (accessHandleErrorCount >= 2) {
+            await clearXmtpPersistence(`fallback-access-handle-${fallbackNonce}`);
+          }
+          await delay(accessHandleErrorCount >= 2 ? 450 : 180);
+          return await createClientWithNonce(fallbackNonce, false);
+        }
+        if (err?.name === 'XMTP_REINSTALL') {
+          dlog('[app] XMTP fallback reported reinstall requirement, retrying without disableAutoRegister', {
+            fallbackNonce,
+            reinstallReason: err?.message || ''
+          });
+          await clearXmtpPersistence('fallback-reinstall');
+          await delay(180);
+          return await createClientWithNonce(fallbackNonce, false);
+        }
         if (msg.includes('already registered 10/10 installations')) {
           const limitError = new Error('XMTP installation limit reached for this wallet. Please revoke older installations or switch wallets.');
           limitError.name = 'XMTP_LIMIT';
@@ -1866,17 +2341,22 @@ function App() {
         client = await creatingXmtpPromiseRef.current;
       } else {
         const p = (async () => {
-          return await createOrResumeXmtp();
+          const created = await createOrResumeXmtp();
+          return created;
         })().finally(() => { creatingXmtpPromiseRef.current = null; });
         creatingXmtpPromiseRef.current = p;
         client = await p;
       }
     } catch (err) {
+      if (client && typeof client.close === 'function') {
+        try { await client.close(); } catch {}
+      }
       creatingXmtpPromiseRef.current = null;
       setXmtp(undefined);
       setActiveInboxId('');
       setActiveInstallationId('');
       const message = String(err?.message || err);
+      console.error('[app] XMTP client initialisation failed', err?.message || err, err);
       if (err?.name === 'XMTP_LIMIT' || message.includes('installation limit')) {
         setXmtpLimitWarning(message);
         pushStatus('⚠️ XMTP limit reached. Use a different wallet or revoke old inboxes.');
@@ -1940,7 +2420,10 @@ function App() {
           window.__XMTP = client;
           window.__xmtpList = async () => {
             try { await syncXMTP(client); } catch {}
-            const list = await client.conversations.list({ conversationType: 1, consentStates: ['allowed','unknown','denied'] });
+            const list = await client.conversations.list({
+              conversationType: XMTP_GROUP_CONVERSATION_TYPE,
+              consentStates: XMTP_CONSENT_STATE_VALUES
+            });
             return list.map(c => c.id);
           };
           window.__xmtpGetById = async (id) => {
@@ -1951,7 +2434,10 @@ function App() {
               if (c) return true;
             } catch {}
             try {
-              const list = await client.conversations.list?.({ consentStates: ['allowed','unknown','denied'], conversationType: 1 }) || [];
+              const list = await client.conversations.list?.({
+                consentStates: XMTP_CONSENT_STATE_VALUES,
+                conversationType: XMTP_GROUP_CONVERSATION_TYPE
+              }) || [];
               return list.some(c => String(c.id) === wanted || ('0x'+String(c.id)) === wanted || String(c.id) === wanted.replace(/^0x/i, ''));
             } catch {}
             return false;
@@ -2018,7 +2504,7 @@ function App() {
                 try {
                   conv = await tmp.conversations.getConversationById(wanted);
                   if (!conv) {
-                    const list = await tmp.conversations.list?.({ consentStates: ['allowed','unknown','denied'] }) || [];
+                    const list = await tmp.conversations.list?.({ consentStates: XMTP_CONSENT_STATE_VALUES }) || [];
                     conv = list.find((c) => String(c.id) === wanted || ('0x'+String(c.id)) === wanted || String(c.id) === wanted.replace(/^0x/i, '')) || null;
                   }
                 } catch {}
@@ -2593,6 +3079,36 @@ function App() {
   }, [groupId, pushStatus]);
 
   useEffect(() => {
+    if (!pendingJoinMatches) {
+      autoJoinAttemptRef.current = false;
+      return;
+    }
+    if (!pathIsChat) return;
+    if (!signer || !xmtp) return;
+    if (joinSteps.join === 'pending' || joinSteps.join === 'success') return;
+    if (joinSteps.purchase === 'pending') return;
+    if (autoJoinAttemptRef.current) return;
+    autoJoinAttemptRef.current = true;
+    pushStatus('🔄 Finalizing chat access. Sign the join prompt to finish setup.');
+    (async () => {
+      try {
+        await handlePurchaseAndJoin();
+      } catch (err) {
+        console.error('Auto join after deploy failed', err);
+      }
+    })();
+  }, [
+    pendingJoinMatches,
+    pathIsChat,
+    signer,
+    xmtp,
+    joinSteps.join,
+    joinSteps.purchase,
+    handlePurchaseAndJoin,
+    pushStatus
+  ]);
+
+  useEffect(() => {
     if (!pathIsChat || !group || !xmtp) return;
     let cancelled = false;
     // Load initial history (last 100)
@@ -2685,7 +3201,28 @@ function App() {
           if (!additions.length && !metaUpdates.length) {
             return prev;
           }
-          let next = additions.length ? [...additions, ...prev] : prev.slice();
+          let basePrev;
+          if (additions.length) {
+            const additionTextKeys = new Set(
+              additions
+                .filter((item) => item?.kind === 'text')
+                .map((item) => {
+                  const sender = (item?.senderAddress || '').toLowerCase();
+                  return `text:${sender}:${String(item?.content ?? '')}`;
+                })
+            );
+            basePrev = additionTextKeys.size
+              ? prev.filter((item) => {
+                if (!item?.localEcho || item.kind !== 'text') return true;
+                const sender = (item?.senderAddress || '').toLowerCase();
+                const key = `text:${sender}:${String(item?.content ?? '')}`;
+                return !additionTextKeys.has(key);
+              })
+              : prev.slice();
+          } else {
+            basePrev = prev.slice();
+          }
+          let next = additions.length ? [...additions, ...basePrev] : basePrev;
           if (metaUpdates.length) {
             next = next.map((item) => {
               if (item?.kind === 'proposal') {
@@ -2894,7 +3431,10 @@ function App() {
           }
         } catch (e) { console.warn('[app] getById error', e?.message || e); }
         try {
-          const list = await xmtp.conversations.list?.({ consentStates: ['allowed','unknown','denied'], conversationType: 1 }) || [];
+          const list = await xmtp.conversations.list?.({
+            consentStates: XMTP_CONSENT_STATE_VALUES,
+            conversationType: XMTP_GROUP_CONVERSATION_TYPE
+          }) || [];
           dlog('[app] list size=', list?.length, 'firstIds=', (list||[]).slice(0,3).map(c=>c.id));
           const found = list.find((c) => String(c.id) === wanted || ('0x'+String(c.id))===wanted || String(c.id) === wanted.replace(/^0x/i, ''));
           if (found) {
@@ -2931,17 +3471,20 @@ function App() {
         // Proactively sync once before opening streams
         try { await syncXMTP(xmtp); } catch {}
         const convStream = await xmtp.conversations.streamGroups?.();
-        const stream = await xmtp.conversations.streamAllMessages?.({ consentStates: ['allowed','unknown','denied'], conversationType: 1 });
+        const stream = await xmtp.conversations.streamAllMessages?.({
+          consentStates: XMTP_CONSENT_STATE_VALUES,
+          conversationType: XMTP_GROUP_CONVERSATION_TYPE
+        });
         // Open short-lived preference-related streams to nudge identity/welcome processing
         let welcomeStream = null;
         try {
-          welcomeStream = await xmtp.conversations.streamAllMessages?.({ conversationType: 2 });
+          welcomeStream = await xmtp.conversations.streamAllMessages?.({ conversationType: XMTP_SYNC_CONVERSATION_TYPE });
         } catch {}
         // Also open a short-lived conversation stream for Sync type to nudge welcome processing
         let syncConvStream = null;
         try {
           // @ts-ignore stream supports conversationType on worker side
-          syncConvStream = await xmtp.conversations.stream?.({ conversationType: 2 });
+          syncConvStream = await xmtp.conversations.stream?.({ conversationType: XMTP_SYNC_CONVERSATION_TYPE });
         } catch {}
         // Preferences streams
         let prefStream = null;
@@ -2995,12 +3538,16 @@ function App() {
   useEffect(() => {
     if (!pathIsChat || !templAddress || !signer) return;
     const provider = signer.provider;
-    const stopWatching = watchProposals({
-      ethers,
-      provider,
-      templAddress,
-      templArtifact,
-      onProposal: (p) => {
+    const runner = provider ?? signer;
+    const supportsLiveSubscriptions = runner && !(runner instanceof ethers.BrowserProvider);
+    let stopWatching = () => {};
+    if (supportsLiveSubscriptions) {
+      stopWatching = watchProposals({
+        ethers,
+        provider: runner,
+        templAddress,
+        templArtifact,
+        onProposal: (p) => {
         setProposals((prev) => {
           if (prev.some((x) => x.id === p.id)) return prev;
           return [...prev, { ...p, yes: 0, no: 0 }];
@@ -3073,7 +3620,8 @@ function App() {
         setProposals((prev) => prev.map((p) => p.id === v.id ? { ...p, [v.support ? 'yes' : 'no']: (p[v.support ? 'yes' : 'no'] || 0) + 1 } : p));
         setProposalsById((map) => ({ ...map, [v.id]: { ...(map[v.id] || { id: v.id, yes:0, no:0 }), yes: (map[v.id]?.yes || 0) + (v.support ? 1 : 0), no: (map[v.id]?.no || 0) + (!v.support ? 1 : 0) } }));
       }
-    });
+      });
+    }
     // Poll on-chain proposal tallies to keep UI in sync even if events are missed
     const contract = new ethers.Contract(templAddress, templArtifact.abi, signer);
     const pollTallies = async () => {
@@ -3259,34 +3807,6 @@ function App() {
     };
   }, [templAddress, moderationEnabled, pathIsChat]);
 
-  // Load Telegram binding info and home link
-  useEffect(() => {
-    if (!pathIsChat || !templAddress) return;
-    let cancelled = false;
-    const loadBindingInfo = async () => {
-      try {
-        const response = await fetch(`${BACKEND_URL}/templs/${templAddress}/rebind`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' }
-        });
-        const data = await response.json();
-        if (!cancelled && response.ok) {
-          setBindingInfo(data);
-          // Load home link if available
-          if (data.homeLink) {
-            setHomeLink(data.homeLink);
-          }
-        }
-      } catch (err) {
-        // Binding info is optional, don't show errors
-        dlog('Failed to load binding info', err?.message || err);
-      }
-    };
-    loadBindingInfo();
-    return () => {
-      cancelled = true;
-    };
-  }, [templAddress, pathIsChat]);
 
   // Load templ list for landing/join
   useEffect(() => {
@@ -4073,7 +4593,12 @@ function App() {
                 {Number.isInteger(createTokenDecimals) && (
                   <p className="text-xs text-black/60 mt-1">
                     Detected token decimals: {createTokenDecimals}
-                    {createTokenSymbol ? ` • Symbol ${createTokenSymbol}` : ''}
+                    {createTokenSymbol ? (
+                      <>
+                        {' • Symbol: '}
+                        <span className="font-semibold">{createTokenSymbol}</span>
+                      </>
+                    ) : null}
                   </p>
                 )}
                 {!Number.isInteger(createTokenDecimals) && tokenAddressValid && (
@@ -4474,7 +4999,18 @@ function App() {
                 </div>
               </div>
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <button className="px-4 py-2 rounded bg-primary text-black font-semibold w-full sm:w-auto" onClick={handleDeploy}>Deploy</button>
+                <button
+                  className={`px-4 py-2 rounded bg-primary text-black font-semibold w-full sm:w-auto${deployInProgress ? ' opacity-50 cursor-not-allowed' : ''}`}
+                  onClick={handleDeploy}
+                  disabled={deployInProgress}
+                >
+                  {deployInProgress ? 'Deploying…' : 'Deploy'}
+                </button>
+                {deployInProgress && (
+                  <p className="mt-2 text-xs text-black/60">
+                    Deployment in progress. Wait ~30 seconds to be moved into chat after confirmations.
+                  </p>
+                )}
                 <button
                   type="button"
                   className="px-4 py-2 rounded border border-black/20 text-sm"
@@ -4556,7 +5092,7 @@ function App() {
               </div>
             </div>
             <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Contract address" value={templAddress} onChange={(e) => updateTemplAddress(e.target.value)} />
-            {needsTokenApproval && (
+            {showApprovalPrompt && (
               <div className="rounded border border-black/20 bg-white/80 p-3 text-xs text-black/70 space-y-1">
                 <p className={`text-xs ${approvalStage === 'approved' ? 'text-green-700' : approvalStage === 'error' ? 'text-red-600' : 'text-black/60'}`}>
                   {approvalStatusText}
@@ -4568,8 +5104,13 @@ function App() {
                 )}
               </div>
             )}
+            {alreadyMember && (
+              <div className="rounded border border-black/20 bg-white/80 p-3 text-xs text-black/70">
+                You already have access to this templ. Use the chat to coordinate with members.
+              </div>
+            )}
             <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-              {needsTokenApproval && (
+              {showApprovalPrompt && (
                 <button
                   type="button"
                   className="px-4 py-2 rounded border border-black/20 text-sm font-semibold w-full sm:w-auto"
@@ -4579,25 +5120,16 @@ function App() {
                   {approvalButtonLabel}
                 </button>
               )}
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-              {needsTokenApproval && (
+              {!alreadyMember && (
                 <button
-                  type="button"
-                  className="px-4 py-2 rounded border border-black/20 text-sm font-semibold w-full sm:w-auto"
-                  onClick={handleApproveToken}
-                  disabled={approvalButtonDisabled}
+                  className="px-4 py-2 rounded bg-primary text-black font-semibold w-full sm:w-auto"
+                  onClick={handlePurchaseAndJoin}
+                  disabled={joinSteps.purchase === 'pending' || joinSteps.join === 'pending' || (needsTokenApproval && approvalStage !== 'approved')}
                 >
-                  {approvalButtonLabel}
+                  Purchase & Join
                 </button>
               )}
-              <button
-                className="px-4 py-2 rounded bg-primary text-black font-semibold w-full sm:w-auto"
-                onClick={handlePurchaseAndJoin}
-                disabled={joinSteps.purchase === 'pending' || joinSteps.join === 'pending' || (needsTokenApproval && approvalStage !== 'approved')}
-              >
-                Purchase & Join
-              </button>
-              {templAddress && templAddress.toLowerCase && joinedTempls.some((addr) => addr === templAddress.toLowerCase()) && (
+              {alreadyMember && (
                 <button
                   type="button"
                   className="px-4 py-2 rounded border border-black/20 text-sm font-semibold w-full sm:w-auto"
@@ -4606,7 +5138,6 @@ function App() {
                   Go to Chat
                 </button>
               )}
-            </div>
             </div>
             <p className="text-xs text-black/60">
               After the on-chain join confirms, the templ backend may take up to a minute to provision the XMTP group. The status panel below updates automatically once the chat is ready.
@@ -4802,86 +5333,25 @@ function App() {
                         <button className="btn" onClick={() => { navigator.clipboard?.writeText(`${window.location.origin}/join?address=${templAddress}`).catch(()=>{}); pushStatus('📋 Invite link copied'); }}>Copy Invite</button>
                       </div>
                       {/* Telegram Binding Section */}
-                      <div className="mt-4 pt-4 border-t border-black/10">
-                        <h4 className="text-sm font-medium mb-2">Telegram Integration</h4>
-                        {bindingInfo ? (
-                          <div className="space-y-2">
-                            <div className="text-sm">
-                              <span className="text-black/70">Status: </span>
-                              <span className={bindingInfo.bound ? 'text-green-600' : 'text-yellow-600'}>
-                                {bindingInfo.bound ? 'Bound' : 'Not bound'}
-                              </span>
-                            </div>
-                            {bindingInfo.bound && (
-                              <div className="text-sm">
-                                <span className="text-black/70">Group: </span>
-                                <span>{bindingInfo.groupName || 'Unknown'}</span>
-                              </div>
-                            )}
-                            <button
-                              className="btn btn-sm"
-                              onClick={async () => {
-                                try {
-                                  setRegisteringBinding(true);
-                                  const response = await fetch(`${BACKEND_URL}/templs/${templAddress}/rebind`, {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' }
-                                  });
-                                  const data = await response.json();
-                                  if (response.ok) {
-                                    setBindingInfo(data);
-                                    pushStatus('🔄 Telegram binding refreshed');
-                                  } else {
-                                    pushStatus(`❌ ${data.error || 'Failed to refresh binding'}`);
-                                  }
-                                } catch {
-                                  pushStatus('❌ Failed to refresh binding');
-                                } finally {
-                                  setRegisteringBinding(false);
-                                }
-                              }}
-                              disabled={registeringBinding}
-                            >
-                              {registeringBinding ? 'Refreshing...' : 'Refresh Binding'}
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="space-y-2">
-                            <div className="text-sm text-black/60">
-                              Connect this templ to a Telegram group for notifications
-                            </div>
-                            <button
-                              className="btn btn-sm btn-primary"
-                              onClick={async () => {
-                                try {
-                                  setRegisteringBinding(true);
-                                  const response = await fetch(`${BACKEND_URL}/templs/${templAddress}/auto`, {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' }
-                                  });
-                                  const data = await response.json();
-                                  if (response.ok) {
-                                    setBindingInfo(data);
-                                    if (data.bindingCode) {
-                                      pushStatus(`📱 Binding code: ${data.bindingCode}`);
-                                    } else {
-                                      pushStatus('✅ Telegram binding generated');
-                                    }
-                                  } else {
-                                    pushStatus(`❌ ${data.error || 'Failed to generate binding'}`);
-                                  }
-                                } catch {
-                                  pushStatus('❌ Failed to generate binding');
-                                } finally {
-                                  setRegisteringBinding(false);
-                                }
-                              }}
-                              disabled={registeringBinding}
-                            >
-                              {registeringBinding ? 'Generating...' : 'Generate Binding Code'}
-                            </button>
-                          </div>
-                        )}
+                      <div className="mt-4 pt-4 border-t border-black/10 space-y-2">
+                        <h4 className="text-sm font-medium">Telegram Integration</h4>
+                        <p className="text-xs text-black/60">
+                          Rotate Telegram bindings with the operator CLI so signatures stay verified. See
+                          <span> </span>
+                          <button
+                            type="button"
+                            className="underline text-black/70"
+                            onClick={() => {
+                              pushStatus('📚 Open docs/FRONTEND.md#telegram-integration for binding steps.');
+                            }}
+                          >
+                            docs/FRONTEND.md
+                          </button>
+                          <span> for step-by-step commands.</span>
+                        </p>
+                        <p className="text-xs text-black/60">
+                          Once a binding code is generated, share it with your Telegram bot to complete the rotation.
+                        </p>
                       </div>
 
                       {/* Home Link Management */}
@@ -5233,25 +5703,42 @@ function App() {
             <div className="modal__body">
               <div className="mb-3 border border-black/10 rounded px-3 py-2 text-xs text-black/70">
                 <div className="font-semibold text-black/80">XMTP Status</div>
-                <div className="mt-1">
-                  {xmtpLimitWarning ? (
-                    <span className="text-red-600">{xmtpLimitWarning}</span>
-                  ) : xmtp ? (
-                    <span>
-                      Connected{activeInboxId ? <span> • Inbox {shorten(activeInboxId)}</span> : null}
-                    </span>
-                  ) : (
-                    <span>Not connected</span>
-                  )}
-                </div>
-                <div className="mt-1 text-black/60">
-                  XMTP wallets can maintain up to 10 active inbox installations. If you reach the limit, revoke an older installation or switch wallets before creating new templ chats.
-                </div>
+              <div className="mt-1">
+                {xmtpLimitWarning ? (
+                  <span className="text-red-600">{xmtpLimitWarning}</span>
+                ) : xmtp ? (
+                  <span>
+                    Connected{activeInboxId ? <span> • Inbox {shorten(activeInboxId)}</span> : null}
+                  </span>
+                ) : (
+                  <span>Not connected</span>
+                )}
               </div>
-              <div className="mb-2 text-sm text-black/70">Set a display name and an optional avatar URL. This will be reused across all Templs. We’ll also broadcast it to the current group so others can see it.</div>
-              <input className="w-full border border-black/20 rounded px-3 py-2 mb-2" placeholder="Display name" value={profileName} onChange={(e) => setProfileName(e.target.value)} />
-              <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Avatar URL (optional)" value={profileAvatar} onChange={(e) => setProfileAvatar(e.target.value)} />
+              <div className="mt-1 text-black/60">
+                One XMTP inbox supports every templ you join. Wallets can maintain up to 10 active installations across all devices—revoke older installs to stay below the cap.
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="btn btn-xs"
+                  onClick={handleOpenInstallations}
+                >
+                  Manage XMTP Installations
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-xs btn-outline"
+                  onClick={handleRevokeOtherInstallations}
+                  disabled={!walletAddress || installationsLoading}
+                >
+                  Revoke Other Devices
+                </button>
+              </div>
             </div>
+            <div className="mb-2 text-sm text-black/70">Set a display name and an optional avatar URL. This will be reused across all Templs. We’ll also broadcast it to the current group so others can see it.</div>
+            <input className="w-full border border-black/20 rounded px-3 py-2 mb-2" placeholder="Display name" value={profileName} onChange={(e) => setProfileName(e.target.value)} />
+            <input className="w-full border border-black/20 rounded px-3 py-2" placeholder="Avatar URL (optional)" value={profileAvatar} onChange={(e) => setProfileAvatar(e.target.value)} />
+          </div>
             <div className="modal__footer">
               <button className="btn" onClick={() => setProfileOpen(false)}>Cancel</button>
               <button className="btn btn-primary" onClick={async () => { saveProfileLocally({ name: profileName, avatar: profileAvatar }); await broadcastProfileToGroup(); setProfileOpen(false); }}>Save</button>

@@ -9,6 +9,11 @@ export function isTemplDebugEnabled() {
   try {
     if (globalThis?.process?.env?.DEBUG_TEMPL === '1') return true;
   } catch {}
+  try {
+    if (typeof localStorage !== 'undefined' && localStorage.getItem('templ:xmtpDebug') === '1') {
+      return true;
+    }
+  } catch {}
   if (isTemplE2EDebug()) return true;
   try {
     // @ts-ignore - Vite injects env on import.meta at build time
