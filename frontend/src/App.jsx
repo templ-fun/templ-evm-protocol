@@ -1125,6 +1125,7 @@ function App() {
     }
   }, [pendingJoinAddress, templAddress]);
   const joinStage = joinSteps.join;
+  const deployInProgress = createSteps.deploy === 'pending';
   const chatProvisionState = useMemo(() => {
     if (!pathIsChat || !templAddress || pendingJoinMatches) return null;
     if (!groupId) return 'pending-group';
@@ -1132,6 +1133,7 @@ function App() {
     return null;
   }, [pathIsChat, templAddress, pendingJoinMatches, groupId, groupConnected]);
   const joinRetryCountRef = useRef(0);
+  const autoJoinAttemptRef = useRef(false);
   const moderationEnabled = false;
   const zeroAddressLower = ethers.ZeroAddress.toLowerCase();
   const joinMembershipInfo = useMemo(() => {
@@ -3077,6 +3079,36 @@ function App() {
   }, [groupId, pushStatus]);
 
   useEffect(() => {
+    if (!pendingJoinMatches) {
+      autoJoinAttemptRef.current = false;
+      return;
+    }
+    if (!pathIsChat) return;
+    if (!signer || !xmtp) return;
+    if (joinSteps.join === 'pending' || joinSteps.join === 'success') return;
+    if (joinSteps.purchase === 'pending') return;
+    if (autoJoinAttemptRef.current) return;
+    autoJoinAttemptRef.current = true;
+    pushStatus('🔄 Finalizing chat access. Sign the join prompt to finish setup.');
+    (async () => {
+      try {
+        await handlePurchaseAndJoin();
+      } catch (err) {
+        console.error('Auto join after deploy failed', err);
+      }
+    })();
+  }, [
+    pendingJoinMatches,
+    pathIsChat,
+    signer,
+    xmtp,
+    joinSteps.join,
+    joinSteps.purchase,
+    handlePurchaseAndJoin,
+    pushStatus
+  ]);
+
+  useEffect(() => {
     if (!pathIsChat || !group || !xmtp) return;
     let cancelled = false;
     // Load initial history (last 100)
@@ -4967,7 +4999,18 @@ function App() {
                 </div>
               </div>
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <button className="px-4 py-2 rounded bg-primary text-black font-semibold w-full sm:w-auto" onClick={handleDeploy}>Deploy</button>
+                <button
+                  className={`px-4 py-2 rounded bg-primary text-black font-semibold w-full sm:w-auto${deployInProgress ? ' opacity-50 cursor-not-allowed' : ''}`}
+                  onClick={handleDeploy}
+                  disabled={deployInProgress}
+                >
+                  {deployInProgress ? 'Deploying…' : 'Deploy'}
+                </button>
+                {deployInProgress && (
+                  <p className="mt-2 text-xs text-black/60">
+                    Deployment in progress. Wait ~30 seconds to be moved into chat after confirmations.
+                  </p>
+                )}
                 <button
                   type="button"
                   className="px-4 py-2 rounded border border-black/20 text-sm"
