@@ -16,6 +16,7 @@
     "xmtp:demo": "node scripts/xmtp-demo.js"
   },
   "dependencies": {
+    "@farcaster/miniapp-node": "^0.1.11",
     "@xmtp/node-sdk": "^4.1.0",
     "better-sqlite3": "^12.4.1",
     "cors": "^2.8.5",

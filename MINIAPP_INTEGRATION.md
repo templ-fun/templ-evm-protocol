@@ -7,6 +7,16 @@ This playbook covers every refactor and operational step required to ship the Te
 - **In scope:** Frontend bootstrap, wallet abstraction, manifest delivery, metadata assets, optional Quick Auth, notification webhooks, deployment updates, and QA in Farcaster hosts (Warpcast mobile + web).
 - **Out of scope:** Legacy marketing landing page (migrate to a separate path or subdomain), non-mini desktop admin flows, unrelated backend features.
 
+## Implementation Snapshot
+- Root navigation pins the mini app shell to `/create` while the previous marketing experience resides at `/landing`.
+- `useMiniAppHost` wraps `@farcaster/miniapp-sdk` to call `actions.ready`, memoise host capabilities, and surface the Farcaster wallet provider when `wallet.getEthereumProvider` is granted.
+- `buildMiniAppUrl`/`buildMiniAppCanonicalUrl` derive invite links from `MINIAPP_ORIGIN` or `MINIAPP_DOMAIN`, with optional Farcaster share URLs configured through `MINIAPP_CANONICAL_BASE`.
+- Invitation controls inside chat and the info drawer expose copy buttons plus an in-host “Share in Warpcast” action that uses `sdk.actions.composeCast` when capabilities include it.
+- The manifest template lives at `frontend/public/.well-known/farcaster.json` with placeholders for the `accountAssociation` payload. Run `npm --prefix frontend run validate:miniapp` to apply the schema validator before shipping.
+- Placeholder PNG assets under `frontend/public/miniapp/` should be replaced with production icon, splash, hero, OG, and three portrait screenshots prior to release.
+- Backend persistence stores notification tokens in the new `miniapp_notifications` table. `POST /miniapp/webhooks` verifies Json Farcaster signatures (via Hub) and keeps tokens in sync across `miniapp_added`, `notifications_enabled`, `notifications_disabled`, and `miniapp_removed` events.
+- Configure `FARCASTER_HUB_URL` and (optionally) `FARCASTER_HUB_API_KEY` so webhook verification resolves the app key against your hub. Invitation URLs respect `MINIAPP_ORIGIN`, allowing staging and production tenants to share the same frontend build.
+
 ## 2. Architecture Decisions
 1. **Domain strategy:** Confirm production domain for the mini app (`app.templ.fun`) and where public marketing lives (e.g. `https://templ.fun/landing` or `https://www.templ.fun/`).
 2. **Manifest hosting:**

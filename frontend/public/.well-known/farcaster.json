@@ -1,0 +1,39 @@
+{
+  "accountAssociation": {
+    "header": "REPLACE_WITH_ACCOUNT_ASSOCIATION_HEADER",
+    "payload": "REPLACE_WITH_ACCOUNT_ASSOCIATION_PAYLOAD",
+    "signature": "REPLACE_WITH_ACCOUNT_ASSOCIATION_SIGNATURE"
+  },
+  "miniapp": {
+    "version": "1",
+    "name": "Templ",
+    "iconUrl": "https://app.templ.fun/miniapp/icon.png",
+    "homeUrl": "https://app.templ.fun/create",
+    "buttonTitle": "Launch",
+    "splashImageUrl": "https://app.templ.fun/miniapp/splash.png",
+    "splashBackgroundColor": "#0f172a",
+    "imageUrl": "https://app.templ.fun/miniapp/hero.png",
+    "requiredChains": [
+      "eip155:8453"
+    ],
+    "requiredCapabilities": [
+      "actions.signIn",
+      "wallet.getEthereumProvider",
+      "actions.addMiniApp"
+    ],
+    "subtitle": "Deploy templs in minutes",
+    "description": "Templ lets Base communities launch templ contracts, manage treasuries, and coordinate members without leaving Warpcast.",
+    "tagline": "Spin up templ-governed communities instantly",
+    "heroImageUrl": "https://app.templ.fun/miniapp/hero.png",
+    "screenshotUrls": [
+      "https://app.templ.fun/miniapp/screenshot-1.png",
+      "https://app.templ.fun/miniapp/screenshot-2.png",
+      "https://app.templ.fun/miniapp/screenshot-3.png"
+    ],
+    "ogTitle": "Templ Mini App",
+    "ogDescription": "Deploy templ contracts, onboard members, and vote on treasury moves directly in Warpcast.",
+    "ogImageUrl": "https://app.templ.fun/miniapp/og.png",
+    "castShareUrl": "https://app.templ.fun/create",
+    "webhookUrl": "https://api.templ.fun/miniapp/webhooks"
+  }
+}

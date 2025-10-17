@@ -23,9 +23,33 @@ const DEFAULT_SIGNATURE_RETENTION_MS = 6 * 60 * 60 * 1000; // 6 hours
 
 /**
  * @typedef {{
+ *   token: string,
+ *   fid: number,
+ *   appFid?: number | null,
+ *   url: string
+ * }} MiniAppNotificationRecord
+ */
+
+/**
+ * @typedef {{
+ *   token: string,
+ *   fid: number,
+ *   appFid: number | null,
+ *   url: string,
+ *   createdAt: number,
+ *   updatedAt: number
+ * }} MiniAppNotificationRow
+ */
+
+/**
+ * @typedef {{
  *   persistBinding(contract: string, record: BindingRecord): Promise<void> | void,
  *   listBindings(): Promise<BindingRow[]>,
  *   findBinding(contract: string): Promise<BindingRow | null>,
+ *   listMiniAppNotifications(): Promise<MiniAppNotificationRow[]>,
+ *   saveMiniAppNotification(record: MiniAppNotificationRecord): Promise<void> | void,
+ *   deleteMiniAppNotification(token: string): Promise<void> | void,
+ *   deleteMiniAppNotificationsForFid(fid: number): Promise<void> | void,
  *   signatureStore: {
  *     consume(signature: string, timestamp?: number): Promise<boolean>,
  *     prune(now?: number): Promise<void> | void
@@ -79,6 +103,15 @@ async function createSQLitePersistence({ sqlitePath, retentionMs = DEFAULT_SIGNA
       expiresAt INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_leader_election_expires ON leader_election(expiresAt);
+    CREATE TABLE IF NOT EXISTS miniapp_notifications (
+      token TEXT PRIMARY KEY,
+      fid INTEGER NOT NULL,
+      appFid INTEGER,
+      url TEXT NOT NULL,
+      createdAt INTEGER NOT NULL,
+      updatedAt INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_miniapp_notifications_fid ON miniapp_notifications(fid);
   `);
 
   try {
@@ -99,6 +132,15 @@ async function createSQLitePersistence({ sqlitePath, retentionMs = DEFAULT_SIGNA
   );
   const findBindingStmt = db.prepare(
     'SELECT contract, telegramChatId, bindingCode, groupId FROM templ_bindings WHERE contract = ?'
+  );
+  const upsertMiniAppNotificationStmt = db.prepare(
+    'INSERT INTO miniapp_notifications (token, fid, appFid, url, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?) ' +
+      'ON CONFLICT(token) DO UPDATE SET fid = excluded.fid, appFid = excluded.appFid, url = excluded.url, updatedAt = excluded.updatedAt'
+  );
+  const deleteMiniAppNotificationStmt = db.prepare('DELETE FROM miniapp_notifications WHERE token = ?');
+  const deleteMiniAppNotificationsByFidStmt = db.prepare('DELETE FROM miniapp_notifications WHERE fid = ?');
+  const listMiniAppNotificationsStmt = db.prepare(
+    'SELECT token, fid, appFid, url, createdAt, updatedAt FROM miniapp_notifications ORDER BY fid, token'
   );
   const pruneSignaturesStmt = db.prepare('DELETE FROM used_signatures WHERE expiresAt <= ?');
   const insertSignatureStmt = db.prepare(
@@ -160,6 +202,49 @@ async function createSQLitePersistence({ sqlitePath, retentionMs = DEFAULT_SIGNA
     return binding;
   };
 
+  const listMiniAppNotifications = async () => {
+    return listMiniAppNotificationsStmt
+      .all()
+      .map((row) => ({
+        token: String(row.token || ''),
+        fid: Number(row.fid ?? 0),
+        appFid: row.appFid != null ? Number(row.appFid) : null,
+        url: String(row.url || ''),
+        createdAt: Number(row.createdAt ?? 0),
+        updatedAt: Number(row.updatedAt ?? 0)
+      }));
+  };
+
+  const saveMiniAppNotification = async ({ token, fid, appFid, url }) => {
+    const tokenValue = typeof token === 'string' ? token.trim() : '';
+    const urlValue = typeof url === 'string' ? url.trim() : '';
+    const fidNumber = Number(fid);
+    const appFidNumber = appFid !== undefined && appFid !== null ? Number(appFid) : null;
+    if (!tokenValue || !urlValue || !Number.isFinite(fidNumber)) {
+      return;
+    }
+    const now = Date.now();
+    upsertMiniAppNotificationStmt.run(
+      tokenValue,
+      fidNumber,
+      Number.isFinite(appFidNumber) ? appFidNumber : null,
+      urlValue,
+      now,
+      now
+    );
+  };
+
+  const deleteMiniAppNotification = async (token) => {
+    if (!token) return;
+    deleteMiniAppNotificationStmt.run(String(token));
+  };
+
+  const deleteMiniAppNotificationsForFid = async (fid) => {
+    const fidNumber = Number(fid);
+    if (!Number.isFinite(fidNumber)) return;
+    deleteMiniAppNotificationsByFidStmt.run(fidNumber);
+  };
+
   const prune = async (now = Date.now()) => {
     pruneSignaturesStmt.run(now);
   };
@@ -210,6 +295,10 @@ async function createSQLitePersistence({ sqlitePath, retentionMs = DEFAULT_SIGNA
     persistBinding,
     listBindings,
     findBinding,
+    listMiniAppNotifications,
+    saveMiniAppNotification,
+    deleteMiniAppNotification,
+    deleteMiniAppNotificationsForFid,
     signatureStore,
     acquireLeadership,
     refreshLeadership,
@@ -240,6 +329,8 @@ export function createMemoryPersistence({ retentionMs = DEFAULT_SIGNATURE_RETENT
   const bindings = new Map();
   /** @type {Map<string, number>} */
   const signatures = new Map();
+  /** @type {Map<string, { token: string, fid: number, appFid: number | null, url: string, createdAt: number, updatedAt: number }>} */
+  const miniAppNotifications = new Map();
 
   function persistBinding(contract, record) {
     const key = normaliseKey(contract);
@@ -266,6 +357,47 @@ export function createMemoryPersistence({ retentionMs = DEFAULT_SIGNATURE_RETENT
     const stored = bindings.get(key);
     if (!stored) return null;
     return { contract: key, ...stored };
+  }
+
+  function listMiniApps() {
+    return Array.from(miniAppNotifications.values()).sort((a, b) => {
+      if (a.fid !== b.fid) return a.fid - b.fid;
+      return a.token.localeCompare(b.token);
+    });
+  }
+
+  function saveMiniApp(record) {
+    const tokenValue = typeof record?.token === 'string' ? record.token.trim() : '';
+    const urlValue = typeof record?.url === 'string' ? record.url.trim() : '';
+    const fidNumber = Number(record?.fid);
+    const appFidNumber = record?.appFid != null ? Number(record.appFid) : null;
+    if (!tokenValue || !urlValue || !Number.isFinite(fidNumber)) return;
+    const now = Date.now();
+    const existing = miniAppNotifications.get(tokenValue);
+    const createdAt = existing?.createdAt ?? now;
+    miniAppNotifications.set(tokenValue, {
+      token: tokenValue,
+      fid: fidNumber,
+      appFid: Number.isFinite(appFidNumber) ? appFidNumber : null,
+      url: urlValue,
+      createdAt,
+      updatedAt: now
+    });
+  }
+
+  function deleteMiniAppByToken(token) {
+    if (!token) return;
+    miniAppNotifications.delete(String(token));
+  }
+
+  function deleteMiniAppsForFid(fid) {
+    const fidNumber = Number(fid);
+    if (!Number.isFinite(fidNumber)) return;
+    for (const [token, record] of miniAppNotifications.entries()) {
+      if (record.fid === fidNumber) {
+        miniAppNotifications.delete(token);
+      }
+    }
   }
 
   function prune(now = Date.now()) {
@@ -324,6 +456,10 @@ export function createMemoryPersistence({ retentionMs = DEFAULT_SIGNATURE_RETENT
     },
     listBindings: async () => listBindings(),
     findBinding: async (contract) => findBinding(contract),
+    listMiniAppNotifications: async () => listMiniApps(),
+    saveMiniAppNotification: async (record) => { saveMiniApp(record); },
+    deleteMiniAppNotification: async (token) => { deleteMiniAppByToken(token); },
+    deleteMiniAppNotificationsForFid: async (fid) => { deleteMiniAppsForFid(fid); },
     signatureStore,
     acquireLeadership,
     refreshLeadership,

@@ -26,9 +26,11 @@ import {
 } from './flows.js';
 import { syncXMTP, waitForConversation, XMTP_CONSENT_STATES, XMTP_CONVERSATION_TYPES } from '@shared/xmtp.js';
 import './App.css';
-import { BACKEND_URL, FACTORY_CONFIG } from './config.js';
+import { BACKEND_URL, FACTORY_CONFIG, buildMiniAppUrl, buildMiniAppCanonicalUrl } from './config.js';
 import { useAppLocation } from './hooks/useAppLocation.js';
 import { useStatusLog } from './hooks/useStatusLog.js';
+import { useMiniAppHost } from './hooks/useMiniAppHost.js';
+import Landing from './Landing.jsx';
 
 const DEBUG_ENABLED = (() => {
   try {
@@ -868,8 +870,19 @@ const formatPreviewRangeLabel = (preview) => {
 };
 
 function App() {
-  // Minimal client-side router (no external deps)
   const { path, query, navigate } = useAppLocation();
+
+  if (path === '/landing') {
+    return <Landing onEnterApp={() => navigate('/create')} />;
+  }
+
+  const miniAppHost = useMiniAppHost();
+  const isMiniApp = miniAppHost.isMiniApp;
+  const miniAppSdk = miniAppHost.sdk;
+  const [miniAppWalletProvider, setMiniAppWalletProvider] = useState(null);
+
+  const providerCacheRef = useRef({ source: null, provider: null });
+
   const [walletAddress, setWalletAddress] = useState();
   const walletAddressLower = useMemo(() => normalizeAddressLower(walletAddress), [walletAddress]);
   const [signer, setSigner] = useState();
@@ -949,6 +962,62 @@ function App() {
     setTemplAddress(next);
   }, []);
   const [groupId, setGroupId] = useState('');
+
+  useEffect(() => {
+    if (!isMiniApp || !miniAppSdk?.wallet?.getEthereumProvider) {
+      setMiniAppWalletProvider(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const provider = await miniAppSdk.wallet.getEthereumProvider();
+        if (!cancelled) {
+          setMiniAppWalletProvider(provider ?? null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.warn('[app] miniapp wallet provider unavailable', err?.message || err);
+          setMiniAppWalletProvider(null);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isMiniApp, miniAppSdk]);
+
+  const getEip1193Source = useCallback(() => {
+    if (miniAppWalletProvider) return miniAppWalletProvider;
+    if (typeof window !== 'undefined' && window.ethereum) {
+      return window.ethereum;
+    }
+    return null;
+  }, [miniAppWalletProvider]);
+
+  const getBrowserProviderFromSource = useCallback((source) => {
+    if (!source) return null;
+    if (providerCacheRef.current.source === source && providerCacheRef.current.provider) {
+      return providerCacheRef.current.provider;
+    }
+    try {
+      const provider = new ethers.BrowserProvider(source);
+      providerCacheRef.current = { source, provider };
+      return provider;
+    } catch {
+      providerCacheRef.current = { source: null, provider: null };
+      return null;
+    }
+  }, []);
+
+  const getBrowserProvider = useCallback(() => {
+    if (signer?.provider) {
+      providerCacheRef.current = { source: signer.provider, provider: signer.provider };
+      return signer.provider;
+    }
+    return getBrowserProviderFromSource(getEip1193Source());
+  }, [signer, getBrowserProviderFromSource, getEip1193Source]);
+
   const joinedLoggedRef = useRef(false);
   const lastProfileBroadcastRef = useRef(0);
   const autoDeployTriggeredRef = useRef(false);
@@ -1103,6 +1172,37 @@ function App() {
       }
     }
   }, [templAddress]);
+  const inviteUrl = useMemo(() => {
+    const suffix = templAddress ? `/join?address=${templAddress}` : '/join';
+    return buildMiniAppUrl(suffix);
+  }, [templAddress]);
+  const canonicalInviteUrl = useMemo(() => {
+    if (!templAddress) return '';
+    return buildMiniAppCanonicalUrl(`/join?address=${templAddress}`);
+  }, [templAddress]);
+  const canComposeCast = useMemo(() => (
+    isMiniApp && miniAppSdk?.actions && typeof miniAppSdk.actions.composeCast === 'function'
+  ), [isMiniApp, miniAppSdk]);
+  const handleShareInvite = useCallback(async () => {
+    if (!templAddress) {
+      await copyToClipboard(inviteUrl);
+      return;
+    }
+    if (!canComposeCast) {
+      await copyToClipboard(inviteUrl);
+      return;
+    }
+    try {
+      await miniAppSdk.actions.composeCast({
+        text: `Join my templ: ${inviteUrl}`
+      });
+      pushStatus('🚀 Warpcast composer opened');
+    } catch (err) {
+      console.error('[app] share invite composeCast failed', err);
+      pushStatus('⚠️ Unable to open share composer');
+      alert(err?.message || 'Unable to open Warpcast composer');
+    }
+  }, [canComposeCast, inviteUrl, miniAppSdk, pushStatus, templAddress]);
   const chatStorageKey = useMemo(() => {
     if (normalizedGroupId) return `group:${normalizedGroupId}`;
     if (normalizedTemplAddress) return `templ:${normalizedTemplAddress}`;
@@ -1513,23 +1613,15 @@ function App() {
       try {
         let reader = signer;
         if (!reader) {
-          if (typeof window !== 'undefined' && window?.ethereum) {
-            try {
-              reader = new ethers.BrowserProvider(window.ethereum);
-            } catch {
-              if (!cancelled) {
-                setCreateTokenDecimals(null);
-                setCreateTokenSymbol(null);
-              }
-              return;
-            }
-          } else {
+          const provider = getBrowserProvider();
+          if (!provider) {
             if (!cancelled) {
               setCreateTokenDecimals(null);
               setCreateTokenSymbol(null);
             }
             return;
           }
+          reader = provider;
         }
         const tokenContract = new ethers.Contract(
           trimmed,
@@ -1566,7 +1658,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [tokenAddress, signer]);
+  }, [tokenAddress, signer, getBrowserProvider]);
 
   // telegram binding handled via external operator tooling
 
@@ -2089,15 +2181,48 @@ function App() {
   }, [currentBurnPercent, currentTreasuryPercent, currentMemberPercent, proposeBurnPercent, proposeTreasuryPercent, proposeMemberPercent]);
 
   async function connectWallet() {
-    if (!window.ethereum) return;
-    const provider = new ethers.BrowserProvider(window.ethereum);
-    await provider.send('eth_requestAccounts', []);
-    const nextSigner = await provider.getSigner();
-    const address = await nextSigner.getAddress();
-    setSigner(nextSigner);
-    setWalletAddress(address);
-    setXmtpLimitWarning(null);
-    pushStatus('✅ Wallet connected');
+    const source = getEip1193Source();
+    if (!source) {
+      pushStatus('⚠️ Wallet provider unavailable in this environment.');
+      return;
+    }
+    let provider = getBrowserProviderFromSource(source);
+    try {
+      if (typeof source.request === 'function') {
+        await source.request({ method: 'eth_requestAccounts' });
+      } else if (typeof source.send === 'function') {
+        await source.send('eth_requestAccounts', []);
+      } else if (provider && typeof provider.send === 'function') {
+        await provider.send('eth_requestAccounts', []);
+      } else {
+        throw new Error('Wallet provider does not support account requests');
+      }
+    } catch (err) {
+      console.error('[app] connectWallet request failed', err);
+      pushStatus('⚠️ Wallet connection failed');
+      alert(err?.message || 'Failed to connect wallet');
+      return;
+    }
+    provider = getBrowserProviderFromSource(source) ?? provider ?? getBrowserProvider();
+    if (!provider) {
+      pushStatus('⚠️ Wallet provider unavailable after requesting accounts');
+      alert('Wallet provider unavailable');
+      return;
+    }
+    providerCacheRef.current = { source, provider };
+    try {
+      const nextSigner = await provider.getSigner();
+      const address = await nextSigner.getAddress();
+      setSigner(nextSigner);
+      setWalletAddress(address);
+      setXmtpLimitWarning(null);
+      pushStatus('✅ Wallet connected');
+    } catch (err) {
+      console.error('[app] connectWallet signer setup failed', err);
+      pushStatus('⚠️ Wallet connection failed');
+      alert(err?.message || 'Failed to initialize signer');
+      return;
+    }
 
     // Tear down any existing XMTP session before rotating wallets.
     try {
@@ -2551,15 +2676,11 @@ function App() {
       try {
         let reader = signer;
         if (!reader) {
-          if (typeof window !== 'undefined' && window?.ethereum) {
-            try {
-              reader = new ethers.BrowserProvider(window.ethereum);
-            } catch {
-              return;
-            }
-          } else {
+          const provider = getBrowserProvider();
+          if (!provider) {
             return;
           }
+          reader = provider;
         }
         const factoryContract = new ethers.Contract(factoryAddress, templFactoryArtifact.abi, reader);
         const [recipient, bpRaw] = await Promise.all([
@@ -2582,7 +2703,7 @@ function App() {
       }
     })();
     return () => { cancelled = true; };
-  }, [factoryAddress, signer, protocolFeeRecipient, protocolPercent]);
+  }, [factoryAddress, signer, protocolFeeRecipient, protocolPercent, getBrowserProvider]);
 
   const handleDeploy = useCallback(async () => {
     dlog('[app] handleDeploy clicked', { signer: !!signer, xmtp: !!xmtp });
@@ -3937,7 +4058,7 @@ function App() {
   }, [proposalsById, chatStorageKey]);
 
   useEffect(() => {
-    const reader = signer?.provider ?? signer ?? (window?.ethereum ? new ethers.BrowserProvider(window.ethereum) : null);
+    const reader = signer?.provider ?? signer ?? getBrowserProvider();
     if (!templList.length || !reader) {
       return;
     }
@@ -4048,7 +4169,7 @@ function App() {
       })();
     });
     return () => { cancelled = true; };
-  }, [templList, signer, templSummaries, zeroAddressLower]);
+  }, [templList, signer, templSummaries, zeroAddressLower, getBrowserProvider]);
 
 
   async function disconnectWallet() {
@@ -4080,6 +4201,7 @@ function App() {
     setJoinStatusNote(null);
     setProfileOpen(false);
     setInstallationsOpen(false);
+    providerCacheRef.current = { source: null, provider: null };
     pushStatus('👋 Wallet disconnected');
   }
 
@@ -5228,7 +5350,14 @@ function App() {
               </div>
               <div className="flex items-center gap-2">
                 {templAddress && (
-                  <button className="px-2 py-1 text-xs rounded border border-black/20" onClick={() => copyToClipboard(`${window.location.origin}/join?address=${templAddress}`)}>Copy Invite Link</button>
+                  <>
+                    <button className="px-2 py-1 text-xs rounded border border-black/20" onClick={() => copyToClipboard(inviteUrl)}>Copy Invite Link</button>
+                    {canComposeCast && (
+                      <button className="px-2 py-1 text-xs rounded border border-black/20" onClick={handleShareInvite}>
+                        Share
+                      </button>
+                    )}
+                  </>
                 )}
                 {groupConnected && <span className="text-xs text-green-600" data-testid="group-connected">● Connected</span>}
                 {!groupConnected && <span className="text-xs text-black/60">Connecting…</span>}
@@ -5328,9 +5457,22 @@ function App() {
                           })}
                         </div>
                       )}
-                      <div className="flex gap-2 items-center">
-                        <input className="flex-1 border border-black/20 rounded px-3 py-2" readOnly value={`${window.location.origin}/join?address=${templAddress}`} />
-                        <button className="btn" onClick={() => { navigator.clipboard?.writeText(`${window.location.origin}/join?address=${templAddress}`).catch(()=>{}); pushStatus('📋 Invite link copied'); }}>Copy Invite</button>
+                      <div className="flex flex-col gap-2">
+                        <div className="flex gap-2 items-center">
+                          <input className="flex-1 border border-black/20 rounded px-3 py-2" readOnly value={inviteUrl} />
+                          <button className="btn" onClick={() => copyToClipboard(inviteUrl)}>Copy Invite</button>
+                        </div>
+                        {canonicalInviteUrl && (
+                          <div className="flex gap-2 items-center">
+                            <input className="flex-1 border border-black/20 rounded px-3 py-2" readOnly value={canonicalInviteUrl} />
+                            <button className="btn" onClick={() => copyToClipboard(canonicalInviteUrl)}>Copy Farcaster Link</button>
+                          </div>
+                        )}
+                        {canComposeCast && (
+                          <button className="btn btn-primary !mt-1 !w-full sm:!w-auto" onClick={handleShareInvite}>
+                            Share in Warpcast
+                          </button>
+                        )}
                       </div>
                       {/* Telegram Binding Section */}
                       <div className="mt-4 pt-4 border-t border-black/10 space-y-2">

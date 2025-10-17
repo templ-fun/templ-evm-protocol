@@ -18,6 +18,7 @@ try {
 
 import templsRouter from './routes/templs.js';
 import joinRouter from './routes/join.js';
+import miniappRouter from './routes/miniapp.js';
 
 import { logger } from './logger.js';
 import { createTelegramNotifier } from './telegram.js';
@@ -1114,7 +1115,8 @@ export async function createApp(opts) {
     enableBackgroundTasks = process.env.NODE_ENV !== 'test',
     signatureStore: providedSignatureStore,
     persistence,
-    signatureRetentionMs
+    signatureRetentionMs,
+    verifyMiniAppAppKey
   } = opts || {};
 
   const notifier = telegram?.notifier ?? createTelegramNotifier({
@@ -1169,6 +1171,15 @@ export async function createApp(opts) {
   const findBinding = persistenceAdapter?.findBinding
     ? async (contract) => persistenceAdapter.findBinding(contract)
     : async () => null;
+  const saveMiniAppNotification = persistenceAdapter?.saveMiniAppNotification
+    ? async (record) => persistenceAdapter.saveMiniAppNotification(record)
+    : async () => {};
+  const deleteMiniAppNotification = persistenceAdapter?.deleteMiniAppNotification
+    ? async (token) => persistenceAdapter.deleteMiniAppNotification(token)
+    : async () => {};
+  const deleteMiniAppNotificationsForFid = persistenceAdapter?.deleteMiniAppNotificationsForFid
+    ? async (fid) => persistenceAdapter.deleteMiniAppNotificationsForFid(fid)
+    : async () => {};
 
   let signatureStore = providedSignatureStore ?? persistenceAdapter?.signatureStore ?? null;
   if (!signatureStore) {
@@ -1394,6 +1405,10 @@ export async function createApp(opts) {
     signatureStore,
     findBinding,
     listBindings,
+    saveMiniAppNotification,
+    deleteMiniAppNotification,
+    deleteMiniAppNotificationsForFid,
+    verifyMiniAppAppKey,
     xmtp: null,
     lastJoin: { at: 0, payload: null },
     ensureGroup: async () => null
@@ -1510,6 +1525,7 @@ export async function createApp(opts) {
     }
   }
 
+  app.use(miniappRouter(context));
   app.use(waitForRestoration);
   app.use(templsRouter(context));
   app.use(joinRouter(context));

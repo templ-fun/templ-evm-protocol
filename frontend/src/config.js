@@ -41,3 +41,61 @@ export const FACTORY_CONFIG = (() => {
     protocolPercent
   };
 })();
+
+function resolveMiniAppOriginFromEnv() {
+  const originEnv = readEnv('VITE_MINIAPP_ORIGIN', readEnv('MINIAPP_ORIGIN', '')).trim();
+  if (originEnv) {
+    return originEnv;
+  }
+  const domainEnv = readEnv('VITE_MINIAPP_DOMAIN', readEnv('MINIAPP_DOMAIN', '')).trim();
+  if (domainEnv) {
+    if (domainEnv.startsWith('http://') || domainEnv.startsWith('https://')) {
+      return domainEnv;
+    }
+    return `https://${domainEnv}`;
+  }
+  return '';
+}
+
+const DEFAULT_MINIAPP_ORIGIN = 'https://app.templ.fun';
+
+export function getMiniAppOrigin() {
+  const fromEnv = resolveMiniAppOriginFromEnv();
+  if (fromEnv) return fromEnv;
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin;
+  }
+  return DEFAULT_MINIAPP_ORIGIN;
+}
+
+const MINIAPP_CANONICAL_BASE = (() => {
+  const base = readEnv('VITE_MINIAPP_CANONICAL_BASE', readEnv('MINIAPP_CANONICAL_BASE', '')).trim();
+  if (!base) return '';
+  if (base.startsWith('http://') || base.startsWith('https://')) {
+    return base;
+  }
+  return `https://${base}`;
+})();
+
+export function getMiniAppCanonicalBase() {
+  return MINIAPP_CANONICAL_BASE;
+}
+
+export function buildMiniAppUrl(pathname = '/') {
+  try {
+    const origin = getMiniAppOrigin();
+    return new URL(pathname, origin).toString();
+  } catch {
+    return pathname;
+  }
+}
+
+export function buildMiniAppCanonicalUrl(pathname = '/') {
+  const canonicalBase = getMiniAppCanonicalBase();
+  if (!canonicalBase) return '';
+  try {
+    return new URL(pathname, canonicalBase).toString();
+  } catch {
+    return '';
+  }
+}
