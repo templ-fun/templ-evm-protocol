@@ -5,7 +5,7 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist', 'pw-dist', 'pw-results', 'test-results']),
+  globalIgnores(['dist', 'pw-dist', 'pw-results', 'test-results', '.vite-cache/**']),
   {
     files: ['**/*.{js,jsx}'],
     extends: [
@@ -37,6 +37,32 @@ export default defineConfig([
     rules: {
       // e2e files are Node context; disable React hooks rules here
       'react-hooks/rules-of-hooks': 'off',
+    },
+  },
+  {
+    files: ['src/__tests__/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2020,
+      globals: {
+        ...globals.browser,
+        ...globals.jest,
+        ...globals.node,
+        global: 'writable',
+        Buffer: 'readonly',
+        require: 'readonly',
+        module: 'readonly',
+        exports: 'readonly',
+        __dirname: 'readonly',
+        process: 'readonly',
+      },
+      sourceType: 'module',
+    },
+    rules: {
+      'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^[A-Z_]' }],
+      'no-undef': 'off',
+      'no-console': 'off',
+      'react-hooks/rules-of-hooks': 'off',
+      'react-hooks/exhaustive-deps': 'warn',
     },
   },
 ])

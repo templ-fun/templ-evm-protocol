@@ -1,0 +1,1108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XMTP Integration in Frontend - templ.fun</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f8f9fa;
+        }
+
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+
+        h1, h2, h3, h4 {
+            color: #2c3e50;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+            font-size: 2.5em;
+        }
+
+        h2 {
+            border-bottom: 2px solid #ecf0f1;
+            padding-bottom: 8px;
+            font-size: 1.8em;
+            margin-top: 40px;
+        }
+
+        h3 {
+            font-size: 1.4em;
+            color: #34495e;
+            margin-top: 30px;
+        }
+
+        h4 {
+            font-size: 1.2em;
+            color: #7f8c8d;
+            margin-top: 20px;
+        }
+
+        .code-block {
+            background: #2c3e50;
+            color: #ecf0f1;
+            border-radius: 8px;
+            padding: 20px;
+            overflow-x: auto;
+            margin: 15px 0;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            position: relative;
+        }
+
+        .code-block pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .language-label {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            background: #34495e;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #ecf0f1;
+        }
+
+        .sequence-diagram {
+            background: #fff;
+            border: 2px solid #3498db;
+            border-radius: 8px;
+            padding: 30px;
+            margin: 20px 0;
+            position: relative;
+        }
+
+        .sequence-diagram::before {
+            content: "Sequence Diagram";
+            position: absolute;
+            top: -12px;
+            left: 20px;
+            background: #3498db;
+            color: white;
+            padding: 2px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .actor {
+            display: inline-block;
+            text-align: center;
+            margin: 0 20px;
+            vertical-align: top;
+            width: 120px;
+        }
+
+        .actor-box {
+            background: #3498db;
+            color: white;
+            padding: 10px 5px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .interaction {
+            margin: 20px 0;
+            position: relative;
+        }
+
+        .message {
+            background: #ecf0f1;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            position: relative;
+            margin: 5px 0;
+            max-width: 400px;
+        }
+
+        .message-arrow {
+            width: 100%;
+            height: 1px;
+            background: #34495e;
+            position: absolute;
+            top: 50%;
+            left: 0;
+        }
+
+        .message-arrow::after {
+            content: "→";
+            position: absolute;
+            right: -10px;
+            top: -10px;
+            font-size: 20px;
+            color: #34495e;
+        }
+
+        .async-message::after {
+            content: "»";
+            position: absolute;
+            right: -15px;
+            top: -8px;
+            font-size: 16px;
+            color: #34495e;
+        }
+
+        .highlight {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+        }
+
+        .warning {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+        }
+
+        .success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+        }
+
+        .file-path {
+            background: #e74c3c;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-family: monospace;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+
+        .toc {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+
+        .toc ul {
+            list-style-type: none;
+            padding-left: 0;
+        }
+
+        .toc li {
+            margin: 5px 0;
+        }
+
+        .toc a {
+            color: #3498db;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .toc a:hover {
+            text-decoration: underline;
+        }
+
+        .integration-point {
+            background: #e8f4f8;
+            border-left: 4px solid #3498db;
+            padding: 15px;
+            margin: 15px 0;
+        }
+
+        .note {
+            background: #f1f2f6;
+            border-left: 4px solid #2f3542;
+            padding: 15px;
+            margin: 15px 0;
+            font-style: italic;
+        }
+
+        @media (max-width: 768px) {
+            .sequence-diagram {
+                padding: 15px;
+                overflow-x: auto;
+            }
+
+            .actor {
+                margin: 0 10px;
+                width: 100px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>XMTP Integration in Frontend - templ.fun</h1>
+
+        <div class="toc">
+            <h3>Table of Contents</h3>
+            <ul>
+                <li><a href="#overview">1. Overview</a></li>
+                <li><a href="#dependencies">2. Dependencies</a></li>
+                <li><a href="#integration-points">3. Integration Points</a>
+                    <ul>
+                        <li><a href="#shared-utilities">3.1 Shared XMTP Utilities</a></li>
+                        <li><a href="#main-app">3.2 Main App Component</a></li>
+                        <li><a href="#membership-service">3.3 Membership Service</a></li>
+                        <li><a href="#deployment-service">3.4 Deployment Service</a></li>
+                    </ul>
+                </li>
+                <li><a href="#flows">4. XMTP Integration Flows</a>
+                    <ul>
+                        <li><a href="#wallet-connection">4.1 Wallet Connection Flow</a></li>
+                        <li><a href="#template-joining">4.2 Template Joining Flow</a></li>
+                        <li><a href="#messaging">4.3 Messaging Flow</a></li>
+                        <li><a href="#governance">4.4 Governance Flow</a></li>
+                    </ul>
+                </li>
+                <li><a href="#configuration">5. Configuration</a></li>
+                <li><a href="#error-handling">6. Error Handling</a></li>
+                <li><a href="#testing">7. Testing</a></li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2 id="overview">1. Overview</h2>
+        <p>Templ.fun utilizes XMTP (Extensible Message Transport Protocol) for decentralized messaging, group management, and notification systems. The frontend integration provides seamless communication between DAO members, governance participants, and templ communities.</p>
+
+        <div class="highlight">
+            <strong>Key Features:</strong>
+            <ul>
+                <li>Decentralized group conversations for templ communities</li>
+                <li>EIP-712 signature verification for secure authentication</li>
+                <li>Installation management with multi-device support</li>
+                <li>Real-time message streaming and synchronization</li>
+                <li>Consent state management and privacy controls</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2 id="dependencies">2. Dependencies</h2>
+        <div class="code-block">
+            <span class="language-label">package.json</span>
+            <pre>"@xmtp/browser-sdk": "^4.1.0",   // Main XMTP client for browser environment
+"@xmtp/node-sdk": "^4.1.0",     // XMTP SDK for Node.js (backend/tests)
+"@shared/xmtp.js": "shared"      // Shared XMTP utilities</pre>
+        </div>
+
+        <p>The integration uses the latest XMTP SDK v4.1.0, which provides:</p>
+        <ul>
+            <li>Improved performance and reliability</li>
+            <li>Enhanced group management capabilities</li>
+            <li>Better error handling and retry logic</li>
+            <li>Support for multiple conversation types</li>
+        </ul>
+    </div>
+
+    <div class="container">
+        <h2 id="integration-points">3. Integration Points</h2>
+
+        <h3 id="shared-utilities">3.1 Shared XMTP Utilities</h3>
+        <div class="integration-point">
+            <strong>Location:</strong> <span class="file-path">/shared/xmtp.js</span>
+
+            <p>Core XMTP utility functions shared across frontend, backend, and tests.</p>
+
+            <h4>Key Functions:</h4>
+            <div class="code-block">
+                <span class="language-label">JavaScript</span>
+                <pre>/**
+ * Synchronize XMTP conversations and preferences with optional retries
+ */
+export async function syncXMTP(xmtp, retries = 1, delayMs = 1000) {
+  for (let i = 0; i < retries; i++) {
+    try { await xmtp?.conversations?.sync?.(); } catch (err) {
+      dlog('conversations.sync failed:', err?.message || String(err));
+    }
+    try { await xmtp?.preferences?.sync?.(); } catch (err) {
+      dlog('preferences.sync failed:', err?.message || String(err));
+    }
+    try {
+      await xmtp?.conversations?.syncAll?.([
+        XMTP_CONSENT_STATES.ALLOWED,
+        XMTP_CONSENT_STATES.UNKNOWN,
+        XMTP_CONSENT_STATES.DENIED
+      ]);
+    } catch (err) {
+      dlog('conversations.syncAll failed:', err?.message || String(err));
+    }
+    if (i < retries - 1) await new Promise(r => setTimeout(r, delayMs));
+  }
+}
+
+/**
+ * Wait for a conversation by ID, syncing XMTP between attempts
+ */
+export async function waitForConversation({ xmtp, groupId, retries = 60, delayMs = 1000 }) {
+  const norm = (id) => (id || '').toString();
+  const wantedRaw = norm(groupId);
+  const wantedNo0x = wantedRaw.replace(/^0x/i, '');
+  const wanted0x = wantedRaw.startsWith('0x') ? wantedRaw : `0x${wantedNo0x}`;
+
+  const group = await waitFor({
+    tries: retries,
+    delayMs,
+    check: async () => {
+      await syncXMTP(xmtp);
+      let conv = null;
+      // Try with exact, 0x-prefixed, and non-0x forms for maximum compatibility
+      for (const candidate of [wantedRaw, wanted0x, wantedNo0x]) {
+        if (conv) break;
+        try {
+          conv = await xmtp?.conversations?.getConversationById?.(candidate);
+        } catch (err) {
+          dlog('getConversationById failed:', err?.message || String(err));
+        }
+      }
+      return conv;
+    }
+  });
+  return group;
+}</pre>
+            </div>
+
+            <h4>Constants:</h4>
+            <div class="code-block">
+                <span class="language-label">JavaScript</span>
+                <pre>export const XMTP_CONSENT_STATES = {
+  UNKNOWN: 0,
+  ALLOWED: 1,
+  DENIED: 2
+};
+
+export const XMTP_CONVERSATION_TYPES = {
+  DM: 0,
+  GROUP: 1,
+  SYNC: 2
+};</pre>
+            </div>
+        </div>
+
+        <h3 id="main-app">3.2 Main App Component</h3>
+        <div class="integration-point">
+            <strong>Location:</strong> <span class="file-path">/frontend/src/App.jsx</span>
+
+            <p>Primary XMTP client initialization and management. The main component handles:</p>
+            <ul>
+                <li>XMTP client creation with wallet connection</li>
+                <li>Environment resolution (dev/local/prod)</li>
+                <li>Installation management and caching</li>
+                <li>Group conversation discovery</li>
+            </ul>
+
+            <h4>Client Creation:</h4>
+            <div class="code-block">
+                <span class="language-label">JavaScript</span>
+                <pre>function resolveXmtpEnv() {
+  // Local development and E2E testing
+  if (window.location.hostname === 'localhost' && window.location.port === '5173') {
+    return 'dev';
+  }
+  // Check for explicit environment override
+  try {
+    const stored = localStorage.getItem('templ:xmtpEnv');
+    if (stored === 'dev') return 'dev';
+    if (stored === 'local') return 'local';
+    if (stored === 'prod') return null;
+  } catch {}
+  return null; // Default production
+}
+
+function makeXmtpSigner({ address, signer, nonce }) {
+  // Wrap ethers.Signer for XMTP compatibility
+  const wrapper = {
+    getAddress: async () => {
+      return ethers.getAddress(address);
+    },
+    signMessage: async (message) => {
+      // Ensure nonce is available for EIP-712 signing
+      if (nonce !== undefined && nonce !== null) {
+        return await signer.signMessage(message, { nonce });
+      }
+      return await signer.signMessage(message);
+    }
+  };
+  return wrapper;
+}
+
+async function createClientWithNonce(nonce, disableAutoRegister = false) {
+  const env = resolveXmtpEnv();
+  const signerWrapper = makeXmtpSigner({ address, signer: nextSigner, nonce });
+
+  const client = await Client.create(signerWrapper, {
+    env: xmtpEnv,
+    appVersion: 'templ/0.1.0',
+    disableAutoRegistration: disableAutoRegister
+  });
+
+  return client;
+}</pre>
+            </div>
+
+            <h4>Installation Management:</h4>
+            <div class="code-block">
+                <span class="language-label">JavaScript</span>
+                <pre>async function loadInstallationsState() {
+  if (!xmtpClient) return { installations: [] };
+  try {
+    const installations = await xmtpClient.installations.getInstallations();
+    const formatted = installations.map(inst => formatInstallationRecord(inst));
+    return { installations: formatted };
+  } catch (err) {
+    dlog('Failed to load installations', err);
+    return { installations: [] };
+  }
+}
+
+async function handleRevokeInstallation(installationId) {
+  if (!xmtpClient || !installationId) return;
+  try {
+    const bytes = installationIdToBytes(installationId);
+    await xmtpClient.installations.revokeInstallations([bytes]);
+    setInstallations(prev => prev.filter(inst => inst.id !== installationId));
+  } catch (err) {
+    console.error('Failed to revoke installation', err);
+  }
+}</pre>
+            </div>
+
+            <h4>Caching and Persistence:</h4>
+            <div class="code-block">
+                <span class="language-label">JavaScript</span>
+                <pre>function xmtpCacheKeyForWallet(address) {
+  return address ? `xmtp:cache:${address.toLowerCase()}` : null;
+}
+
+function loadXmtpCache(address) {
+  const key = xmtpCacheKeyForWallet(address);
+  if (!key) return null;
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveXmtpCache(address, data) {
+  const key = xmtpCacheKeyForWallet(address);
+  if (!key) return;
+  try {
+    const existing = localStorage.getItem(key) ? JSON.parse(localStorage.getItem(key)) : {};
+    const next = { ...existing, ...data };
+    localStorage.setItem(key, JSON.stringify(next));
+  } catch {}
+}</pre>
+            </div>
+        </div>
+
+        <h3 id="membership-service">3.3 Membership Service</h3>
+        <div class="integration-point">
+            <strong>Location:</strong> <span class="file-path">/frontend/src/services/membership.js</span>
+
+            <p>Handles the templ joining process using XMTP for group conversation discovery.</p>
+
+            <h4>Join Process Integration:</h4>
+            <div class="code-block">
+                <span class="language-label">JavaScript</span>
+                <pre>export async function purchaseAndJoin({
+  ethers,
+  xmtp,
+  signer,
+  walletAddress,
+  templAddress,
+  templArtifact,
+  backendUrl = BACKEND_URL,
+  txOptions = {},
+  onProgress,
+  autoApprove = true
+}) {
+  // ... purchase access logic ...
+
+  const joinPayload = {
+    contractAddress: templAddress,
+    memberAddress: normalizedMemberAddress,
+    inboxId: xmtp?.inboxId?.replace?.(/^0x/i, '') || undefined,
+    signature,
+    chainId,
+    nonce: joinTyped.message.nonce,
+    issuedAt: joinTyped.message.issuedAt,
+    expiry: joinTyped.message.expiry
+  };
+
+  const res = await postJson(`${backendUrl}/join`, joinPayload);
+  const data = await res.json();
+
+  if (data && typeof data.groupId === 'string' && data.groupId.length > 0) {
+    return await finalizeJoin({ xmtp, groupId: String(data.groupId).replace(/^0x/i, '') });
+  }
+}
+
+async function finalizeJoin({ xmtp, groupId }) {
+  const isFast = import.meta?.env?.VITE_E2E_DEBUG === '1';
+  const group = await waitForConversation({
+    xmtp,
+    groupId,
+    retries: isFast ? 25 : 60,
+    delayMs: isFast ? 200 : 1000
+  });
+  return { group, groupId };
+}</pre>
+            </div>
+
+            <h4>Message Sending:</h4>
+            <div class="code-block">
+                <span class="language-label">JavaScript</span>
+                <pre>export async function sendMessage({ group, content }) {
+  await group.send(content);
+}</pre>
+            </div>
+        </div>
+
+        <h3 id="deployment-service">3.4 Deployment Service</h3>
+        <div class="integration-point">
+            <strong>Location:</strong> <span class="file-path">/frontend/src/services/deployment.js</span>
+
+            <p>Integrates XMTP for templ deployment and backend registration.</p>
+
+            <h4>Deployment Integration:</h4>
+            <div class="code-block">
+                <span class="language-label">JavaScript</span>
+                <pre>export async function registerTemplBackend({
+  ethers,
+  signer,
+  walletAddress,
+  templAddress,
+  backendUrl = BACKEND_URL
+}) {
+  const inboxId = xmtp?.inboxId?.replace?.(/^0x/i, '') || undefined;
+
+  const registerPayload = {
+    contractAddress: templAddress,
+    creatorAddress: walletAddress,
+    inboxId,
+    signature
+  };
+
+  const res = await postJson(`${backendUrl}/register`, registerPayload);
+
+  if (res.status === 201) {
+    const data = await res.json();
+    if (data && data.groupId) {
+      const group = await waitForConversation({
+        xmtp,
+        groupId: String(data.groupId).replace(/^0x/i, '')
+      });
+      return { group, groupId: data.groupId };
+    }
+  }
+}</pre>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2 id="flows">4. XMTP Integration Flows</h2>
+
+        <h3 id="wallet-connection">4.1 Wallet Connection Flow</h3>
+        <div class="sequence-diagram">
+            <div class="actor">
+                <div class="actor-box">User</div>
+            </div>
+            <div class="actor">
+                <div class="actor-box">Frontend</div>
+            </div>
+            <div class="actor">
+                <div class="actor-box">Wallet</div>
+            </div>
+            <div class="actor">
+                <div class="actor-box">XMTP</div>
+            </div>
+
+            <div class="interaction">
+                <div style="margin-left: 50px; width: 100px;">
+                    <div class="message">Connect Wallet</div>
+                </div>
+                <div class="message-arrow" style="left: 170px; width: 150px;"></div>
+            </div>
+
+            <div class="interaction">
+                <div style="margin-left: 300px; width: 120px;">
+                    <div class="message">Signer Instance</div>
+                </div>
+                <div class="message-arrow" style="left: 420px; width: 150px;"></div>
+            </div>
+
+            <div class="interaction">
+                <div style="margin-left: 170px; width: 120px;">
+                    <div class="message">resolveXmtpEnv()</div>
+                </div>
+                <div class="message-arrow async-message" style="left: 170px; width: 100px;"></div>
+            </div>
+
+            <div class="interaction">
+                <div style="margin-left: 170px; width: 100px;">
+                    <div class="message">makeXmtpSigner()</div>
+                </div>
+                <div class="message-arrow async-message" style="left: 170px; width: 100px;"></div>
+            </div>
+
+            <div class="interaction">
+                <div style="margin-left: 50px; width: 200px;">
+                    <div class="message">Client.create(signerWrapper, options)</div>
+                </div>
+                <div class="message-arrow async-message" style="left: 250px; width: 320px;"></div>
+            </div>
+
+            <div class="interaction">
+                <div style="margin-left: 300px; width: 150px;">
+                    <div class="message">XMTP Client Instance</div>
+                </div>
+                <div class="message-arrow" style="left: 450px; width: 150px;"></div>
+            </div>
+
+            <div class="interaction">
+                <div style="margin-left: 50px; width: 150px;">
+                    <div class="message">saveXmtpCache()</div>
+                </div>
+                <div class="message-arrow async-message" style="left: 50px; width: 100px;"></div>
+            </div>
+        </div>
+
+        <h3 id="template-joining">4.2 Template Joining Flow</h3>
+        <div class="sequence-diagram">
+            <div class="actor">
+                <div class="actor-box">User</div>
+            </div>
+            <div class="actor">
+                <div class="actor-box">Frontend</div>
+            </div>
+            <div class="actor">
+                <div class="actor-box">Backend</div>
+            </div>
+            <div class="actor">
+                <div class="actor-box">XMTP</div>
+            </div>
+
+            <div class="interaction">
+                <div style="margin-left: 50px; width: 150px;">
+                    <div class="message">Join Templ</div>
+                </div>
+                <div class="message-arrow" style="left: 200px; width: 150px;"></div>
+            </div>
+
+            <div class="interaction">
+                <div style="margin-left: 170px; width: 120px;">
+                    <div class="message">purchaseAccess()</div>
+                </div>
+                <div class="message-arrow async-message" style="left: 170px; width: 100px;"></div>
+            </div>
+
+            <div class="interaction">
+                <div style="margin-left: 170px; width: 150px;">
+                    <div class="message">buildJoinTypedData()</div>
+                </div>
+                <div class="message-arrow async-message" style="left: 170px; width: 100px;"></div>
+            </div>
+
+            <div class="interaction">
+                <div style="margin-left: 170px; width: 120px;">
+                    <div class="message">signTypedData()</div>
+                </div>
+                <div class="message-arrow async-message" style="left: 170px; width: 100px;"></div>
+            </div>
+
+            <div class="interaction">
+                <div style="margin-left: 170px; width: 120px;">
+                    <div class="message">POST /join with inboxId</div>
+                </div>
+                <div class="message-arrow" style="left: 290px; width: 150px;"></div>
+            </div>
+
+            <div class="interaction">
+                <div style="margin-left: 300px; width: 150px;">
+                    <div class="message">Create/Find Group</div>
+                </div>
+                <div class="message-arrow async-message" style="left: 300px; width: 100px;"></div>
+            </div>
+
+            <div class="interaction">
+                <div style="margin-left: 300px; width: 120px;">
+                    <div class="message">Return groupId</div>
+                </div>
+                <div class="message-arrow" style="left: 170px; width: 150px;"></div>
+            </div>
+
+            <div class="interaction">
+                <div style="margin-left: 170px; width: 150px;">
+                    <div class="message">waitForConversation()</div>
+                </div>
+                <div class="message-arrow" style="left: 320px; width: 150px;"></div>
+            </div>
+
+            <div class="interaction">
+                <div style="margin-left: 320px; width: 120px;">
+                    <div class="message">syncXMTP()</div>
+                </div>
+                <div class="message-arrow async-message" style="left: 320px; width: 100px;"></div>
+            </div>
+
+            <div class="interaction">
+                <div style="margin-left: 320px; width: 150px;">
+                    <div class="message">getConversationById()</div>
+                </div>
+                <div class="message-arrow async-message" style="left: 320px; width: 100px;"></div>
+            </div>
+
+            <div class="interaction">
+                <div style="margin-left: 320px; width: 120px;">
+                    <div class="message">Return Group</div>
+                </div>
+                <div class="message-arrow" style="left: 170px; width: 200px;"></div>
+            </div>
+
+            <div class="interaction">
+                <div style="margin-left: 50px; width: 150px;">
+                    <div class="message">Join Complete</div>
+                </div>
+                <div class="message-arrow" style="left: 200px; width: 150px;"></div>
+            </div>
+        </div>
+
+        <h3 id="messaging">4.3 Messaging Flow</h3>
+        <div class="sequence-diagram">
+            <div class="actor">
+                <div class="actor-box">User A</div>
+            </div>
+            <div class="actor">
+                <div class="actor-box">Frontend A</div>
+            </div>
+            <div class="actor">
+                <div class="actor-box">XMTP</div>
+            </div>
+            <div class="actor">
+                <div class="actor-box">Frontend B</div>
+            </div>
+            <div class="actor">
+                <div class="actor-box">User B</div>
+            </div>
+
+            <div class="interaction">
+                <div style="margin-left: 50px; width: 100px;">
+                    <div class="message">Type Message</div>
+                </div>
+                <div class="message-arrow" style="left: 150px; width: 120px;"></div>
+            </div>
+
+            <div class="interaction">
+                <div style="margin-left: 170px; width: 100px;">
+                    <div class="message">sendMessage()</div>
+                </div>
+                <div class="message-arrow" style="left: 270px; width: 120px;"></div>
+            </div>
+
+            <div class="interaction">
+                <div style="margin-left: 290px; width: 120px;">
+                    <div class="message">group.send()</div>
+                </div>
+                <div class="message-arrow async-message" style="left: 290px; width: 80px;"></div>
+            </div>
+
+            <div class="interaction">
+                <div style="margin-left: 370px; width: 150px;">
+                    <div class="message">Broadcast to Members</div>
+                </div>
+                <div class="message-arrow async-message" style="left: 370px; width: 200px;"></div>
+            </div>
+
+            <div class="interaction">
+                <div style="margin-left: 420px; width: 120px;">
+                    <div class="message">syncXMTP()</div>
+                </div>
+                <div class="message-arrow async-message" style="left: 420px; width: 80px;"></div>
+            </div>
+
+            <div class="interaction">
+                <div style="margin-left: 420px; width: 150px;">
+                    <div class="message">New Message Event</div>
+                </div>
+                <div class="message-arrow" style="left: 420px; width: 120px;"></div>
+            </div>
+
+            <div class="interaction">
+                <div style="margin-left: 570px; width: 120px;">
+                    <div class="message">Display Message</div>
+                </div>
+                <div class="message-arrow" style="left: 570px; width: 100px;"></div>
+            </div>
+        </div>
+
+        <h3 id="governance">4.4 Governance Flow</h3>
+        <div class="sequence-diagram">
+            <div class="actor">
+                <div class="actor-box">Member</div>
+            </div>
+            <div class="actor">
+                <div class="actor-box">Frontend</div>
+            </div>
+            <div class="actor">
+                <div class="actor-box">Smart Contract</div>
+            </div>
+            <div class="actor">
+                <div class="actor-box">XMTP</div>
+            </div>
+            <div class="actor">
+                <div class="actor-box">Backend</div>
+            </div>
+
+            <div class="interaction">
+                <div style="margin-left: 50px; width: 120px;">
+                    <div class="message">Create Proposal</div>
+                </div>
+                <div class="message-arrow" style="left: 170px; width: 150px;"></div>
+            </div>
+
+            <div class="interaction">
+                <div style="margin-left: 170px; width: 150px;">
+                    <div class="message">proposeVote()</div>
+                </div>
+                <div class="message-arrow" style="left: 320px; width: 150px;"></div>
+            </div>
+
+            <div class="interaction">
+                <div style="margin-left: 320px; width: 120px;">
+                    <div class="message">Execute Proposal</div>
+                </div>
+                <div class="message-arrow async-message" style="left: 320px; width: 80px;"></div>
+            </div>
+
+            <div class="interaction">
+                <div style="margin-left: 320px; width: 150px;">
+                    <div class="message">ProposalCreated Event</div>
+                </div>
+                <div class="message-arrow" style="left: 470px; width: 150px;"></div>
+            </div>
+
+            <div class="interaction">
+                <div style="margin-left: 470px; width: 120px;">
+                    <div class="message">Send Notification</div>
+                </div>
+                <div class="message-arrow async-message" style="left: 470px; width: 100px;"></div>
+            </div>
+
+            <div class="interaction">
+                <div style="margin-left: 570px; width: 120px;">
+                    <div class="message">Broadcast to Group</div>
+                </div>
+                <div class="message-arrow async-message" style="left: 570px; width: 150px;"></div>
+            </div>
+
+            <div class="interaction">
+                <div style="margin-left: 170px; width: 120px;">
+                    <div class="message">syncXMTP()</div>
+                </div>
+                <div class="message-arrow" style="left: 170px; width: 100px;"></div>
+            </div>
+
+            <div class="interaction">
+                <div style="margin-left: 50px; width: 150px;">
+                    <div class="message">Show Notification</div>
+                </div>
+                <div class="message-arrow" style="left: 200px; width: 150px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2 id="configuration">5. Configuration</h2>
+
+        <h3>Environment Resolution</h3>
+        <div class="code-block">
+            <span class="language-label">JavaScript</span>
+            <pre>function resolveXmtpEnv() {
+  // Local development and E2E testing
+  if (window.location.hostname === 'localhost' && window.location.port === '5173') {
+    return 'dev';
+  }
+  // Check for explicit environment override
+  try {
+    const stored = localStorage.getItem('templ:xmtpEnv');
+    if (stored === 'dev') return 'dev';
+    if (stored === 'local') return 'local';
+    if (stored === 'prod') return null;
+  } catch {}
+  return null; // Default production
+}</pre>
+        </div>
+
+        <h3>Environment Variables</h3>
+        <div class="warning">
+            <strong>Important:</strong> Environment variables must be set in the frontend's `.env` file:
+            <ul>
+                <li><code>VITE_BACKEND_URL</code> - Backend API endpoint</li>
+                <li><code>VITE_BACKEND_SERVER_ID</code> - Backend server identifier</li>
+                <li><code>VITE_TEMPL_FACTORY_ADDRESS</code> - Templ factory contract address</li>
+                <li><code>VITE_E2E_DEBUG</code> - E2E testing mode (optional)</li>
+                <li><code>VITE_E2E_NO_PURCHASE</code> - Skip purchase in E2E tests (optional)</li>
+            </ul>
+        </div>
+
+        <h3>Debug Mode</h3>
+        <div class="highlight">
+            <p>Debug mode can be enabled through environment variables or localStorage:</p>
+            <div class="code-block">
+                <span class="language-label">JavaScript</span>
+                <pre>const DEBUG_ENABLED = (() => {
+  try {
+    if (import.meta.env?.DEV || import.meta.env?.VITE_E2E_DEBUG === '1') return true;
+    if (typeof window !== 'undefined') {
+      const stored = window.localStorage?.getItem('templ:xmtpDebug');
+      if (stored === '1') return true;
+    }
+  } catch {}
+  return false;
+})();</pre>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2 id="error-handling">6. Error Handling</h2>
+
+        <h3>XMTP Installation Limit</h3>
+        <div class="warning">
+            <strong>XMTP Installation Limit:</strong> XMTP limits wallets to 10 installations. The frontend handles this by:
+            <ul>
+                <li>Detecting when the limit is reached</li>
+                <li>Providing UI to revoke old installations</li>
+                <li>Clearing cache and storage for troubleshooting</li>
+            </ul>
+        </div>
+
+        <h3>Retry Logic</h3>
+        <div class="code-block">
+            <span class="language-label">JavaScript</span>
+            <pre>async function createOrResumeXmtp() {
+  // Try multiple nonce candidates for robust connection
+  const nonceCandidates = [...];
+
+  for (const nonce of nonceCandidates) {
+    try {
+      return await createClientWithNonce(nonce, true);
+    } catch (err) {
+      if (err.message.includes('XMTP_REINSTALL')) {
+        // Handle reinstallation case
+        await clearXmtpPersistence('reinstall');
+        continue;
+      }
+      dlog('createClientWithNonce failed for nonce', nonce, err);
+    }
+  }
+
+  // Fallback to creating fresh client
+  const fallbackNonce = Date.now();
+  return await createClientWithNonce(fallbackNonce, false);
+}</pre>
+        </div>
+
+        <h3>Conversation Discovery</h3>
+        <div class="highlight">
+            <p>The frontend uses multiple strategies for conversation discovery:</p>
+            <ul>
+                <li>Try exact conversation ID</li>
+                <li>Try with 0x prefix</li>
+                <li>Try without 0x prefix</li>
+                <li>Search through all conversations</li>
+                <li>Update consent state when found</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2 id="testing">7. Testing</h2>
+
+        <h3>E2E Testing Support</h3>
+        <div class="code-block">
+            <span class="language-label">JavaScript</span>
+            <pre>function isTemplE2EDebug() {
+  try { return import.meta?.env?.VITE_E2E_DEBUG === '1'; } catch { return false; }
+}
+
+// E2E mode reduces retry counts and delays
+export async function waitForConversation({ xmtp, groupId, retries = 60, delayMs = 1000 }) {
+  if (isTemplE2EDebug()) {
+    retries = Math.min(retries, 5);
+    delayMs = Math.min(delayMs, 200);
+  }
+  // ... rest of function
+}</pre>
+        </div>
+
+        <h3>Unit Testing</h3>
+        <div class="integration-point">
+            <strong>Location:</strong> <span class="file-path">/frontend/src/xmtpHelpers.test.js</span>
+
+            <p>Unit tests for XMTP functionality with comprehensive mocking:</p>
+            <ul>
+                <li>Test <code>syncXMTP</code> function behavior</li>
+                <li>Test <code>waitForConversation</code> with various scenarios</li>
+                <li>Mock XMTP client for testing</li>
+            </ul>
+        </div>
+
+        <h3>Integration Testing</h3>
+        <div class="success">
+            <p>Integration tests verify:</p>
+            <ul>
+                <li>End-to-end joining flow with XMTP</li>
+                <li>Message sending and receiving</li>
+                <li>Installation management</li>
+                <li>Environment-specific behavior</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>Conclusion</h2>
+        <p>The XMTP integration in templ.fun's frontend provides a robust, feature-rich messaging system that seamlessly integrates with the DAO governance and membership functionality. The implementation emphasizes:</p>
+
+        <ul>
+            <li><strong>Reliability:</strong> Comprehensive retry logic and error handling</li>
+            <li><strong>Security:</strong> EIP-712 signatures and proper authentication</li>
+            <li><strong>User Experience:</strong> Smooth onboarding and intuitive UI</li>
+            <li><strong>Performance:</strong> Efficient caching and synchronization</li>
+            <li><strong>Testability:</strong> Comprehensive testing support across all levels</li>
+        </ul>
+
+        <div class="note">
+            <p>For more information about XMTP integration, refer to the official <a href="https://docs.xmtp.com">XMTP documentation</a> and the <a href="https://github.com/xmtp/xmtp-js">XMTP JavaScript SDK</a>.</p>
+        </div>
+    </div>
+</body>
+</html>

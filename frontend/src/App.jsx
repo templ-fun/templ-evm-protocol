@@ -1,5 +1,5 @@
 // @ts-check
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, Component } from 'react';
 import { ethers } from 'ethers';
 import { Client } from '@xmtp/browser-sdk';
 import templArtifact from './contracts/TEMPL.json';
@@ -45,6 +45,141 @@ function dlog(...args) {
   if (!DEBUG_ENABLED) return;
   try { console.log(...args); } catch {}
 }
+
+// XMTP Error Boundary Component
+class XMTPErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null, errorInfo: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    this.setState({ error, errorInfo });
+    dlog('[app] XMTP Error Boundary caught an error:', error, errorInfo);
+  }
+
+  handleReset = () => {
+    this.setState({ hasError: false, error: null, errorInfo: null });
+    if (this.props.onReset) {
+      this.props.onReset();
+    }
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="xmtp-error-boundary">
+          <div className="error-content">
+            <h3>XMTP Connection Error</h3>
+            <p>There was an error with the XMTP messaging service. This has been logged automatically.</p>
+            <details>
+              <summary>Error Details</summary>
+              <pre>{this.state.error?.message || 'Unknown error'}</pre>
+            </details>
+            <button onClick={this.handleReset}>
+              Try Again
+            </button>
+            <button onClick={() => window.location.reload()}>
+              Reload Page
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+
+function getUserFriendlyErrorMessage(error) {
+  if (!error) return 'An unknown error occurred';
+
+  const message = String(error?.message || error).toLowerCase();
+
+  if (message.includes('timeout')) {
+    return 'The request timed out. Please check your connection and try again.';
+  }
+
+  if (message.includes('network')) {
+    return 'Network error. Please check your internet connection.';
+  }
+
+  if (message.includes('installation')) {
+    return 'XMTP installation error. Please try reconnecting your wallet.';
+  }
+
+  if (message.includes('conversation')) {
+    return 'Unable to access conversation. Please try again.';
+  }
+
+  if (message.includes('consent')) {
+    return 'Message consent error. Please check your XMTP settings.';
+  }
+
+  if (message.includes('abort')) {
+    return 'Operation was cancelled. Please try again.';
+  }
+
+  return 'An error occurred with XMTP messaging. Please try again.';
+}
+
+// Circuit breaker pattern for XMTP operations
+class XMTPCircuitBreaker {
+  constructor() {
+    this.state = 'CLOSED'; // CLOSED, OPEN, HALF_OPEN
+    this.failureCount = 0;
+    this.lastFailureTime = null;
+    this.resetTimeout = 60000; // 1 minute
+    this.failureThreshold = 5;
+  }
+
+  async execute(operation) {
+    if (this.state === 'OPEN') {
+      if (Date.now() - this.lastFailureTime < this.resetTimeout) {
+        throw new Error('XMTP circuit breaker is OPEN. Please try again later.');
+      } else {
+        this.state = 'HALF_OPEN';
+      }
+    }
+
+    try {
+      const result = await operation();
+      this.onSuccess();
+      return result;
+    } catch (error) {
+      this.onFailure(error);
+      throw error;
+    }
+  }
+
+  onSuccess() {
+    this.failureCount = 0;
+    this.state = 'CLOSED';
+  }
+
+  onFailure() {
+    this.failureCount++;
+    this.lastFailureTime = Date.now();
+
+    if (this.failureCount >= this.failureThreshold) {
+      this.state = 'OPEN';
+      dlog('[app] XMTP circuit breaker OPENED after', this.failureCount, 'failures');
+    }
+  }
+
+  reset() {
+    this.state = 'CLOSED';
+    this.failureCount = 0;
+    this.lastFailureTime = null;
+  }
+}
+
+const xmtpCircuitBreaker = new XMTPCircuitBreaker();
 
 const JOINED_STORAGE_PREFIX = 'templ:joined';
 
@@ -99,7 +234,111 @@ function xmtpCacheKeyForWallet(address) {
   return address ? `xmtp:cache:${address.toLowerCase()}` : null;
 }
 
+// Cache lock mechanism to prevent race conditions
+const cacheLocks = new Map();
+const CACHE_LOCK_TIMEOUT = 5000; // 5 seconds
+
+async function acquireCacheLock(key) {
+  const start = Date.now();
+
+  while (Date.now() - start < CACHE_LOCK_TIMEOUT) {
+    if (!cacheLocks.has(key)) {
+      cacheLocks.set(key, Date.now());
+      return true;
+    }
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+
+  dlog(`[app] Cache lock timeout for key: ${key}`);
+  return false;
+}
+
+function releaseCacheLock(key) {
+  cacheLocks.delete(key);
+}
+
+// Atomic cache operations with retry mechanism
+async function atomicLoadXmtpCache(address) {
+  const key = xmtpCacheKeyForWallet(address);
+  if (!key) return null;
+
+  const lockAcquired = await acquireCacheLock(key);
+  if (!lockAcquired) {
+    dlog(`[app] Failed to acquire cache lock for load: ${key}`);
+    return null;
+  }
+
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch (err) {
+    dlog(`[app] Error loading XMTP cache:`, err?.message || err);
+    return null;
+  } finally {
+    releaseCacheLock(key);
+  }
+}
+
+async function atomicSaveXmtpCache(address, data) {
+  const key = xmtpCacheKeyForWallet(address);
+  if (!key) return false;
+
+  const lockAcquired = await acquireCacheLock(key);
+  if (!lockAcquired) {
+    dlog(`[app] Failed to acquire cache lock for save: ${key}`);
+    return false;
+  }
+
+  try {
+    const existing = (() => {
+      try {
+        const raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : {};
+      } catch {
+        return {};
+      }
+    })();
+
+    const next = { ...existing, ...data };
+    localStorage.setItem(key, JSON.stringify(next));
+    dlog(`[app] Atomically saved XMTP cache for: ${key}`);
+    return true;
+  } catch (err) {
+    dlog(`[app] Error saving XMTP cache:`, err?.message || err);
+    return false;
+  } finally {
+    releaseCacheLock(key);
+  }
+}
+
+// Debounced cache write to prevent rapid successive writes
+const debouncedCacheWrites = new Map();
+const CACHE_DEBOUNCE_MS = 100;
+
+async function debouncedSaveXmtpCache(address, data) {
+  const key = xmtpCacheKeyForWallet(address);
+  if (!key) return;
+
+  // Cancel any existing debounce for this key
+  if (debouncedCacheWrites.has(key)) {
+    clearTimeout(debouncedCacheWrites.get(key));
+  }
+
+  // Set new debounce
+  const timeoutId = setTimeout(async () => {
+    await atomicSaveXmtpCache(address, data);
+    debouncedCacheWrites.delete(key);
+  }, CACHE_DEBOUNCE_MS);
+
+  debouncedCacheWrites.set(key, timeoutId);
+}
+
+// Backward compatibility wrappers
 function loadXmtpCache(address) {
+  // For backward compatibility, use the atomic version but without await
+  atomicLoadXmtpCache(address).catch(() => null);
   const key = xmtpCacheKeyForWallet(address);
   if (!key) return null;
   try {
@@ -113,20 +352,8 @@ function loadXmtpCache(address) {
 }
 
 function saveXmtpCache(address, data) {
-  const key = xmtpCacheKeyForWallet(address);
-  if (!key) return;
-  try {
-    const existing = (() => {
-      try {
-        const raw = localStorage.getItem(key);
-        return raw ? JSON.parse(raw) : {};
-      } catch {
-        return {};
-      }
-    })();
-    const next = { ...existing, ...data };
-    localStorage.setItem(key, JSON.stringify(next));
-  } catch {}
+  // For backward compatibility, use the debounced version
+  debouncedSaveXmtpCache(address, data);
 }
 
 function installationIdToBytes(id) {
@@ -872,8 +1099,11 @@ function App() {
   const { path, query, navigate } = useAppLocation();
   const [walletAddress, setWalletAddress] = useState();
   const walletAddressLower = useMemo(() => normalizeAddressLower(walletAddress), [walletAddress]);
-  const [signer, setSigner] = useState();
+
+  // Performance optimization: Memoized expensive computations
+    const [signer, setSigner] = useState();
   const [xmtp, setXmtp] = useState();
+  const [_xmtpError, setXmtpError] = useState(null);
   const [group, setGroup] = useState();
   const [groupConnected, setGroupConnected] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -1402,6 +1632,142 @@ function App() {
   const identityReadyRef = useRef(false);
   const identityReadyPromiseRef = useRef(null);
   const membershipCheckedRef = useRef(new Set());
+
+// Phase 1: Global initialization lock to prevent concurrent XMTP setups
+const [isInitializingXMTP, setIsInitializingXMTP] = useState(false);
+const initializationPromiseRef = useRef(null);
+const abortControllerRef = useRef(null);
+
+// Timeout configuration for XMTP operations
+const XMTP_TIMEOUT_MS = 30000; // 30 seconds
+const XMTP_RETRY_DELAYS = useMemo(() => [1000, 2000, 5000, 10000], []); // Exponential backoff
+
+  // XMTP stream cleanup references
+  const activeStreamRefs = useRef({
+    conversationStream: null,
+    groupStream: null,
+    preferenceStream: null,
+    consentStream: null,
+    syncStream: null
+  });
+
+// Utility function to create timeout-aware operations
+const createWithTimeout = useCallback(async (operation, timeoutMs = XMTP_TIMEOUT_MS, operationName = 'XMTP operation') => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort();
+    dlog(`[app] ${operationName} timed out after ${timeoutMs}ms`);
+  }, timeoutMs);
+
+  try {
+    return await Promise.race([
+      operation,
+      new Promise((_, reject) => {
+        controller.signal.addEventListener('abort', () => {
+          reject(new Error(`${operationName} timed out after ${timeoutMs}ms`));
+        });
+      })
+    ]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}, []);
+
+// Enhanced retry logic with timeout and exponential backoff
+const createWithRetry = useCallback(async (operation, maxRetries = 3, operationName = 'XMTP operation', { showUserFeedback = false } = {}) => {
+  let lastError;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      // Create a new abort controller for each attempt
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
+      const result = await createWithTimeout(
+        operation(),
+        XMTP_TIMEOUT_MS * (attempt + 1), // Increase timeout for each retry
+        `${operationName} (attempt ${attempt + 1}/${maxRetries + 1})`
+      );
+
+      return result;
+    } catch (err) {
+      lastError = err;
+
+      // Don't retry on abort or timeout
+      if (err.name === 'AbortError' || err.message.includes('timed out')) {
+        dlog(`[app] ${operationName} aborted/timed out, not retrying`);
+        if (showUserFeedback && pushStatus) {
+          pushStatus(`⚠️ ${operationName} timed out`);
+        }
+        break;
+      }
+
+      // Don't retry on last attempt
+      if (attempt === maxRetries) {
+        dlog(`[app] ${operationName} failed after ${maxRetries + 1} attempts`);
+        if (showUserFeedback && pushStatus) {
+          pushStatus(`❌ ${operationName} failed: ${getUserFriendlyErrorMessage(err)}`);
+        }
+        break;
+      }
+
+      const delay = XMTP_RETRY_DELAYS[Math.min(attempt, XMTP_RETRY_DELAYS.length - 1)];
+      dlog(`[app] ${operationName} failed (attempt ${attempt + 1}), retrying in ${delay}ms:`, err?.message || err);
+
+      if (showUserFeedback && pushStatus) {
+        pushStatus(`🔄 Retrying ${operationName.toLowerCase()} (${attempt + 1}/${maxRetries + 1})`);
+      }
+
+      await new Promise(resolve => setTimeout(resolve, delay));
+    } finally {
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
+    }
+  }
+
+  throw lastError;
+}, [createWithTimeout, XMTP_RETRY_DELAYS, pushStatus]);
+
+// Utility function to clean up XMTP streams
+const cleanupXmtpStreams = useCallback(() => {
+  const streams = activeStreamRefs.current;
+  dlog('[app] Cleaning up XMTP streams', Object.keys(streams).filter(key => streams[key] !== null));
+
+  Object.keys(streams).forEach(streamType => {
+    const stream = streams[streamType];
+    if (stream) {
+      try {
+        if (typeof stream.close === 'function') {
+          stream.close();
+        } else if (typeof stream.return === 'function') {
+          stream.return(); // Close async iterator
+        } else if (stream[Symbol.asyncIterator] && typeof stream[Symbol.asyncIterator].return === 'function') {
+          stream[Symbol.asyncIterator].return();
+        }
+        dlog(`[app] Closed ${streamType} stream`);
+      } catch (err) {
+        dlog(`[app] Error closing ${streamType} stream:`, err?.message || err);
+      }
+    }
+    streams[streamType] = null;
+  });
+
+  // Also abort any ongoing operations
+  if (abortControllerRef.current) {
+    try {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+      dlog('[app] Aborted ongoing XMTP operations');
+    } catch (err) {
+      dlog('[app] Error aborting operations:', err?.message || err);
+    }
+  }
+}, []);
+
+// Phase 2: Enhanced session tracking
+const sessionStartTimeRef = useRef(Date.now());
+const [sessionAttemptedNonces, setSessionAttemptedNonces] = useState(new Set());
   
   // muting form
   const [isPriest, setIsPriest] = useState(false);
@@ -2112,11 +2478,19 @@ function App() {
         await xmtp.close();
       }
     } catch {}
+
+    // Clean up all XMTP streams to prevent memory leaks
+    cleanupXmtpStreams();
+
     identityReadyRef.current = false;
     identityReadyPromiseRef.current = null;
     setXmtp(undefined);
     setActiveInboxId('');
     resetChatState();
+
+    // Reset session tracking when wallet changes
+    setSessionAttemptedNonces(new Set());
+    sessionStartTimeRef.current = Date.now();
     setPendingJoinAddress(null);
     setPurchaseStatusNote(null);
     setJoinStatusNote(null);
@@ -2145,12 +2519,18 @@ function App() {
     const candidateNonces = Array.from(candidateSet).filter((value) => Number.isFinite(value) && value > 0);
 
     async function createClientWithNonce(nonce, disableAutoRegister) {
-      const signerWrapper = makeXmtpSigner({ address, signer: nextSigner, nonce });
-      const options = disableAutoRegister ? { ...baseOptions, disableAutoRegister: true } : baseOptions;
-      dlog('[app] Creating XMTP client', { disableAutoRegister, nonce });
-      let clientInstance = null;
-      try {
-        clientInstance = await Client.create(signerWrapper, options);
+      return await xmtpCircuitBreaker.execute(async () => {
+        return await createWithRetry(async () => {
+        const signerWrapper = makeXmtpSigner({ address, signer: nextSigner, nonce });
+        const options = disableAutoRegister ? { ...baseOptions, disableAutoRegister: true } : baseOptions;
+        dlog('[app] Creating XMTP client', { disableAutoRegister, nonce });
+        let clientInstance = null;
+        try {
+          clientInstance = await createWithTimeout(
+            async () => Client.create(signerWrapper, options),
+            XMTP_TIMEOUT_MS,
+            `XMTP client creation (nonce: ${nonce})`
+          );
         if (disableAutoRegister) {
           let reinstall = false;
           if (!clientInstance?.installationId) {
@@ -2197,11 +2577,26 @@ function App() {
         }
         throw err;
       }
+          }, 2, `XMTP client creation (nonce: ${nonce})`);
+      });
     }
 
     async function createOrResumeXmtp() {
-      let installationSnapshot = null;
-      let accessHandleErrorCount = 0;
+      // Phase 3: Global initialization lock to prevent concurrent XMTP setups
+      if (isInitializingXMTP) {
+        if (initializationPromiseRef.current) {
+          dlog('[app] XMTP initialization already in progress, waiting for existing promise');
+          return initializationPromiseRef.current;
+        }
+        dlog('[app] XMTP initialization in progress but no promise ref, creating new');
+      }
+
+      setIsInitializingXMTP(true);
+      
+      try {
+        const initPromise = (async () => {
+          let installationSnapshot = null;
+          let accessHandleErrorCount = 0;
       if (cache?.inboxId) {
         try {
           const pruneResult = await pruneExcessInstallations({
@@ -2251,13 +2646,33 @@ function App() {
       });
       let limitEncountered = false;
       if (!requireFreshInstallation) {
+        // Phase 4: Smart nonce retry - limit to 3 attempts instead of aggressive 12
+        const maxRetryAttempts = 3;
+        let retryCount = 0;
+
         for (const nonce of candidateNonces) {
+          // Skip nonces already attempted in this session
+          if (sessionAttemptedNonces.has(nonce)) {
+            dlog('[app] Skipping nonce already attempted in this session', { nonce });
+            continue;
+          }
+
+          if (retryCount >= maxRetryAttempts) {
+            dlog('[app] XMTP resume reached max retry attempts, switching to fresh install', { maxRetryAttempts, attemptedNonces: retryCount });
+            requireFreshInstallation = true;
+            reinstallReason = `Max retry attempts (${maxRetryAttempts}) reached during resume`;
+            break;
+          }
+
+          // Track this nonce as attempted
+          setSessionAttemptedNonces(prev => new Set(prev).add(nonce));
           try {
             dlog('[app] Attempting XMTP resume', { nonce });
             const resumedClient = await createClientWithNonce(nonce, true);
             accessHandleErrorCount = 0;
             return resumedClient;
           } catch (err) {
+            retryCount++;
             const msg = String(err?.message || err);
             if (isAccessHandleError(err)) {
               accessHandleErrorCount += 1;
@@ -2333,6 +2748,20 @@ function App() {
         }
         throw err;
       }
+    })();
+
+    // Assign the initialization promise to the ref for singleton pattern
+    initializationPromiseRef.current = initPromise;
+
+    return initPromise;
+      } catch (err) {
+        setIsInitializingXMTP(false);
+        initializationPromiseRef.current = null;
+        abortControllerRef.current = null;
+        throw err;
+      } finally {
+        // Initialization complete
+      }
     }
 
     let client;
@@ -2355,6 +2784,8 @@ function App() {
       setXmtp(undefined);
       setActiveInboxId('');
       setActiveInstallationId('');
+      // Reset session tracking on error
+      setSessionAttemptedNonces(new Set());
       const message = String(err?.message || err);
       console.error('[app] XMTP client initialisation failed', err?.message || err, err);
       if (err?.name === 'XMTP_LIMIT' || message.includes('installation limit')) {
@@ -2365,9 +2796,15 @@ function App() {
       }
       return;
     }
-    setActiveInboxId(client?.inboxId || '');
-    setActiveInstallationId(client?.installationId ? String(client.installationId) : '');
-    setXmtp(client);
+    try {
+      setActiveInboxId(client?.inboxId || '');
+      setActiveInstallationId(client?.installationId ? String(client.installationId) : '');
+      setXmtp(client);
+    } catch (error) {
+      dlog('[app] Error setting XMTP client state:', error);
+      setXmtpError(getUserFriendlyErrorMessage(error));
+      throw error;
+    }
     setXmtpLimitWarning(null);
     setInstallationsError(null);
     setInstallations([]);
@@ -2446,7 +2883,14 @@ function App() {
             try { await syncXMTP(client); } catch {}
             try {
               const conv = await client.conversations.getConversationById(String(id).replace(/^0x/i, ''));
-              if (conv) { await conv.send(String(content)); return true; }
+              if (conv) {
+                await createWithRetry(
+                  async () => conv.send(String(content)),
+                  2,
+                  'XMTP send message'
+                );
+                return true;
+              }
               return false;
             } catch { return false; }
           };
@@ -2511,7 +2955,11 @@ function App() {
                 if (!conv) await new Promise(r => setTimeout(r, import.meta.env?.VITE_E2E_DEBUG === '1' ? 100 : 1000));
               }
               if (!conv) { try { await tmp.close?.(); } catch {}; return false; }
-              await conv.send(String(content));
+              await createWithRetry(
+                async () => conv.send(String(content)),
+                2,
+                'XMTP send message (temp client)'
+              );
               try { await tmp.close?.(); } catch {}
               return true;
             } catch { return false; }
@@ -3242,9 +3690,15 @@ function App() {
     const stream = async () => {
       try {
         const wanted = String(group.id || '').replace(/^0x/i, '');
-        const s = await xmtp.conversations.streamAllMessages({
-          onError: () => {},
-        });
+        const s = await createWithTimeout(
+          async () => xmtp.conversations.streamAllMessages({
+            onError: () => {},
+          }),
+          XMTP_TIMEOUT_MS,
+          'XMTP streamAllMessages'
+        );
+        // Track this stream for cleanup
+        activeStreamRefs.current.conversationStream = s;
         for await (const msg of s) {
           if (cancelled) break;
           const convId = String(msg?.conversationId || '').replace(/^0x/i, '');
@@ -3363,6 +3817,21 @@ function App() {
     pushStatus('✅ Connected to group messages');
     return () => {
       cancelled = true;
+      // Clean up the conversation stream
+      if (activeStreamRefs.current.conversationStream) {
+        try {
+          const stream = activeStreamRefs.current.conversationStream;
+          if (typeof stream.return === 'function') {
+            stream.return();
+          } else if (stream[Symbol.asyncIterator] && typeof stream[Symbol.asyncIterator].return === 'function') {
+            stream[Symbol.asyncIterator].return();
+          }
+          activeStreamRefs.current.conversationStream = null;
+          dlog('[app] Cleaned up conversation stream');
+        } catch (err) {
+          dlog('[app] Error cleaning up conversation stream:', err?.message || err);
+        }
+      }
     };
   }, [pathIsChat, group, xmtp, mutes, pushStatus]);
 
@@ -3470,27 +3939,62 @@ function App() {
       try {
         // Proactively sync once before opening streams
         try { await syncXMTP(xmtp); } catch {}
-        const convStream = await xmtp.conversations.streamGroups?.();
-        const stream = await xmtp.conversations.streamAllMessages?.({
-          consentStates: XMTP_CONSENT_STATE_VALUES,
-          conversationType: XMTP_GROUP_CONVERSATION_TYPE
-        });
+        const convStream = await createWithTimeout(
+          async () => xmtp.conversations.streamGroups?.(),
+          XMTP_TIMEOUT_MS,
+          'XMTP streamGroups'
+        );
+        const stream = await createWithTimeout(
+          async () => xmtp.conversations.streamAllMessages?.({
+            consentStates: XMTP_CONSENT_STATE_VALUES,
+            conversationType: XMTP_GROUP_CONVERSATION_TYPE
+          }),
+          XMTP_TIMEOUT_MS,
+          'XMTP streamAllMessages (groups)'
+        );
+        // Track these streams for cleanup
+        activeStreamRefs.current.groupStream = convStream;
+        activeStreamRefs.current.conversationStream = stream;
+
         // Open short-lived preference-related streams to nudge identity/welcome processing
         let welcomeStream = null;
         try {
-          welcomeStream = await xmtp.conversations.streamAllMessages?.({ conversationType: XMTP_SYNC_CONVERSATION_TYPE });
+          welcomeStream = await createWithTimeout(
+            async () => xmtp.conversations.streamAllMessages?.({ conversationType: XMTP_SYNC_CONVERSATION_TYPE }),
+            XMTP_TIMEOUT_MS,
+            'XMTP streamAllMessages (sync)'
+          );
+          activeStreamRefs.current.syncStream = welcomeStream;
         } catch {}
         // Also open a short-lived conversation stream for Sync type to nudge welcome processing
         let syncConvStream = null;
         try {
           // @ts-ignore stream supports conversationType on worker side
-          syncConvStream = await xmtp.conversations.stream?.({ conversationType: XMTP_SYNC_CONVERSATION_TYPE });
+          syncConvStream = await createWithTimeout(
+            async () => xmtp.conversations.stream?.({ conversationType: XMTP_SYNC_CONVERSATION_TYPE }),
+            XMTP_TIMEOUT_MS,
+            'XMTP stream (sync)'
+          );
         } catch {}
         // Preferences streams
         let prefStream = null;
         let consentStream = null;
-        try { prefStream = await xmtp.preferences.streamPreferences?.(); } catch {}
-        try { consentStream = await xmtp.preferences.streamConsent?.(); } catch {}
+        try {
+          prefStream = await createWithTimeout(
+            async () => xmtp.preferences.streamPreferences?.(),
+            XMTP_TIMEOUT_MS,
+            'XMTP streamPreferences'
+          );
+          activeStreamRefs.current.preferenceStream = prefStream;
+        } catch {}
+        try {
+          consentStream = await createWithTimeout(
+            async () => xmtp.preferences.streamConsent?.(),
+            XMTP_TIMEOUT_MS,
+            'XMTP streamConsent'
+          );
+          activeStreamRefs.current.consentStream = consentStream;
+        } catch {}
         const isLocal = (import.meta.env?.VITE_XMTP_ENV === 'local');
         const endAt = Date.now() + (isLocal ? 20_000 : (import.meta.env?.VITE_E2E_DEBUG === '1' ? 10_000 : 60_000));
         const onConversation = async (conv) => {
@@ -3532,8 +4036,10 @@ function App() {
     })();
     return () => {
       cancelled = true;
+      // Clean up all discovery streams
+      cleanupXmtpStreams();
     };
-  }, [pathIsChat, xmtp, groupId, group, templAddress, pushStatus]);
+  }, [pathIsChat, xmtp, groupId, group, templAddress, pushStatus, cleanupXmtpStreams, createWithTimeout]);
 
   useEffect(() => {
     if (!pathIsChat || !templAddress || !signer) return;
@@ -4070,6 +4576,8 @@ function App() {
     setActiveInboxId('');
     setActiveInstallationId('');
     setInstallations([]);
+    // Reset session tracking on wallet disconnect
+    setSessionAttemptedNonces(new Set());
     setInstallationsError(null);
     setXmtpLimitWarning(null);
     setSigner(undefined);
@@ -4438,6 +4946,14 @@ function App() {
       } catch {}
     }
   }
+
+  // Component-level cleanup for all XMTP streams
+  useEffect(() => {
+    return () => {
+      // Clean up all streams when component unmounts
+      cleanupXmtpStreams();
+    };
+  }, [cleanupXmtpStreams]);
 
   return (
     <div className="App min-h-screen flex flex-col overflow-x-hidden">
@@ -6185,7 +6701,11 @@ function App() {
                         if (convo && typeof convo.send === 'function') {
                           const payload = { type: 'proposal-meta', id: numericId, title: metaTitle };
                           if (metaDescription) payload.description = metaDescription;
-                          await convo.send(JSON.stringify(payload));
+                          await createWithRetry(
+                            async () => convo.send(JSON.stringify(payload)),
+                            2,
+                            'XMTP send proposal meta'
+                          );
                         }
                       }
                     } catch (err) {
