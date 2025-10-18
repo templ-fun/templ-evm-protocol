@@ -2598,16 +2598,6 @@ const [sessionAttemptedNonces, setSessionAttemptedNonces] = useState(new Set());
         const initPromise = (async () => {
           let installationSnapshot = null;
           let accessHandleErrorCount = 0;
-      // Enhanced debugging for XMTP installation flow
-      dlog('[app] XMTP installation debugging', {
-        address,
-        hasCache: !!cache,
-        cachedInstallationId: cachedInstallationId || 'none',
-        cachedInboxId: cache?.inboxId || 'none',
-        sessionAttemptedNonces: Array.from(sessionAttemptedNonces),
-        xmtpEnv
-      });
-
       if (cache?.inboxId) {
         try {
           const pruneResult = await pruneExcessInstallations({
@@ -2632,6 +2622,16 @@ const [sessionAttemptedNonces, setSessionAttemptedNonces] = useState(new Set());
       const cachedInstallationId = typeof cache?.installationId === 'string' ? cache.installationId.trim() : '';
       const hadCachedInstallation = Boolean(cachedInstallationId);
       const hadCachedInbox = Boolean(cache?.inboxId);
+
+      // Enhanced debugging for XMTP installation flow
+      dlog('[app] XMTP installation debugging', {
+        address,
+        hasCache: !!cache,
+        cachedInstallationId: cachedInstallationId || 'none',
+        cachedInboxId: cache?.inboxId || 'none',
+        sessionAttemptedNonces: Array.from(sessionAttemptedNonces),
+        xmtpEnv
+      });
       const cachedInstallationBytes = hadCachedInstallation ? installationIdToBytes(cachedInstallationId) : null;
       const installationStillRegistered = hadCachedInstallation && Array.isArray(installationSnapshot)
         ? installationSnapshot.some((inst) => installationMatches(inst, cachedInstallationId, cachedInstallationBytes))
