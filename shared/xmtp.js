@@ -63,6 +63,9 @@ export async function syncXMTP(xmtp, retries = 1, delayMs = 1000) {
  * @returns {Promise<any|null>} Conversation if found, else null
  */
 export async function waitForConversation({ xmtp, groupId, retries = 60, delayMs = 1000 }) {
+  // Enhanced debugging for conversation provisioning
+  dlog('[xmtp] waitForConversation starting', { groupId, retries, delayMs, xmtpInboxId: xmtp?.inboxId });
+
   // Fast mode for tests/dev
   if (isTemplE2EDebug()) {
     retries = Math.min(retries, 5);
@@ -72,6 +75,13 @@ export async function waitForConversation({ xmtp, groupId, retries = 60, delayMs
   const wantedRaw = norm(groupId);
   const wantedNo0x = wantedRaw.replace(/^0x/i, '');
   const wanted0x = wantedRaw.startsWith('0x') ? wantedRaw : `0x${wantedNo0x}`;
+
+  dlog('[xmtp] waitForConversation searching for group', {
+    wantedRaw,
+    wantedNo0x,
+    wanted0x
+  });
+
   const group = await waitFor({
     tries: retries,
     delayMs,
@@ -97,7 +107,8 @@ export async function waitForConversation({ xmtp, groupId, retries = 60, delayMs
             ],
             conversationType: XMTP_CONVERSATION_TYPES.GROUP
           }) || [];
-          dlog(`Sync attempt: Found ${conversations.length} conversations; firstIds=`, conversations.slice(0,3).map(c => c.id));
+          dlog(`[xmtp] Sync attempt: Found ${conversations.length} conversations; firstIds=`, conversations.slice(0,3).map(c => c.id));
+          dlog(`[xmtp] Looking for groupId ${wantedRaw} in found conversations:`, conversations.map(c => ({ id: c.id, consentState: c.consentState })));
           conv = conversations.find(c => {
             const cid = String(c.id);
             return cid === wantedRaw || cid === wanted0x || cid === wantedNo0x || `0x${cid}` === wanted0x || cid.replace(/^0x/i,'') === wantedNo0x;
