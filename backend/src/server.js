@@ -1540,7 +1540,7 @@ export async function createApp(opts) {
 
               if (context.getInboxIdForIdentifier) {
                 try {
-                  const priestIdentifier = { identifier: record.priest, identifierKind: 'Ethereum' };
+                  const priestIdentifier = { identifier: record.priest, identifierKind: 0 }; // 0 = Ethereum
                   const priestInboxId = await context.getInboxIdForIdentifier(priestIdentifier);
                   if (priestInboxId) {
                     initialMembers.push(priestInboxId);
