@@ -4209,6 +4209,7 @@ function App() {
       pushStatus('✅ Message sent');
     } catch (err) {
       console.error('Send failed', err);
+      try { pushStatus(`❌ Send failed: ${String(err?.message || err)}`); } catch {}
     }
   }
 
@@ -5773,7 +5774,7 @@ function App() {
                 className="px-3 py-2 rounded bg-primary text-black font-semibold"
                 data-testid="chat-send"
                 onClick={handleSend}
-                disabled={(!group && !groupId) || (pendingJoinMatches && joinSteps.join !== 'success')}
+                disabled={(!group && !groupId) || (pendingJoinMatches && joinSteps.join !== 'success' && !isPriest)}
               >
                 Send
               </button>
