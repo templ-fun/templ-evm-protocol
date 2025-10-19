@@ -1528,6 +1528,33 @@ export async function createApp(opts) {
               logger.info({ creatorInboxId: record.creatorInboxId }, 'Adding creator to initial group members');
             }
 
+            // Add priest to initial members if we have their address
+            if (record.priest && xmtp?.findInboxIdByIdentifier) {
+              try {
+                const priestIdentifier = { identifier: record.priest, identifierKind: 'Ethereum' };
+                const priestInboxId = await xmtp.findInboxIdByIdentifier(priestIdentifier);
+                if (priestInboxId) {
+                  initialMembers.push(priestInboxId);
+                  logger.info({
+                    priestAddress: record.priest,
+                    priestInboxId,
+                    contractAddress: record.contractAddress
+                  }, 'Adding priest to initial group members');
+                } else {
+                  logger.warn({
+                    priestAddress: record.priest,
+                    contractAddress: record.contractAddress
+                  }, 'Priest inbox ID not found, priest will not be added to group');
+                }
+              } catch (err) {
+                logger.warn({
+                  error: err?.message || err,
+                  priestAddress: record.priest,
+                  contractAddress: record.contractAddress
+                }, 'Failed to resolve priest inbox ID, priest will not be added to group');
+              }
+            }
+
             const groupName = `templ:${record.contractAddress?.slice?.(0, 10) ?? 'templ'}`;
             const groupDescription = record.templHomeLink ? `templ.fun • ${record.templHomeLink}` : 'templ.fun group';
 
