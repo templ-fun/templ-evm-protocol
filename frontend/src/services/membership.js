@@ -490,6 +490,40 @@ export async function getExternalRewards({ ethers, providerOrSigner, templAddres
   return results;
 }
 
+/**
+ * Sum total burned amount by scanning MemberJoined events.
+ * Note: This computes an aggregate from logs since the contract does not store a counter.
+ */
+export async function getTotalBurned({ ethers, providerOrSigner, templAddress, templArtifact, fromBlock = 0, toBlock = 'latest' }) {
+  try {
+    const provider = providerOrSigner?.provider ?? providerOrSigner;
+    if (!provider || typeof provider.getLogs !== 'function') {
+      return '0';
+    }
+    const iface = new ethers.Interface(templArtifact.abi);
+    let topic;
+    try {
+      topic = iface.getEventTopic('MemberJoined');
+    } catch {
+      return '0';
+    }
+    const logs = await provider.getLogs({ address: templAddress, topics: [topic], fromBlock, toBlock });
+    let total = 0n;
+    for (const log of logs) {
+      try {
+        const decoded = iface.decodeEventLog('MemberJoined', log.data, log.topics);
+        const value = decoded?.burnedAmount ?? decoded?.[1] ?? 0n;
+        total += BigInt(value);
+      } catch {
+        // ignore decode errors for unknown logs
+      }
+    }
+    return total.toString();
+  } catch {
+    return '0';
+  }
+}
+
 export async function claimMemberPool({ ethers, signer, templAddress, templArtifact, txOptions = {} }) {
   const contract = new ethers.Contract(templAddress, templArtifact.abi, signer);
   const tx = await contract.claimMemberRewards(txOptions);

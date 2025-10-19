@@ -22,7 +22,8 @@ import {
   getTokenAllowance,
   getTreasuryInfo,
   getClaimable,
-  getExternalRewards
+  getExternalRewards,
+  getTotalBurned
 } from './flows.js';
 import { syncXMTP, waitForConversation, XMTP_CONSENT_STATES, XMTP_CONVERSATION_TYPES } from '@shared/xmtp.js';
 import './App.css';
@@ -901,6 +902,7 @@ function App() {
   const [delegates, setDelegates] = useState([]);
   const [templList, setTemplList] = useState([]);
   const [treasuryInfo, setTreasuryInfo] = useState(null);
+  const [burnedTotal, setBurnedTotal] = useState('0');
   const [claimable, setClaimable] = useState(null);
   const [claimLoading, setClaimLoading] = useState(false);
   const [externalRewards, setExternalRewards] = useState([]);
@@ -3858,6 +3860,10 @@ function App() {
         setTreasuryInfo(info);
       } catch {}
       try {
+        const burned = await getTotalBurned({ ethers, providerOrSigner: signer, templAddress, templArtifact });
+        setBurnedTotal(burned);
+      } catch {}
+      try {
         if (walletAddress) {
           const c = await getClaimable({ ethers, providerOrSigner: signer, templAddress, templArtifact, memberAddress: walletAddress });
           setClaimable(c);
@@ -4347,6 +4353,10 @@ function App() {
       try {
         const info = await getTreasuryInfo({ ethers, providerOrSigner: signer, templAddress, templArtifact });
         setTreasuryInfo(info);
+      } catch {}
+      try {
+        const burned = await getTotalBurned({ ethers, providerOrSigner: signer, templAddress, templArtifact });
+        setBurnedTotal(burned);
       } catch {}
 
       if (walletAddress) {
@@ -5282,7 +5292,7 @@ function App() {
             {templAddress && (
               <div className="text-xs text-black/70 px-1 py-1 flex items-center gap-2">
                 <span>Treasury: {treasuryInfo?.treasury || '0'}</span>
-                <span>· Burn: {currentBurnPercent ?? '…'}%</span>
+                <span>· Burned: {burnedTotal || '0'}</span>
                 <span>· Claimable: <span data-testid="claimable-amount">{claimable || '0'}</span></span>
                 {hasExternalClaim && (
                   <span>· External tokens: {externalRewards.filter((r) => r.claimable && r.claimable !== '0').length}</span>
@@ -5309,7 +5319,7 @@ function App() {
                   {templAddress && (
                     <>
                       <div className="text-sm">Treasury: {treasuryInfo?.treasury || '0'}</div>
-                      <div className="text-sm">Burn percent: {currentBurnPercent ?? '…'}%</div>
+                      <div className="text-sm">Total Burned: {burnedTotal || '0'}</div>
                       <div className="text-sm flex items-center gap-2">
                         <span>Claimable (you): <span data-testid="claimable-amount-info">{claimable || '0'}</span></span>
                       </div>

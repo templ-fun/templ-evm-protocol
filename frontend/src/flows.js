@@ -8,6 +8,7 @@ export {
   getTreasuryInfo,
   getClaimable,
   getExternalRewards,
+  getTotalBurned,
   claimMemberPool,
   claimExternalToken
 } from './services/membership.js';

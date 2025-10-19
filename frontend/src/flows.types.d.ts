@@ -91,6 +91,7 @@ export function fetchDelegates(args: { contractAddress: Address; backendUrl?: st
 export function getTreasuryInfo(args: { ethers: any; providerOrSigner: any; templAddress: Address; templArtifact: any }): Promise<{ treasury: string; memberPool: string; protocolAddress: Address }>
 export function getClaimable(args: { ethers: any; providerOrSigner: any; templAddress: Address; templArtifact: any; memberAddress: Address }): Promise<string>
 export function getExternalRewards(args: { ethers: any; providerOrSigner: any; templAddress: Address; templArtifact: any; memberAddress?: Address }): Promise<Array<{ token: Address; poolBalance: string; cumulativeRewards: string; remainder: string; claimable: string }>>
+export function getTotalBurned(args: { ethers: any; providerOrSigner: any; templAddress: Address; templArtifact: any; fromBlock?: number; toBlock?: number | string }): Promise<string>
 export function claimMemberPool(args: { ethers: any; signer: any; templAddress: Address; templArtifact: any; txOptions?: any }): Promise<void>
 export function claimExternalToken(args: { ethers: any; signer: any; templAddress: Address; templArtifact: any; token: Address; txOptions?: any }): Promise<void>
 export function getClaimablePoolAmount(args: { ethers: any; providerOrSigner: any; templAddress: Address; templArtifact: any; memberAddress: Address }): Promise<string>
