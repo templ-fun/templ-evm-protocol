@@ -5,26 +5,51 @@ import { Client } from '@xmtp/browser-sdk';
 function XMTPDebug() {
   const [debugInfo, setDebugInfo] = useState({});
   const [loading, setLoading] = useState(true);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [walletAddress, setWalletAddress] = useState('');
+  const [xmtpClient, setXmtpClient] = useState(null);
+  const [activeInboxId, setActiveInboxId] = useState('');
+  const [xmtpInstallations, setXmtpInstallations] = useState([]);
+
+  // Sync window properties to state
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (window.walletAddress !== walletAddress) {
+        setWalletAddress(window.walletAddress || '');
+      }
+      if (window.xmtpClient !== xmtpClient) {
+        setXmtpClient(window.xmtpClient || null);
+      }
+      if (window.activeInboxId !== activeInboxId) {
+        setActiveInboxId(window.activeInboxId || '');
+      }
+      if (JSON.stringify(window.xmtpInstallations) !== JSON.stringify(xmtpInstallations)) {
+        setXmtpInstallations(window.xmtpInstallations || []);
+      }
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [walletAddress, xmtpClient, activeInboxId, xmtpInstallations]);
 
   useEffect(() => {
     const loadDebugInfo = async () => {
       try {
-        // Get wallet info from global state (assuming it's available)
+        // Get wallet info from state
         const info = {
-          walletAddress: window.walletAddress || 'Not available',
-          xmtpClient: window.xmtpClient ? 'Available' : 'Not available',
-          activeInboxId: window.activeInboxId || 'Not available',
-          installationsCount: window.xmtpInstallations?.length || 'Unknown',
+          walletAddress: walletAddress || 'Not available',
+          xmtpClient: xmtpClient ? 'Available' : 'Not available',
+          activeInboxId: activeInboxId || 'Not available',
+          installationsCount: xmtpInstallations?.length || 'Unknown',
           userAgent: navigator.userAgent,
           timestamp: new Date().toISOString(),
           xmtpEnv: import.meta.env.VITE_XMTP_ENV || 'not set'
         };
 
         // Try to get user's inbox ID using browser SDK
-        if (window.walletAddress && window.xmtpClient) {
+        if (walletAddress && xmtpClient) {
           try {
             // In browser SDK, we can get inbox ID from the client
-            const inboxId = window.xmtpClient.inboxId;
+            const inboxId = xmtpClient.inboxId;
             info.userInboxId = inboxId || 'Not available';
             info.inboxIdTimestamp = new Date().toISOString();
             info.inboxIdSource = 'client';
@@ -32,24 +57,24 @@ function XMTPDebug() {
             info.userInboxIdError = err.message;
             info.inboxIdTimestamp = new Date().toISOString();
           }
-        } else if (window.walletAddress && !window.xmtpClient) {
+        } else if (walletAddress && !xmtpClient) {
           info.userInboxIdError = 'XMTP client not initialized';
           info.inboxIdTimestamp = new Date().toISOString();
         }
 
         setDebugInfo(info);
+        setLoading(false);
       } catch (err) {
         setDebugInfo({
           error: err.message,
           timestamp: new Date().toISOString()
         });
-      } finally {
         setLoading(false);
       }
     };
 
     loadDebugInfo();
-  }, [window.walletAddress, window.xmtpClient, window.activeInboxId, window.xmtpInstallations]);
+  }, [walletAddress, xmtpClient, activeInboxId, xmtpInstallations, refreshTrigger]);
 
   if (loading) {
     return (
@@ -66,15 +91,19 @@ function XMTPDebug() {
       <p className="text-sm text-black/60">This page helps debug XMTP client issues. Use this information to troubleshoot priest addition problems.</p>
 
       <div className="border border-black/20 rounded p-3 space-y-2">
-        <h3 className="text-lg font-medium mb-2">Basic Info</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
-          <div><strong>Timestamp:</strong> {debugInfo.timestamp}</div>
-          <div><strong>XMTP Environment:</strong> {debugInfo.xmtpEnv}</div>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-lg font-medium">Wallet & Connection</h3>
+          <button
+            className="px-3 py-1 rounded border border-black/20 text-xs hover:bg-black/5"
+            onClick={() => {
+              // Force reload the debug info by incrementing trigger
+              setLoading(true);
+              setRefreshTrigger(prev => prev + 1);
+            }}
+          >
+            Refresh
+          </button>
         </div>
-      </div>
-
-      <div className="border border-black/20 rounded p-3 space-y-2">
-        <h3 className="text-lg font-medium mb-2">Wallet & Connection</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
           <div><strong>Wallet Address:</strong> <code className="text-xs">{debugInfo.walletAddress}</code></div>
           <div><strong>XMTP Client:</strong> {debugInfo.xmtpClient}</div>
@@ -119,22 +148,6 @@ function XMTPDebug() {
           </div>
         </div>
       )}
-
-      <div className="border border-black/20 rounded p-3 space-y-2">
-        <h3 className="text-lg font-medium mb-2">User Agent</h3>
-        <div className="text-xs font-mono break-all">{debugInfo.userAgent}</div>
-      </div>
-
-      <div className="space-y-2">
-        <h3 className="text-lg font-medium">Next Steps</h3>
-        <div className="text-sm text-black/70 space-y-1">
-          <p>• If <strong>XMTP Client</strong> shows "Not available", you need to initialize XMTP with your wallet first</p>
-          <p>• Compare your <strong>Active Inbox ID</strong> with <strong>Your Inbox ID</strong> - they should match when using this wallet</p>
-          <p>• Make sure your XMTP environment matches the backend (backend is using: <code>local</code>)</p>
-          <p>• Priest address needs to be resolved to the same inbox ID as shown here for automatic addition to work</p>
-          <p>• Join any templ or chat to initialize your XMTP client if needed</p>
-        </div>
-      </div>
     </div>
   );
 }
