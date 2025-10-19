@@ -1514,6 +1514,7 @@ export async function createApp(opts) {
         }
 
         // Create new group if no existing one
+        const initialMembers = [];
         if (!record.groupId && xmtp?.conversations?.newGroup && process.env.XMTP_ENABLED !== '0') {
           logger.info({
             contractAddress: record.contractAddress,
@@ -1521,7 +1522,7 @@ export async function createApp(opts) {
             templHomeLink: record.templHomeLink
           }, 'Creating new XMTP group');
 
-          const initialMembers = [];
+          initialMembers.length = 0;
           try {
             if (record.creatorInboxId) {
               initialMembers.push(record.creatorInboxId);
@@ -1529,40 +1530,60 @@ export async function createApp(opts) {
             }
 
             // Add priest to initial members if we have their address
-            if (record.priest && xmtp?.findInboxIdByIdentifier) {
-              try {
-                const priestIdentifier = { identifier: record.priest, identifierKind: 'Ethereum' };
-                const priestInboxId = await xmtp.findInboxIdByIdentifier(priestIdentifier);
-                if (priestInboxId) {
-                  initialMembers.push(priestInboxId);
-                  logger.info({
-                    priestAddress: record.priest,
-                    priestInboxId,
-                    contractAddress: record.contractAddress
-                  }, 'Adding priest to initial group members');
-                } else {
+            if (record.priest) {
+              logger.info({
+                priestAddress: record.priest,
+                contractAddress: record.contractAddress,
+                xmtpAvailable: !!xmtp?.findInboxIdByIdentifier
+              }, 'Priest address provided, attempting to resolve XMTP inbox ID');
+
+              if (xmtp?.findInboxIdByIdentifier) {
+                try {
+                  const priestIdentifier = { identifier: record.priest, identifierKind: 'Ethereum' };
+                  const priestInboxId = await xmtp.findInboxIdByIdentifier(priestIdentifier);
+                  if (priestInboxId) {
+                    initialMembers.push(priestInboxId);
+                    logger.info({
+                      priestAddress: record.priest,
+                      priestInboxId,
+                      contractAddress: record.contractAddress,
+                      totalInitialMembers: initialMembers.length
+                    }, '✅ Priest resolved and added to initial group members');
+                  } else {
+                    logger.warn({
+                      priestAddress: record.priest,
+                      contractAddress: record.contractAddress
+                    }, '❌ Priest inbox ID not found - priest may not be on XMTP or address is incorrect');
+                  }
+                } catch (err) {
                   logger.warn({
+                    error: err?.message || err,
                     priestAddress: record.priest,
-                    contractAddress: record.contractAddress
-                  }, 'Priest inbox ID not found, priest will not be added to group');
+                    contractAddress: record.contractAddress,
+                    errorType: err?.constructor?.name
+                  }, '❌ Failed to resolve priest inbox ID - XMTP network error or invalid priest address');
                 }
-              } catch (err) {
+              } else {
                 logger.warn({
-                  error: err?.message || err,
                   priestAddress: record.priest,
                   contractAddress: record.contractAddress
-                }, 'Failed to resolve priest inbox ID, priest will not be added to group');
+                }, '❌ XMTP findInboxIdByIdentifier not available - cannot add priest to group');
               }
+            } else {
+              logger.info({
+                contractAddress: record.contractAddress
+              }, 'ℹ️ No priest address provided - priest will not be added to group');
             }
 
             const groupName = `templ:${record.contractAddress?.slice?.(0, 10) ?? 'templ'}`;
             const groupDescription = record.templHomeLink ? `templ.fun • ${record.templHomeLink}` : 'templ.fun group';
 
             logger.info({
-              initialMembers,
+              memberCount: initialMembers.length,
+              hasPriest: initialMembers.length > 1, // More than just creator means priest was added
               groupName,
               groupDescription
-            }, 'Creating XMTP group with parameters');
+            }, '📝 Creating XMTP group with parameters');
 
             const group = await xmtp.conversations.newGroup(initialMembers, {
               name: groupName,
@@ -1574,8 +1595,9 @@ export async function createApp(opts) {
                 groupId: group.id,
                 groupName: group.name,
                 groupDescription: group.description,
-                membersCount: group.members?.length || 0
-              }, 'Successfully created new XMTP group');
+                membersCount: group.members?.length || 0,
+                priestIncluded: initialMembers.length > 1
+              }, '✅ Successfully created new XMTP group');
 
               record.groupId = String(group.id);
               record.group = group;
@@ -1584,16 +1606,19 @@ export async function createApp(opts) {
 
               logger.info({
                 contract: record.contractAddress,
-                groupId: record.groupId
-              }, 'Created and persisted XMTP group for templ');
+                groupId: record.groupId,
+                priestWasAdded: initialMembers.length > 1
+              }, '📌 Created and persisted XMTP group for templ');
 
               return group;
             } else {
               logger.error({
                 contractAddress: record.contractAddress,
                 initialMembers,
-                groupName
-              }, 'Failed to create XMTP group - no group ID returned');
+                groupName,
+                memberCount: initialMembers.length,
+                hadPriest: initialMembers.length > 1
+              }, '❌ Failed to create XMTP group - no group ID returned from XMTP');
             }
           } catch (err) {
             logger.error({
@@ -1601,8 +1626,10 @@ export async function createApp(opts) {
               stack: err?.stack,
               contract: record.contractAddress,
               initialMembers: initialMembers,
+              memberCount: initialMembers.length,
+              hadPriest: initialMembers.length > 1,
               errorType: err?.constructor?.name
-            }, 'Failed to create XMTP group');
+            }, '💥 XMTP group creation failed with exception');
           }
         }
 
@@ -1610,8 +1637,11 @@ export async function createApp(opts) {
         logger.info({
           contractAddress: record.contractAddress,
           groupId: result?.id,
-          success: !!result
-        }, 'ensureGroup completed');
+          success: !!result,
+          hadGroupBefore: !!record.group,
+          createdNewGroup: !record.group && !!result,
+          priestWasIncluded: !!(record.priest && initialMembers?.length > 1)
+        }, '🏁 ensureGroup completed - priest addition summary');
 
         return result;
       };
