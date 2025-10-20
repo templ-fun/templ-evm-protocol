@@ -50,6 +50,37 @@ function dlog(...args) {
   try { console.log(...args); } catch {}
 }
 
+function normaliseGroupId(value) {
+  const raw = (value ?? '').toString().trim();
+  if (!raw) {
+    return { raw: '', lower: '', no0x: '' };
+  }
+  const lower = raw.toLowerCase();
+  const no0x = lower.replace(/^0x/i, '');
+  const prefixed = lower.startsWith('0x') ? lower : `0x${no0x}`;
+  return { raw, lower, no0x, prefixed };
+}
+
+function groupIdCandidates(value) {
+  const norm = normaliseGroupId(value);
+  return Array.from(new Set(
+    [norm.raw, norm.lower, norm.prefixed, norm.no0x, norm.no0x ? `0x${norm.no0x}` : null]
+      .filter(Boolean)
+  ));
+}
+
+function groupIdEquals(a, b) {
+  const left = normaliseGroupId(a);
+  const right = normaliseGroupId(b);
+  if (!left.lower || !right.lower) return false;
+  return (
+    left.lower === right.lower ||
+    left.no0x === right.no0x ||
+    left.prefixed === right.lower ||
+    right.prefixed === left.lower
+  );
+}
+
 const JOINED_STORAGE_PREFIX = 'templ:joined';
 
 const XMTP_CONSENT_STATE_VALUES = [
@@ -2437,15 +2468,17 @@ function App() {
             const wanted = String(id);
             try { await syncXMTP(client); } catch {}
             try {
-              const c = await client.conversations.getConversationById(wanted);
-              if (c) return true;
+              for (const candidate of groupIdCandidates(wanted)) {
+                const c = await client.conversations.getConversationById(candidate);
+                if (c) return true;
+              }
             } catch {}
             try {
               const list = await client.conversations.list?.({
                 consentStates: XMTP_CONSENT_STATE_VALUES,
                 conversationType: XMTP_GROUP_CONVERSATION_TYPE
               }) || [];
-              return list.some(c => String(c.id) === wanted || ('0x'+String(c.id)) === wanted || String(c.id) === wanted.replace(/^0x/i, ''));
+              return list.some((c) => groupIdEquals(c?.id, wanted));
             } catch {}
             return false;
           };
@@ -2509,10 +2542,13 @@ function App() {
                 try { await tmp.preferences?.inboxState?.(true); } catch {}
                 try { await syncXMTP(tmp); } catch {}
                 try {
-                  conv = await tmp.conversations.getConversationById(wanted);
+                  for (const candidate of groupIdCandidates(wanted)) {
+                    conv = await tmp.conversations.getConversationById(candidate);
+                    if (conv) break;
+                  }
                   if (!conv) {
                     const list = await tmp.conversations.list?.({ consentStates: XMTP_CONSENT_STATE_VALUES }) || [];
-                    conv = list.find((c) => String(c.id) === wanted || ('0x'+String(c.id)) === wanted || String(c.id) === wanted.replace(/^0x/i, '')) || null;
+                    conv = list.find((c) => groupIdEquals(c?.id, wanted)) || null;
                   }
                 } catch {}
                 if (!conv) await new Promise(r => setTimeout(r, import.meta.env?.VITE_E2E_DEBUG === '1' ? 100 : 1000));
@@ -2766,7 +2802,8 @@ function App() {
       });
       updateTemplAddress(result.contractAddress);
       setGroup(result.group);
-      setGroupId(result.groupId);
+      const canonicalGroupId = result.groupId ? normaliseGroupId(result.groupId).prefixed : null;
+      setGroupId(canonicalGroupId || result.groupId);
       setGroupConnected(Boolean(result.group));
       pushStatus('✅ Templ deployed');
       if (result.groupId) pushStatus('✅ Group created');
@@ -2775,7 +2812,7 @@ function App() {
       }
       try {
         localStorage.setItem('templ:lastAddress', result.contractAddress);
-        if (result.groupId) localStorage.setItem('templ:lastGroupId', String(result.groupId));
+        if (canonicalGroupId) localStorage.setItem('templ:lastGroupId', canonicalGroupId);
       } catch {}
       navigate(`/chat?address=${result.contractAddress}`);
     } catch (err) {
@@ -2988,7 +3025,8 @@ function App() {
       dlog('[app] purchaseAndJoin groupId details', { groupId: result.groupId, has0x: String(result.groupId).startsWith('0x'), len: String(result.groupId).length });
       if (result) {
         setGroup(result.group);
-        setGroupId(result.groupId);
+        const canonicalGroupId = result.groupId ? normaliseGroupId(result.groupId).prefixed : null;
+        setGroupId(canonicalGroupId || result.groupId);
         // Clarify semantics: membership confirmed, then discovery may take time
         pushStatus('✅ Membership confirmed; connecting to group');
         if (result.group) {
@@ -3000,7 +3038,7 @@ function App() {
         setPendingJoinAddress(null);
         try {
           localStorage.setItem('templ:lastAddress', trimmedAddress);
-          if (result.groupId) localStorage.setItem('templ:lastGroupId', String(result.groupId));
+          if (canonicalGroupId) localStorage.setItem('templ:lastGroupId', canonicalGroupId);
         } catch {}
         rememberJoinedTempl(trimmedAddress);
         setTemplList((prev) => {
@@ -3057,7 +3095,8 @@ function App() {
       setJoinSteps({ purchase: 'success', join: 'success', error: null });
       setJoinStatusNote('Chat access granted');
       setGroup(result.group);
-      setGroupId(result.groupId);
+      const canonicalGroupId = result.groupId ? normaliseGroupId(result.groupId).prefixed : null;
+      setGroupId(canonicalGroupId || result.groupId);
       setGroupConnected(Boolean(result.group));
       pushStatus('✅ Chat invite completed');
     } catch (err) {
@@ -3122,7 +3161,10 @@ function App() {
     (async () => {
       if (!xmtp || group || groupConnected) return;
       let gid = '';
-      try { gid = String(localStorage.getItem('templ:lastGroupId') || ''); } catch {}
+      try {
+        const stored = localStorage.getItem('templ:lastGroupId');
+        if (stored) gid = normaliseGroupId(stored).prefixed;
+      } catch {}
       if (!gid) return;
       try {
         console.info('[chat] passive discovery: waitForConversation', { gid });
@@ -3484,7 +3526,7 @@ function App() {
           await xmtp.preferences?.inboxState?.(true);
         } catch (e) { console.warn('[app] preferences.inboxState error', e?.message || e); }
         try {
-          const candidates = [wanted, wanted.startsWith('0x') ? wanted.slice(2) : `0x${wanted}`, wanted.replace(/^0x/i, '')];
+          const candidates = groupIdCandidates(wanted);
           let maybe = null;
           for (const c of candidates) {
             try {
@@ -3508,7 +3550,8 @@ function App() {
           }) || [];
           dlog('[app] list size=', list?.length, 'firstIds=', (list||[]).slice(0,3).map(c=>c.id));
           console.info('[chat] list conversations size', list?.length);
-          const found = list.find((c) => String(c.id) === wanted || ('0x'+String(c.id))===wanted || String(c.id) === wanted.replace(/^0x/i, ''));
+          console.info('[chat] conversation ids', (list || []).map((c) => c.id));
+          const found = list.find((c) => groupIdEquals(c?.id, wanted));
           if (found) {
             dlog('[app] found group by list');
             console.info('[chat] found group by list');
@@ -3569,7 +3612,7 @@ function App() {
         const onConversation = async (conv) => {
           if (cancelled || group) return;
           const cid = String(conv?.id || '');
-          if (cid && (cid === wanted || ('0x'+cid)===wanted || cid === wanted.replace(/^0x/i, ''))) {
+          if (cid && groupIdEquals(cid, wanted)) {
             dlog('[app] streamGroups observed conversation id=', cid);
             const maybe = await xmtp.conversations.getConversationById(wanted);
             if (maybe) {
@@ -3589,7 +3632,7 @@ function App() {
           if (Date.now() > endAt) break;
           try {
             const cid = String(evt?.conversationId || '');
-            if (cid && (cid === wanted || ('0x'+cid)===wanted || cid === wanted.replace(/^0x/i, ''))) {
+            if (cid && groupIdEquals(cid, wanted)) {
               dlog('[app] streamAllMessages observed event in conversation id=', cid);
               const maybe = await xmtp.conversations.getConversationById(wanted);
               if (maybe) {
@@ -3895,7 +3938,10 @@ function App() {
       const last = localStorage.getItem('templ:lastAddress');
       if (last && ethers.isAddress(last)) updateTemplAddress(last);
       const lastG = localStorage.getItem('templ:lastGroupId');
-      if (lastG && !groupId) setGroupId(lastG.replace(/^0x/i, ''));
+      if (lastG && !groupId) {
+        const canonical = normaliseGroupId(lastG).prefixed;
+        if (canonical) setGroupId(canonical);
+      }
     } catch {}
   }, [templAddress, groupId, updateTemplAddress]);
 

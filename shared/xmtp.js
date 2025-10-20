@@ -103,12 +103,34 @@ export async function waitForConversation({ xmtp, groupId, retries = 60, delayMs
 
   dlog(`Waiting for conversation ${groupId} with ${retries} retries and ${delayMs}ms delay`);
 
-  const norm = (id) => (id || '').toString();
-  const wantedRaw = norm(groupId);
-  const wantedNo0x = wantedRaw.replace(/^0x/i, '');
-  const wanted0x = wantedRaw.startsWith('0x') ? wantedRaw : `0x${wantedNo0x}`;
+  const normaliseId = (value) => {
+    const raw = (value ?? '').toString().trim();
+    const lower = raw.toLowerCase();
+    const no0x = lower.replace(/^0x/i, '');
+    return { raw, lower, no0x, prefixedLower: lower.startsWith('0x') ? lower : `0x${no0x}` };
+  };
+  const idsMatch = (candidate, target) => {
+    const a = normaliseId(candidate);
+    const b = normaliseId(target);
+    if (!a.lower || !b.lower) return false;
+    return (
+      a.lower === b.lower ||
+      a.no0x === b.no0x ||
+      a.prefixedLower === b.lower ||
+      a.lower === b.prefixedLower
+    );
+  };
 
-  dlog(`Looking for group conversation with ID formats: ${wantedRaw}, ${wanted0x}, ${wantedNo0x}`);
+  const wanted = normaliseId(groupId);
+  const candidateIds = Array.from(new Set([
+    wanted.raw,
+    wanted.lower,
+    wanted.prefixedLower,
+    wanted.no0x,
+    wanted.no0x ? `0x${wanted.no0x}` : null
+  ].filter(Boolean)));
+
+  dlog(`Looking for group conversation with candidate IDs:`, candidateIds);
 
   const group = await waitFor({
     tries: retries,
@@ -119,7 +141,7 @@ export async function waitForConversation({ xmtp, groupId, retries = 60, delayMs
       let usedMethod = '';
 
       // Try with exact, 0x-prefixed, and non-0x forms for maximum compatibility
-      for (const candidate of [wantedRaw, wanted0x, wantedNo0x]) {
+      for (const candidate of candidateIds) {
         if (conv) break;
         usedMethod = `getConversationById(${candidate})`;
         try {
@@ -146,10 +168,7 @@ export async function waitForConversation({ xmtp, groupId, retries = 60, delayMs
 
           dlog(`Sync attempt: Found ${conversations.length} conversations; firstIds=`, conversations.slice(0,3).map(c => c.id));
 
-          conv = conversations.find(c => {
-            const cid = String(c.id);
-            return cid === wantedRaw || cid === wanted0x || cid === wantedNo0x || `0x${cid}` === wanted0x || cid.replace(/^0x/i,'') === wantedNo0x;
-          }) || null;
+          conv = conversations.find((c) => idsMatch(c?.id, groupId)) || null;
 
           if (conv) {
             dlog(`Found conversation via ${usedMethod}:`, conv.id);
