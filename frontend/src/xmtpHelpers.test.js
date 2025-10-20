@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { syncXMTP, waitForConversation } from '@shared/xmtp.js';
+import { syncXMTP, waitForConversation, XMTP_CONSENT_STATES } from '@shared/xmtp.js';
 
 describe('xmtpHelpers', () => {
   it('syncXMTP calls sync methods', async () => {
@@ -27,5 +27,20 @@ describe('xmtpHelpers', () => {
     const result = await waitForConversation({ xmtp, groupId: 'g1', retries: 1, delayMs: 0 });
     expect(result).toEqual(group);
   });
-});
 
+  it('waitForConversation normalises consent state enums', async () => {
+    const updateConsentState = vi.fn().mockResolvedValue(undefined);
+    const group = { id: 'g2', consentState: 0, updateConsentState };
+    const xmtp = {
+      conversations: {
+        getConversationById: vi.fn().mockResolvedValue(group),
+        sync: vi.fn(),
+        syncAll: vi.fn(),
+        list: vi.fn().mockResolvedValue([group])
+      },
+      preferences: { sync: vi.fn() }
+    };
+    await waitForConversation({ xmtp, groupId: 'g2', retries: 1, delayMs: 0 });
+    expect(updateConsentState).toHaveBeenCalledWith(XMTP_CONSENT_STATES.ALLOWED);
+  });
+});

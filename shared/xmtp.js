@@ -163,13 +163,29 @@ export async function waitForConversation({ xmtp, groupId, retries = 60, delayMs
         dlog(`Found group ${conv.id} via ${usedMethod}, consent state:`, conv.consentState);
 
         // Ensure consent state is allowed
-        if (conv.consentState !== 'allowed' && typeof conv.updateConsentState === 'function') {
+        const consentState = conv.consentState;
+        const consentLabel = typeof consentState === 'string' ? consentState.toLowerCase() : String(consentState ?? '').toLowerCase();
+        const isAllowed =
+          consentState === XMTP_CONSENT_STATES.ALLOWED ||
+          consentLabel === 'allowed';
+
+        if (!isAllowed && typeof conv.updateConsentState === 'function') {
+          const targetLabel = 'allowed';
+          const targetEnum = XMTP_CONSENT_STATES.ALLOWED;
+          dlog(`Updating consent state from '${consentState}' to '${targetLabel}' for conversation ${conv.id}`);
           try {
-            dlog(`Updating consent state from '${conv.consentState}' to 'allowed' for conversation ${conv.id}`);
-            await conv.updateConsentState('allowed');
+            await conv.updateConsentState(targetEnum);
             dlog('Successfully updated consent state');
           } catch (err) {
-            dlog('updateConsentState failed:', err?.message || String(err));
+            const message = err?.message || String(err);
+            dlog('updateConsentState failed:', message);
+            // Fallback to string-based API for legacy SDKs
+            try {
+              await conv.updateConsentState(targetLabel);
+              dlog('Successfully updated consent state using string fallback');
+            } catch (fallbackErr) {
+              dlog('updateConsentState fallback failed:', fallbackErr?.message || String(fallbackErr));
+            }
           }
         }
 
