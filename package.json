@@ -18,10 +18,8 @@
     "deploy": "npx hardhat run scripts/deploy.js --network base",
     "deploy:local": "npx hardhat run scripts/deploy.js --network localhost",
     "deploy:cloudflare": "node scripts/deploy-cloudflare.js",
-    "test:deploy:skip-worker": "node scripts/test-deploy-cloudflare-skip-worker.mjs",
     "node": "npx hardhat node",
     "prepare": "husky",
-    "test:all": "./scripts/test-all.sh",
     "gen:wallets": "node scripts/gen-wallets.js"
   },
   "keywords": [
