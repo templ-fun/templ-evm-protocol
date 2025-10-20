@@ -39,7 +39,11 @@ function normaliseInboxId(value) {
   if (!value || typeof value !== 'string') return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
-  return trimmed.toLowerCase();
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith('0x')) {
+    return lower.slice(2);
+  }
+  return lower;
 }
 
 export async function registerTempl(body, context) {

@@ -1611,8 +1611,9 @@ export async function createApp(opts) {
           }
         }
 
-        // Create new group if no existing one
-        const initialMembers = [];
+        let lastInitialMembers = [];
+        let lastPriestIncluded = false;
+
         if (!record.groupId && xmtp?.conversations?.newGroup && process.env.XMTP_ENABLED !== '0') {
           logger.info({
             contractAddress: record.contractAddress,
@@ -1620,10 +1621,33 @@ export async function createApp(opts) {
             templHomeLink: record.templHomeLink
           }, 'Creating new XMTP group');
 
-          initialMembers.length = 0;
+          const initialMemberSources = new Map();
+          let initialMemberDetails = [];
+          let initialMembers = [];
+          let priestIncluded = false;
+          const recordInitialMember = (value, source) => {
+            if (!value) return;
+            const normalised = normaliseInboxHex(value);
+            if (!normalised) {
+              logger?.warn?.({
+                source,
+                value
+              }, 'Skipping invalid XMTP inbox ID for initial group membership');
+              return;
+            }
+            if (!initialMemberSources.has(normalised)) {
+              initialMemberSources.set(normalised, {
+                sources: new Set([source]),
+                original: value
+              });
+            } else {
+              initialMemberSources.get(normalised)?.sources.add(source);
+            }
+          };
+
           try {
             if (record.creatorInboxId) {
-              initialMembers.push(record.creatorInboxId);
+              recordInitialMember(record.creatorInboxId, 'creator');
               logger.info({ creatorInboxId: record.creatorInboxId }, 'Adding creator to initial group members');
             }
 
@@ -1642,12 +1666,12 @@ export async function createApp(opts) {
                   const typedEnv = envOpt === 'production' ? 'production' : (envOpt === 'dev' ? 'dev' : 'local');
                   const priestInboxId = await context.getInboxIdForIdentifier(priestIdentifier, typedEnv);
                   if (priestInboxId) {
-                    initialMembers.push(priestInboxId);
+                    recordInitialMember(priestInboxId, 'priest');
                     logger.info({
                       priestAddress: record.priest,
                       priestInboxId,
                       contractAddress: record.contractAddress,
-                      totalInitialMembers: initialMembers.length
+                      totalInitialMembers: initialMemberSources.size
                     }, '✅ Priest resolved and added to initial group members');
                   } else {
                     logger.warn({
@@ -1678,12 +1702,35 @@ export async function createApp(opts) {
             const groupName = `templ:${record.contractAddress?.slice?.(0, 10) ?? 'templ'}`;
             const groupDescription = record.templHomeLink ? `templ.fun • ${record.templHomeLink}` : 'templ.fun group';
 
+            initialMemberDetails = Array.from(initialMemberSources.entries()).map(([hex, meta]) => ({
+              raw: hex,
+              display: `0x${hex}`,
+              original: meta.original,
+              sources: Array.from(meta.sources || [])
+            }));
+            initialMembers = initialMemberDetails.map((entry) => entry.raw);
+            priestIncluded = initialMemberDetails.some((entry) => entry.sources.includes('priest'));
+            lastInitialMembers = initialMembers.slice();
+            lastPriestIncluded = priestIncluded;
+
             logger.info({
               memberCount: initialMembers.length,
-              hasPriest: initialMembers.length > 1, // More than just creator means priest was added
+              hasPriest: priestIncluded,
               groupName,
-              groupDescription
+              groupDescription,
+              initialMemberDetails: initialMemberDetails.map((entry) => ({
+                inboxId: entry.display,
+                original: entry.original,
+                sources: entry.sources
+              }))
             }, '📝 Creating XMTP group with parameters');
+
+            if (!initialMembers.length) {
+              logger.warn({
+                contractAddress: record.contractAddress
+              }, 'No initial XMTP members resolved; skipping group creation for now');
+              throw new Error('No initial XMTP members resolved');
+            }
 
             const group = await xmtp.conversations.newGroup(initialMembers, {
               name: groupName,
@@ -1696,7 +1743,7 @@ export async function createApp(opts) {
                 groupName: group.name,
                 groupDescription: group.description,
                 membersCount: group.members?.length || 0,
-                priestIncluded: initialMembers.length > 1
+                priestIncluded
               }, '✅ Successfully created new XMTP group');
 
               record.groupId = String(group.id);
@@ -1733,17 +1780,17 @@ export async function createApp(opts) {
               logger.info({
                 contract: record.contractAddress,
                 groupId: record.groupId,
-                priestWasAdded: initialMembers.length > 1
+                priestWasAdded: priestIncluded
               }, '📌 Created and persisted XMTP group for templ');
 
               return group;
             } else {
               logger.error({
                 contractAddress: record.contractAddress,
-                initialMembers,
+                initialMembers: initialMemberDetails.map((entry) => entry.display),
                 groupName,
                 memberCount: initialMembers.length,
-                hadPriest: initialMembers.length > 1
+                hadPriest: priestIncluded
               }, '❌ Failed to create XMTP group - no group ID returned from XMTP');
             }
           } catch (err) {
@@ -1751,9 +1798,9 @@ export async function createApp(opts) {
               error: err?.message || err,
               stack: err?.stack,
               contract: record.contractAddress,
-              initialMembers: initialMembers,
+              initialMembers: initialMemberDetails.map((entry) => entry.display),
               memberCount: initialMembers.length,
-              hadPriest: initialMembers.length > 1,
+              hadPriest: priestIncluded,
               errorType: err?.constructor?.name
             }, '💥 XMTP group creation failed with exception');
           }
@@ -1766,7 +1813,8 @@ export async function createApp(opts) {
           success: !!result,
           hadGroupBefore: !!record.group,
           createdNewGroup: !record.group && !!result,
-          priestWasIncluded: !!(record.priest && initialMembers?.length > 1)
+          priestWasIncluded: !!(record.priest && lastPriestIncluded),
+          initialMembersAttempted: lastInitialMembers.map((id) => `0x${id}`)
         }, '🏁 ensureGroup completed - priest addition summary');
 
         return result;
