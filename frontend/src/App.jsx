@@ -81,6 +81,14 @@ function groupIdEquals(a, b) {
   );
 }
 
+function resolvedGroupOrNull(group) {
+  if (!group || typeof group !== 'object') return null;
+  if (typeof group.consentState !== 'function') return null;
+  if (typeof group.send !== 'function') return null;
+  if (typeof group.id !== 'string') return null;
+  return group;
+}
+
 function rememberGroupMeta(group, groupId, fallbackName = '') {
   if (typeof window === 'undefined') return;
   try {
@@ -2813,13 +2821,20 @@ function App() {
         return [{ contract: key, priest: walletAddress ? walletAddress.toLowerCase() : null }, ...prev];
       });
       updateTemplAddress(result.contractAddress);
-      setGroup(result.group);
+      const resolvedGroup = resolvedGroupOrNull(result.group);
       const canonicalGroupId = result.groupId ? normaliseGroupId(result.groupId).prefixed : null;
+      setGroup(resolvedGroup);
       setGroupId(canonicalGroupId || result.groupId);
-      setGroupConnected(Boolean(result.group));
-      rememberGroupMeta(result.group, canonicalGroupId || result.groupId, deriveTemplGroupName(result.contractAddress));
+      setGroupConnected(Boolean(resolvedGroup));
+      const derivedGroupName = deriveTemplGroupName(result.contractAddress);
+      rememberGroupMeta(resolvedGroup, canonicalGroupId || result.groupId, derivedGroupName);
       pushStatus('✅ Templ deployed');
       if (result.groupId) pushStatus('✅ Group created');
+      if (resolvedGroup) {
+        pushStatus('✅ Group connected');
+      } else {
+        pushStatus('🔄 Waiting for group discovery');
+      }
       if (result.contractAddress) {
         setJoinSteps({ purchase: 'idle', join: 'idle', error: null });
       }
@@ -3036,18 +3051,19 @@ function App() {
       dlog('[app] purchaseAndJoin returned', result);
       dlog('[app] purchaseAndJoin groupId details', { groupId: result.groupId, has0x: String(result.groupId).startsWith('0x'), len: String(result.groupId).length });
       if (result) {
-        setGroup(result.group);
+        const resolvedGroup = resolvedGroupOrNull(result.group);
+        setGroup(resolvedGroup);
         const canonicalGroupId = result.groupId ? normaliseGroupId(result.groupId).prefixed : null;
         setGroupId(canonicalGroupId || result.groupId);
+        setGroupConnected(Boolean(resolvedGroup));
         // Clarify semantics: membership confirmed, then discovery may take time
         pushStatus('✅ Membership confirmed; connecting to group');
-        if (result.group) {
+        if (resolvedGroup) {
           pushStatus('✅ Group connected');
-          setGroupConnected(true);
         } else {
           pushStatus('🔄 Waiting for group discovery');
         }
-        rememberGroupMeta(result.group, canonicalGroupId || result.groupId, deriveTemplGroupName(trimmedAddress));
+        rememberGroupMeta(resolvedGroup, canonicalGroupId || result.groupId, deriveTemplGroupName(trimmedAddress));
         setPendingJoinAddress(null);
         try {
           localStorage.setItem('templ:lastAddress', trimmedAddress);
@@ -3106,11 +3122,12 @@ function App() {
       });
       setJoinSteps({ purchase: 'success', join: 'success', error: null });
       setJoinStatusNote('Chat access granted');
-      setGroup(result.group);
+      const resolvedGroup = resolvedGroupOrNull(result.group);
+      setGroup(resolvedGroup);
       const canonicalGroupId = result.groupId ? normaliseGroupId(result.groupId).prefixed : null;
       setGroupId(canonicalGroupId || result.groupId);
-      setGroupConnected(Boolean(result.group));
-      rememberGroupMeta(result.group, canonicalGroupId || result.groupId, deriveTemplGroupName(trimmedAddress));
+      setGroupConnected(Boolean(resolvedGroup));
+      rememberGroupMeta(resolvedGroup, canonicalGroupId || result.groupId, deriveTemplGroupName(trimmedAddress));
       try { localStorage.setItem('templ:lastAddress', trimmedAddress); } catch {}
       pushStatus('✅ Chat invite completed');
     } catch (err) {

@@ -105,6 +105,37 @@ describe('templ flows', () => {
     expect(result).toEqual({ contractAddress: '0xDeAd', group: { id: 'group-1', consentState: 'allowed' }, groupId: 'group-1' });
   });
 
+  it('deployTempl throws when XMTP group cannot be discovered', async () => {
+    const wait = vi.fn().mockResolvedValue({});
+    const createTempl = vi.fn().mockResolvedValue({ wait });
+    createTempl.staticCall = vi.fn().mockResolvedValue('0xDeAd');
+    const factoryContract = {
+      protocolFeeRecipient: vi.fn().mockResolvedValue('0xfee'),
+      protocolPercent: vi.fn().mockResolvedValue(1000n),
+      createTempl
+    };
+    const ethers = {
+      Contract: vi.fn().mockImplementation(() => factoryContract)
+    };
+    mockFetchSuccess({ groupId: 'group-1' });
+    waitForConversation.mockResolvedValueOnce(null);
+
+    await expect(deployTempl({
+      ethers,
+      xmtp,
+      signer,
+      walletAddress: '0xabc',
+      tokenAddress: '0xdef',
+      entryFee: '1',
+      burnPercent: '30',
+      treasuryPercent: '30',
+      memberPoolPercent: '30',
+      factoryAddress: '0xFactory',
+      factoryArtifact: { abi: [] },
+      templArtifact
+    })).rejects.toThrow('Failed to discover XMTP group after deploy');
+  });
+
   it('deployTempl throws on non-200 backend response', async () => {
     const wait = vi.fn();
     const createTempl = vi.fn().mockResolvedValue({ wait });
@@ -301,6 +332,27 @@ describe('templ flows', () => {
     expect(templContract.purchaseAccess).toHaveBeenCalled();
     expect(signer.signTypedData).toHaveBeenCalled();
     expect(result).toEqual({ group: { id: 'group-2', consentState: 'allowed' }, groupId: 'group-2' });
+  });
+
+  it('purchaseAndJoin throws when XMTP group cannot be discovered', async () => {
+    const templContract = {
+      hasAccess: vi.fn().mockResolvedValue(true),
+      purchaseAccess: vi.fn().mockResolvedValue({ wait: vi.fn() }),
+      getConfig: vi.fn().mockResolvedValue(['0xToken', 100n, false, 0n, 0n, 0n, 30, 30, 30, 10])
+    };
+    const ethers = { Contract: vi.fn().mockReturnValue(templContract) };
+    mockFetchSuccess({ groupId: 'group-2' });
+    const xmtp = createXMTPMock({ inboxId: 'inbox-2' });
+    waitForConversation.mockResolvedValueOnce(null);
+
+    await expect(purchaseAndJoin({
+      ethers,
+      xmtp,
+      signer,
+      walletAddress: '0xabc',
+      templAddress: '0xTeMpL',
+      templArtifact
+    })).rejects.toThrow('Failed to discover XMTP group after join');
   });
 
   it('purchaseAndJoin rejects on backend failure', async () => {

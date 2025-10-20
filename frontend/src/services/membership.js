@@ -564,7 +564,12 @@ export async function requestChatInvite({
 async function finalizeJoin({ xmtp, groupId, templAddress }) {
   const isFast = (() => { try { return import.meta?.env?.VITE_E2E_DEBUG === '1'; } catch { return false; } })();
   const expectedName = deriveTemplGroupName(templAddress);
-  const group = await waitForConversation({ xmtp, groupId, expectedName, retries: isFast ? 25 : 60, delayMs: isFast ? 200 : 1000 });
+  const retries = isFast ? 120 : 240;
+  const delayMs = isFast ? 250 : 1000;
+  const group = await waitForConversation({ xmtp, groupId, expectedName, retries, delayMs });
+  if (!group) {
+    throw new Error('Failed to discover XMTP group after join; please retry once XMTP finishes provisioning.');
+  }
   return { group, groupId };
 }
 

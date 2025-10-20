@@ -279,38 +279,11 @@ export async function deployTempl({
 
   dlog('Syncing conversations to find group', groupId);
   const isFast = (() => { try { return import.meta?.env?.VITE_E2E_DEBUG === '1'; } catch { return false; } })();
-  // Be more generous in e2e to reduce flakiness on prod XMTP
-  const group = await waitForConversation({ xmtp, groupId, expectedName: expectedGroupName, retries: isFast ? 12 : 6, delayMs: isFast ? 500 : 1000 });
+  const retries = isFast ? 60 : 180;
+  const delayMs = isFast ? 500 : 1000;
+  const group = await waitForConversation({ xmtp, groupId, expectedName: expectedGroupName, retries, delayMs });
   if (!group) {
-    const resolveConversation = async () => {
-      const fallback = await waitForConversation({ xmtp, groupId, expectedName: expectedGroupName, retries: isFast ? 60 : 120, delayMs: isFast ? 500 : 1000 });
-      if (!fallback) return null;
-      return fallback;
-    };
-    const lazyGroup = {
-      id: groupId,
-      async send(content) {
-        const resolved = await resolveConversation();
-        if (!resolved?.send) {
-          throw new Error('Group not yet available to send messages');
-        }
-        lazyGroup.send = resolved.send.bind(resolved);
-        if (typeof resolved.sync === 'function') {
-          lazyGroup.sync = resolved.sync.bind(resolved);
-        }
-        if (typeof resolved.updateName === 'function') {
-          lazyGroup.updateName = resolved.updateName.bind(resolved);
-        }
-        if (typeof resolved.updateDescription === 'function') {
-          lazyGroup.updateDescription = resolved.updateDescription.bind(resolved);
-        }
-        if (resolved.members !== undefined) {
-          lazyGroup.members = resolved.members;
-        }
-        return lazyGroup.send(content);
-      }
-    };
-    return { contractAddress, group: lazyGroup, groupId };
+    throw new Error('Failed to discover XMTP group after deploy; please retry once XMTP finishes provisioning.');
   }
   return { contractAddress, group, groupId };
 }
