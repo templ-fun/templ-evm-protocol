@@ -24,6 +24,8 @@ abstract contract TemplBase is ReentrancyGuard {
     address internal constant DEFAULT_BURN_ADDRESS = 0x000000000000000000000000000000000000dEaD;
     /// @dev Caps the number of external reward tokens tracked to keep join gas bounded.
     uint256 internal constant MAX_EXTERNAL_REWARD_TOKENS = 256;
+    /// @dev Maximum entry fee supported before arithmetic would overflow downstream accounting.
+    uint256 internal constant MAX_ENTRY_FEE = type(uint128).max;
 
     /// @notice Percent of the entry fee that is burned on every join.
     uint256 public burnPercent;
@@ -64,8 +66,14 @@ abstract contract TemplBase is ReentrancyGuard {
     uint256 public executionDelayAfterQuorum;
     /// @notice Address that receives burn allocations.
     address public immutable burnAddress;
-    /// @notice Canonical templ home link surfaced across UIs and off-chain services.
-    string public templHomeLink;
+    /// @notice Templ metadata surfaced across UIs and off-chain services.
+    string public templName;
+    string public templDescription;
+    string public templLogoLink;
+    /// @notice Basis points of the entry fee that must be paid to create proposals.
+    uint256 public proposalCreationFeeBps;
+    /// @notice Basis points of the member pool share paid to a referral during joins.
+    uint256 public referralShareBps;
 
     struct Member {
         /// @notice Whether the address has successfully joined.
@@ -110,7 +118,11 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 newBurnPercent;
         uint256 newTreasuryPercent;
         uint256 newMemberPoolPercent;
-        string newHomeLink;
+        string newTemplName;
+        string newTemplDescription;
+        string newLogoLink;
+        uint256 newProposalCreationFeeBps;
+        uint256 newReferralShareBps;
         uint256 newMaxMembers;
         CurveConfig curveConfig;
         uint256 curveBaseEntryFee;
@@ -149,7 +161,9 @@ abstract contract TemplBase is ReentrancyGuard {
         ChangePriest,
         SetDictatorship,
         SetMaxMembers,
-        SetHomeLink,
+        SetMetadata,
+        SetProposalFee,
+        SetReferralShare,
         SetEntryFeeCurve,
         Undefined
     }
@@ -228,7 +242,9 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 amount
     );
 
-    event TemplHomeLinkUpdated(string previousLink, string newLink);
+    event TemplMetadataUpdated(string name, string description, string logoLink);
+    event ProposalCreationFeeUpdated(uint256 previousFeeBps, uint256 newFeeBps);
+    event ReferralShareBpsUpdated(uint256 previousBps, uint256 newBps);
 
     struct ExternalRewardState {
         uint256 poolBalance;
@@ -308,7 +324,11 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param _executionDelay Seconds to wait after quorum before execution (defaults when zero).
     /// @param _burnAddress Address receiving burn allocations (fallbacks to the dead address).
     /// @param _priestIsDictator Whether the templ starts in dictatorship mode.
-    /// @param _homeLink Canonical templ home link emitted on initialization.
+    /// @param _name Initial templ name surfaced off-chain.
+    /// @param _description Initial templ description.
+    /// @param _logoLink Initial templ logo link.
+    /// @param _proposalCreationFeeBps Proposal creation fee in basis points of the entry fee.
+    /// @param _referralShareBps Referral share in basis points of the member pool allocation.
     constructor(
         address _protocolFeeRecipient,
         address _accessToken,
@@ -320,7 +340,11 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 _executionDelay,
         address _burnAddress,
         bool _priestIsDictator,
-        string memory _homeLink
+        string memory _name,
+        string memory _description,
+        string memory _logoLink,
+        uint256 _proposalCreationFeeBps,
+        uint256 _referralShareBps
     ) {
         if (_protocolFeeRecipient == address(0) || _accessToken == address(0)) {
             revert TemplErrors.InvalidRecipient();
@@ -362,10 +386,9 @@ abstract contract TemplBase is ReentrancyGuard {
 
         executionDelayAfterQuorum = _executionDelay == 0 ? DEFAULT_EXECUTION_DELAY : _executionDelay;
         burnAddress = _burnAddress == address(0) ? DEFAULT_BURN_ADDRESS : _burnAddress;
-        templHomeLink = _homeLink;
-        if (bytes(_homeLink).length != 0) {
-            emit TemplHomeLinkUpdated("", _homeLink);
-        }
+        _setTemplMetadata(_name, _description, _logoLink);
+        _setProposalCreationFee(_proposalCreationFeeBps);
+        _setReferralShareBps(_referralShareBps);
     }
 
     /// @dev Updates the split between burn, treasury, and member pool slices.
@@ -498,45 +521,75 @@ abstract contract TemplBase is ReentrancyGuard {
             return amount;
         }
         if (segment.style == CurveStyle.Linear) {
-            uint256 scaled = uint256(segment.rateBps) * steps;
-            uint256 offset = TOTAL_PERCENT + scaled;
-            if (forward) {
-                return Math.mulDiv(amount, offset, TOTAL_PERCENT);
+            uint256 rate = uint256(segment.rateBps);
+            if (rate == 0 || steps == 0) {
+                return amount;
             }
-            if (offset == 0) revert TemplErrors.InvalidCurveConfig();
-            // Round up when solving the inverse so recomputing the curve never prices below the target.
-            return Math.mulDiv(amount, TOTAL_PERCENT, offset, Math.Rounding.Ceil);
+            if (steps > type(uint256).max / rate) {
+                return MAX_ENTRY_FEE;
+            }
+            uint256 scaled = rate * steps;
+            uint256 offset;
+            unchecked {
+                offset = TOTAL_PERCENT + scaled;
+            }
+            if (offset < TOTAL_PERCENT) {
+                return MAX_ENTRY_FEE;
+            }
+            if (forward) {
+                if (_mulWouldOverflow(amount, offset)) {
+                    return MAX_ENTRY_FEE;
+                }
+                uint256 linearResult = Math.mulDiv(amount, offset, TOTAL_PERCENT);
+                return linearResult > MAX_ENTRY_FEE ? MAX_ENTRY_FEE : linearResult;
+            }
+            if (_mulWouldOverflow(amount, TOTAL_PERCENT)) {
+                return MAX_ENTRY_FEE;
+            }
+            uint256 inverseResult = Math.mulDiv(amount, TOTAL_PERCENT, offset, Math.Rounding.Ceil);
+            return inverseResult > MAX_ENTRY_FEE ? MAX_ENTRY_FEE : inverseResult;
         }
         if (segment.style == CurveStyle.Exponential) {
-            uint256 factor = _powBps(segment.rateBps, steps);
-            if (forward) {
-                return Math.mulDiv(amount, factor, TOTAL_PERCENT);
+            (uint256 factor, bool overflow) = _powBps(segment.rateBps, steps);
+            if (overflow) {
+                return MAX_ENTRY_FEE;
             }
-            if (factor == 0) revert TemplErrors.InvalidCurveConfig();
-            // Factor applies the same rounding guard as the linear segment case.
-            return Math.mulDiv(amount, TOTAL_PERCENT, factor, Math.Rounding.Ceil);
+            return forward ? _scaleForward(amount, factor) : _scaleInverse(amount, factor);
         }
         revert TemplErrors.InvalidCurveConfig();
     }
 
     /// @dev Computes a basis-point scaled exponent using exponentiation by squaring.
-    function _powBps(uint256 factorBps, uint256 exponent) internal pure returns (uint256) {
+    function _powBps(uint256 factorBps, uint256 exponent) internal pure returns (uint256 result, bool overflow) {
         if (exponent == 0) {
-            return TOTAL_PERCENT;
+            return (TOTAL_PERCENT, false);
         }
-        uint256 result = TOTAL_PERCENT;
+        result = TOTAL_PERCENT;
         uint256 baseFactor = factorBps;
         uint256 remaining = exponent;
         while (remaining > 0) {
             if (remaining & 1 == 1) {
-                result = Math.mulDiv(result, baseFactor, TOTAL_PERCENT);
+                if (_mulWouldOverflow(result, baseFactor)) {
+                    return (0, true);
+                }
+                result = (result * baseFactor) / TOTAL_PERCENT;
+                if (result == 0) {
+                    return (0, true);
+                }
             }
             remaining >>= 1;
-            if (remaining > 0) {
-                baseFactor = Math.mulDiv(baseFactor, baseFactor, TOTAL_PERCENT);
+            if (remaining == 0) {
+                break;
+            }
+            if (_mulWouldOverflow(baseFactor, baseFactor)) {
+                return (0, true);
+            }
+            baseFactor = (baseFactor * baseFactor) / TOTAL_PERCENT;
+            if (baseFactor == 0) {
+                return (0, true);
             }
         }
-        return result;
+        return (result, false);
     }
 
     /// @dev Validates curve configuration input.
@@ -564,6 +617,7 @@ abstract contract TemplBase is ReentrancyGuard {
     function _validateEntryFeeAmount(uint256 amount) internal pure {
         if (amount < 10) revert TemplErrors.EntryFeeTooSmall();
         if (amount % 10 != 0) revert TemplErrors.InvalidEntryFee();
+        if (amount > MAX_ENTRY_FEE) revert TemplErrors.EntryFeeTooLarge();
     }
 
     /// @dev Emits the standardized curve update event with the current configuration.
@@ -591,14 +645,44 @@ abstract contract TemplBase is ReentrancyGuard {
         _autoPauseIfLimitReached();
     }
 
-    /// @dev Writes a new templ home link and emits an event when it changes.
-    function _setTemplHomeLink(string memory newLink) internal {
-        if (keccak256(bytes(templHomeLink)) == keccak256(bytes(newLink))) {
+    /// @dev Writes new templ metadata and emits an event when it changes.
+    function _setTemplMetadata(
+        string memory newName,
+        string memory newDescription,
+        string memory newLogoLink
+    ) internal {
+        bool changed = keccak256(bytes(templName)) != keccak256(bytes(newName)) ||
+            keccak256(bytes(templDescription)) != keccak256(bytes(newDescription)) ||
+            keccak256(bytes(templLogoLink)) != keccak256(bytes(newLogoLink));
+        if (!changed) {
             return;
         }
-        string memory previous = templHomeLink;
-        templHomeLink = newLink;
-        emit TemplHomeLinkUpdated(previous, newLink);
+        templName = newName;
+        templDescription = newDescription;
+        templLogoLink = newLogoLink;
+        emit TemplMetadataUpdated(newName, newDescription, newLogoLink);
+    }
+
+    /// @dev Updates the proposal creation fee and emits an event when it changes.
+    function _setProposalCreationFee(uint256 newFeeBps) internal {
+        if (newFeeBps > TOTAL_PERCENT) revert TemplErrors.InvalidPercentage();
+        uint256 previous = proposalCreationFeeBps;
+        if (previous == newFeeBps) {
+            return;
+        }
+        proposalCreationFeeBps = newFeeBps;
+        emit ProposalCreationFeeUpdated(previous, newFeeBps);
+    }
+
+    /// @dev Updates the referral share BPS and emits an event when it changes.
+    function _setReferralShareBps(uint256 newBps) internal {
+        if (newBps > TOTAL_PERCENT) revert TemplErrors.InvalidPercentage();
+        uint256 previous = referralShareBps;
+        if (previous == newBps) {
+            return;
+        }
+        referralShareBps = newBps;
+        emit ReferralShareBpsUpdated(previous, newBps);
     }
 
     /// @dev Pauses new joins when a membership cap is set and already reached.
@@ -625,6 +709,33 @@ abstract contract TemplBase is ReentrancyGuard {
         }
         externalRewardTokens.pop();
         externalRewardTokenIndex[token] = 0;
+    }
+
+    /// @dev Scales `amount` by `multiplier` (basis points) with saturation at MAX_ENTRY_FEE.
+    function _scaleForward(uint256 amount, uint256 multiplier) internal pure returns (uint256) {
+        if (_mulWouldOverflow(amount, multiplier)) {
+            return MAX_ENTRY_FEE;
+        }
+        uint256 result = Math.mulDiv(amount, multiplier, TOTAL_PERCENT);
+        return result > MAX_ENTRY_FEE ? MAX_ENTRY_FEE : result;
+    }
+
+    /// @dev Inverts the scaling by dividing `amount` by `divisor` (basis points) while rounding up.
+    function _scaleInverse(uint256 amount, uint256 divisor) internal pure returns (uint256) {
+        if (divisor == 0) revert TemplErrors.InvalidCurveConfig();
+        if (_mulWouldOverflow(amount, TOTAL_PERCENT)) {
+            return MAX_ENTRY_FEE;
+        }
+        uint256 result = Math.mulDiv(amount, TOTAL_PERCENT, divisor, Math.Rounding.Ceil);
+        return result > MAX_ENTRY_FEE ? MAX_ENTRY_FEE : result;
+    }
+
+    /// @dev Returns true when multiplying `a` and `b` would overflow uint256.
+    function _mulWouldOverflow(uint256 a, uint256 b) internal pure returns (bool) {
+        if (a == 0 || b == 0) {
+            return false;
+        }
+        return a > type(uint256).max / b;
     }
 
 }

@@ -74,10 +74,28 @@ abstract contract TemplTreasury is TemplBase {
         _updateDictatorship(enabled);
     }
 
-    /// @notice Governance action that updates the templ home link shared across surfaces.
-    /// @param newLink Canonical URL to persist.
-    function setTemplHomeLinkDAO(string calldata newLink) external onlyDAO {
-        _setTemplHomeLink(newLink);
+    /// @notice Governance action that updates templ metadata.
+    /// @param newName New templ name to persist.
+    /// @param newDescription New templ description to persist.
+    /// @param newLogoLink New templ logo link to persist.
+    function setTemplMetadataDAO(
+        string calldata newName,
+        string calldata newDescription,
+        string calldata newLogoLink
+    ) external onlyDAO {
+        _setTemplMetadata(newName, newDescription, newLogoLink);
+    }
+
+    /// @notice Governance action that updates the proposal creation fee expressed in basis points.
+    /// @param newFeeBps New proposal creation fee in basis points.
+    function setProposalCreationFeeBpsDAO(uint256 newFeeBps) external onlyDAO {
+        _setProposalCreationFee(newFeeBps);
+    }
+
+    /// @notice Governance action that updates the referral share basis points.
+    /// @param newReferralBps New referral share expressed in basis points.
+    function setReferralShareBpsDAO(uint256 newReferralBps) external onlyDAO {
+        _setReferralShareBps(newReferralBps);
     }
 
     /// @notice Governance action that reconfigures the entry fee curve.
