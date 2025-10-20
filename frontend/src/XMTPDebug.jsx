@@ -101,9 +101,15 @@ function XMTPDebug() {
               // Try to fetch installation count via inboxStateFromInboxIds
               try {
                 const env = (() => {
-                  const forced = import.meta.env.VITE_XMTP_ENV || '';
+                  const forced = import.meta.env.VITE_XMTP_ENV?.trim();
                   if (forced) return forced;
-                  try { return ['localhost','127.0.0.1'].includes(window.location.hostname) ? 'dev' : 'production'; } catch { return 'production'; }
+                  try {
+                    const override = window.localStorage?.getItem?.('templ:xmtpEnv')?.trim();
+                    if (override && ['local', 'dev', 'production'].includes(override)) {
+                      return override;
+                    }
+                  } catch {/* ignore */}
+                  return 'production';
                 })();
                 const states = await Client.inboxStateFromInboxIds([cachedInbox], env);
                 const state = Array.isArray(states) ? states[0] : null;

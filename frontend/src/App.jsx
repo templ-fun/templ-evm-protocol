@@ -278,9 +278,14 @@ async function pruneExcessInstallations({ address, signer, cache, env, keepInsta
 function resolveXmtpEnv() {
   const forced = import.meta.env.VITE_XMTP_ENV?.trim();
   if (forced) return forced;
-  if (typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname)) {
-    return 'dev';
-  }
+  try {
+    if (typeof window !== 'undefined') {
+      const override = window.localStorage?.getItem?.('templ:xmtpEnv')?.trim();
+      if (override && ['local', 'dev', 'production'].includes(override)) {
+        return override;
+      }
+    }
+  } catch {/* ignore storage errors */}
   return 'production';
 }
 
@@ -2379,10 +2384,8 @@ function App() {
     // Kick off identity readiness check in background so deploy/join can await it later
     try {
       const ensureReady = async () => {
-        const onLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-        const forcedEnv = import.meta.env.VITE_XMTP_ENV?.trim();
-        const env = forcedEnv || (onLocalhost ? 'dev' : null);
-        if (!env) {
+        const env = resolveXmtpEnv();
+        if (env === 'production') {
           identityReadyRef.current = true;
           return true;
         }
@@ -2881,28 +2884,26 @@ function App() {
         if (identityReadyPromiseRef.current) {
           await identityReadyPromiseRef.current;
         } else if (xmtp?.inboxId) {
-        const onLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-        const forcedEnv = import.meta.env.VITE_XMTP_ENV?.trim();
-        const env = forcedEnv || (onLocalhost ? 'dev' : null);
-        if (!env) {
-          identityReadyRef.current = true;
-        } else {
-          const inboxId = xmtp.inboxId.replace(/^0x/i, '');
-          let max = import.meta.env?.VITE_E2E_DEBUG === '1' ? 120 : 90;
-          let delay = 1000;
-          if (env === 'local') { max = 10; delay = 150; }
-          for (let i = 0; i < max && !identityReadyRef.current; i++) {
-            try {
-              const resp = await fetch(`${BACKEND_URL}/debug/inbox-state?inboxId=${inboxId}&env=${env}`).then((r) => r.json());
-              if (resp && Array.isArray(resp.states) && resp.states.length > 0) {
-                identityReadyRef.current = true;
-                break;
-              }
-            } catch {}
-            try { await xmtp.preferences?.inboxState?.(true); } catch {}
-            await new Promise((r) => setTimeout(r, delay));
+          const env = resolveXmtpEnv();
+          if (env === 'production') {
+            identityReadyRef.current = true;
+          } else {
+            const inboxId = xmtp.inboxId.replace(/^0x/i, '');
+            let max = import.meta.env?.VITE_E2E_DEBUG === '1' ? 120 : 90;
+            let delay = 1000;
+            if (env === 'local') { max = 10; delay = 150; }
+            for (let i = 0; i < max && !identityReadyRef.current; i++) {
+              try {
+                const resp = await fetch(`${BACKEND_URL}/debug/inbox-state?inboxId=${inboxId}&env=${env}`).then((r) => r.json());
+                if (resp && Array.isArray(resp.states) && resp.states.length > 0) {
+                  identityReadyRef.current = true;
+                  break;
+                }
+              } catch {}
+              try { await xmtp.preferences?.inboxState?.(true); } catch {}
+              await new Promise((r) => setTimeout(r, delay));
+            }
           }
-        }
         }
       } catch {}
       if (!identityReadyRef.current) {
