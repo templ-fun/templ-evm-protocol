@@ -1,7 +1,7 @@
 // @ts-check
 import { BACKEND_URL } from '../config.js';
-import { buildJoinTypedData } from '@shared/signing.js';
-import { waitForConversation, deriveTemplGroupName } from '@shared/xmtp.js';
+import { buildJoinTypedData } from '../../../shared/signing.js';
+import { waitForConversation } from '../../../shared/xmtp.js';
 import { dlog, isDebugEnabled } from './utils.js';
 import { registerTemplBackend } from './deployment.js';
 import { postJson } from './http.js';
@@ -73,45 +73,6 @@ export async function getTokenAllowance({ ethers, providerOrSigner, owner, token
   return BigInt(current);
 }
 
-function resolveXmtpEnvForBrowser() {
-  try {
-    const forced = import.meta.env?.VITE_XMTP_ENV?.trim();
-    if (forced) return forced;
-    if (typeof window !== 'undefined') {
-      const override = window.localStorage?.getItem?.('templ:xmtpEnv')?.trim();
-      if (override && ['local', 'dev', 'production'].includes(override)) {
-        return override;
-      }
-    }
-  } catch {/* ignore */}
-  return 'production';
-}
-
-async function ensureInboxReady({ xmtp, retries = 90, delayMs = 1000 }) {
-  if (!xmtp?.inboxId) return true;
-  const inboxId = String(xmtp.inboxId).replace(/^0x/i, '');
-  const env = resolveXmtpEnvForBrowser();
-  let Client;
-  try {
-    // Dynamic import to avoid test/bundling surprises
-    ({ Client } = await import('@xmtp/browser-sdk'));
-  } catch {/* ignore */}
-  for (let i = 0; i < retries; i++) {
-    try { await xmtp?.preferences?.inboxState?.(true); } catch {/* ignore */}
-    try { await xmtp?.conversations?.sync?.(); } catch {/* ignore */}
-    if (Client?.inboxStateFromInboxIds) {
-      try {
-        const states = await Client.inboxStateFromInboxIds([inboxId], env);
-        if (Array.isArray(states) && states.length > 0) {
-          return true;
-        }
-      } catch {/* ignore */}
-    }
-    await new Promise((r) => setTimeout(r, delayMs));
-  }
-  return false;
-}
-
 async function ensureTokenAllowance({ ethers, signer, owner, token, spender, amount, txOptions }) {
   const zeroAddress = (typeof ethers?.ZeroAddress === 'string'
     ? ethers.ZeroAddress
@@ -119,9 +80,17 @@ async function ensureTokenAllowance({ ethers, signer, owner, token, spender, amo
   if (String(token).toLowerCase() === zeroAddress) {
     return txOptions;
   }
+  const erc20 = new ethers.Contract(
+    token,
+    [
+      'function allowance(address owner, address spender) view returns (uint256)',
+      'function approve(address spender, uint256 value) returns (bool)'
+    ],
+    signer
+  );
   let nextOptions = { ...txOptions };
   try {
-    const current = await getTokenAllowance({ ethers, providerOrSigner: signer.provider ?? signer, owner, token, spender });
+    const current = BigInt(await erc20.allowance(owner, spender));
     if (current >= amount) {
       dlog('purchaseAccess: allowance sufficient', { allowance: current.toString(), required: amount.toString() });
       return nextOptions;
@@ -130,11 +99,6 @@ async function ensureTokenAllowance({ ethers, signer, owner, token, spender, amo
     if (approvalOverrides && Object.prototype.hasOwnProperty.call(approvalOverrides, 'value')) {
       delete approvalOverrides.value;
     }
-    const erc20 = new ethers.Contract(
-      token,
-      ['function approve(address spender, uint256 value) returns (bool)'],
-      signer
-    );
     const approval = await erc20.approve(spender, amount, approvalOverrides);
     let overrideNonce = null;
     if (approval?.nonce !== undefined && approval?.nonce !== null) {
@@ -159,41 +123,6 @@ async function ensureTokenAllowance({ ethers, signer, owner, token, spender, amo
   return nextOptions;
 }
 
-async function hasSufficientAllowance({ ethers, providerOrSigner, owner, token, spender, amount }) {
-  try {
-    const allowance = await getTokenAllowance({ ethers, providerOrSigner, owner, token, spender });
-    return allowance >= amount;
-  } catch (err) {
-    dlog('hasSufficientAllowance: failed to read allowance', err?.message || err);
-    return false;
-  }
-}
-
-async function assertSufficientBalance({ ethers, providerOrSigner, token, owner, amount }) {
-  const zeroAddress = (typeof ethers?.ZeroAddress === 'string'
-    ? ethers.ZeroAddress
-    : '0x0000000000000000000000000000000000000000').toLowerCase();
-  if (!providerOrSigner) {
-    throw new Error('Join failed: missing provider to check balances');
-  }
-  if (String(token).toLowerCase() === zeroAddress) {
-    const balance = await providerOrSigner.getBalance(owner);
-    if (BigInt(balance) < amount) {
-      throw new Error('Insufficient native balance for entry fee');
-    }
-    return;
-  }
-  const erc20 = new ethers.Contract(
-    token,
-    ['function balanceOf(address owner) view returns (uint256)'],
-    providerOrSigner
-  );
-  const balance = await erc20.balanceOf(owner);
-  if (BigInt(balance) < amount) {
-    throw new Error('Insufficient token balance for entry fee');
-  }
-}
-
 /**
  * Approve entry fee (if needed) and purchase templ access.
  * @param {import('../flows.types').PurchaseAccessRequest} params
@@ -207,8 +136,7 @@ export async function purchaseAccess({
   templArtifact,
   tokenAddress,
   amount,
-  txOptions = {},
-  autoApprove = true
+  txOptions = {}
 }) {
   if (!ethers || !signer || !templAddress || !templArtifact) {
     throw new Error('Missing required purchaseAccess parameters');
@@ -225,11 +153,6 @@ export async function purchaseAccess({
     if (typeof contract.hasAccess === 'function') {
       const already = await contract.hasAccess(memberAddress);
       if (already) return false;
-    } else if (typeof contract.members === 'function') {
-      try {
-        const info = await contract.members(memberAddress);
-        if (info && info.joined) return false;
-      } catch {}
     }
   } catch {}
   const { token: resolvedToken, amount: resolvedAmount } = await resolveAccessConfig({
@@ -238,78 +161,19 @@ export async function purchaseAccess({
     amount
   });
 
-  if (autoApprove) {
-    txOptions = await ensureTokenAllowance({
-      ethers,
-      signer,
-      owner: memberAddress,
-      token: resolvedToken,
-      spender: templAddress,
-      amount: resolvedAmount,
-      txOptions
-    });
-  } else {
-    const allowanceOk = await hasSufficientAllowance({
-      ethers,
-      providerOrSigner: signer.provider ?? signer,
-      owner: memberAddress,
-      token: resolvedToken,
-      spender: templAddress,
-      amount: resolvedAmount
-    });
-    if (!allowanceOk) {
-      throw new Error('Token approval required before joining');
-    }
-  }
-
-  await assertSufficientBalance({
+  txOptions = await ensureTokenAllowance({
     ethers,
-    providerOrSigner: signer.provider ?? signer,
-    token: resolvedToken,
+    signer,
     owner: memberAddress,
-    amount: resolvedAmount
+    token: resolvedToken,
+    spender: templAddress,
+    amount: resolvedAmount,
+    txOptions
   });
 
-  try {
-    const maxMembersRaw = await contract.MAX_MEMBERS();
-    if (maxMembersRaw !== undefined && maxMembersRaw !== null) {
-      const maxMembers = BigInt(maxMembersRaw);
-      if (maxMembers > 0n) {
-        const currentMembers = BigInt(await contract.getMemberCount());
-        if (currentMembers >= maxMembers) {
-          throw new Error('Member limit reached for this templ');
-        }
-      }
-    }
-  } catch (err) {
-    if (err instanceof Error && err.message === 'Member limit reached for this templ') {
-      throw err;
-    }
-  }
-
-  try {
-    if (typeof contract.paused === 'function') {
-      const paused = await contract.paused();
-      if (paused) {
-        throw new Error('Templ is currently paused; ask the priest to unpause before joining');
-      }
-    }
-  } catch (err) {
-    if (err instanceof Error && /Templ is currently paused/.test(err.message)) {
-      throw err;
-    }
-  }
-
   const purchaseOverrides = { ...txOptions };
-  dlog('purchaseAccess: sending join()', { overrides: purchaseOverrides });
-  let tx;
-  if (typeof contract.join === 'function') {
-    tx = await contract.join(purchaseOverrides);
-  } else if (typeof contract.purchaseAccess === 'function') {
-    tx = await contract.purchaseAccess(purchaseOverrides);
-  } else {
-    throw new Error('Join failed: contract does not expose join()');
-  }
+  dlog('purchaseAccess: sending purchase', { overrides: purchaseOverrides });
+  const tx = await contract.purchaseAccess(purchaseOverrides);
   await tx.wait();
   dlog('purchaseAccess: tx mined');
   return true;
@@ -328,9 +192,7 @@ export async function purchaseAndJoin({
   templAddress,
   templArtifact,
   backendUrl = BACKEND_URL,
-  txOptions = {},
-  onProgress,
-  autoApprove = true
+  txOptions = {}
 }) {
   async function fixKeyPackages(max = 30) {
     try {
@@ -359,19 +221,14 @@ export async function purchaseAndJoin({
   let normalizedMemberAddress = memberAddress;
   try { normalizedMemberAddress = ethers.getAddress(memberAddress); } catch {}
   if (!skipPurchase) {
-    onProgress?.('purchase:start');
     await purchaseAccess({
       ethers,
       signer,
       walletAddress: normalizedMemberAddress,
       templAddress,
       templArtifact,
-      txOptions,
-      autoApprove
+      txOptions
     });
-    onProgress?.('purchase:complete');
-  } else {
-    onProgress?.('purchase:skipped');
   }
   if (isDebugEnabled()) {
     try {
@@ -383,17 +240,7 @@ export async function purchaseAndJoin({
   const network = await signer.provider?.getNetwork?.();
   const chainId = Number(network?.chainId || 1337);
   const joinTyped = buildJoinTypedData({ chainId, contractAddress: templAddress.toLowerCase() });
-  onProgress?.('join:signature:start');
   const signature = await signer.signTypedData(joinTyped.domain, joinTyped.types, joinTyped.message);
-  onProgress?.('join:signature:complete');
-
-  // Ensure the user's XMTP inbox is visible on the network before submitting join
-  try {
-    const ready = await ensureInboxReady({ xmtp });
-    if (!ready) {
-      dlog('purchaseAndJoin: inbox not observed on network after wait');
-    }
-  } catch {/* ignore */}
 
   const joinPayload = {
     contractAddress: templAddress,
@@ -406,12 +253,16 @@ export async function purchaseAndJoin({
     expiry: joinTyped.message.expiry
   };
   dlog('purchaseAndJoin: sending join payload', joinPayload);
-  onProgress?.('join:submission:start');
   const res = await postJson(`${backendUrl}/join`, joinPayload);
   try { console.log('[purchaseAndJoin] /join status', res.status); } catch {}
 
   if (res.status === 404 && isDebugEnabled()) {
-    dlog('purchaseAndJoin: templ not found in backend, attempting registration');
+    try {
+      const debugMissing = await fetch(`${backendUrl}/debug/group?contractAddress=${templAddress}&refresh=1`).then((r) => r.json());
+      dlog('purchaseAndJoin: debug group after 404', debugMissing);
+    } catch (err) {
+      dlog('purchaseAndJoin: debug group fetch after 404 failed', err?.message || err);
+    }
     try {
       await registerTemplBackend({ ethers, signer, walletAddress: normalizedMemberAddress, templAddress, backendUrl });
     } catch (err) {
@@ -426,7 +277,7 @@ export async function purchaseAndJoin({
       if (retry.ok) {
         const data = await retry.json();
         if (data && typeof data.groupId === 'string') {
-          return await finalizeJoin({ xmtp, groupId: String(data.groupId).replace(/^0x/i, ''), templAddress });
+          return await finalizeJoin({ xmtp, groupId: String(data.groupId).replace(/^0x/i, '') });
         }
       }
     } catch (err) {
@@ -439,7 +290,6 @@ export async function purchaseAndJoin({
     const isFast = (() => { try { return import.meta?.env?.VITE_E2E_DEBUG === '1'; } catch { return false; } })();
     const tries = isFast ? 8 : 90;
     const delay = isFast ? 250 : 1000;
-    onProgress?.('join:submission:waiting');
     for (let i = 0; i < tries; i++) {
       try { await xmtp?.preferences?.inboxState?.(true); } catch {}
       try { await xmtp?.conversations?.sync?.(); } catch {}
@@ -449,13 +299,12 @@ export async function purchaseAndJoin({
         inboxId: xmtp?.inboxId?.replace?.(/^0x/i, '') || undefined
       };
       dlog('purchaseAndJoin: retry join payload', againPayload);
-      onProgress?.('join:submission:retry');
       const again = await postJson(`${backendUrl}/join`, againPayload);
       try { console.log('[purchaseAndJoin] retry /join status', again.status); } catch {}
       if (again.ok) {
         const data = await again.json();
         if (data && typeof data.groupId === 'string') {
-          return await finalizeJoin({ xmtp, groupId: String(data.groupId).replace(/^0x/i, ''), templAddress });
+          return await finalizeJoin({ xmtp, groupId: String(data.groupId).replace(/^0x/i, '') });
         }
       }
     }
@@ -476,102 +325,19 @@ export async function purchaseAndJoin({
   const groupId = String(data.groupId);
   dlog('purchaseAndJoin: backend returned groupId=', groupId);
   try {
-    // Debug information removed - backend debug endpoints not available in current system
-    dlog('purchaseAndJoin: completed join process successfully');
-  } catch {}
-  onProgress?.('join:submission:complete');
-  const result = await finalizeJoin({ xmtp, groupId, templAddress });
-  onProgress?.('join:complete');
-  return result;
-}
-
-/**
- * Request a chat invite only (assumes access already purchased on-chain).
- * Performs typed-data signing and backend /join call, then waits for the group.
- */
-export async function requestChatInvite({
-  ethers,
-  xmtp,
-  signer,
-  walletAddress,
-  templAddress,
-  templArtifact,
-  backendUrl = BACKEND_URL,
-  onProgress
-}) {
-  if (!ethers || !xmtp || !signer || !templAddress || !templArtifact) {
-    throw new Error('Missing parameters for requestChatInvite');
-  }
-  // Ensure inbox is visible on the network to reduce 503s
-  try { await ensureInboxReady({ xmtp }); } catch {/* ignore */}
-
-  let memberAddress = walletAddress;
-  if (!memberAddress || typeof memberAddress !== 'string') {
-    try { memberAddress = await signer.getAddress(); } catch {}
-  }
-  if (!memberAddress) {
-    throw new Error('Join failed: missing member address');
-  }
-  const network = await signer.provider?.getNetwork?.();
-  const chainId = Number(network?.chainId || 1337);
-  const joinTyped = buildJoinTypedData({ chainId, contractAddress: templAddress.toLowerCase() });
-  onProgress?.('join:signature:start');
-  const signature = await signer.signTypedData(joinTyped.domain, joinTyped.types, joinTyped.message);
-  onProgress?.('join:signature:complete');
-
-  const joinPayload = {
-    contractAddress: templAddress,
-    memberAddress: memberAddress,
-    inboxId: xmtp?.inboxId?.replace?.(/^0x/i, '') || undefined,
-    signature,
-    chainId,
-    nonce: joinTyped.message.nonce,
-    issuedAt: joinTyped.message.issuedAt,
-    expiry: joinTyped.message.expiry
-  };
-
-  onProgress?.('join:submission:start');
-  let res = await postJson(`${backendUrl}/join`, joinPayload);
-  if (res.status === 503) {
-    onProgress?.('join:submission:waiting');
-    // Retry loop similar to purchaseAndJoin
-    const tries = 90;
-    const delay = 1000;
-    for (let i = 0; i < tries; i++) {
-      try { await xmtp?.preferences?.inboxState?.(true); } catch {}
-      try { await xmtp?.conversations?.sync?.(); } catch {}
-      await new Promise((r) => setTimeout(r, delay));
-      onProgress?.('join:submission:retry');
-      res = await postJson(`${backendUrl}/join`, joinPayload);
-      if (res.ok) break;
+    // @ts-ignore
+    if (import.meta?.env?.VITE_ENABLE_BACKEND_FALLBACK === '1') {
+      const dbg = await fetch(`${backendUrl}/debug/membership?contractAddress=${templAddress}&inboxId=${xmtp?.inboxId || ''}`).then(r => r.json());
+      dlog('purchaseAndJoin: server membership snapshot', dbg);
     }
-  }
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`Join failed: ${res.status} ${res.statusText} ${body}`.trim());
-  }
-  onProgress?.('join:submission:complete');
-  const data = await res.json();
-  if (!data || typeof data.groupId !== 'string' || data.groupId.length === 0) {
-    throw new Error('Invalid /join response: missing groupId');
-  }
-  const groupId = String(data.groupId);
-  const result = await finalizeJoin({ xmtp, groupId, templAddress });
-  onProgress?.('join:complete');
-  return result;
+  } catch {}
+  return await finalizeJoin({ xmtp, groupId });
 }
 
-async function finalizeJoin({ xmtp, groupId, templAddress }) {
+async function finalizeJoin({ xmtp, groupId }) {
   const isFast = (() => { try { return import.meta?.env?.VITE_E2E_DEBUG === '1'; } catch { return false; } })();
-  const expectedName = deriveTemplGroupName(templAddress);
-  const retries = isFast ? 120 : 240;
-  const delayMs = isFast ? 250 : 1000;
-  const group = await waitForConversation({ xmtp, groupId, expectedName, retries, delayMs });
-  if (!group) {
-    dlog('finalizeJoin: XMTP group discovery still pending', { groupId, templAddress });
-    return { group: null, groupId, discoveryPending: true };
-  }
-  return { group, groupId, discoveryPending: false };
+  const group = await waitForConversation({ xmtp, groupId, retries: isFast ? 25 : 60, delayMs: isFast ? 200 : 1000 });
+  return { group, groupId };
 }
 
 export async function sendMessage({ group, content }) {
@@ -596,7 +362,12 @@ export async function getTreasuryInfo({ ethers, providerOrSigner, templAddress, 
 
 export async function getClaimable({ ethers, providerOrSigner, templAddress, templArtifact, memberAddress }) {
   const contract = new ethers.Contract(templAddress, templArtifact.abi, providerOrSigner);
-  const amount = await contract.getClaimableMemberRewards(memberAddress);
+  let amount;
+  if (typeof contract.getClaimableMemberRewards === 'function') {
+    amount = await contract.getClaimableMemberRewards(memberAddress);
+  } else {
+    amount = await contract.getClaimablePoolAmount(memberAddress);
+  }
   return BigInt(amount).toString();
 }
 
@@ -608,7 +379,12 @@ export async function getExternalRewards({ ethers, providerOrSigner, templAddres
     const [poolBalance, cumulativeRewards, remainder] = await contract.getExternalRewardState(token);
     let claimable = 0n;
     if (memberAddress) {
-      const c = await contract.getClaimableExternalReward(memberAddress, token);
+      let c = 0n;
+      if (typeof contract.getClaimableExternalReward === 'function') {
+        c = await contract.getClaimableExternalReward(memberAddress, token);
+      } else {
+        c = await contract.getClaimableExternalToken(memberAddress, token);
+      }
       claimable = BigInt(c ?? 0n);
     }
     results.push({
@@ -624,12 +400,22 @@ export async function getExternalRewards({ ethers, providerOrSigner, templAddres
 
 export async function claimMemberPool({ ethers, signer, templAddress, templArtifact, txOptions = {} }) {
   const contract = new ethers.Contract(templAddress, templArtifact.abi, signer);
-  const tx = await contract.claimMemberRewards(txOptions);
+  let tx;
+  if (typeof contract.claimMemberRewards === 'function') {
+    tx = await contract.claimMemberRewards(txOptions);
+  } else {
+    tx = await contract.claimMemberPool(txOptions);
+  }
   await tx.wait();
 }
 
 export async function claimExternalToken({ ethers, signer, templAddress, templArtifact, token, txOptions = {} }) {
   const contract = new ethers.Contract(templAddress, templArtifact.abi, signer);
-  const tx = await contract.claimExternalReward(token, txOptions);
+  let tx;
+  if (typeof contract.claimExternalReward === 'function') {
+    tx = await contract.claimExternalReward(token, txOptions);
+  } else {
+    tx = await contract.claimExternalToken(token, txOptions);
+  }
   await tx.wait();
 }

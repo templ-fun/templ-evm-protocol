@@ -1,7 +1,7 @@
 // @ts-check
 import { BACKEND_URL } from '../config.js';
-import { buildCreateTypedData } from '@shared/signing.js';
-import { waitForConversation, deriveTemplGroupName } from '@shared/xmtp.js';
+import { buildCreateTypedData } from '../../../shared/signing.js';
+import { waitForConversation } from '../../../shared/xmtp.js';
 import { addToTestRegistry, dlog, isDebugEnabled } from './utils.js';
 import { postJson } from './http.js';
 
@@ -166,6 +166,7 @@ export async function deployTempl({
     treasuryBps === 3_000 &&
     memberBps === 3_000 &&
     config.priest === walletAddress &&
+    config.burnAddress === zeroAddress &&
     !hasCustomBurn &&
     !hasCustomQuorum &&
     !hasCustomDelay &&
@@ -198,38 +199,6 @@ export async function deployTempl({
     dlog('XMTP not ready at deploy; backend will resolve inboxId from network');
   }
 
-  // If the XMTP client exists, try to ensure the inbox is visible on the network
-  if (xmtp?.inboxId) {
-    try {
-      const { Client } = await import('@xmtp/browser-sdk');
-      const id = String(xmtp.inboxId).replace(/^0x/i, '');
-      const env = (() => {
-        try {
-          const forced = import.meta?.env?.VITE_XMTP_ENV?.trim();
-          if (forced) return forced;
-          if (typeof window !== 'undefined') {
-            const override = window.localStorage?.getItem?.('templ:xmtpEnv')?.trim();
-            if (override && ['local', 'dev', 'production'].includes(override)) {
-              return override;
-            }
-          }
-        } catch {/* ignore */}
-        return 'production';
-      })();
-      let ok = false;
-      for (let i = 0; i < 30; i++) {
-        try { await xmtp?.preferences?.inboxState?.(true); } catch {}
-        try { await xmtp?.conversations?.sync?.(); } catch {}
-        try {
-          const states = await Client.inboxStateFromInboxIds([id], env);
-          if (Array.isArray(states) && states.length > 0) { ok = true; break; }
-        } catch {}
-        await new Promise(r => setTimeout(r, 500));
-      }
-      dlog('deployTempl: inbox visibility preflight', { ok, env });
-    } catch {/* ignore */}
-  }
-
   try { console.log('[deployTempl] calling /templs'); } catch {}
   const registerPayload = {
     contractAddress,
@@ -259,34 +228,32 @@ export async function deployTempl({
   }
   if (!hasGroupId) {
     dlog('deployTempl: backend did not return groupId; continuing without group binding');
-    // XMTP group creation may fail independently; surface deploy result without group linkage
     return { contractAddress, group: null, groupId: null };
   }
   const groupId = String(data.groupId);
-  const expectedGroupName = deriveTemplGroupName(contractAddress);
   // In e2e fast mode, return immediately; conversation discovery can happen later
   try {
     // @ts-ignore - vite injects env on import.meta
     if (import.meta?.env?.VITE_E2E_DEBUG === '1') {
-      return { contractAddress, group: null, groupId, discoveryPending: true };
+      return { contractAddress, group: null, groupId };
     }
   } catch {}
 
   // If XMTP isn’t ready yet on the client, skip fetching the group for now.
   if (!xmtp) {
-    return { contractAddress, group: null, groupId, discoveryPending: true };
+    return { contractAddress, group: null, groupId };
   }
 
   dlog('Syncing conversations to find group', groupId);
   const isFast = (() => { try { return import.meta?.env?.VITE_E2E_DEBUG === '1'; } catch { return false; } })();
   const retries = isFast ? 60 : 180;
   const delayMs = isFast ? 500 : 1000;
-  const group = await waitForConversation({ xmtp, groupId, expectedName: expectedGroupName, retries, delayMs });
+  const group = await waitForConversation({ xmtp, groupId, retries, delayMs });
   if (!group) {
     dlog('deployTempl: XMTP group discovery still pending after initial wait', { groupId });
-    return { contractAddress, group: null, groupId, discoveryPending: true };
+    return { contractAddress, group: null, groupId };
   }
-  return { contractAddress, group, groupId, discoveryPending: false };
+  return { contractAddress, group, groupId };
 }
 
 export async function registerTemplBackend({ ethers, signer, walletAddress, templAddress, backendUrl = BACKEND_URL }) {
