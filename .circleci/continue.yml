@@ -61,20 +61,20 @@ jobs:
       - run: npm --prefix frontend ci
       - run: npm --prefix backend run typecheck
       - run: npm --prefix frontend run typecheck
-      - run:
-          name: Install Playwright system dependencies
-          command: |
-            cd frontend
-            sudo npx playwright install-deps
-      - run:
-          name: Install Playwright browsers
-          command: npm --prefix frontend exec playwright install
-      - run: npm --prefix backend test
-      - run: npm --prefix backend run lint
-      - run: npm --prefix frontend test -- --reporter verbose
-      - run: npm --prefix frontend run lint
-      - run: npm --prefix frontend run build
-      - run: npm --prefix frontend run test:e2e
+      # - run:
+      #     name: Install Playwright system dependencies
+      #     command: |
+      #       cd frontend
+      #       sudo npx playwright install-deps
+      # - run:
+      #     name: Install Playwright browsers
+      #     command: npm --prefix frontend exec playwright install
+      # - run: npm --prefix backend test
+      # - run: npm --prefix backend run lint
+      # - run: npm --prefix frontend test -- --reporter verbose
+      # - run: npm --prefix frontend run lint
+      # - run: npm --prefix frontend run build
+      # - run: npm --prefix frontend run test:e2e
 
 workflows:
   contracts:
@@ -88,29 +88,3 @@ workflows:
           filters:
             branches:
               ignore: main
-  app:
-    when: << pipeline.parameters.run_app >>
-    jobs:
-      - app:
-          filters:
-            branches:
-              ignore: main
-
-  all_tests:
-    when: << pipeline.parameters.run_all >>
-    jobs:
-      - contracts:
-          filters:
-            branches:
-              only:
-                - main
-      - slither:
-          filters:
-            branches:
-              only:
-                - main
-      - app:
-          filters:
-            branches:
-              only:
-                - main

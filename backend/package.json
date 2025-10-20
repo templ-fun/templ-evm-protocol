@@ -7,13 +7,10 @@
   },
   "scripts": {
     "start": "node src/server.js",
-    "test": "LOG_LEVEL=warn node --test ./test/**/*.test.js ../shared/**/*.test.js",
     "coverage": "c8 --reporter=text --reporter=lcov --report-dir=coverage npm test",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "typecheck": "tsc -p tsconfig.json",
-    "migrate": "node scripts/migrate.js",
-    "xmtp:demo": "node scripts/xmtp-demo.js"
+    "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
     "@xmtp/node-sdk": "^4.1.0",

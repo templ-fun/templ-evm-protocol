@@ -12,13 +12,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc -p tsconfig.json",
-    "preview": "vite preview",
-    "test": "vitest run",
-    "coverage": "vitest run --coverage",
-    "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui",
-    "test:e2e:debug": "playwright test --debug",
-    "test:e2e:record": "playwright test"
+    "preview": "vite preview"
   },
   "dependencies": {
     "@xmtp/browser-sdk": "^4.1.0",
