@@ -1708,9 +1708,10 @@ export async function createApp(opts) {
               original: meta.original,
               sources: Array.from(meta.sources || [])
             }));
-            initialMembers = initialMemberDetails.map((entry) => entry.raw);
+            const prefixedMembers = initialMemberDetails.map((entry) => entry.display);
+            initialMembers = prefixedMembers;
             priestIncluded = initialMemberDetails.some((entry) => entry.sources.includes('priest'));
-            lastInitialMembers = initialMembers.slice();
+            lastInitialMembers = prefixedMembers.slice();
             lastPriestIncluded = priestIncluded;
 
             logger.info({
@@ -1725,14 +1726,14 @@ export async function createApp(opts) {
               }))
             }, '📝 Creating XMTP group with parameters');
 
-            if (!initialMembers.length) {
+            if (!prefixedMembers.length) {
               logger.warn({
                 contractAddress: record.contractAddress
               }, 'No initial XMTP members resolved; skipping group creation for now');
               throw new Error('No initial XMTP members resolved');
             }
 
-            const group = await xmtp.conversations.newGroup(initialMembers, {
+            const group = await xmtp.conversations.newGroup(prefixedMembers, {
               name: groupName,
               description: groupDescription
             });
@@ -1814,7 +1815,7 @@ export async function createApp(opts) {
           hadGroupBefore: !!record.group,
           createdNewGroup: !record.group && !!result,
           priestWasIncluded: !!(record.priest && lastPriestIncluded),
-          initialMembersAttempted: lastInitialMembers.map((id) => `0x${id}`)
+          initialMembersAttempted: lastInitialMembers
         }, '🏁 ensureGroup completed - priest addition summary');
 
         return result;
