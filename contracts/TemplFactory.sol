@@ -24,6 +24,7 @@ contract TemplFactory {
     int256 internal constant USE_DEFAULT_PERCENT = -1;
     uint256 internal constant DEFAULT_MAX_MEMBERS = 249;
     uint32 internal constant DEFAULT_CURVE_EXP_RATE_BPS = 11_000;
+    uint256 internal constant DEFAULT_PROPOSAL_FEE_BPS = 0;
     uint256 internal constant MAX_INIT_CODE_CHUNK_SIZE = 24_000;
 
     struct CreateConfig {
@@ -40,7 +41,11 @@ contract TemplFactory {
         uint256 maxMembers;
         bool curveProvided;
         CurveConfig curve;
-        string homeLink;
+        string name;
+        string description;
+        string logoLink;
+        uint256 proposalFeeBps;
+        uint256 referralShareBps;
     }
 
     address public immutable protocolFeeRecipient;
@@ -66,7 +71,11 @@ contract TemplFactory {
         uint256 maxMembers,
         uint8 curveStyle,
         uint32 curveRateBps,
-        string homeLink
+        string name,
+        string description,
+        string logoLink,
+        uint256 proposalFeeBps,
+        uint256 referralShareBps
     );
 
     event PermissionlessModeUpdated(bool enabled);
@@ -103,9 +112,27 @@ contract TemplFactory {
     /// @notice Deploys a templ using default fee splits and quorum settings.
     /// @param _token ERC-20 access token for the templ.
     /// @param _entryFee Entry fee denominated in `_token`.
+    /// @param _name Human-readable templ name surfaced in UIs.
+    /// @param _description Short templ description.
+    /// @param _logoLink Canonical logo link for the templ.
     /// @return templAddress Address of the deployed templ.
-    function createTempl(address _token, uint256 _entryFee) external returns (address templAddress) {
-        return createTemplFor(msg.sender, _token, _entryFee);
+    function createTempl(
+        address _token,
+        uint256 _entryFee,
+        string calldata _name,
+        string calldata _description,
+        string calldata _logoLink
+    ) external returns (address templAddress) {
+        return createTemplFor(
+            msg.sender,
+            _token,
+            _entryFee,
+            _name,
+            _description,
+            _logoLink,
+            DEFAULT_PROPOSAL_FEE_BPS,
+            0
+        );
     }
 
     /// @notice Deploys a templ on behalf of an explicit priest using default configuration.
@@ -113,7 +140,16 @@ contract TemplFactory {
     /// @param _token ERC-20 access token for the templ.
     /// @param _entryFee Entry fee denominated in `_token`.
     /// @return templAddress Address of the deployed templ.
-    function createTemplFor(address _priest, address _token, uint256 _entryFee)
+    function createTemplFor(
+        address _priest,
+        address _token,
+        uint256 _entryFee,
+        string calldata _name,
+        string calldata _description,
+        string calldata _logoLink,
+        uint256 _proposalFeeBps,
+        uint256 _referralShareBps
+    )
         public
         returns (address templAddress)
     {
@@ -133,7 +169,11 @@ contract TemplFactory {
             maxMembers: DEFAULT_MAX_MEMBERS,
             curveProvided: true,
             curve: _defaultCurveConfig(),
-            homeLink: ""
+            name: _name,
+            description: _description,
+            logoLink: _logoLink,
+            proposalFeeBps: _proposalFeeBps,
+            referralShareBps: _referralShareBps
         });
         return _deploy(cfg);
     }
@@ -174,6 +214,8 @@ contract TemplFactory {
         uint256 treasuryPercent = _resolvePercent(cfg.treasuryPercent, DEFAULT_TREASURY_PERCENT);
         uint256 memberPoolPercent = _resolvePercent(cfg.memberPoolPercent, DEFAULT_MEMBER_POOL_PERCENT);
         _validatePercentSplit(burnPercent, treasuryPercent, memberPoolPercent);
+        if (cfg.proposalFeeBps > TOTAL_PERCENT) revert TemplErrors.InvalidPercentage();
+        if (cfg.referralShareBps > TOTAL_PERCENT) revert TemplErrors.InvalidPercentage();
 
         bytes memory constructorArgs = abi.encode(
             cfg.priest,
@@ -189,7 +231,11 @@ contract TemplFactory {
             cfg.burnAddress,
             cfg.priestIsDictator,
             cfg.maxMembers,
-            cfg.homeLink,
+            cfg.name,
+            cfg.description,
+            cfg.logoLink,
+            cfg.proposalFeeBps,
+            cfg.referralShareBps,
             cfg.curve
         );
         bytes memory templInitCode = _loadTemplInitCode();
@@ -220,7 +266,11 @@ contract TemplFactory {
             cfg.maxMembers,
             uint8(cfg.curve.primary.style),
             cfg.curve.primary.rateBps,
-            cfg.homeLink
+            cfg.name,
+            cfg.description,
+            cfg.logoLink,
+            cfg.proposalFeeBps,
+            cfg.referralShareBps
         );
     }
 

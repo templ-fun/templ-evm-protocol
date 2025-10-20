@@ -12,19 +12,37 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 abstract contract TemplMembership is TemplBase {
     using SafeERC20 for IERC20;
 
+    event ReferralRewardPaid(address indexed referral, address indexed newMember, uint256 amount);
+
     /// @notice Join the templ by paying the configured entry fee on behalf of the caller.
     function join() external whenNotPaused notSelf nonReentrant {
-        _join(msg.sender, msg.sender);
+        _join(msg.sender, msg.sender, address(0));
+    }
+
+    /// @notice Join the templ by paying the entry fee on behalf of the caller with a referral.
+    /// @param referral Member credited with the referral reward.
+    function joinWithReferral(address referral) external whenNotPaused notSelf nonReentrant {
+        _join(msg.sender, msg.sender, referral);
     }
 
     /// @notice Join the templ on behalf of another wallet by covering their entry fee.
     /// @param recipient Wallet receiving membership. Must not already be a member.
     function joinFor(address recipient) external whenNotPaused notSelf nonReentrant {
-        _join(msg.sender, recipient);
+        _join(msg.sender, recipient, address(0));
+    }
+
+    /// @notice Join the templ for another wallet while crediting a referral.
+    function joinForWithReferral(address recipient, address referral)
+        external
+        whenNotPaused
+        notSelf
+        nonReentrant
+    {
+        _join(msg.sender, recipient, referral);
     }
 
     /// @dev Shared join workflow that handles accounting updates for new members.
-    function _join(address payer, address recipient) internal {
+    function _join(address payer, address recipient, address referral) internal {
         if (recipient == address(0)) revert TemplErrors.InvalidRecipient();
 
         Member storage joiningMember = members[recipient];
@@ -44,6 +62,15 @@ abstract contract TemplMembership is TemplBase {
 
         uint256 burnAmount = Math.mulDiv(price, burnPercent, TOTAL_PERCENT);
         uint256 memberPoolAmount = Math.mulDiv(price, memberPoolPercent, TOTAL_PERCENT);
+        uint256 referralAmount = 0;
+        address referralTarget = address(0);
+        if (referral != address(0) && referralShareBps != 0) {
+            Member storage referralMember = members[referral];
+            if (referralMember.joined && referral != recipient) {
+                referralAmount = Math.mulDiv(memberPoolAmount, referralShareBps, TOTAL_PERCENT);
+                referralTarget = referral;
+            }
+        }
         uint256 protocolAmount = Math.mulDiv(price, protocolPercent, TOTAL_PERCENT);
         uint256 treasuryAmount = price - burnAmount - memberPoolAmount - protocolAmount;
         uint256 toContract = treasuryAmount + memberPoolAmount;
@@ -55,8 +82,10 @@ abstract contract TemplMembership is TemplBase {
         joiningMember.blockNumber = block.number;
         memberCount = currentMemberCount + 1;
 
+        uint256 distributablePool = memberPoolAmount - referralAmount;
+
         if (currentMemberCount > 0) {
-            uint256 totalRewards = memberPoolAmount + memberRewardRemainder;
+            uint256 totalRewards = distributablePool + memberRewardRemainder;
             uint256 rewardPerMember = totalRewards / currentMemberCount;
             memberRewardRemainder = totalRewards % currentMemberCount;
             cumulativeMemberRewards += rewardPerMember;
@@ -65,12 +94,17 @@ abstract contract TemplMembership is TemplBase {
         joiningMember.rewardSnapshot = cumulativeMemberRewards;
 
         treasuryBalance += treasuryAmount;
-        memberPoolBalance += memberPoolAmount;
+        memberPoolBalance += distributablePool;
         IERC20 accessTokenContract = IERC20(accessToken);
         // NOTE: Fee-on-transfer tokens are unsupported; transfer-based fees break internal accounting.
         accessTokenContract.safeTransferFrom(payer, burnAddress, burnAmount);
         accessTokenContract.safeTransferFrom(payer, address(this), toContract);
         accessTokenContract.safeTransferFrom(payer, protocolFeeRecipient, protocolAmount);
+
+        if (referralAmount > 0) {
+            accessTokenContract.safeTransfer(referralTarget, referralAmount);
+            emit ReferralRewardPaid(referralTarget, recipient, referralAmount);
+        }
 
         uint256 joinId = currentMemberCount == 0 ? 0 : currentMemberCount - 1;
 

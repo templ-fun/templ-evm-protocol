@@ -25,7 +25,11 @@ contract TEMPL is TemplBase, TemplMembership, TemplTreasury, TemplGovernance {
     /// @param _burnAddress Address that receives the burn allocation (defaults to the dead address).
     /// @param _priestIsDictator Whether the templ starts in priest-only governance mode.
     /// @param _maxMembers Optional membership cap (0 keeps membership uncapped).
-    /// @param _homeLink Canonical URL for the templ surfaced in frontends and notifications.
+    /// @param _name Human-readable templ name surfaced in frontends.
+    /// @param _description Short templ description surfaced in frontends.
+    /// @param _logoLink Canonical logo URL for the templ.
+    /// @param _proposalCreationFeeBps Proposal creation fee expressed in basis points of the current entry fee.
+    /// @param _referralShareBps Referral share expressed in basis points of the member pool allocation.
     /// @param _curve Pricing curve configuration applied to future joins.
     constructor(
         address _priest,
@@ -41,7 +45,11 @@ contract TEMPL is TemplBase, TemplMembership, TemplTreasury, TemplGovernance {
         address _burnAddress,
         bool _priestIsDictator,
         uint256 _maxMembers,
-        string memory _homeLink,
+        string memory _name,
+        string memory _description,
+        string memory _logoLink,
+        uint256 _proposalCreationFeeBps,
+        uint256 _referralShareBps,
         CurveConfig memory _curve
     )
         TemplBase(
@@ -55,7 +63,11 @@ contract TEMPL is TemplBase, TemplMembership, TemplTreasury, TemplGovernance {
             _executionDelay,
             _burnAddress,
             _priestIsDictator,
-            _homeLink
+            _name,
+            _description,
+            _logoLink,
+            _proposalCreationFeeBps,
+            _referralShareBps
         )
     {
         if (_priest == address(0)) revert TemplErrors.InvalidRecipient();
@@ -132,8 +144,22 @@ contract TEMPL is TemplBase, TemplMembership, TemplTreasury, TemplGovernance {
     }
 
     /// @inheritdoc TemplGovernance
-    function _governanceSetHomeLink(string memory newLink) internal override {
-        _setTemplHomeLink(newLink);
+    function _governanceUpdateMetadata(
+        string memory newName,
+        string memory newDescription,
+        string memory newLogoLink
+    ) internal override {
+        _setTemplMetadata(newName, newDescription, newLogoLink);
+    }
+
+    /// @inheritdoc TemplGovernance
+    function _governanceSetProposalCreationFee(uint256 newFeeBps) internal override {
+        _setProposalCreationFee(newFeeBps);
+    }
+
+    /// @inheritdoc TemplGovernance
+    function _governanceSetReferralShareBps(uint256 newBps) internal override {
+        _setReferralShareBps(newBps);
     }
 
     /// @inheritdoc TemplGovernance

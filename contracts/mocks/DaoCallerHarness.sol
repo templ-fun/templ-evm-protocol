@@ -27,7 +27,11 @@ contract DaoCallerHarness is TEMPL {
             0x000000000000000000000000000000000000dEaD,
             false,
             0,
-            "",
+            "Test Templ",
+            "Harness",
+            "https://templ.fun/logo.png",
+            500,
+            0,
             CurveConfig({
                 primary: CurveSegment({style: CurveStyle.Static, rateBps: 0})
             })
@@ -71,9 +75,19 @@ contract DaoCallerHarness is TEMPL {
         this.setMaxMembersDAO(newMax);
     }
 
-    /// @notice Wrapper to call setTemplHomeLinkDAO via contract self-call
-    function daoSetHomeLink(string calldata newLink) external {
-        this.setTemplHomeLinkDAO(newLink);
+    /// @notice Wrapper to call setTemplMetadataDAO via contract self-call
+    function daoSetMetadata(string calldata newName, string calldata newDescription, string calldata newLogo) external {
+        this.setTemplMetadataDAO(newName, newDescription, newLogo);
+    }
+
+    /// @notice Wrapper to call setProposalCreationFeeBpsDAO via contract self-call
+    function daoSetProposalFee(uint256 newFeeBps) external {
+        this.setProposalCreationFeeBpsDAO(newFeeBps);
+    }
+
+    /// @notice Wrapper to call setReferralShareBpsDAO via contract self-call
+    function daoSetReferralShare(uint256 newReferralBps) external {
+        this.setReferralShareBpsDAO(newReferralBps);
     }
 
     /// @dev Test helper to set action to an undefined value (testing only)

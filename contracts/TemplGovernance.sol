@@ -4,10 +4,14 @@ pragma solidity ^0.8.23;
 import {TemplBase} from "./TemplBase.sol";
 import {TemplErrors} from "./TemplErrors.sol";
 import {CurveConfig} from "./TemplCurve.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /// @title templ governance module
 /// @notice Adds proposal creation, voting, and execution flows on top of treasury + membership logic.
 abstract contract TemplGovernance is TemplBase {
+    using SafeERC20 for IERC20;
+
     /// @notice Hook executed when governance-set join pause proposals execute.
     function _governanceSetJoinPaused(bool _paused) internal virtual;
 
@@ -42,8 +46,18 @@ abstract contract TemplGovernance is TemplBase {
     /// @notice Hook executed when governance adjusts the member cap.
     function _governanceSetMaxMembers(uint256 newMaxMembers) internal virtual;
 
-    /// @notice Hook executed when governance updates the templ home link.
-    function _governanceSetHomeLink(string memory newLink) internal virtual;
+    /// @notice Hook executed when governance updates templ metadata.
+    function _governanceUpdateMetadata(
+        string memory newName,
+        string memory newDescription,
+        string memory newLogoLink
+    ) internal virtual;
+
+    /// @notice Hook executed when governance updates the proposal creation fee.
+    function _governanceSetProposalCreationFee(uint256 newFeeBps) internal virtual;
+
+    /// @notice Hook executed when governance updates the referral share basis points.
+    function _governanceSetReferralShareBps(uint256 newBps) internal virtual;
 
     /// @notice Hook executed when governance updates the pricing curve configuration.
     function _governanceSetEntryFeeCurve(CurveConfig memory curve, uint256 baseEntryFee) internal virtual;
@@ -127,22 +141,58 @@ abstract contract TemplGovernance is TemplBase {
         return id;
     }
 
-    /// @notice Opens a proposal to update the templ home link surfaced off-chain.
-    /// @param _newLink New canonical link for the templ.
+    /// @notice Opens a proposal to update templ metadata.
+    /// @param _newName New templ name.
+    /// @param _newDescription New templ description.
+    /// @param _newLogoLink New templ logo link.
     /// @param _votingPeriod Optional custom voting duration (seconds).
     /// @param _title On-chain title for the proposal.
     /// @param _description On-chain description for the proposal.
     /// @return proposalId Newly created proposal identifier.
-    function createProposalSetHomeLink(
-        string calldata _newLink,
+    function createProposalUpdateMetadata(
+        string calldata _newName,
+        string calldata _newDescription,
+        string calldata _newLogoLink,
         uint256 _votingPeriod,
         string calldata _title,
         string calldata _description
     ) external returns (uint256) {
         if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
-        p.action = Action.SetHomeLink;
-        p.newHomeLink = _newLink;
+        p.action = Action.SetMetadata;
+        p.newTemplName = _newName;
+        p.newTemplDescription = _newDescription;
+        p.newLogoLink = _newLogoLink;
+        return id;
+    }
+
+    /// @notice Opens a proposal to update the proposal creation fee basis points.
+    function createProposalSetProposalFeeBps(
+        uint256 _newFeeBps,
+        uint256 _votingPeriod,
+        string calldata _title,
+        string calldata _description
+    ) external returns (uint256) {
+        if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
+        if (_newFeeBps > TOTAL_PERCENT) revert TemplErrors.InvalidPercentage();
+        (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
+        p.action = Action.SetProposalFee;
+        p.newProposalCreationFeeBps = _newFeeBps;
+        return id;
+    }
+
+    /// @notice Opens a proposal to update the referral share basis points.
+    function createProposalSetReferralShareBps(
+        uint256 _newReferralBps,
+        uint256 _votingPeriod,
+        string calldata _title,
+        string calldata _description
+    ) external returns (uint256) {
+        if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
+        if (_newReferralBps > TOTAL_PERCENT) revert TemplErrors.InvalidPercentage();
+        (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
+        p.action = Action.SetReferralShare;
+        p.newReferralShareBps = _newReferralBps;
         return id;
     }
 
@@ -390,8 +440,12 @@ abstract contract TemplGovernance is TemplBase {
             _governanceSetDictatorship(proposal.setDictatorship);
         } else if (proposal.action == Action.SetMaxMembers) {
             _governanceSetMaxMembers(proposal.newMaxMembers);
-        } else if (proposal.action == Action.SetHomeLink) {
-            _governanceSetHomeLink(proposal.newHomeLink);
+        } else if (proposal.action == Action.SetMetadata) {
+            _governanceUpdateMetadata(proposal.newTemplName, proposal.newTemplDescription, proposal.newLogoLink);
+        } else if (proposal.action == Action.SetProposalFee) {
+            _governanceSetProposalCreationFee(proposal.newProposalCreationFeeBps);
+        } else if (proposal.action == Action.SetReferralShare) {
+            _governanceSetReferralShareBps(proposal.newReferralShareBps);
         } else if (proposal.action == Action.SetEntryFeeCurve) {
             CurveConfig memory curve = proposal.curveConfig;
             _governanceSetEntryFeeCurve(curve, proposal.curveBaseEntryFee);
@@ -586,6 +640,14 @@ abstract contract TemplGovernance is TemplBase {
         uint256 period = _votingPeriod == 0 ? DEFAULT_VOTING_PERIOD : _votingPeriod;
         if (period < MIN_VOTING_PERIOD) revert TemplErrors.VotingPeriodTooShort();
         if (period > MAX_VOTING_PERIOD) revert TemplErrors.VotingPeriodTooLong();
+        uint256 feeBps = proposalCreationFeeBps;
+        if (feeBps > 0) {
+            uint256 proposalFee = (entryFee * feeBps) / TOTAL_PERCENT;
+            if (proposalFee > 0) {
+                IERC20(accessToken).safeTransferFrom(msg.sender, address(this), proposalFee);
+                treasuryBalance += proposalFee;
+            }
+        }
         proposalId = proposalCount++;
         proposal = proposals[proposalId];
         proposal.id = proposalId;
