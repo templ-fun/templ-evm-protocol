@@ -5,6 +5,62 @@
 - Each templ is composed from three delegatecall modules – membership, treasury, and governance – orchestrated by the root `TEMPL` contract. All persistent state lives in `TemplBase`, so modules share storage and act like facets of a single contract.
 - Deployers can apply join-fee curves, referral rewards, proposal fees, and dictatorship (priest) overrides. Governance maintains control after launch by voting on configuration changes or treasury actions.
 
+## Protocol At A Glance
+- Roles
+  - Priest: auto‑enrolled first member; can enable/disable dictatorship and propose like any member.
+  - Members: one‑address‑one‑vote; earn member‑pool rewards from subsequent joins.
+  - DAO: the `TEMPL` contract executing governance decisions via delegatecalls back into itself.
+- Tokens
+  - Access token (ERC‑20): paid to join; used for member rewards, treasury accounting, and proposal fees.
+  - External rewards: donated ETH/ERC‑20 that can be distributed evenly to members via a “disband” action.
+- Modules
+  - `TemplMembershipModule`: joins, claims, member views.
+  - `TemplTreasuryModule`: DAO actions for treasury/config/metadata/curves and cleanup.
+  - `TemplGovernanceModule`: proposals, voting, snapshots, execution (including external calls).
+
+## Join Flow & Fee Split
+Given `price = entryFee` and `BPS_DENOMINATOR = 10_000`:
+- Burn: `burnAmount = price * burnBps / 10_000` → payer → `burnAddress`.
+- Protocol: `protocolAmount = price * protocolBps / 10_000` → payer → `protocolFeeRecipient`.
+- Member pool: `memberPoolAmount = price * memberPoolBps / 10_000`.
+- Treasury: `treasuryAmount = price - burnAmount - memberPoolAmount - protocolAmount`.
+
+Transfers during join:
+- Payer → `burnAddress`: burnAmount
+- Payer → `protocolFeeRecipient`: protocolAmount
+- Payer → TEMPL: treasuryAmount + memberPoolAmount
+- Optional referral: if `referralShareBps > 0` and `referral` is an existing member ≠ recipient:
+  - `referralAmount = memberPoolAmount * referralShareBps / 10_000`, TEMPL → referral
+
+Distribution and accounting:
+- `distributablePool = memberPoolAmount - referralAmount`
+- If members exist: `totalRewards = distributablePool + memberRewardRemainder`
+  - `rewardPerMember = floor(totalRewards / memberCount)`, `memberRewardRemainder = totalRewards % memberCount`
+  - `cumulativeMemberRewards += rewardPerMember`
+- New member snapshot: `rewardSnapshot = cumulativeMemberRewards` (no reward from their own join)
+- Balances:
+  - `treasuryBalance += treasuryAmount` (access token only)
+  - `memberPoolBalance += distributablePool` (reserved for claims)
+- Unsupported tokens: fee‑on‑transfer or rebasing access tokens are not supported.
+
+## Proposal Creation Fee
+- `proposalCreationFeeBps` charges proposers a fee in the access token:
+  - `proposalFee = entryFee * proposalCreationFeeBps / 10_000`.
+  - Collected via `safeTransferFrom(proposer → TEMPL)` and added to `treasuryBalance`.
+  - Creation path is `nonReentrant` and tested against hook/reentrancy behaviors.
+
+## Treasury & External Rewards
+- Access token treasury
+  - `treasuryBalance` tracks the access‑token portion routed to treasury via joins and proposal fees.
+  - DAO withdrawals of the access token are limited by contract balance minus `memberPoolBalance` (reserved for member claims).
+- External tokens & ETH
+  - Anyone can send ETH/ERC‑20 to the templ address. These do not affect `treasuryBalance` until disbursed.
+  - DAO can “disband” a token:
+    - Access token → moves into `memberPoolBalance` and updates the main member accumulator.
+    - Other ERC‑20/ETH → credited into a per‑token external reward pool with its own accumulator + checkpoints.
+  - Members claim via `claimExternalReward(tokenOrZero)`; snapshots ensure new members don’t claim past distributions.
+  - External reward enumeration is capped at 256 tokens; DAO can remove a fully settled token via `cleanupExternalRewardToken(address)`.
+
 ## Deployment Flow & Public Interfaces
 The canonical workflow deploys shared modules once, followed by a factory and any number of templ instances. The snippets below assume a Hardhat project (`npx hardhat console` or scripts that import `hardhat`) using ethers v6.
 
