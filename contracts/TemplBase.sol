@@ -95,6 +95,8 @@ abstract contract TemplBase is ReentrancyGuard {
     uint256 public cumulativeMemberRewards;
     /// @notice Remainder carried forward when rewards do not divide evenly across members.
     uint256 public memberRewardRemainder;
+    /// @notice Total access token amount burned across all joins.
+    uint256 public totalBurned;
     /// @notice Incrementing counter tracking the order of member joins (starts at 1 for the priest).
     uint256 public joinSequence;
 

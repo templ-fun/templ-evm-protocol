@@ -575,7 +575,7 @@ async function main() {
     const signerAddress = deployer.address.toLowerCase();
     if (signerAddress !== PRIEST_ADDRESS.toLowerCase()) {
       console.warn(
-        'Skipping backend registration: deployer signer does not match priest address. Use scripts/register-templ.js with the priest key.'
+        'Skipping backend registration: deployer signer does not match priest address. Register the templ manually with the backend using the priest key.'
       );
     } else {
       try {
@@ -622,6 +622,7 @@ async function main() {
   const treasuryAvailable = treasuryInfo?.treasury ?? treasuryInfo?.[0];
   const memberPoolBalance = treasuryInfo?.memberPool ?? treasuryInfo?.[1];
   const protocolRecipient = treasuryInfo?.protocolAddress ?? treasuryInfo?.[2];
+  const burnedTotal = treasuryInfo?.burned ?? treasuryInfo?.[3];
   
   console.log("\n📋 Contract Configuration:");
   console.log("- Token:", config[0]);
@@ -640,6 +641,9 @@ async function main() {
   }
   if (protocolRecipient) {
     console.log("- Protocol Fee Recipient:", protocolRecipient);
+  }
+  if (burnedTotal !== undefined) {
+    console.log("- Total Burned:", burnedTotal.toString());
   }
   
   // Save deployment info
@@ -672,6 +676,7 @@ async function main() {
     referralShareBps: REFERRAL_SHARE_BPS,
     curveProvided: curveConfigEnv.curveProvided,
     curve: curveConfigEnv.curve,
+    totalBurned: burnedTotal !== undefined ? burnedTotal.toString() : "0",
     deployedAt: new Date().toISOString(),
     deployer: deployer.address,
     abi: JSON.parse(contract.interface.formatJson()),

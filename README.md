@@ -90,11 +90,11 @@ The canonical workflow deploys shared modules once, followed by a factory and an
 Once the templ is live, all user interactions flow through the deployed `TEMPL` address (`contracts/TEMPL.sol`), which delegates to the module responsible for the invoked selector. The `TemplFactory` can be toggled to permissionless mode (see `setPermissionless`) to allow anyone to deploy new templs.
 
 ### Hardhat Deployment Scripts
-The repository ships end-to-end scripts in [`scripts/`](scripts) that mirror the sequence above:
+The repository ships end-to-end scripts at the repository root that mirror the sequence above:
 
-- [`scripts/deploy-factory.js`](scripts/deploy-factory.js) – Deploys the shared modules (if addresses aren’t supplied via env vars) and produces a wired `TemplFactory`.
-- [`scripts/deploy.js`](scripts/deploy.js) – Uses an existing factory (or deploys one with modules) to instantiate a templ and dumps a deployment artifact under `deployments/`.
-- [`scripts/verify-templ.js`](scripts/verify-templ.js) – Utility for reconstructing constructor arguments and verifying a templ instance on chain.
+- [`scripts/deploy-factory.cjs`](scripts/deploy-factory.cjs) – Deploys the shared modules (if addresses aren’t supplied via env vars) and produces a wired `TemplFactory`.
+- [`scripts/deploy-templ.cjs`](scripts/deploy-templ.cjs) – Uses an existing factory (or deploys one with modules) to instantiate a templ and dumps a deployment artifact under `deployments/`.
+- [`scripts/verify-templ.cjs`](scripts/verify-templ.cjs) – Utility for reconstructing constructor arguments and verifying a templ instance on chain.
 
 Example commands (environment variables follow the same names used inside each script):
 
@@ -102,7 +102,7 @@ Example commands (environment variables follow the same names used inside each s
 # Deploy shared modules + factory (examples use Base mainnet; adjust --network as needed)
 PROTOCOL_FEE_RECIPIENT=0xYourRecipient \
 PROTOCOL_PERCENT=10 \
-npx hardhat run --network base scripts/deploy-factory.js
+npx hardhat run --network base scripts/deploy-factory.cjs
 
 # Deploy a templ via factory (token, priest, fee splits, etc. come from env)
 FACTORY_ADDRESS=0xFactoryFromPreviousStep \
@@ -110,16 +110,16 @@ TOKEN_ADDRESS=0xAccessToken \
 ENTRY_FEE=100000000000000000000 \
 TEMPL_NAME="templ.fun OG" \
 TEMPL_DESCRIPTION="Genesis collective" \
-npx hardhat run --network base scripts/deploy.js
+npx hardhat run --network base scripts/deploy-templ.cjs
 
 # Verify the factory (on Basescan for chain 8453)
 npx hardhat verify --network base 0xFactoryFromPreviousStep 0xYourRecipient 1000 0xMembershipModule 0xTreasuryModule 0xGovernanceModule
 
 # Verify a templ (script auto-reconstructs constructor args)
-npx hardhat run --network base scripts/verify-templ.js --templ 0xYourTempl --factory 0xFactoryFromPreviousStep
+npx hardhat run --network base scripts/verify-templ.cjs --templ 0xYourTempl --factory 0xFactoryFromPreviousStep
 ```
 
-See [`scripts/README.md`](scripts/README.md) for additional CLI options, including environment variable expectations and verification helpers.
+Refer to the inline env-variable docs in `scripts/deploy-factory.cjs` and `scripts/deploy-templ.cjs` for the latest configuration options and verification helpers.
 
 ## Module Responsibilities
 - **TemplMembershipModule**

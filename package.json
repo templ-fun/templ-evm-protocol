@@ -10,13 +10,13 @@
     "compile": "npx hardhat compile",
     "test": "npx hardhat test",
     "coverage": "npx hardhat coverage",
- "slither": "solc-select install 0.8.23 && solc-select use 0.8.23 && slither contracts/TEMPL.sol --config-file slither.config.json",
+    "slither": "solc-select install 0.8.23 && solc-select use 0.8.23 && slither contracts/TEMPL.sol --config-file slither.config.json",
     "slither:ci": "./scripts/run-slither-ci.sh",
-    "deploy": "npx hardhat run scripts/deploy.js --network base",
-    "deploy:local": "npx hardhat run scripts/deploy.js --network localhost",
+    "deploy": "npx hardhat run scripts/deploy-templ.cjs --network base",
+    "deploy:local": "npx hardhat run scripts/deploy-templ.cjs --network localhost",
+    "deploy:factory": "npx hardhat run scripts/deploy-factory.cjs --network base",
     "node": "npx hardhat node",
-    "prepare": "husky",
-    "gen:wallets": "node scripts/gen-wallets.js"
+    "prepare": "husky"
   },
   "keywords": [
     "solidity",
