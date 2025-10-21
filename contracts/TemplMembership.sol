@@ -178,11 +178,18 @@ contract TemplMembershipModule is TemplBase {
         Member storage memberInfo = members[member];
         uint256 accrued = rewards.cumulativeRewards;
         uint256 baseline = _externalBaselineForMember(rewards, memberInfo);
-        uint256 snapshot = memberExternalRewardSnapshots[member][token];
-        if (snapshot < baseline) {
-            snapshot = baseline;
+        uint256 cleanupNonce = externalRewardCleanupNonce[token];
+        (uint256 snapshotNonce, uint256 snapshotValue) = _decodeExternalSnapshot(
+            memberExternalRewardSnapshots[member][token]
+        );
+        if (snapshotNonce != cleanupNonce) {
+            snapshotValue = 0;
         }
-        return accrued > snapshot ? accrued - snapshot : 0;
+        uint256 floor = baseline;
+        if (snapshotValue > floor) {
+            floor = snapshotValue;
+        }
+        return accrued > floor ? accrued - floor : 0;
     }
 
     /// @notice Claims the caller's accrued share of the member rewards pool.
@@ -214,7 +221,11 @@ contract TemplMembershipModule is TemplBase {
         uint256 remaining = rewards.poolBalance;
         if (remaining < claimable) revert TemplErrors.InsufficientPoolBalance();
 
-        memberExternalRewardSnapshots[msg.sender][token] = rewards.cumulativeRewards;
+        uint256 cleanupNonce = externalRewardCleanupNonce[token];
+        memberExternalRewardSnapshots[msg.sender][token] = _encodeExternalSnapshot(
+            cleanupNonce,
+            rewards.cumulativeRewards
+        );
         rewards.poolBalance = remaining - claimable;
 
         if (token == address(0)) {

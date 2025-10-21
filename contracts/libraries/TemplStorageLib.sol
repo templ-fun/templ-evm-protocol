@@ -122,6 +122,7 @@ library TemplStorageLib {
         address[] externalRewardTokens;
         mapping(address => uint256) externalRewardTokenIndex;
         mapping(address => mapping(address => uint256)) memberExternalRewardSnapshots;
+        mapping(address => uint256) externalRewardCleanupNonce;
         uint256 proposalCount;
         mapping(uint256 => Proposal) proposals;
         mapping(address => uint256) activeProposalId;

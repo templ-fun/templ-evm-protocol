@@ -116,7 +116,10 @@ contract TemplTreasuryModule is TemplBase {
 
         rewards.poolBalance = 0;
         rewards.rewardRemainder = 0;
+        rewards.cumulativeRewards = 0;
+        delete rewards.checkpoints;
         rewards.exists = false;
+        externalRewardCleanupNonce[token] += 1;
         _removeExternalToken(token);
     }
 }

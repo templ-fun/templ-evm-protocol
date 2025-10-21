@@ -26,6 +26,11 @@ abstract contract TemplBase is ReentrancyGuard {
     uint256 internal constant MAX_EXTERNAL_REWARD_TOKENS = 256;
     /// @dev Maximum entry fee supported before arithmetic would overflow downstream accounting.
     uint256 internal constant MAX_ENTRY_FEE = type(uint128).max;
+    /// @dev Bit shift applied when encoding external reward snapshot epochs.
+    uint256 internal constant EXTERNAL_SNAPSHOT_NONCE_SHIFT = 192;
+    /// @dev Bitmask that extracts the snapshot value portion from encoded external reward snapshots.
+    uint256 internal constant EXTERNAL_SNAPSHOT_VALUE_MASK =
+        (uint256(1) << EXTERNAL_SNAPSHOT_NONCE_SHIFT) - 1;
 
     /// @notice Percent of the entry fee that is burned on every join.
     uint256 public burnPercent;
@@ -285,6 +290,7 @@ abstract contract TemplBase is ReentrancyGuard {
     mapping(address => uint256) internal externalRewardTokenIndex;
     /// @notice Member snapshots for each external reward token.
     mapping(address => mapping(address => uint256)) internal memberExternalRewardSnapshots;
+    mapping(address => uint256) internal externalRewardCleanupNonce;
     /// @dev Restricts a function so only wallets that successfully joined may call it.
     modifier onlyMember() {
         if (!members[msg.sender].joined) revert TemplErrors.NotMember();
@@ -315,6 +321,21 @@ abstract contract TemplBase is ReentrancyGuard {
     }
 
     event DictatorshipModeChanged(bool enabled);
+
+    /// @dev Decodes an encoded external reward snapshot into its cleanup nonce and cumulative value.
+    function _decodeExternalSnapshot(uint256 snapshot)
+        internal
+        pure
+        returns (uint256 nonce, uint256 value)
+    {
+        nonce = snapshot >> EXTERNAL_SNAPSHOT_NONCE_SHIFT;
+        value = snapshot & EXTERNAL_SNAPSHOT_VALUE_MASK;
+    }
+
+    /// @dev Encodes an external reward snapshot value with the active cleanup nonce.
+    function _encodeExternalSnapshot(uint256 nonce, uint256 value) internal pure returns (uint256) {
+        return (nonce << EXTERNAL_SNAPSHOT_NONCE_SHIFT) | value;
+    }
 
     /// @dev Persists a new external reward checkpoint so future joins can baseline correctly.
     function _recordExternalCheckpoint(ExternalRewardState storage rewards) internal {
