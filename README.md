@@ -44,7 +44,6 @@ flowchart LR
   Tr -.-> B
 
   G --> Tr
-  G --> Priest[Priest dictator]
 ```
 
 Architecture map (see more at [Module Responsibilities](#module-responsibilities))
@@ -53,6 +52,7 @@ Architecture map (see more at [Module Responsibilities](#module-responsibilities
 - Treasury: DAO/priest actions for withdrawals, disbands, config/split/fee/curve/metadata/priest updates.
 - Governance: Proposal create/vote/execute, quorum and delay tracking, dictatorship toggle, external calls.
 - TemplBase (shared storage): Single storage layout and helpers used by all modules through delegatecall.
+ - Priest role: Stored in shared storage and used by onlyDAO gating; see Dictatorship Gate for behavior (#dictatorship-gate-onlydao).
 
 What “TemplBase Shared Storage” means
 - All persistent state is declared in [`TemplBase`](contracts/TemplBase.sol). Because modules execute via `delegatecall`, they read/write the same storage as `TEMPL`.
