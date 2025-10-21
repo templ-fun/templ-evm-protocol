@@ -2,6 +2,8 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
 const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
+const { deployTemplModules } = require("./utils/modules");
+const { attachTemplInterface } = require("./utils/templ");
 
 describe("executeProposal reverts", function () {
   let templ;
@@ -102,13 +104,18 @@ describe("executeProposal reverts", function () {
     const Harness = await ethers.getContractFactory(
       "contracts/mocks/DaoCallerHarness.sol:DaoCallerHarness"
     );
-    const harness = await Harness.deploy(
+    const modules = await deployTemplModules();
+    let harness = await Harness.deploy(
       priestSigner.address,
       priestSigner.address,
       harnessToken.target,
-      ENTRY_FEE
+      ENTRY_FEE,
+      modules.membershipModule,
+      modules.treasuryModule,
+      modules.governanceModule
     );
     await harness.waitForDeployment();
+    harness = await attachTemplInterface(harness);
 
     await mintToUsers(harnessToken, [member1, member2], ENTRY_FEE * 5n);
     await joinMembers(harness, harnessToken, [member1, member2]);

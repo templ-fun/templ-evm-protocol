@@ -1,6 +1,8 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
+const { deployTemplModules } = require("./utils/modules");
+const { attachTemplInterface } = require("./utils/templ");
 
 describe("TemplHarness coverage helpers", function () {
   let harness;
@@ -8,11 +10,14 @@ describe("TemplHarness coverage helpers", function () {
   let priest;
   let protocol;
 
+  let modules;
+
   beforeEach(async function () {
     const signers = await ethers.getSigners();
     [, priest, protocol] = signers;
     const Token = await ethers.getContractFactory("TestToken");
     token = await Token.deploy("Test Token", "TEST", 18);
+    modules = await deployTemplModules();
     const Harness = await ethers.getContractFactory("TemplHarness");
     harness = await Harness.deploy(
       priest.address,
@@ -32,8 +37,13 @@ describe("TemplHarness coverage helpers", function () {
       "Coverage harness",
       "https://templ.fun/harness.png",
       0,
-      0
+      0,
+      modules.membershipModule,
+      modules.treasuryModule,
+      modules.governanceModule
     );
+    await harness.waitForDeployment();
+    harness = await attachTemplInterface(harness);
   });
 
   it("reverts when deploying with a zero entry fee", async function () {
@@ -57,14 +67,17 @@ describe("TemplHarness coverage helpers", function () {
         "Coverage harness",
         "https://templ.fun/harness.png",
         0,
-        0
+        0,
+        modules.membershipModule,
+        modules.treasuryModule,
+        modules.governanceModule
       )
     ).to.be.revertedWithCustomError(Harness, "AmountZero");
   });
 
   it("initializes the max member cap when supplied", async function () {
     const Harness = await ethers.getContractFactory("TemplHarness");
-    const capped = await Harness.deploy(
+    let capped = await Harness.deploy(
       priest.address,
       protocol.address,
       token.target,
@@ -82,8 +95,13 @@ describe("TemplHarness coverage helpers", function () {
       "Coverage harness",
       "https://templ.fun/harness.png",
       0,
-      0
+      0,
+      modules.membershipModule,
+      modules.treasuryModule,
+      modules.governanceModule
     );
+    await capped.waitForDeployment();
+    capped = await attachTemplInterface(capped);
     expect(await capped.MAX_MEMBERS()).to.equal(7n);
   });
 

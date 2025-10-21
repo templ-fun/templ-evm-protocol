@@ -4,6 +4,7 @@ const { deployTempl, STATIC_CURVE } = require("./utils/deploy");
 const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 const { encodeSetJoinPausedDAO, encodeWithdrawTreasuryDAO, encodeUpdateConfigDAO } = require("./utils/callDataBuilders");
 const { deployTemplModules } = require("./utils/modules");
+const { attachTemplInterface } = require("./utils/templ");
 
 describe("TEMPL Contract with DAO Governance", function () {
     let templ;
@@ -51,7 +52,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             const customBurnAddress = "0x00000000000000000000000000000000000000CC";
             const TemplFactory = await ethers.getContractFactory("TEMPL");
             const { membershipModule, treasuryModule, governanceModule } = await deployTemplModules();
-            const templDirect = await TemplFactory.deploy(
+            let templDirect = await TemplFactory.deploy(
                 priest.address,
                 priest.address,
                 await percentToken.getAddress(),
@@ -70,9 +71,13 @@ describe("TEMPL Contract with DAO Governance", function () {
                 "https://templ.direct",
                 0,
                 0,
+                membershipModule,
+                treasuryModule,
+                governanceModule,
                 STATIC_CURVE
             );
             await templDirect.waitForDeployment();
+            templDirect = await attachTemplInterface(templDirect);
 
             expect(await templDirect.burnPercent()).to.equal(3_000n);
             expect(await templDirect.treasuryPercent()).to.equal(4_000n);
@@ -180,7 +185,7 @@ describe("TEMPL Contract with DAO Governance", function () {
         it("defaults quorum, execution delay and burn address when zero", async function () {
             const { membershipModule, treasuryModule, governanceModule } = await deployTemplModules();
             const TEMPL = await ethers.getContractFactory("TEMPL");
-            const templZero = await TEMPL.deploy(
+            let templZero = await TEMPL.deploy(
                 priest.address,
                 priest.address,
                 await token.getAddress(),
@@ -205,6 +210,7 @@ describe("TEMPL Contract with DAO Governance", function () {
                 STATIC_CURVE
             );
             await templZero.waitForDeployment();
+            templZero = await attachTemplInterface(templZero);
 
             expect(await templZero.quorumPercent()).to.equal(QUORUM_BPS);
             expect(await templZero.executionDelayAfterQuorum()).to.equal(7 * 24 * 60 * 60);
@@ -1092,12 +1098,13 @@ describe("TEMPL Contract with DAO Governance", function () {
 
     describe("Edge Cases and Security", function () {
         it("Should handle very small entry fees correctly", async function () {
-            // Deploy with minimum fee
-            const minTempl = await ethers.deployContract("TEMPL", [
+            const { membershipModule, treasuryModule, governanceModule } = await deployTemplModules();
+            const TEMPL = await ethers.getContractFactory("TEMPL");
+            let minTempl = await TEMPL.deploy(
                 priest.address,
-                priest.address, // protocolFeeRecipient
+                priest.address,
                 await token.getAddress(),
-                10n, // Minimum allowed
+                10n,
                 30,
                 30,
                 30,
@@ -1112,8 +1119,13 @@ describe("TEMPL Contract with DAO Governance", function () {
                 METADATA.logo,
                 0,
                 0,
+                membershipModule,
+                treasuryModule,
+                governanceModule,
                 STATIC_CURVE
-            ]);
+            );
+            await minTempl.waitForDeployment();
+            minTempl = await attachTemplInterface(minTempl);
 
             await token.connect(user1).approve(await minTempl.getAddress(), 10);
             await minTempl.connect(user1).join();
@@ -1124,6 +1136,7 @@ describe("TEMPL Contract with DAO Governance", function () {
 
         it("Should reject entry fee below minimum", async function () {
             const factory = await ethers.getContractFactory("TEMPL");
+            const { membershipModule, treasuryModule, governanceModule } = await deployTemplModules();
             await expect(factory.deploy(
                 priest.address,
                 priest.address, // protocolFeeRecipient
@@ -1143,6 +1156,9 @@ describe("TEMPL Contract with DAO Governance", function () {
                 METADATA.logo,
                 0,
                 0,
+                membershipModule,
+                treasuryModule,
+                governanceModule,
                 STATIC_CURVE
             )).to.be.revertedWithCustomError(factory, "EntryFeeTooSmall");
         });

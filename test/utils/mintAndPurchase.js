@@ -1,3 +1,12 @@
+const { attachTemplInterface } = require("./templ");
+
+const ensureTemplInterface = async (templ) => {
+  if (typeof templ.isMember === "function") {
+    return templ;
+  }
+  return attachTemplInterface(templ);
+};
+
 const mintToUsers = async (token, users, amount) => {
   const mintAmount = BigInt(amount);
   for (const user of users) {
@@ -6,6 +15,7 @@ const mintToUsers = async (token, users, amount) => {
 };
 
 const joinMembers = async (templ, token, users) => {
+  templ = await ensureTemplInterface(templ);
   const templAddress = await templ.getAddress();
   for (const user of users) {
     if (await templ.isMember(user.address)) {
