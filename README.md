@@ -57,15 +57,15 @@ The canonical workflow deploys shared modules once, followed by a factory and an
      executionDelaySeconds: 7 * 24 * 60 * 60,// execution delay after quorum (seconds)
      burnAddress: ethers.ZeroAddress,       // burn destination (defaults to 0x...dEaD)
      priestIsDictator: false,               // true lets the priest bypass governance
-     maxMembers: 249,                       // optional membership cap (0 = uncapped)
+     maxMembers: 250,                       // optional membership cap (0 = uncapped)
      curveProvided: true,                   // provide custom curve instead of factory default
      curve: {
        primary: { style: 2, rateBps: 11_000, length: 0 }, // exponential tail (infinite length)
        additionalSegments: []              // optional extra segments (empty keeps single segment)
      },
-     name: "templ.fun OG",                  // templ metadata surfaced to UIs
-     description: "Genesis collective",     // short description (can be empty)
-     logoLink: "https://example.com/logo.png",
+     name: "MOG MOGGERS",                   // templ metadata surfaced to UIs
+     description: "mog or get mogged",      // metadata short description (can be empty)
+     logoLink: "https://example.com/logo.png",// metadata image (can be empty)
      proposalFeeBps: 500,                   // 5% of the current entry fee charged per proposal
      referralShareBps: 500                  // 5% of the member-pool allocation paid to referrals
    });
