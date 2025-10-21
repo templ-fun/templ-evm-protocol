@@ -249,6 +249,8 @@ contract TemplGovernanceModule is TemplBase {
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
         p.action = Action.DisbandTreasury;
         p.token = _token;
+        // NOTE: Priest-initiated disband proposals intentionally bypass quorum to allow an inactive templ
+        //       (where turnout falls short of quorum) to unwind safely so long as a simple majority still votes yes.
         if (msg.sender == priest) {
             p.quorumExempt = true;
         }
