@@ -92,7 +92,7 @@ contract TemplMembershipModule is TemplBase {
 
         treasuryBalance += treasuryAmount;
         memberPoolBalance += distributablePool;
-        // NOTE: Fee-on-transfer tokens are unsupported; transfer-based fees break internal accounting.
+        // NOTE: Fee-on-transfer or rebasing tokens are unsupported; accounting assumes vanilla ERC-20 semantics.
         _safeTransferFrom(accessToken, payer, burnAddress, burnAmount);
         _safeTransferFrom(accessToken, payer, address(this), toContract);
         _safeTransferFrom(accessToken, payer, protocolFeeRecipient, protocolAmount);

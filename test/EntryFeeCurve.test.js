@@ -5,6 +5,7 @@ const { mintToUsers } = require("./utils/mintAndPurchase");
 
 describe("EntryFeeCurve", function () {
     const ENTRY_FEE = ethers.parseUnits("100", 18);
+    const MAX_ENTRY_FEE = (1n << 128n) - 1n;
     const CURVE_STYLE = {
         Static: 0,
         Linear: 1,
@@ -270,6 +271,41 @@ describe("EntryFeeCurve", function () {
         const priceAfterThird = priceForPaidJoins(base, multiCurve, 3n);
         expect(priceAfterThird).to.equal(priceAfterSecond);
         expect(await templ.entryFee()).to.equal(priceAfterThird);
+    });
+
+    it("supports exponential discount curves without saturating to the max entry fee", async function () {
+        const discountCurve = {
+            primary: { style: CURVE_STYLE.Exponential, rateBps: 9_000, length: 0 },
+            additionalSegments: []
+        };
+
+        const { templ, token, accounts } = await deployTempl({
+            entryFee: ENTRY_FEE,
+            curve: discountCurve,
+        });
+
+        const [, priest] = accounts;
+        const templAddress = await templ.getAddress();
+
+        const joins = 120;
+        const initialFee = await templ.entryFee();
+        const totalBudget = initialFee * BigInt(joins);
+
+        await token.mint(priest.address, totalBudget);
+        await token.connect(priest).approve(templAddress, ethers.MaxUint256);
+
+        let previousFee = initialFee;
+
+        for (let i = 0; i < joins; i += 1) {
+            const wallet = ethers.Wallet.createRandom();
+            await templ.connect(priest).joinFor(wallet.address);
+            const currentFee = await templ.entryFee();
+            expect(currentFee).to.be.at.most(previousFee);
+            previousFee = currentFee;
+        }
+
+        expect(previousFee).to.be.lte(initialFee);
+        expect(previousFee).to.not.equal(MAX_ENTRY_FEE);
     });
 
     it("rejects curve configurations without an infinite tail", async function () {
