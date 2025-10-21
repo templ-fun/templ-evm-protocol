@@ -526,12 +526,12 @@ abstract contract TemplBase is ReentrancyGuard {
         CurveConfig memory curve = _copyCurveConfig(entryFeeCurve);
         if (paidJoins == 0 || !_curveHasGrowth(curve)) {
             baseEntryFee = targetEntryFee;
-            entryFee = targetEntryFee;
         } else {
             uint256 newBase = _solveBaseEntryFee(targetEntryFee, curve, paidJoins);
+            _validateEntryFeeAmount(newBase);
             baseEntryFee = newBase;
-            entryFee = targetEntryFee;
         }
+        entryFee = targetEntryFee;
         _emitEntryFeeCurveUpdated();
     }
 
