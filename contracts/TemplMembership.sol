@@ -250,7 +250,7 @@ contract TemplMembershipModule is TemplBase {
     /// @return treasury Access-token balance currently available for governance-controlled withdrawals.
     /// @return memberPool Access-token balance locked for member pool claims.
     /// @return protocolAddress Wallet that receives protocol fee splits during joins.
-    /// @return burnedTotal Cumulative access-token amount sent to the burn address.
+    /// @return burned Cumulative access-token amount sent to the burn address.
     function getTreasuryInfo()
         external
         view
@@ -258,7 +258,7 @@ contract TemplMembershipModule is TemplBase {
             uint256 treasury,
             uint256 memberPool,
             address protocolAddress,
-            uint256 burnedTotal
+            uint256 burned
         )
     {
         uint256 current = IERC20(accessToken).balanceOf(address(this));
