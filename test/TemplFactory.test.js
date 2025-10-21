@@ -245,8 +245,12 @@ describe("TemplFactory", function () {
         expect(templCreated).to.not.equal(undefined);
         expect(templCreated.args.priestIsDictator).to.equal(true);
         expect(templCreated.args.maxMembers).to.equal(0n);
-        expect(templCreated.args.curveStyle).to.equal(CURVE_STYLE.Exponential);
-        expect(templCreated.args.curveRateBps).to.equal(11_000n);
+        const curveStyles = templCreated.args.curveStyles.map((value) => Number(value));
+        const curveRates = templCreated.args.curveRateBps.map((value) => Number(value));
+        const curveLengths = templCreated.args.curveLengths.map((value) => Number(value));
+        expect(curveStyles).to.deep.equal([CURVE_STYLE.Exponential]);
+        expect(curveRates).to.deep.equal([11_000]);
+        expect(curveLengths).to.deep.equal([0]);
         expect(templCreated.args.name).to.equal(DEFAULT_METADATA.name);
         expect(templCreated.args.description).to.equal(DEFAULT_METADATA.description);
         expect(templCreated.args.logoLink).to.equal(DEFAULT_METADATA.logoLink);
@@ -300,8 +304,14 @@ describe("TemplFactory", function () {
             .find((log) => log && log.name === "TemplCreated");
 
         expect(templCreated).to.not.equal(undefined);
-    expect(templCreated.args.maxMembers).to.equal(5n);
-    expect(templCreated.args.name).to.equal(DEFAULT_METADATA.name);
+        const styles = templCreated.args.curveStyles.map((value) => Number(value));
+        const rates = templCreated.args.curveRateBps.map((value) => Number(value));
+        const lengths = templCreated.args.curveLengths.map((value) => Number(value));
+        expect(styles).to.deep.equal([CURVE_STYLE.Exponential]);
+        expect(rates).to.deep.equal([11_000]);
+        expect(lengths).to.deep.equal([0]);
+        expect(templCreated.args.maxMembers).to.equal(5n);
+        expect(templCreated.args.name).to.equal(DEFAULT_METADATA.name);
   });
 
   it("applies factory defaults when optional fields are omitted", async function () {
@@ -497,8 +507,12 @@ describe("TemplFactory", function () {
             })
             .find((log) => log && log.name === "TemplCreated");
 
-        expect(templCreated.args.curveStyle).to.equal(CURVE_STYLE.Exponential);
-        expect(templCreated.args.curveRateBps).to.equal(11_000n);
+        const curveStyles = templCreated.args.curveStyles.map((value) => Number(value));
+        const curveRates = templCreated.args.curveRateBps.map((value) => Number(value));
+        const curveLengths = templCreated.args.curveLengths.map((value) => Number(value));
+        expect(curveStyles).to.deep.equal([CURVE_STYLE.Exponential]);
+        expect(curveRates).to.deep.equal([11_000]);
+        expect(curveLengths).to.deep.equal([0]);
 
         await mintToUsers(token, [joiner], ENTRY_FEE * 5n);
         await token.connect(joiner).approve(templAddress, ENTRY_FEE);
@@ -553,8 +567,12 @@ describe("TemplFactory", function () {
 
         expect(templCreated.args.creator).to.equal(deployer.address);
         expect(templCreated.args.priest).to.equal(delegatedPriest.address);
-        expect(templCreated.args.curveStyle).to.equal(CURVE_STYLE.Exponential);
-        expect(templCreated.args.curveRateBps).to.equal(11_000n);
+        const styles = templCreated.args.curveStyles.map((value) => Number(value));
+        const rates = templCreated.args.curveRateBps.map((value) => Number(value));
+        const lengths = templCreated.args.curveLengths.map((value) => Number(value));
+        expect(styles).to.deep.equal([CURVE_STYLE.Exponential]);
+        expect(rates).to.deep.equal([11_000]);
+        expect(lengths).to.deep.equal([0]);
     });
 
   it("reuses the immutable protocol configuration for every templ", async function () {
