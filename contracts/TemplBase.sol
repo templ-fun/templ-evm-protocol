@@ -834,7 +834,10 @@ abstract contract TemplBase is ReentrancyGuard {
         }
 
         ExternalRewardState storage rewards = externalRewards[token];
-        if (!rewards.exists) revert TemplErrors.NoTreasuryFunds();
+        if (!rewards.exists) {
+            _registerExternalToken(token);
+            rewards = externalRewards[token];
+        }
         uint256 tokenBalance;
         if (token == address(0)) {
             tokenBalance = address(this).balance;

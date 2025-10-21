@@ -3,6 +3,7 @@ const { ethers } = require("hardhat");
 const { deployTempl, STATIC_CURVE } = require("./utils/deploy");
 const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 const { deployTemplModules } = require("./utils/modules");
+const { attachTemplInterface } = require("./utils/templ");
 
 describe("Reentrancy protection", function () {
   const ENTRY_FEE = ethers.parseUnits("100", 18);
@@ -61,6 +62,7 @@ const METADATA = {
         STATIC_CURVE
       );
       await templ.waitForDeployment();
+      templ = await attachTemplInterface(templ);
 
       await token.setTempl(await templ.getAddress());
     });
@@ -134,6 +136,7 @@ const METADATA = {
         STATIC_CURVE
       );
       await templ.waitForDeployment();
+      templ = await attachTemplInterface(templ);
 
       await token.setTempl(await templ.getAddress());
       await token.joinTempl(ENTRY_FEE);

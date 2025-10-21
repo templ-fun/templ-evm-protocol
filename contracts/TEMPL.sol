@@ -158,7 +158,7 @@ contract TEMPL is TemplBase {
     }
 
     function _registerTreasurySelectors(address module) internal {
-        bytes4[] memory selectors = new bytes4[](11);
+        bytes4[] memory selectors = new bytes4[](12);
         selectors[0] = TemplTreasuryModule.withdrawTreasuryDAO.selector;
         selectors[1] = TemplTreasuryModule.updateConfigDAO.selector;
         selectors[2] = TemplTreasuryModule.setJoinPausedDAO.selector;
@@ -170,6 +170,7 @@ contract TEMPL is TemplBase {
         selectors[8] = TemplTreasuryModule.setProposalCreationFeeBpsDAO.selector;
         selectors[9] = TemplTreasuryModule.setReferralShareBpsDAO.selector;
         selectors[10] = TemplTreasuryModule.setEntryFeeCurveDAO.selector;
+        selectors[11] = TemplTreasuryModule.cleanupExternalRewardToken.selector;
         _registerModule(module, selectors);
     }
 

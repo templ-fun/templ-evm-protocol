@@ -2,6 +2,7 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 const { deployTemplModules } = require("./utils/modules");
+const { getTemplAt, attachTemplInterface } = require("./utils/templ");
 
 describe("TemplFactory", function () {
     const ENTRY_FEE = ethers.parseUnits("100", 18);
@@ -37,12 +38,26 @@ describe("TemplFactory", function () {
         const Token = await ethers.getContractFactory("contracts/mocks/TestToken.sol:TestToken");
         const token = await Token.deploy(name, symbol, 18);
         await token.waitForDeployment();
-    return token;
-  }
+        return token;
+    }
+
+    let modules;
+
+    beforeEach(async function () {
+        modules = await deployTemplModules();
+    });
 
   it("reverts when protocol recipient is the zero address", async function () {
     const Factory = await ethers.getContractFactory("TemplFactory");
-    await expect(Factory.deploy(ethers.ZeroAddress, 1_000)).to.be.revertedWithCustomError(
+    await expect(
+      Factory.deploy(
+        ethers.ZeroAddress,
+        1_000,
+        modules.membershipModule,
+        modules.treasuryModule,
+        modules.governanceModule
+      )
+    ).to.be.revertedWithCustomError(
       Factory,
       "InvalidRecipient"
     );
@@ -54,7 +69,13 @@ describe("TemplFactory", function () {
 
         const Factory = await ethers.getContractFactory("TemplFactory");
         const protocolPercent = pct(12);
-        const factory = await Factory.deploy(protocolRecipient.address, protocolPercent);
+        const factory = await Factory.deploy(
+            protocolRecipient.address,
+            protocolPercent,
+            modules.membershipModule,
+            modules.treasuryModule,
+            modules.governanceModule
+        );
         await factory.waitForDeployment();
 
         const burnPercent = pct(28);
@@ -89,7 +110,7 @@ describe("TemplFactory", function () {
         const tx = await factory.createTemplWithConfig(config);
         const receipt = await tx.wait();
 
-        const templ = await ethers.getContractAt("TEMPL", templAddress);
+        const templ = await getTemplAt(templAddress, ethers.provider);
 
         expect(await templ.priest()).to.equal(priest.address);
         expect(await templ.protocolFeeRecipient()).to.equal(protocolRecipient.address);
@@ -172,7 +193,13 @@ describe("TemplFactory", function () {
 
         const Factory = await ethers.getContractFactory("TemplFactory");
         const protocolPercent = pct(10);
-        const factory = await Factory.deploy(protocolRecipient.address, protocolPercent);
+        const factory = await Factory.deploy(
+            protocolRecipient.address,
+            protocolPercent,
+            modules.membershipModule,
+            modules.treasuryModule,
+            modules.governanceModule
+        );
         await factory.waitForDeployment();
 
         const config = {
@@ -200,7 +227,7 @@ describe("TemplFactory", function () {
         const tx = await factory.createTemplWithConfig(config);
         const receipt = await tx.wait();
 
-        const templ = await ethers.getContractAt("TEMPL", templAddress);
+        const templ = await getTemplAt(templAddress, ethers.provider);
         expect(await templ.priestIsDictator()).to.equal(true);
 
         const templCreated = receipt.logs
@@ -230,7 +257,7 @@ describe("TemplFactory", function () {
     const token = await deployToken("Limit", "LIM");
 
         const Factory = await ethers.getContractFactory("TemplFactory");
-        const factory = await Factory.deploy(protocolRecipient.address, pct(12));
+        const factory = await Factory.deploy(protocolRecipient.address, pct(12), modules.membershipModule, modules.treasuryModule, modules.governanceModule);
         await factory.waitForDeployment();
 
         const config = {
@@ -256,7 +283,7 @@ describe("TemplFactory", function () {
 
         const templAddress = await factory.createTemplWithConfig.staticCall(config);
         const receipt = await (await factory.createTemplWithConfig(config)).wait();
-        const templ = await ethers.getContractAt("TEMPL", templAddress);
+        const templ = await getTemplAt(templAddress, ethers.provider);
 
         expect(await templ.MAX_MEMBERS()).to.equal(5n);
 
@@ -281,7 +308,7 @@ describe("TemplFactory", function () {
 
     const Factory = await ethers.getContractFactory("TemplFactory");
     const protocolPercent = pct(15);
-    const factory = await Factory.deploy(protocolRecipient.address, protocolPercent);
+    const factory = await Factory.deploy(protocolRecipient.address, protocolPercent, modules.membershipModule, modules.treasuryModule, modules.governanceModule);
     await factory.waitForDeployment();
 
     const config = {
@@ -308,7 +335,7 @@ describe("TemplFactory", function () {
     const templAddress = await factory.createTemplWithConfig.staticCall(config);
     await (await factory.createTemplWithConfig(config)).wait();
 
-    const templ = await ethers.getContractAt("TEMPL", templAddress);
+    const templ = await getTemplAt(templAddress, ethers.provider);
 
     expect(await templ.priest()).to.equal(deployer.address);
     expect(await templ.burnPercent()).to.equal(3_500n);
@@ -324,7 +351,7 @@ describe("TemplFactory", function () {
         const [deployer, , protocolRecipient] = await ethers.getSigners();
         const token = await deployToken("Bad", "BAD");
         const Factory = await ethers.getContractFactory("TemplFactory");
-        const factory = await Factory.deploy(protocolRecipient.address, pct(15));
+        const factory = await Factory.deploy(protocolRecipient.address, pct(15), modules.membershipModule, modules.treasuryModule, modules.governanceModule);
         await factory.waitForDeployment();
 
         await expect(
@@ -356,7 +383,7 @@ describe("TemplFactory", function () {
         const token = await deployToken("Zero", "ZERO");
         const Factory = await ethers.getContractFactory("TemplFactory");
         const protocolPercent = pct(10);
-        const factory = await Factory.deploy(protocolRecipient.address, protocolPercent);
+        const factory = await Factory.deploy(protocolRecipient.address, protocolPercent, modules.membershipModule, modules.treasuryModule, modules.governanceModule);
         await factory.waitForDeployment();
 
         const config = {
@@ -383,7 +410,7 @@ describe("TemplFactory", function () {
         const templAddress = await factory.createTemplWithConfig.staticCall(config);
         await (await factory.createTemplWithConfig(config)).wait();
 
-        const templ = await ethers.getContractAt("TEMPL", templAddress);
+        const templ = await getTemplAt(templAddress, ethers.provider);
 
         expect(await templ.burnPercent()).to.equal(0);
         expect(await templ.treasuryPercent()).to.equal(BigInt(pct(70)));
@@ -395,7 +422,7 @@ describe("TemplFactory", function () {
         const [, priest, protocolRecipient] = await ethers.getSigners();
         const token = await deployToken("Neg", "NEG");
         const Factory = await ethers.getContractFactory("TemplFactory");
-        const factory = await Factory.deploy(protocolRecipient.address, pct(10));
+        const factory = await Factory.deploy(protocolRecipient.address, pct(10), modules.membershipModule, modules.treasuryModule, modules.governanceModule);
         await factory.waitForDeployment();
 
         await expect(
@@ -426,7 +453,7 @@ describe("TemplFactory", function () {
         const [deployer, joiner, protocolRecipient] = await ethers.getSigners();
         const token = await deployToken("Defaults", "DEF");
         const Factory = await ethers.getContractFactory("TemplFactory");
-        const factory = await Factory.deploy(protocolRecipient.address, pct(10));
+        const factory = await Factory.deploy(protocolRecipient.address, pct(10), modules.membershipModule, modules.treasuryModule, modules.governanceModule);
         await factory.waitForDeployment();
 
         const templAddress = await factory.createTempl.staticCall(
@@ -445,7 +472,7 @@ describe("TemplFactory", function () {
         );
         const receipt = await tx.wait();
 
-        const templ = await ethers.getContractAt("TEMPL", templAddress);
+        const templ = await getTemplAt(templAddress, ethers.provider);
 
         expect(await templ.priest()).to.equal(deployer.address);
         expect(await templ.burnPercent()).to.equal(BigInt(pct(30)));
@@ -484,7 +511,7 @@ describe("TemplFactory", function () {
         const token = await deployToken("Delegated", "DLG");
 
         const Factory = await ethers.getContractFactory("TemplFactory");
-        const factory = await Factory.deploy(protocolRecipient.address, pct(10));
+        const factory = await Factory.deploy(protocolRecipient.address, pct(10), modules.membershipModule, modules.treasuryModule, modules.governanceModule);
         await factory.waitForDeployment();
 
         const templAddress = await factory.createTemplFor.staticCall(
@@ -509,7 +536,7 @@ describe("TemplFactory", function () {
         );
         const receipt = await tx.wait();
 
-        const templ = await ethers.getContractAt("TEMPL", templAddress);
+        const templ = await getTemplAt(templAddress, ethers.provider);
         expect(await templ.priest()).to.equal(delegatedPriest.address);
 
         const templCreated = receipt.logs
@@ -535,7 +562,7 @@ describe("TemplFactory", function () {
 
     const Factory = await ethers.getContractFactory("TemplFactory");
     const protocolPercent = pct(12);
-    const factory = await Factory.deploy(protocolRecipient.address, protocolPercent);
+    const factory = await Factory.deploy(protocolRecipient.address, protocolPercent, modules.membershipModule, modules.treasuryModule, modules.governanceModule);
     await factory.waitForDeployment();
 
     const firstConfig = {
@@ -586,8 +613,8 @@ describe("TemplFactory", function () {
     const secondTemplAddress = await factory.createTemplWithConfig.staticCall(secondConfig);
     await (await factory.createTemplWithConfig(secondConfig)).wait();
 
-    const firstTempl = await ethers.getContractAt("TEMPL", firstTemplAddress);
-    const secondTempl = await ethers.getContractAt("TEMPL", secondTemplAddress);
+    const firstTempl = await getTemplAt(firstTemplAddress, ethers.provider);
+    const secondTempl = await getTemplAt(secondTemplAddress, ethers.provider);
 
     expect(await firstTempl.protocolFeeRecipient()).to.equal(protocolRecipient.address);
     expect(await secondTempl.protocolFeeRecipient()).to.equal(protocolRecipient.address);
@@ -597,7 +624,7 @@ describe("TemplFactory", function () {
 
     it("reverts when deployed with zero protocol recipient", async function () {
         const Factory = await ethers.getContractFactory("TemplFactory");
-    await expect(Factory.deploy(ethers.ZeroAddress, pct(10))).to.be.revertedWithCustomError(
+    await expect(Factory.deploy(ethers.ZeroAddress, pct(10), modules.membershipModule, modules.treasuryModule, modules.governanceModule)).to.be.revertedWithCustomError(
         Factory,
         "InvalidRecipient"
     );
@@ -606,7 +633,7 @@ describe("TemplFactory", function () {
     it("reverts when protocol percent exceeds total", async function () {
         const [, , protocolRecipient] = await ethers.getSigners();
         const Factory = await ethers.getContractFactory("TemplFactory");
-        await expect(Factory.deploy(protocolRecipient.address, 10_001)).to.be.revertedWithCustomError(
+        await expect(Factory.deploy(protocolRecipient.address, 10_001, modules.membershipModule, modules.treasuryModule, modules.governanceModule)).to.be.revertedWithCustomError(
             Factory,
             "InvalidPercentageSplit"
         );
@@ -615,7 +642,7 @@ describe("TemplFactory", function () {
     it("reverts when creating templ with missing token", async function () {
         const [, , protocolRecipient] = await ethers.getSigners();
         const Factory = await ethers.getContractFactory("TemplFactory");
-        const factory = await Factory.deploy(protocolRecipient.address, pct(10));
+        const factory = await Factory.deploy(protocolRecipient.address, pct(10), modules.membershipModule, modules.treasuryModule, modules.governanceModule);
         await factory.waitForDeployment();
 
         await expect(
@@ -634,7 +661,7 @@ describe("TemplFactory", function () {
         const token = await deployToken("ZeroPriest", "ZP");
 
         const Factory = await ethers.getContractFactory("TemplFactory");
-        const factory = await Factory.deploy(protocolRecipient.address, pct(10));
+        const factory = await Factory.deploy(protocolRecipient.address, pct(10), modules.membershipModule, modules.treasuryModule, modules.governanceModule);
         await factory.waitForDeployment();
 
         await expect(
@@ -655,7 +682,7 @@ describe("TemplFactory", function () {
         const [, , protocolRecipient] = await ethers.getSigners();
         const token = await deployToken("LowFee", "LOW");
         const Factory = await ethers.getContractFactory("TemplFactory");
-        const factory = await Factory.deploy(protocolRecipient.address, pct(10));
+        const factory = await Factory.deploy(protocolRecipient.address, pct(10), modules.membershipModule, modules.treasuryModule, modules.governanceModule);
         await factory.waitForDeployment();
 
         await expect(
@@ -673,7 +700,7 @@ describe("TemplFactory", function () {
         const [, , protocolRecipient] = await ethers.getSigners();
         const token = await deployToken("Modulo", "MOD");
         const Factory = await ethers.getContractFactory("TemplFactory");
-        const factory = await Factory.deploy(protocolRecipient.address, pct(10));
+        const factory = await Factory.deploy(protocolRecipient.address, pct(10), modules.membershipModule, modules.treasuryModule, modules.governanceModule);
         await factory.waitForDeployment();
 
         await expect(
@@ -691,7 +718,7 @@ describe("TemplFactory", function () {
         const [, , protocolRecipient] = await ethers.getSigners();
         const token = await deployToken("Quorum", "QRM");
         const Factory = await ethers.getContractFactory("TemplFactory");
-        const factory = await Factory.deploy(protocolRecipient.address, pct(10));
+        const factory = await Factory.deploy(protocolRecipient.address, pct(10), modules.membershipModule, modules.treasuryModule, modules.governanceModule);
         await factory.waitForDeployment();
 
         await expect(
@@ -722,7 +749,7 @@ describe("TemplFactory", function () {
         const [deployer, , protocolRecipient] = await ethers.getSigners();
         const token = await deployToken("Patched", "PTC");
         const Factory = await ethers.getContractFactory("TemplFactory");
-        const factory = await Factory.deploy(protocolRecipient.address, pct(10));
+        const factory = await Factory.deploy(protocolRecipient.address, pct(10), modules.membershipModule, modules.treasuryModule, modules.governanceModule);
         await factory.waitForDeployment();
 
         const config = {
@@ -749,7 +776,7 @@ describe("TemplFactory", function () {
         const templAddress = await factory.createTemplWithConfig.staticCall(config);
         await (await factory.createTemplWithConfig(config)).wait();
 
-        const templ = await ethers.getContractAt("TEMPL", templAddress);
+        const templ = await getTemplAt(templAddress, ethers.provider);
 
         expect(await templ.priest()).to.equal(deployer.address);
         expect(await templ.quorumPercent()).to.equal(BigInt(pct(33)));
@@ -764,7 +791,7 @@ describe("TemplFactory", function () {
         const [, priest, protocolRecipient] = await ethers.getSigners();
         const token = await deployToken("Defaults2", "DEF2");
         const Factory = await ethers.getContractFactory("TemplFactory");
-        const factory = await Factory.deploy(protocolRecipient.address, pct(11));
+        const factory = await Factory.deploy(protocolRecipient.address, pct(11), modules.membershipModule, modules.treasuryModule, modules.governanceModule);
         await factory.waitForDeployment();
 
         const config = {
@@ -790,7 +817,7 @@ describe("TemplFactory", function () {
 
         const templAddress = await factory.createTemplWithConfig.staticCall(config);
         await factory.createTemplWithConfig(config);
-        const templ = await ethers.getContractAt("TEMPL", templAddress);
+        const templ = await getTemplAt(templAddress, ethers.provider);
 
         expect(await templ.quorumPercent()).to.equal(BigInt(pct(33)));
         expect(await templ.executionDelayAfterQuorum()).to.equal(7n * 24n * 60n * 60n);
@@ -851,7 +878,7 @@ describe("TemplFactory", function () {
         const [deployer, outsider, protocolRecipient] = await ethers.getSigners();
         const token = await deployToken("Access", "ACC");
         const Factory = await ethers.getContractFactory("TemplFactory");
-        const factory = await Factory.deploy(protocolRecipient.address, pct(10));
+        const factory = await Factory.deploy(protocolRecipient.address, pct(10), modules.membershipModule, modules.treasuryModule, modules.governanceModule);
         await factory.waitForDeployment();
 
         const tokenAddress = await token.getAddress();
@@ -906,7 +933,7 @@ describe("TemplFactory", function () {
             .createTemplWithConfig.staticCall(config);
         await factory.connect(outsider).createTemplWithConfig(config);
 
-        const templ = await ethers.getContractAt("TEMPL", templAddress);
+        const templ = await getTemplAt(templAddress, ethers.provider);
         expect(await templ.priest()).to.equal(deployer.address);
 
         await expect(factory.setPermissionless(true)).to.be.revertedWithCustomError(

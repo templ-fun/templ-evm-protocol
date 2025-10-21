@@ -2,6 +2,8 @@ const { expect } = require("chai");
 const { loadFixture } = require("@nomicfoundation/hardhat-network-helpers");
 const { ethers } = require("hardhat");
 const { deployTempl, STATIC_CURVE } = require("./utils/deploy");
+const { deployTemplModules } = require("./utils/modules");
+const { attachTemplInterface } = require("./utils/templ");
 const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 const { encodeSweepMemberRewardRemainderDAO } = require("./utils/callDataBuilders");
 
@@ -269,7 +271,8 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
             
             // Deploy new contract with odd fee
             const TEMPL = await ethers.getContractFactory("TEMPL");
-            const oddTempl = await TEMPL.deploy(
+            const modules = await deployTemplModules();
+            let oddTempl = await TEMPL.deploy(
                 priest.address,
                 priest.address, // protocolFeeRecipient
                 await token.getAddress(),
@@ -288,9 +291,13 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
                 METADATA.logo,
                 0,
                 0,
+                modules.membershipModule,
+                modules.treasuryModule,
+                modules.governanceModule,
                 STATIC_CURVE
             );
             await oddTempl.waitForDeployment();
+            oddTempl = await attachTemplInterface(oddTempl);
 
             // Setup 3 members
             await token.connect(member1).approve(await oddTempl.getAddress(), ODD_FEE);

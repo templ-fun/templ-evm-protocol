@@ -1,5 +1,6 @@
 const { loadFixture } = require("@nomicfoundation/hardhat-network-helpers");
 const { ethers } = require("hardhat");
+const { attachTemplInterface } = require("./templ");
 
 const STATIC_CURVE = {
   primary: { style: 0, rateBps: 0 }
@@ -9,7 +10,7 @@ const EXPONENTIAL_CURVE = {
   primary: { style: 2, rateBps: 11_000 }
 };
 
-async function deployTempl({
+async function deployTemplContracts({
   entryFee = ethers.parseUnits("100", 18),
   burnPercent = 3000,
   treasuryPercent = 3000,
@@ -28,75 +29,105 @@ async function deployTempl({
   referralShareBps = 0,
   curve = STATIC_CURVE,
 } = {}) {
-  async function fixture() {
-    const accounts = await ethers.getSigners();
-    const [owner, priest] = accounts;
+  const accounts = await ethers.getSigners();
+  const [owner, priest] = accounts;
 
-    const Token = await ethers.getContractFactory(
-      "contracts/mocks/TestToken.sol:TestToken"
-    );
-    const token = await Token.deploy("Test Token", "TEST", 18);
-    await token.waitForDeployment();
+  const Token = await ethers.getContractFactory(
+    "contracts/mocks/TestToken.sol:TestToken"
+  );
+  const token = await Token.deploy("Test Token", "TEST", 18);
+  await token.waitForDeployment();
 
-    const MembershipModule = await ethers.getContractFactory("TemplMembershipModule");
-    const membershipModule = await MembershipModule.deploy();
-    await membershipModule.waitForDeployment();
+  const MembershipModule = await ethers.getContractFactory("TemplMembershipModule");
+  const membershipModule = await MembershipModule.deploy();
+  await membershipModule.waitForDeployment();
 
-    const TreasuryModule = await ethers.getContractFactory("TemplTreasuryModule");
-    const treasuryModule = await TreasuryModule.deploy();
-    await treasuryModule.waitForDeployment();
+  const TreasuryModule = await ethers.getContractFactory("TemplTreasuryModule");
+  const treasuryModule = await TreasuryModule.deploy();
+  await treasuryModule.waitForDeployment();
 
-    const GovernanceModule = await ethers.getContractFactory("TemplGovernanceModule");
-    const governanceModule = await GovernanceModule.deploy();
-    await governanceModule.waitForDeployment();
+  const GovernanceModule = await ethers.getContractFactory("TemplGovernanceModule");
+  const governanceModule = await GovernanceModule.deploy();
+  await governanceModule.waitForDeployment();
 
-    const TEMPL = await ethers.getContractFactory("TEMPL");
-    const protocolRecipient = protocolFeeRecipient || priest.address;
-    const templ = await TEMPL.deploy(
-      priest.address,
-      protocolRecipient,
-      await token.getAddress(),
-      entryFee,
-      burnPercent,
-      treasuryPercent,
-      memberPoolPercent,
-      protocolPercent,
-      quorumPercent,
-      executionDelay,
-      burnAddress,
-      priestIsDictator,
-      maxMembers,
-      name,
-      description,
-      logoLink,
-      proposalFeeBps,
-      referralShareBps,
-      await membershipModule.getAddress(),
-      await treasuryModule.getAddress(),
-      await governanceModule.getAddress(),
-      curve
-    );
-    await templ.waitForDeployment();
-    try {
-      const { attachCreateProposalCompat, attachProposalMetadataShim } = require("./proposal");
-      attachCreateProposalCompat(templ);
-      attachProposalMetadataShim(templ);
-    } catch {}
+  const TEMPL = await ethers.getContractFactory("TEMPL");
+  const protocolRecipient = protocolFeeRecipient || priest.address;
+  let templ = await TEMPL.deploy(
+    priest.address,
+    protocolRecipient,
+    await token.getAddress(),
+    entryFee,
+    burnPercent,
+    treasuryPercent,
+    memberPoolPercent,
+    protocolPercent,
+    quorumPercent,
+    executionDelay,
+    burnAddress,
+    priestIsDictator,
+    maxMembers,
+    name,
+    description,
+    logoLink,
+    proposalFeeBps,
+    referralShareBps,
+    await membershipModule.getAddress(),
+    await treasuryModule.getAddress(),
+    await governanceModule.getAddress(),
+    curve
+  );
+  await templ.waitForDeployment();
+  templ = await attachTemplInterface(templ);
+  try {
+    const { attachCreateProposalCompat, attachProposalMetadataShim } = require("./proposal");
+    attachCreateProposalCompat(templ);
+    attachProposalMetadataShim(templ);
+  } catch {}
 
-    return {
-      templ,
-      token,
-      accounts,
-      owner,
-      priest,
-    };
+  return {
+    templ,
+    token,
+    accounts,
+    owner,
+    priest,
+  };
+}
+
+const fixtureCache = new Map();
+
+function serializeOption(value) {
+  if (typeof value === "bigint") {
+    return `${value.toString()}n`;
   }
+  if (Array.isArray(value)) {
+    return value.map(serializeOption);
+  }
+  if (value && typeof value === "object") {
+    const ordered = {};
+    for (const [key, val] of Object.entries(value).sort(([a], [b]) => (a > b ? 1 : a < b ? -1 : 0))) {
+      ordered[key] = serializeOption(val);
+    }
+    return ordered;
+  }
+  return value;
+}
 
+async function deployTempl(options = {}) {
+  const key = JSON.stringify(serializeOption(options));
+  let fixture = fixtureCache.get(key);
+  if (!fixture) {
+    const normalizedOptions = { ...options };
+    fixture = async function templFixture() {
+      return deployTemplContracts(normalizedOptions);
+    };
+    fixtureCache.set(key, fixture);
+  }
   return loadFixture(fixture);
 }
 
 module.exports = {
   deployTempl,
+  deployTemplContracts,
   STATIC_CURVE,
   EXPONENTIAL_CURVE,
 };

@@ -2,6 +2,8 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
 const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
+const { deployTemplModules } = require("./utils/modules");
+const { attachTemplInterface } = require("./utils/templ");
 
 describe("External reward remainders", function () {
   it("do not leak to members who joined after the remainder accrued", async function () {
@@ -24,13 +26,18 @@ describe("External reward remainders", function () {
     const Harness = await ethers.getContractFactory(
       "contracts/mocks/DaoCallerHarness.sol:DaoCallerHarness"
     );
-    const templ = await Harness.deploy(
+    const modules = await deployTemplModules();
+    let templ = await Harness.deploy(
       owner.address,
       protocolRecipient.address,
       accessToken.target,
-      entryFee
+      entryFee,
+      modules.membershipModule,
+      modules.treasuryModule,
+      modules.governanceModule
     );
     await templ.waitForDeployment();
+    templ = await attachTemplInterface(templ);
 
     const initialMembers = [member1, member2, member3];
     await mintToUsers(accessToken, [...initialMembers, lateMember], entryFee * 5n);
