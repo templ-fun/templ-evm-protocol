@@ -132,7 +132,7 @@ Architecture map (see more at [Module Responsibilities](#module-responsibilities
 - Treasury: DAO/priest actions for withdrawals, disbands, config/split/fee/curve/metadata/priest updates.
 - Governance: Proposal create/vote/execute, quorum and delay tracking, dictatorship toggle, external calls.
 - TemplBase (shared storage): Single storage layout and helpers used by all modules through delegatecall.
- - Priest role: Stored in shared storage and used by onlyDAO gating; see Dictatorship Gate for behavior (#dictatorship-gate-onlydao).
+- Priest role: Stored in shared storage and used by onlyDAO gating; see Dictatorship Gate for behavior (#dictatorship-gate-onlydao).
 
 Key terms
 - Priest: address set at deploy; auto‑enrolled as a member at `joinSequence=1`. Not privileged unless dictatorship mode is enabled.
@@ -542,7 +542,6 @@ flowchart TD
   C --> E[perform action]
   D --> E
 ```
-
 
 ### Snapshot-Based Voting Eligibility (example)
 
