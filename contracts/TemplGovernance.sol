@@ -195,6 +195,8 @@ contract TemplGovernanceModule is TemplBase {
         if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         if (_target == address(0)) revert TemplErrors.InvalidRecipient();
         bytes memory callData = abi.encodePacked(_selector, _params);
+        // NOTE: External call proposals can execute arbitrary logic; frontends surface explicit warnings so
+        //       voters understand these actions may drain treasury funds or otherwise rug the templ.
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
         p.action = Action.CallExternal;
         p.externalCallTarget = _target;

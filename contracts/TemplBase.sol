@@ -280,6 +280,7 @@ abstract contract TemplBase is ReentrancyGuard {
 
     /// @dev Permits calls from the contract (governance) or the priest when dictatorship mode is enabled.
     modifier onlyDAO() {
+        // NOTE: Dictatorship mode deliberately grants the priest direct access to DAO functions.
         if (priestIsDictator) {
             if (msg.sender != address(this) && msg.sender != priest) revert TemplErrors.PriestOnly();
         } else if (msg.sender != address(this)) {
@@ -734,9 +735,9 @@ abstract contract TemplBase is ReentrancyGuard {
                 if (_mulWouldOverflow(result, baseFactor)) {
                     return (0, true);
                 }
-                result = (result * baseFactor) / TOTAL_PERCENT;
+                result = Math.mulDiv(result, baseFactor, TOTAL_PERCENT);
                 if (result == 0) {
-                    return (0, true);
+                    result = 1;
                 }
             }
             remaining >>= 1;
@@ -746,9 +747,9 @@ abstract contract TemplBase is ReentrancyGuard {
             if (_mulWouldOverflow(baseFactor, baseFactor)) {
                 return (0, true);
             }
-            baseFactor = (baseFactor * baseFactor) / TOTAL_PERCENT;
+            baseFactor = Math.mulDiv(baseFactor, baseFactor, TOTAL_PERCENT);
             if (baseFactor == 0) {
-                return (0, true);
+                baseFactor = 1;
             }
         }
         return (result, false);
