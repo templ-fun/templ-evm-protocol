@@ -136,6 +136,7 @@ describe("Treasury withdrawals for arbitrary assets", function () {
     const currentAfter = await token.balanceOf(templAddress);
     const expectedAvailable = currentAfter - poolBefore;
     expect(info.treasury).to.equal(expectedAvailable);
+    expect(info.burned).to.equal(await templ.totalBurned());
   });
 
   // withdrawAll accessToken removed; covered by targeted withdraw + disband scenarios

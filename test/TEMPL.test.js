@@ -1223,6 +1223,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             expect(info.treasury).to.equal(thirtyPercent);
             expect(info.memberPool).to.equal(thirtyPercent);
             expect(info.protocolAddress).to.equal(await templ.protocolFeeRecipient());
+            expect(info.burned).to.equal(thirtyPercent);
         });
     });
 

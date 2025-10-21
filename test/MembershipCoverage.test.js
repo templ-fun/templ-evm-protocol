@@ -71,6 +71,7 @@ describe("Membership coverage extras", function () {
     const treasuryInfo = await templ.getTreasuryInfo();
     expect(treasuryInfo.treasury).to.equal(0n);
     expect(treasuryInfo.memberPool).to.equal(0n);
+    expect(treasuryInfo.burned).to.equal(0n);
   });
 
   it("returns join metadata for members and non-members", async function () {
@@ -222,10 +223,49 @@ describe("Membership coverage extras", function () {
     const treasuryInfo = await templ.getTreasuryInfo();
     expect(treasuryInfo.treasury).to.equal(0n);
     expect(treasuryInfo.memberPool).to.be.gt(0n);
+    expect(treasuryInfo.burned).to.equal(await templ.totalBurned());
 
     const config = await templ.getConfig();
     expect(config.treasury).to.equal(0n);
     expect(config.pool).to.equal(treasuryInfo.memberPool);
+  });
+
+  it("tracks cumulative burned amounts across fee split updates", async function () {
+    const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE });
+    const [, , memberA, memberB, memberC] = accounts;
+
+    await mintToUsers(token, [memberA, memberB, memberC], ENTRY_FEE * 5n);
+    await joinMembers(templ, token, [memberA, memberB]);
+
+    const burnPerJoinInitial = (ENTRY_FEE * 3000n) / 10_000n;
+    expect(await templ.totalBurned()).to.equal(burnPerJoinInitial * 2n);
+
+    const tokenAddress = await token.getAddress();
+    await templ
+      .connect(memberA)
+      .createProposalUpdateConfig(
+        tokenAddress,
+        0,
+        4_000,
+        2_000,
+        3_000,
+        true,
+        VOTING_PERIOD,
+        "Adjust burn",
+        "Increase burn share"
+      );
+
+    await templ.connect(memberB).vote(0, true);
+    await ethers.provider.send("evm_increaseTime", [VOTING_PERIOD + DAY]);
+    await ethers.provider.send("evm_mine", []);
+    await templ.executeProposal(0);
+
+    await joinMembers(templ, token, [memberC]);
+
+    const expectedTotal = burnPerJoinInitial * 2n + (ENTRY_FEE * 4_000n) / 10_000n;
+    const treasuryInfo = await templ.getTreasuryInfo();
+    expect(treasuryInfo.burned).to.equal(expectedTotal);
+    expect(await templ.totalBurned()).to.equal(expectedTotal);
   });
 
   it("claims ETH external rewards successfully", async function () {

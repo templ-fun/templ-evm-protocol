@@ -96,6 +96,9 @@ contract TemplMembershipModule is TemplBase {
         treasuryBalance += treasuryAmount;
         memberPoolBalance += distributablePool;
         // NOTE: Fee-on-transfer or rebasing tokens are unsupported; accounting assumes vanilla ERC-20 semantics.
+        if (burnAmount > 0) {
+            totalBurned += burnAmount;
+        }
         _safeTransferFrom(accessToken, payer, burnAddress, burnAmount);
         _safeTransferFrom(accessToken, payer, address(this), toContract);
         _safeTransferFrom(accessToken, payer, protocolFeeRecipient, protocolAmount);
@@ -247,18 +250,20 @@ contract TemplMembershipModule is TemplBase {
     /// @return treasury Access-token balance currently available for governance-controlled withdrawals.
     /// @return memberPool Access-token balance locked for member pool claims.
     /// @return protocolAddress Wallet that receives protocol fee splits during joins.
+    /// @return burnedTotal Cumulative access-token amount sent to the burn address.
     function getTreasuryInfo()
         external
         view
         returns (
             uint256 treasury,
             uint256 memberPool,
-            address protocolAddress
+            address protocolAddress,
+            uint256 burnedTotal
         )
     {
         uint256 current = IERC20(accessToken).balanceOf(address(this));
         uint256 available = current > memberPoolBalance ? current - memberPoolBalance : 0;
-        return (available, memberPoolBalance, protocolFeeRecipient);
+        return (available, memberPoolBalance, protocolFeeRecipient, totalBurned);
     }
 
     /// @notice Returns high level configuration and aggregate balances for the templ.
