@@ -146,7 +146,7 @@ describe("Governance coverage gaps", function () {
     await ethers.provider.send("evm_mine", []);
 
     await templ.executeProposal(proposalId);
-    expect(await templ.MAX_MEMBERS()).to.equal(4n);
+    expect(await templ.maxMembers()).to.equal(4n);
 
     await joinMembers(templ, token, [memberC]);
     expect(await templ.totalJoins()).to.equal(3n);

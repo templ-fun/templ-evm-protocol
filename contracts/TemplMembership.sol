@@ -47,7 +47,7 @@ contract TemplMembershipModule is TemplBase {
 
         uint256 currentMemberCount = memberCount;
 
-        if (MAX_MEMBERS > 0 && currentMemberCount >= MAX_MEMBERS) {
+        if (maxMembers > 0 && currentMemberCount >= maxMembers) {
             revert TemplErrors.MemberLimitReached();
         }
 
@@ -57,18 +57,18 @@ contract TemplMembershipModule is TemplBase {
 
         uint256 price = entryFee;
 
-        uint256 burnAmount = (price * burnPercent) / TOTAL_PERCENT;
-        uint256 memberPoolAmount = (price * memberPoolPercent) / TOTAL_PERCENT;
+        uint256 burnAmount = (price * burnBps) / BPS_DENOMINATOR;
+        uint256 memberPoolAmount = (price * memberPoolBps) / BPS_DENOMINATOR;
         uint256 referralAmount = 0;
         address referralTarget = address(0);
         if (referral != address(0) && referralShareBps != 0) {
             Member storage referralMember = members[referral];
             if (referralMember.joined && referral != recipient) {
-                referralAmount = (memberPoolAmount * referralShareBps) / TOTAL_PERCENT;
+                referralAmount = (memberPoolAmount * referralShareBps) / BPS_DENOMINATOR;
                 referralTarget = referral;
             }
         }
-        uint256 protocolAmount = (price * protocolPercent) / TOTAL_PERCENT;
+        uint256 protocolAmount = (price * protocolBps) / BPS_DENOMINATOR;
         uint256 treasuryAmount = price - burnAmount - memberPoolAmount - protocolAmount;
         uint256 toContract = treasuryAmount + memberPoolAmount;
 
@@ -273,10 +273,10 @@ contract TemplMembershipModule is TemplBase {
     /// @return joins Historical count of successful joins (excluding the auto-enrolled priest).
     /// @return treasury Treasury balance currently available to governance.
     /// @return pool Aggregate member pool balance reserved for claims.
-    /// @return burnPercentOut Burn allocation expressed in basis points.
-    /// @return treasuryPercentOut Treasury allocation expressed in basis points.
-    /// @return memberPoolPercentOut Member pool allocation expressed in basis points.
-    /// @return protocolPercentOut Protocol allocation expressed in basis points.
+    /// @return burnBpsOut Burn allocation expressed in basis points.
+    /// @return treasuryBpsOut Treasury allocation expressed in basis points.
+    /// @return memberPoolBpsOut Member pool allocation expressed in basis points.
+    /// @return protocolBpsOut Protocol allocation expressed in basis points.
     function getConfig() external view returns (
         address token,
         uint256 fee,
@@ -284,10 +284,10 @@ contract TemplMembershipModule is TemplBase {
         uint256 joins,
         uint256 treasury,
         uint256 pool,
-        uint256 burnPercentOut,
-        uint256 treasuryPercentOut,
-        uint256 memberPoolPercentOut,
-        uint256 protocolPercentOut
+        uint256 burnBpsOut,
+        uint256 treasuryBpsOut,
+        uint256 memberPoolBpsOut,
+        uint256 protocolBpsOut
     ) {
         uint256 current = IERC20(accessToken).balanceOf(address(this));
         uint256 available = current > memberPoolBalance ? current - memberPoolBalance : 0;
@@ -298,10 +298,10 @@ contract TemplMembershipModule is TemplBase {
             totalJoins(),
             available,
             memberPoolBalance,
-            burnPercent,
-            treasuryPercent,
-            memberPoolPercent,
-            protocolPercent
+            burnBps,
+            treasuryBps,
+            memberPoolBps,
+            protocolBps
         );
     }
 

@@ -14,10 +14,10 @@ abstract contract TemplBase is ReentrancyGuard {
     using TemplErrors for *;
     using SafeERC20 for IERC20;
 
-    /// @dev Basis used for fee split math so every percent is represented as an integer.
-    uint256 internal constant TOTAL_PERCENT = 10_000;
-    /// @dev Default quorum percent applied when callers pass zero into constructors.
-    uint256 internal constant DEFAULT_QUORUM_PERCENT = 3_300;
+    /// @dev Basis for fee split math (basis points per 100%).
+    uint256 internal constant BPS_DENOMINATOR = 10_000;
+    /// @dev Default quorum threshold (basis points) applied when callers pass zero into constructors.
+    uint256 internal constant DEFAULT_QUORUM_BPS = 3_300;
     /// @dev Default post-quorum execution delay used when deployers do not override it.
     uint256 internal constant DEFAULT_EXECUTION_DELAY = 7 days;
     /// @dev Default burn address used when deployers do not provide a custom sink.
@@ -27,14 +27,14 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @dev Maximum entry fee supported before arithmetic would overflow downstream accounting.
     uint256 internal constant MAX_ENTRY_FEE = type(uint128).max;
 
-    /// @notice Percent of the entry fee that is burned on every join.
-    uint256 public burnPercent;
-    /// @notice Percent of the entry fee routed into the treasury balance.
-    uint256 public treasuryPercent;
-    /// @notice Percent of the entry fee set aside for the member rewards pool.
-    uint256 public memberPoolPercent;
-    /// @notice Percent of the entry fee forwarded to the protocol on every join.
-    uint256 public protocolPercent;
+    /// @notice Basis points of the entry fee that are burned on every join.
+    uint256 public burnBps;
+    /// @notice Basis points of the entry fee routed into the treasury balance.
+    uint256 public treasuryBps;
+    /// @notice Basis points of the entry fee set aside for the member rewards pool.
+    uint256 public memberPoolBps;
+    /// @notice Basis points of the entry fee forwarded to the protocol on every join.
+    uint256 public protocolBps;
 
     /// @notice Address empowered to act as the priest (and temporary dictator).
     address public priest;
@@ -57,11 +57,10 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @notice Whether new member joins are currently paused.
     bool public joinPaused;
     /// @notice Maximum allowed members when greater than zero (0 = uncapped).
-    /// @dev Named in uppercase historically; kept for backwards compatibility with emitted ABI.
-    uint256 public MAX_MEMBERS;
+    uint256 public maxMembers;
 
-    /// @notice Percent of YES votes required to satisfy quorum.
-    uint256 public quorumPercent;
+    /// @notice YES vote threshold required to satisfy quorum (basis points).
+    uint256 public quorumBps;
     /// @notice Seconds governance must wait after quorum before executing a proposal.
     uint256 public executionDelayAfterQuorum;
     /// @notice Address that receives burn allocations.
@@ -121,9 +120,9 @@ abstract contract TemplBase is ReentrancyGuard {
         string reason;
         bool joinPaused;
         uint256 newEntryFee;
-        uint256 newBurnPercent;
-        uint256 newTreasuryPercent;
-        uint256 newMemberPoolPercent;
+        uint256 newBurnBps;
+        uint256 newTreasuryBps;
+        uint256 newMemberPoolBps;
         string newTemplName;
         string newTemplDescription;
         string newLogoLink;
@@ -227,16 +226,16 @@ abstract contract TemplBase is ReentrancyGuard {
         address indexed token,
         address indexed recipient,
         uint256 amount,
-        string description
+        string reason
     );
 
     event ConfigUpdated(
         address indexed token,
         uint256 entryFee,
-        uint256 burnPercent,
-        uint256 treasuryPercent,
-        uint256 memberPoolPercent,
-        uint256 protocolPercent
+        uint256 burnBps,
+        uint256 treasuryBps,
+        uint256 memberPoolBps,
+        uint256 protocolBps
     );
 
     event JoinPauseUpdated(bool joinPaused);
@@ -402,11 +401,11 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @notice Sets immutable configuration and initial governance parameters shared across modules.
     /// @param _protocolFeeRecipient Address receiving the protocol share of entry fees.
     /// @param _accessToken ERC-20 token that gates membership.
-    /// @param _burnPercent Initial percent burned from every entry fee.
-    /// @param _treasuryPercent Initial percent routed to the treasury.
-    /// @param _memberPoolPercent Initial percent shared with existing members.
-    /// @param _protocolPercent Protocol fee percent baked into every templ deployment.
-    /// @param _quorumPercent Percent of members required to reach quorum (defaults when zero).
+    /// @param _burnBps Initial burn share in basis points of every entry fee.
+    /// @param _treasuryBps Initial treasury share in basis points.
+    /// @param _memberPoolBps Initial member pool share in basis points.
+    /// @param _protocolBps Protocol fee share in basis points baked into every templ deployment.
+    /// @param _quorumBps YES vote threshold (basis points) required to reach quorum (defaults when zero).
     /// @param _executionDelay Seconds to wait after quorum before execution (defaults when zero).
     /// @param _burnAddress Address receiving burn allocations (fallbacks to the dead address).
     /// @param _priestIsDictator Whether the templ starts in dictatorship mode.
@@ -418,11 +417,11 @@ abstract contract TemplBase is ReentrancyGuard {
     function _initializeTempl(
         address _protocolFeeRecipient,
         address _accessToken,
-        uint256 _burnPercent,
-        uint256 _treasuryPercent,
-        uint256 _memberPoolPercent,
-        uint256 _protocolPercent,
-        uint256 _quorumPercent,
+        uint256 _burnBps,
+        uint256 _treasuryBps,
+        uint256 _memberPoolBps,
+        uint256 _protocolBps,
+        uint256 _quorumBps,
         uint256 _executionDelay,
         address _burnAddress,
         bool _priestIsDictator,
@@ -439,35 +438,35 @@ abstract contract TemplBase is ReentrancyGuard {
         accessToken = _accessToken;
         priestIsDictator = _priestIsDictator;
 
-        uint256 burnBps = _burnPercent;
-        uint256 treasuryBps = _treasuryPercent;
-        uint256 memberBps = _memberPoolPercent;
-        uint256 protocolBps = _protocolPercent;
+        uint256 burnBpsLocal = _burnBps;
+        uint256 treasuryBpsLocal = _treasuryBps;
+        uint256 memberBpsLocal = _memberPoolBps;
+        uint256 protocolBpsLocal = _protocolBps;
 
-        uint256 rawTotal = _burnPercent + _treasuryPercent + _memberPoolPercent + _protocolPercent;
-        if (rawTotal == TOTAL_PERCENT) {
+        uint256 rawTotal = _burnBps + _treasuryBps + _memberPoolBps + _protocolBps;
+        if (rawTotal == BPS_DENOMINATOR) {
             // values already provided in basis points
         } else if (rawTotal == 100) {
-            burnBps = _burnPercent * 100;
-            treasuryBps = _treasuryPercent * 100;
-            memberBps = _memberPoolPercent * 100;
-            protocolBps = _protocolPercent * 100;
+            burnBpsLocal = _burnBps * 100;
+            treasuryBpsLocal = _treasuryBps * 100;
+            memberBpsLocal = _memberPoolBps * 100;
+            protocolBpsLocal = _protocolBps * 100;
         } else {
             revert TemplErrors.InvalidPercentageSplit();
         }
 
-        protocolPercent = protocolBps;
-        _setPercentSplit(burnBps, treasuryBps, memberBps);
+        protocolBps = protocolBpsLocal;
+        _setPercentSplit(burnBpsLocal, treasuryBpsLocal, memberBpsLocal);
 
-        if (_quorumPercent == 0) {
-            quorumPercent = DEFAULT_QUORUM_PERCENT;
+        if (_quorumBps == 0) {
+            quorumBps = DEFAULT_QUORUM_BPS;
         } else {
-            uint256 normalizedQuorum = _quorumPercent;
+            uint256 normalizedQuorum = _quorumBps;
             if (normalizedQuorum <= 100) {
                 normalizedQuorum = normalizedQuorum * 100;
             }
-            if (normalizedQuorum > TOTAL_PERCENT) revert TemplErrors.InvalidPercentage();
-            quorumPercent = normalizedQuorum;
+            if (normalizedQuorum > BPS_DENOMINATOR) revert TemplErrors.InvalidPercentage();
+            quorumBps = normalizedQuorum;
         }
 
         executionDelayAfterQuorum = _executionDelay == 0 ? DEFAULT_EXECUTION_DELAY : _executionDelay;
@@ -479,24 +478,24 @@ abstract contract TemplBase is ReentrancyGuard {
 
     /// @dev Updates the split between burn, treasury, and member pool slices.
     function _setPercentSplit(
-        uint256 _burnPercent,
-        uint256 _treasuryPercent,
-        uint256 _memberPoolPercent
+        uint256 _burnBps,
+        uint256 _treasuryBps,
+        uint256 _memberPoolBps
     ) internal {
-        _validatePercentSplit(_burnPercent, _treasuryPercent, _memberPoolPercent, protocolPercent);
-        burnPercent = _burnPercent;
-        treasuryPercent = _treasuryPercent;
-        memberPoolPercent = _memberPoolPercent;
+        _validatePercentSplit(_burnBps, _treasuryBps, _memberPoolBps, protocolBps);
+        burnBps = _burnBps;
+        treasuryBps = _treasuryBps;
+        memberPoolBps = _memberPoolBps;
     }
 
     /// @dev Validates that the provided split plus the protocol fee equals 100%.
     function _validatePercentSplit(
-        uint256 _burnPercent,
-        uint256 _treasuryPercent,
-        uint256 _memberPoolPercent,
-        uint256 _protocolPercent
+        uint256 _burnBps,
+        uint256 _treasuryBps,
+        uint256 _memberPoolBps,
+        uint256 _protocolBps
     ) internal pure {
-        if (_burnPercent + _treasuryPercent + _memberPoolPercent + _protocolPercent != TOTAL_PERCENT) {
+        if (_burnBps + _treasuryBps + _memberPoolBps + _protocolBps != BPS_DENOMINATOR) {
             revert TemplErrors.InvalidPercentageSplit();
         }
     }
@@ -707,22 +706,22 @@ abstract contract TemplBase is ReentrancyGuard {
             uint256 scaled = rate * steps;
             uint256 offset;
             unchecked {
-                offset = TOTAL_PERCENT + scaled;
+                offset = BPS_DENOMINATOR + scaled;
             }
-            if (offset < TOTAL_PERCENT) {
+            if (offset < BPS_DENOMINATOR) {
                 return MAX_ENTRY_FEE;
             }
             if (forward) {
                 if (_mulWouldOverflow(amount, offset)) {
                     return MAX_ENTRY_FEE;
                 }
-                uint256 linearResult = Math.mulDiv(amount, offset, TOTAL_PERCENT);
+                uint256 linearResult = Math.mulDiv(amount, offset, BPS_DENOMINATOR);
                 return linearResult > MAX_ENTRY_FEE ? MAX_ENTRY_FEE : linearResult;
             }
-            if (_mulWouldOverflow(amount, TOTAL_PERCENT)) {
+            if (_mulWouldOverflow(amount, BPS_DENOMINATOR)) {
                 return MAX_ENTRY_FEE;
             }
-            uint256 inverseResult = Math.mulDiv(amount, TOTAL_PERCENT, offset, Math.Rounding.Ceil);
+            uint256 inverseResult = Math.mulDiv(amount, BPS_DENOMINATOR, offset, Math.Rounding.Ceil);
             return inverseResult > MAX_ENTRY_FEE ? MAX_ENTRY_FEE : inverseResult;
         }
         if (segment.style == CurveStyle.Exponential) {
@@ -738,9 +737,9 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @dev Computes a basis-point scaled exponent using exponentiation by squaring.
     function _powBps(uint256 factorBps, uint256 exponent) internal pure returns (uint256 result, bool overflow) {
         if (exponent == 0) {
-            return (TOTAL_PERCENT, false);
+            return (BPS_DENOMINATOR, false);
         }
-        result = TOTAL_PERCENT;
+        result = BPS_DENOMINATOR;
         uint256 baseFactor = factorBps;
         uint256 remaining = exponent;
         while (remaining > 0) {
@@ -748,7 +747,7 @@ abstract contract TemplBase is ReentrancyGuard {
                 if (_mulWouldOverflow(result, baseFactor)) {
                     return (0, true);
                 }
-                result = Math.mulDiv(result, baseFactor, TOTAL_PERCENT);
+                result = Math.mulDiv(result, baseFactor, BPS_DENOMINATOR);
                 if (result == 0) {
                     result = 1;
                 }
@@ -760,7 +759,7 @@ abstract contract TemplBase is ReentrancyGuard {
             if (_mulWouldOverflow(baseFactor, baseFactor)) {
                 return (0, true);
             }
-            baseFactor = Math.mulDiv(baseFactor, baseFactor, TOTAL_PERCENT);
+            baseFactor = Math.mulDiv(baseFactor, baseFactor, BPS_DENOMINATOR);
             if (baseFactor == 0) {
                 baseFactor = 1;
             }
@@ -855,7 +854,7 @@ abstract contract TemplBase is ReentrancyGuard {
         if (newMaxMembers > 0 && newMaxMembers < currentMembers) {
             revert TemplErrors.MemberLimitTooLow();
         }
-        MAX_MEMBERS = newMaxMembers;
+        maxMembers = newMaxMembers;
         emit MaxMembersUpdated(newMaxMembers);
         _refreshEntryFeeFromState();
         _autoPauseIfLimitReached();
@@ -875,7 +874,7 @@ abstract contract TemplBase is ReentrancyGuard {
 
     /// @dev Updates the proposal creation fee and emits an event when it changes.
     function _setProposalCreationFee(uint256 newFeeBps) internal {
-        if (newFeeBps > TOTAL_PERCENT) revert TemplErrors.InvalidPercentage();
+        if (newFeeBps > BPS_DENOMINATOR) revert TemplErrors.InvalidPercentage();
         uint256 previous = proposalCreationFeeBps;
         proposalCreationFeeBps = newFeeBps;
         emit ProposalCreationFeeUpdated(previous, newFeeBps);
@@ -883,7 +882,7 @@ abstract contract TemplBase is ReentrancyGuard {
 
     /// @dev Updates the referral share BPS and emits an event when it changes.
     function _setReferralShareBps(uint256 newBps) internal {
-        if (newBps > TOTAL_PERCENT) revert TemplErrors.InvalidPercentage();
+        if (newBps > BPS_DENOMINATOR) revert TemplErrors.InvalidPercentage();
         uint256 previous = referralShareBps;
         referralShareBps = newBps;
         emit ReferralShareBpsUpdated(previous, newBps);
@@ -935,18 +934,18 @@ abstract contract TemplBase is ReentrancyGuard {
         address _token,
         uint256 _entryFee,
         bool _updateFeeSplit,
-        uint256 _burnPercent,
-        uint256 _treasuryPercent,
-        uint256 _memberPoolPercent
+        uint256 _burnBps,
+        uint256 _treasuryBps,
+        uint256 _memberPoolBps
     ) internal {
         if (_token != address(0) && _token != accessToken) revert TemplErrors.TokenChangeDisabled();
         if (_entryFee > 0) {
             _setCurrentEntryFee(_entryFee);
         }
         if (_updateFeeSplit) {
-            _setPercentSplit(_burnPercent, _treasuryPercent, _memberPoolPercent);
+            _setPercentSplit(_burnBps, _treasuryBps, _memberPoolBps);
         }
-        emit ConfigUpdated(accessToken, entryFee, burnPercent, treasuryPercent, memberPoolPercent, protocolPercent);
+        emit ConfigUpdated(accessToken, entryFee, burnBps, treasuryBps, memberPoolBps, protocolBps);
     }
 
     /// @dev Sets the join pause flag without mutating membership limits during manual resumes.
@@ -1066,7 +1065,7 @@ abstract contract TemplBase is ReentrancyGuard {
 
     /// @dev Pauses new joins when a membership cap is set and already reached.
     function _autoPauseIfLimitReached() internal {
-        uint256 limit = MAX_MEMBERS;
+        uint256 limit = maxMembers;
         if (limit > 0 && memberCount >= limit && !joinPaused) {
             joinPaused = true;
             emit JoinPauseUpdated(true);
@@ -1125,17 +1124,17 @@ abstract contract TemplBase is ReentrancyGuard {
         if (_mulWouldOverflow(amount, multiplier)) {
             return MAX_ENTRY_FEE;
         }
-        uint256 result = Math.mulDiv(amount, multiplier, TOTAL_PERCENT);
+        uint256 result = Math.mulDiv(amount, multiplier, BPS_DENOMINATOR);
         return result > MAX_ENTRY_FEE ? MAX_ENTRY_FEE : result;
     }
 
     /// @dev Inverts the scaling by dividing `amount` by `divisor` (basis points) while rounding up.
     function _scaleInverse(uint256 amount, uint256 divisor) internal pure returns (uint256) {
         if (divisor == 0) revert TemplErrors.InvalidCurveConfig();
-        if (_mulWouldOverflow(amount, TOTAL_PERCENT)) {
+        if (_mulWouldOverflow(amount, BPS_DENOMINATOR)) {
             return MAX_ENTRY_FEE;
         }
-        uint256 result = Math.mulDiv(amount, TOTAL_PERCENT, divisor, Math.Rounding.Ceil);
+        uint256 result = Math.mulDiv(amount, BPS_DENOMINATOR, divisor, Math.Rounding.Ceil);
         return result > MAX_ENTRY_FEE ? MAX_ENTRY_FEE : result;
     }
 

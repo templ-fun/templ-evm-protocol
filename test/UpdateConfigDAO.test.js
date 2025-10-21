@@ -101,10 +101,10 @@ describe("updateConfigDAO", function () {
         await ethers.provider.send("evm_mine");
         await templ.executeProposal(0);
 
-        expect(await templ.burnPercent()).to.equal(BigInt(NEW_BURN));
-        expect(await templ.treasuryPercent()).to.equal(BigInt(NEW_TREASURY));
-        expect(await templ.memberPoolPercent()).to.equal(BigInt(NEW_MEMBER));
-        expect(await templ.protocolPercent()).to.equal(BigInt(pct(10)));
+        expect(await templ.burnBps()).to.equal(BigInt(NEW_BURN));
+        expect(await templ.treasuryBps()).to.equal(BigInt(NEW_TREASURY));
+        expect(await templ.memberPoolBps()).to.equal(BigInt(NEW_MEMBER));
+        expect(await templ.protocolBps()).to.equal(BigInt(pct(10)));
 
         const burnAddress = await templ.burnAddress();
         const protocolRecipient = await templ.protocolFeeRecipient();

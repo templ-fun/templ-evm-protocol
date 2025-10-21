@@ -33,14 +33,14 @@ async function createProposal({ templ, signer, title, description: proposalDescr
     return await tx.wait();
   } catch {}
   try {
-    const [token, newFee, updateSplit, burnPercent, treasuryPercent, memberPoolPercent] =
+    const [token, newFee, updateSplit, burnBps, treasuryBps, memberPoolBps] =
       IF_UC.decodeFunctionData("updateConfigDAO", callData);
     const tx = await conn.createProposalUpdateConfig(
       token,
       newFee,
-      burnPercent,
-      treasuryPercent,
-      memberPoolPercent,
+      burnBps,
+      treasuryBps,
+      memberPoolBps,
       updateSplit,
       votingPeriod,
       title,

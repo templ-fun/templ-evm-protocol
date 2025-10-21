@@ -102,7 +102,7 @@ describe("TemplHarness coverage helpers", function () {
     );
     await capped.waitForDeployment();
     capped = await attachTemplInterface(capped);
-    expect(await capped.MAX_MEMBERS()).to.equal(7n);
+    expect(await capped.maxMembers()).to.equal(7n);
   });
 
   it("returns false when snapshot sequence is zero", async function () {

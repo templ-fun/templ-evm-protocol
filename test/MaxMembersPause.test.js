@@ -30,7 +30,7 @@ describe("Max Members Pause Handling", function () {
     await joinMembers(templ, token, [m1, m2]);
 
     expect(await templ.joinPaused()).to.equal(true);
-    expect(await templ.MAX_MEMBERS()).to.equal(MAX_MEMBERS);
+    expect(await templ.maxMembers()).to.equal(MAX_MEMBERS);
   });
 
   it("retains the membership cap when unpausing after reaching the limit", async function () {
@@ -43,6 +43,6 @@ describe("Max Members Pause Handling", function () {
     await templ.executeProposal(0);
 
     expect(await templ.joinPaused()).to.equal(false);
-    expect(await templ.MAX_MEMBERS()).to.equal(MAX_MEMBERS);
+    expect(await templ.maxMembers()).to.equal(MAX_MEMBERS);
   });
 });

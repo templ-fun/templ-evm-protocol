@@ -171,12 +171,12 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
     );
 
     await templ.daoSetMaxMembers(3);
-    expect(await templ.MAX_MEMBERS()).to.equal(3n);
+    expect(await templ.maxMembers()).to.equal(3n);
     expect(await templ.joinPaused()).to.equal(true);
 
     await templ.daoPause(false);
     expect(await templ.joinPaused()).to.equal(false);
-    expect(await templ.MAX_MEMBERS()).to.equal(3n);
+    expect(await templ.maxMembers()).to.equal(3n);
 
     await token.mint(memberC.address, ENTRY_FEE);
     await token.connect(memberC).approve(templ.target, ENTRY_FEE);

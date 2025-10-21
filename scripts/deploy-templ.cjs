@@ -345,7 +345,7 @@ async function main() {
   if (FACTORY_ADDRESS_ENV) {
     try {
       const existingFactory = await hre.ethers.getContractAt('TemplFactory', FACTORY_ADDRESS_ENV);
-      const onChainPercentBps = Number(await existingFactory.protocolPercent());
+      const onChainPercentBps = Number(await existingFactory.protocolBps());
       if (!Number.isFinite(onChainPercentBps)) {
         throw new Error('Factory protocol percent is not a finite number');
       }
@@ -526,10 +526,10 @@ async function main() {
     priest: PRIEST_ADDRESS,
     token: TOKEN_ADDRESS,
     entryFee: ENTRY_FEE,
-    burnPercent: burnPercent.configValue,
-    treasuryPercent: treasuryPercent.configValue,
-    memberPoolPercent: memberPoolPercent.configValue,
-    quorumPercent: quorumPercentBps,
+    burnBps: burnPercent.configValue,
+    treasuryBps: treasuryPercent.configValue,
+    memberPoolBps: memberPoolPercent.configValue,
+    quorumBps: quorumPercentBps,
     executionDelaySeconds: EXECUTION_DELAY_SECONDS ?? 0,
     burnAddress: BURN_ADDRESS || hre.ethers.ZeroAddress,
     priestIsDictator: PRIEST_IS_DICTATOR,
@@ -658,11 +658,16 @@ async function main() {
     membershipModule: membershipModuleAddress,
     treasuryModule: treasuryModuleAddress,
     governanceModule: governanceModuleAddress,
+    // Fee split (bps and percent for human-friendly context)
+    burnBps: burnPercent.resolvedBps,
+    treasuryBps: treasuryPercent.resolvedBps,
+    memberPoolBps: memberPoolPercent.resolvedBps,
     burnPercent: burnPercent.resolvedPercent,
     treasuryPercent: treasuryPercent.resolvedPercent,
     memberPoolPercent: memberPoolPercent.resolvedPercent,
-    protocolPercentBps,
-    protocolPercentPercent,
+    protocolBps: protocolPercentBps,
+    protocolPercent: protocolPercentPercent,
+    quorumBps: quorumPercentBps,
     quorumPercent: QUORUM_PERCENT ?? 33,
     executionDelaySeconds: EXECUTION_DELAY_SECONDS ?? 7 * 24 * 60 * 60,
     burnAddress: effectiveBurnAddress,

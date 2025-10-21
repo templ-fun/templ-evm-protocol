@@ -55,17 +55,17 @@ contract DaoCallerHarness is TEMPL {
         address token,
         uint256 fee,
         bool updateSplit,
-        uint256 burnPercent,
-        uint256 treasuryPercent,
-        uint256 memberPoolPercent
+        uint256 burnBps,
+        uint256 treasuryBps,
+        uint256 memberPoolBps
     ) external {
         TemplTreasuryModule(address(this)).updateConfigDAO(
             token,
             fee,
             updateSplit,
-            burnPercent,
-            treasuryPercent,
-            memberPoolPercent
+            burnBps,
+            treasuryBps,
+            memberPoolBps
         );
     }
     /// @notice Wrapper to call setJoinPausedDAO via contract self-call

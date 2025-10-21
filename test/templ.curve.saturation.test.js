@@ -213,9 +213,9 @@ describe("TEMPL high-load behaviour", function () {
 
       await templ.connect(accessibleMembers[0]).vote(withdrawProposalId, true);
 
-      const quorumPercentBps = await templ.quorumPercent();
+      const quorumBps = await templ.quorumBps();
       const memberCount = await templ.memberCount();
-      let requiredYesVotes = (quorumPercentBps * memberCount + (TOTAL_PERCENT_BPS - 1n)) / TOTAL_PERCENT_BPS;
+      let requiredYesVotes = (quorumBps * memberCount + (TOTAL_PERCENT_BPS - 1n)) / TOTAL_PERCENT_BPS;
       if (requiredYesVotes < 1n) {
         requiredYesVotes = 1n;
       }

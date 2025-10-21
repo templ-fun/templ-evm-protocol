@@ -79,11 +79,11 @@ describe("TEMPL Contract with DAO Governance", function () {
             await templDirect.waitForDeployment();
             templDirect = await attachTemplInterface(templDirect);
 
-            expect(await templDirect.burnPercent()).to.equal(3_000n);
-            expect(await templDirect.treasuryPercent()).to.equal(4_000n);
-            expect(await templDirect.memberPoolPercent()).to.equal(2_000n);
-            expect(await templDirect.protocolPercent()).to.equal(1_000n);
-            expect(await templDirect.quorumPercent()).to.equal(3_500n);
+            expect(await templDirect.burnBps()).to.equal(3_000n);
+            expect(await templDirect.treasuryBps()).to.equal(4_000n);
+            expect(await templDirect.memberPoolBps()).to.equal(2_000n);
+            expect(await templDirect.protocolBps()).to.equal(1_000n);
+            expect(await templDirect.quorumBps()).to.equal(3_500n);
             expect(await templDirect.executionDelayAfterQuorum()).to.equal(12_345);
             expect(await templDirect.burnAddress()).to.equal(customBurnAddress.toLowerCase());
         });
@@ -212,7 +212,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             await templZero.waitForDeployment();
             templZero = await attachTemplInterface(templZero);
 
-            expect(await templZero.quorumPercent()).to.equal(QUORUM_BPS);
+            expect(await templZero.quorumBps()).to.equal(QUORUM_BPS);
             expect(await templZero.executionDelayAfterQuorum()).to.equal(7 * 24 * 60 * 60);
             expect(await templZero.burnAddress()).to.equal("0x000000000000000000000000000000000000dEaD");
         });

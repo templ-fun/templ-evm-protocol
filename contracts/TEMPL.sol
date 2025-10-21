@@ -21,11 +21,11 @@ contract TEMPL is TemplBase {
     /// @param _protocolFeeRecipient Address that receives the protocol share of every entry fee.
     /// @param _token ERC-20 token used as the access currency for the templ.
     /// @param _entryFee Amount of `_token` required to join the templ.
-    /// @param _burnPercent Percent of each entry fee that is burned.
-    /// @param _treasuryPercent Percent of each entry fee routed to the templ treasury.
-    /// @param _memberPoolPercent Percent of each entry fee streamed to existing members.
-    /// @param _protocolPercent Percent of each entry fee forwarded to the protocol.
-    /// @param _quorumPercent Percent of members that must vote YES to satisfy quorum.
+    /// @param _burnBps Basis points of each entry fee that are burned.
+    /// @param _treasuryBps Basis points of each entry fee routed to the templ treasury.
+    /// @param _memberPoolBps Basis points of each entry fee streamed to existing members.
+    /// @param _protocolBps Basis points of each entry fee forwarded to the protocol.
+    /// @param _quorumBps YES vote threshold (basis points) required to satisfy quorum.
     /// @param _executionDelay Seconds to wait after quorum before executing a proposal.
     /// @param _burnAddress Address that receives the burn allocation (defaults to the dead address).
     /// @param _priestIsDictator Whether the templ starts in priest-only governance mode.
@@ -41,11 +41,11 @@ contract TEMPL is TemplBase {
         address _protocolFeeRecipient,
         address _token,
         uint256 _entryFee,
-        uint256 _burnPercent,
-        uint256 _treasuryPercent,
-        uint256 _memberPoolPercent,
-        uint256 _protocolPercent,
-        uint256 _quorumPercent,
+        uint256 _burnBps,
+        uint256 _treasuryBps,
+        uint256 _memberPoolBps,
+        uint256 _protocolBps,
+        uint256 _quorumBps,
         uint256 _executionDelay,
         address _burnAddress,
         bool _priestIsDictator,
@@ -63,11 +63,11 @@ contract TEMPL is TemplBase {
         _initializeTempl(
             _protocolFeeRecipient,
             _token,
-            _burnPercent,
-            _treasuryPercent,
-            _memberPoolPercent,
-            _protocolPercent,
-            _quorumPercent,
+            _burnBps,
+            _treasuryBps,
+            _memberPoolBps,
+            _protocolBps,
+            _quorumBps,
             _executionDelay,
             _burnAddress,
             _priestIsDictator,

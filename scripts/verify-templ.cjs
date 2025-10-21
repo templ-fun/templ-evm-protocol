@@ -3,16 +3,8 @@ require("dotenv").config();
 
 const FACTORY_EVENT_VARIANTS = [
   {
-    id: 'metadata-v3',
-    abi: 'event TemplCreated(address indexed templ, address indexed creator, address indexed priest, address token, uint256 entryFee, uint256 burnPercent, uint256 treasuryPercent, uint256 memberPoolPercent, uint256 quorumPercent, uint256 executionDelaySeconds, address burnAddress, bool priestIsDictator, uint256 maxMembers, uint8[] curveStyles, uint32[] curveRateBps, uint32[] curveLengths, string name, string description, string logoLink, uint256 proposalFeeBps, uint256 referralShareBps)'
-  },
-  {
-    id: 'pivoted',
-    abi: 'event TemplCreated(address indexed templ, address indexed creator, address indexed priest, address token, uint256 entryFee, uint256 burnPercent, uint256 treasuryPercent, uint256 memberPoolPercent, uint256 quorumPercent, uint256 executionDelaySeconds, address burnAddress, bool priestIsDictator, uint256 maxMembers, uint8 curvePrimaryStyle, uint32 curvePrimaryRateBps, uint8 curveSecondaryStyle, uint32 curveSecondaryRateBps, uint16 curvePivotPercentOfMax, string homeLink)'
-  },
-  {
-    id: 'compat',
-    abi: 'event TemplCreated(address indexed templ, address indexed creator, address indexed priest, address token, uint256 entryFee, uint256 burnPercent, uint256 treasuryPercent, uint256 memberPoolPercent, uint256 quorumPercent, uint256 executionDelaySeconds, address burnAddress, bool priestIsDictator, uint256 maxMembers, string homeLink)'
+    id: 'current',
+    abi: 'event TemplCreated(address indexed templ, address indexed creator, address indexed priest, address token, uint256 entryFee, uint256 burnBps, uint256 treasuryBps, uint256 memberPoolBps, uint256 quorumBps, uint256 executionDelaySeconds, address burnAddress, bool priestIsDictator, uint256 maxMembers, uint8[] curveStyles, uint32[] curveRateBps, uint32[] curveLengths, string name, string description, string logoLink, uint256 proposalFeeBps, uint256 referralShareBps)'
   }
 ].map((variant) => {
   const iface = new hre.ethers.Interface([variant.abi]);
@@ -226,15 +218,15 @@ async function fetchContractSnapshot(contract) {
     protocolFeeRecipient: await safeCall(contract, 'protocolFeeRecipient'),
     accessToken: await safeCall(contract, 'accessToken'),
     entryFee: await safeCall(contract, 'entryFee'),
-    burnPercent: await safeCall(contract, 'burnPercent'),
-    treasuryPercent: await safeCall(contract, 'treasuryPercent'),
-    memberPoolPercent: await safeCall(contract, 'memberPoolPercent'),
-    protocolPercent: await safeCall(contract, 'protocolPercent'),
-    quorumPercent: await safeCall(contract, 'quorumPercent'),
+    burnBps: await safeCall(contract, 'burnBps'),
+    treasuryBps: await safeCall(contract, 'treasuryBps'),
+    memberPoolBps: await safeCall(contract, 'memberPoolBps'),
+    protocolBps: await safeCall(contract, 'protocolBps'),
+    quorumBps: await safeCall(contract, 'quorumBps'),
     executionDelayAfterQuorum: await safeCall(contract, 'executionDelayAfterQuorum'),
     burnAddress: await safeCall(contract, 'burnAddress'),
     priestIsDictator: await safeCall(contract, 'priestIsDictator', (value) => Boolean(value)),
-    maxMembers: await safeCall(contract, 'MAX_MEMBERS'),
+    maxMembers: await safeCall(contract, 'maxMembers'),
     templName: await safeCall(contract, 'templName'),
     templDescription: await safeCall(contract, 'templDescription'),
     templLogoLink: await safeCall(contract, 'templLogoLink'),
@@ -327,10 +319,10 @@ async function fetchEventSnapshot({ provider, factoryAddress, templAddress, from
           priest: args.priest,
           accessToken: args.token,
           entryFee: toSerializable(args.entryFee),
-          burnPercent: toSerializable(args.burnPercent),
-          treasuryPercent: toSerializable(args.treasuryPercent),
-          memberPoolPercent: toSerializable(args.memberPoolPercent),
-          quorumPercent: toSerializable(args.quorumPercent),
+          burnBps: toSerializable(args.burnBps),
+          treasuryBps: toSerializable(args.treasuryBps),
+          memberPoolBps: toSerializable(args.memberPoolBps),
+          quorumBps: toSerializable(args.quorumBps),
           executionDelayAfterQuorum: toSerializable(args.executionDelaySeconds),
           burnAddress: args.burnAddress,
           priestIsDictator: Boolean(args.priestIsDictator),
@@ -506,38 +498,38 @@ async function main() {
       overrideValue: envOverrides.entryFee,
       normalizer: (value) => toSerializable(value)
     }),
-    burnPercent: resolveField({
-      label: 'burnPercent',
-      contractValue: contractSnapshot.burnPercent,
-      eventValue: eventSnapshot?.burnPercent,
+    burnBps: resolveField({
+      label: 'burnBps',
+      contractValue: contractSnapshot.burnBps,
+      eventValue: eventSnapshot?.burnBps,
       overrideValue: envOverrides.burnPercent,
       normalizer: (value) => toSerializable(value)
     }),
-    treasuryPercent: resolveField({
-      label: 'treasuryPercent',
-      contractValue: contractSnapshot.treasuryPercent,
-      eventValue: eventSnapshot?.treasuryPercent,
+    treasuryBps: resolveField({
+      label: 'treasuryBps',
+      contractValue: contractSnapshot.treasuryBps,
+      eventValue: eventSnapshot?.treasuryBps,
       overrideValue: envOverrides.treasuryPercent,
       normalizer: (value) => toSerializable(value)
     }),
-    memberPoolPercent: resolveField({
-      label: 'memberPoolPercent',
-      contractValue: contractSnapshot.memberPoolPercent,
-      eventValue: eventSnapshot?.memberPoolPercent,
+    memberPoolBps: resolveField({
+      label: 'memberPoolBps',
+      contractValue: contractSnapshot.memberPoolBps,
+      eventValue: eventSnapshot?.memberPoolBps,
       overrideValue: envOverrides.memberPoolPercent,
       normalizer: (value) => toSerializable(value)
     }),
-    protocolPercent: resolveField({
-      label: 'protocolPercent',
-      contractValue: contractSnapshot.protocolPercent,
+    protocolBps: resolveField({
+      label: 'protocolBps',
+      contractValue: contractSnapshot.protocolBps,
       eventValue: undefined,
       overrideValue: protocolPercentOverride,
       normalizer: (value) => toSerializable(value)
     }),
-    quorumPercent: resolveField({
-      label: 'quorumPercent',
-      contractValue: contractSnapshot.quorumPercent,
-      eventValue: eventSnapshot?.quorumPercent,
+    quorumBps: resolveField({
+      label: 'quorumBps',
+      contractValue: contractSnapshot.quorumBps,
+      eventValue: eventSnapshot?.quorumBps,
       overrideValue: envOverrides.quorumPercent,
       normalizer: (value) => toSerializable(value)
     }),
@@ -671,11 +663,11 @@ async function main() {
     constructorArgs.protocolFeeRecipient,
     constructorArgs.accessToken,
     constructorArgs.entryFee,
-    constructorArgs.burnPercent,
-    constructorArgs.treasuryPercent,
-    constructorArgs.memberPoolPercent,
-    constructorArgs.protocolPercent,
-    constructorArgs.quorumPercent,
+    constructorArgs.burnBps,
+    constructorArgs.treasuryBps,
+    constructorArgs.memberPoolBps,
+    constructorArgs.protocolBps,
+    constructorArgs.quorumBps,
     constructorArgs.executionDelayAfterQuorum,
     constructorArgs.burnAddress,
     constructorArgs.priestIsDictator,

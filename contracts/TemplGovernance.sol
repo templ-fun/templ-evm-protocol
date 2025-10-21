@@ -31,9 +31,9 @@ contract TemplGovernanceModule is TemplBase {
     /// @notice Opens a proposal to update entry fee and/or fee split configuration.
     /// @param _token Optional replacement access token (must match current token or zero address).
     /// @param _newEntryFee Optional new entry fee (0 to keep current).
-    /// @param _newBurnPercent New burn percent when `_updateFeeSplit` is true.
-    /// @param _newTreasuryPercent New treasury percent when `_updateFeeSplit` is true.
-    /// @param _newMemberPoolPercent New member pool percent when `_updateFeeSplit` is true.
+    /// @param _newBurnBps New burn share (bps) when `_updateFeeSplit` is true.
+    /// @param _newTreasuryBps New treasury share (bps) when `_updateFeeSplit` is true.
+    /// @param _newMemberPoolBps New member pool share (bps) when `_updateFeeSplit` is true.
     /// @param _updateFeeSplit Whether to apply the new split values.
     /// @param _votingPeriod Optional custom voting duration (seconds).
     /// @param _title On-chain title for the proposal.
@@ -42,9 +42,9 @@ contract TemplGovernanceModule is TemplBase {
     function createProposalUpdateConfig(
         address _token,
         uint256 _newEntryFee,
-        uint256 _newBurnPercent,
-        uint256 _newTreasuryPercent,
-        uint256 _newMemberPoolPercent,
+        uint256 _newBurnBps,
+        uint256 _newTreasuryBps,
+        uint256 _newMemberPoolBps,
         bool _updateFeeSplit,
         uint256 _votingPeriod,
         string calldata _title,
@@ -56,15 +56,15 @@ contract TemplGovernanceModule is TemplBase {
             if (_newEntryFee % 10 != 0) revert TemplErrors.InvalidEntryFee();
         }
         if (_updateFeeSplit) {
-            _validatePercentSplit(_newBurnPercent, _newTreasuryPercent, _newMemberPoolPercent, protocolPercent);
+            _validatePercentSplit(_newBurnBps, _newTreasuryBps, _newMemberPoolBps, protocolBps);
         }
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
         p.action = Action.UpdateConfig;
         p.token = _token;
         p.newEntryFee = _newEntryFee;
-        p.newBurnPercent = _newBurnPercent;
-        p.newTreasuryPercent = _newTreasuryPercent;
-        p.newMemberPoolPercent = _newMemberPoolPercent;
+        p.newBurnBps = _newBurnBps;
+        p.newTreasuryBps = _newTreasuryBps;
+        p.newMemberPoolBps = _newMemberPoolBps;
         p.updateFeeSplit = _updateFeeSplit;
         return id;
     }
@@ -124,7 +124,7 @@ contract TemplGovernanceModule is TemplBase {
         string calldata _description
     ) external returns (uint256) {
         if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
-        if (_newFeeBps > TOTAL_PERCENT) revert TemplErrors.InvalidPercentage();
+        if (_newFeeBps > BPS_DENOMINATOR) revert TemplErrors.InvalidPercentage();
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
         p.action = Action.SetProposalFee;
         p.newProposalCreationFeeBps = _newFeeBps;
@@ -139,7 +139,7 @@ contract TemplGovernanceModule is TemplBase {
         string calldata _description
     ) external returns (uint256) {
         if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
-        if (_newReferralBps > TOTAL_PERCENT) revert TemplErrors.InvalidPercentage();
+        if (_newReferralBps > BPS_DENOMINATOR) revert TemplErrors.InvalidPercentage();
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
         p.action = Action.SetReferralShare;
         p.newReferralShareBps = _newReferralBps;
@@ -348,7 +348,7 @@ contract TemplGovernanceModule is TemplBase {
         if (!proposal.quorumExempt && proposal.quorumReachedAt == 0) {
             if (
                 proposal.eligibleVoters != 0 &&
-                proposal.yesVotes * TOTAL_PERCENT >= quorumPercent * proposal.eligibleVoters
+                proposal.yesVotes * BPS_DENOMINATOR >= quorumBps * proposal.eligibleVoters
             ) {
                 proposal.quorumReachedAt = block.timestamp;
                 proposal.quorumSnapshotBlock = block.number;
@@ -384,7 +384,7 @@ contract TemplGovernanceModule is TemplBase {
             }
             if (
                 proposal.eligibleVoters != 0 &&
-                proposal.yesVotes * TOTAL_PERCENT < quorumPercent * proposal.eligibleVoters
+                proposal.yesVotes * BPS_DENOMINATOR < quorumBps * proposal.eligibleVoters
             ) {
                 revert TemplErrors.QuorumNotReached();
             }
@@ -410,9 +410,9 @@ contract TemplGovernanceModule is TemplBase {
                 proposal.token,
                 proposal.newEntryFee,
                 proposal.updateFeeSplit,
-                proposal.newBurnPercent,
-                proposal.newTreasuryPercent,
-                proposal.newMemberPoolPercent
+                proposal.newBurnBps,
+                proposal.newTreasuryBps,
+                proposal.newMemberPoolBps
             );
         } else if (proposal.action == Action.WithdrawTreasury) {
             _governanceWithdrawTreasury(
@@ -457,11 +457,11 @@ contract TemplGovernanceModule is TemplBase {
         address _token,
         uint256 _entryFee,
         bool _updateFeeSplit,
-        uint256 _burnPercent,
-        uint256 _treasuryPercent,
-        uint256 _memberPoolPercent
+        uint256 _burnBps,
+        uint256 _treasuryBps,
+        uint256 _memberPoolBps
     ) internal {
-        _updateConfig(_token, _entryFee, _updateFeeSplit, _burnPercent, _treasuryPercent, _memberPoolPercent);
+        _updateConfig(_token, _entryFee, _updateFeeSplit, _burnBps, _treasuryBps, _memberPoolBps);
     }
 
     function _governanceWithdrawTreasury(
@@ -553,7 +553,7 @@ contract TemplGovernanceModule is TemplBase {
             passed = block.timestamp >= proposal.endTime && proposal.yesVotes > proposal.noVotes;
         } else if (proposal.quorumReachedAt != 0) {
             bool quorumMaintained = proposal.eligibleVoters == 0 ||
-                proposal.yesVotes * TOTAL_PERCENT >= quorumPercent * proposal.eligibleVoters;
+                proposal.yesVotes * BPS_DENOMINATOR >= quorumBps * proposal.eligibleVoters;
             passed = (block.timestamp >= (proposal.quorumReachedAt + executionDelayAfterQuorum)) &&
                 quorumMaintained &&
                 (proposal.yesVotes > proposal.noVotes);
@@ -730,7 +730,7 @@ contract TemplGovernanceModule is TemplBase {
         if (period > MAX_VOTING_PERIOD) revert TemplErrors.VotingPeriodTooLong();
         uint256 feeBps = proposalCreationFeeBps;
         if (feeBps > 0) {
-            uint256 proposalFee = (entryFee * feeBps) / TOTAL_PERCENT;
+            uint256 proposalFee = (entryFee * feeBps) / BPS_DENOMINATOR;
             if (proposalFee > 0) {
                 _safeTransferFrom(accessToken, msg.sender, address(this), proposalFee);
                 treasuryBalance += proposalFee;
@@ -757,7 +757,7 @@ contract TemplGovernanceModule is TemplBase {
         proposal.quorumExempt = false;
         if (
             proposal.eligibleVoters != 0 &&
-            proposal.yesVotes * TOTAL_PERCENT >= quorumPercent * proposal.eligibleVoters
+            proposal.yesVotes * BPS_DENOMINATOR >= quorumBps * proposal.eligibleVoters
         ) {
             proposal.quorumReachedAt = block.timestamp;
             proposal.quorumSnapshotBlock = block.number;

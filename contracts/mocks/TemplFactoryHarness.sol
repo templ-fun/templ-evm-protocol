@@ -6,12 +6,12 @@ import {TemplFactory} from "../TemplFactory.sol";
 contract TemplFactoryHarness is TemplFactory {
     constructor(
         address protocolFeeRecipient,
-        uint256 protocolPercent,
+        uint256 protocolBps,
         address membershipModule,
         address treasuryModule,
         address governanceModule
     )
-        TemplFactory(protocolFeeRecipient, protocolPercent, membershipModule, treasuryModule, governanceModule)
+        TemplFactory(protocolFeeRecipient, protocolBps, membershipModule, treasuryModule, governanceModule)
     {}
 
     function exposeInitPointers() external view returns (address[] memory) {

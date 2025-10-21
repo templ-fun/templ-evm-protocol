@@ -58,9 +58,9 @@ library TemplStorageLib {
         string reason;
         bool joinPaused;
         uint256 newEntryFee;
-        uint256 newBurnPercent;
-        uint256 newTreasuryPercent;
-        uint256 newMemberPoolPercent;
+        uint256 newBurnBps;
+        uint256 newTreasuryBps;
+        uint256 newMemberPoolBps;
         string newTemplName;
         string newTemplDescription;
         string newLogoLink;
@@ -90,10 +90,10 @@ library TemplStorageLib {
     }
 
     struct Layout {
-        uint256 burnPercent;
-        uint256 treasuryPercent;
-        uint256 memberPoolPercent;
-        uint256 protocolPercent;
+        uint256 burnBps;
+        uint256 treasuryBps;
+        uint256 memberPoolBps;
+        uint256 protocolBps;
         address priest;
         address protocolFeeRecipient;
         address accessToken;
@@ -105,7 +105,7 @@ library TemplStorageLib {
         uint256 memberPoolBalance;
         bool joinPaused;
         uint256 maxMembers;
-        uint256 quorumPercent;
+        uint256 quorumBps;
         uint256 executionDelayAfterQuorum;
         address burnAddress;
         string templName;

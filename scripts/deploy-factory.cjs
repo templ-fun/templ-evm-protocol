@@ -104,7 +104,7 @@ async function main() {
     console.log("\nReusing existing factory at:", factoryAddress);
     try {
       const existingFactory = await hre.ethers.getContractAt("TemplFactory", factoryAddress);
-      const onChainBps = Number(await existingFactory.protocolPercent());
+      const onChainBps = Number(await existingFactory.protocolBps());
       if (!Number.isFinite(onChainBps)) {
         throw new Error("protocolPercent is not a finite number");
       }

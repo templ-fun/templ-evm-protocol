@@ -27,19 +27,19 @@ contract TemplTreasuryModule is TemplBase {
     /// @notice Governance action that updates the entry fee and/or fee split configuration.
     /// @param _token Optional replacement access token (must equal the existing token or zero to leave unchanged).
     /// @param _entryFee Optional new entry fee (0 keeps the current value).
-    /// @param _updateFeeSplit Whether to apply the provided percentage overrides.
-    /// @param _burnPercent New burn allocation in basis points when `_updateFeeSplit` is true.
-    /// @param _treasuryPercent New treasury allocation in basis points when `_updateFeeSplit` is true.
-    /// @param _memberPoolPercent New member pool allocation in basis points when `_updateFeeSplit` is true.
+    /// @param _updateFeeSplit Whether to apply the provided fee-split overrides (bps).
+    /// @param _burnBps New burn allocation in basis points when `_updateFeeSplit` is true.
+    /// @param _treasuryBps New treasury allocation in basis points when `_updateFeeSplit` is true.
+    /// @param _memberPoolBps New member pool allocation in basis points when `_updateFeeSplit` is true.
     function updateConfigDAO(
         address _token,
         uint256 _entryFee,
         bool _updateFeeSplit,
-        uint256 _burnPercent,
-        uint256 _treasuryPercent,
-        uint256 _memberPoolPercent
+        uint256 _burnBps,
+        uint256 _treasuryBps,
+        uint256 _memberPoolBps
     ) external onlyDAO {
-        _updateConfig(_token, _entryFee, _updateFeeSplit, _burnPercent, _treasuryPercent, _memberPoolPercent);
+        _updateConfig(_token, _entryFee, _updateFeeSplit, _burnBps, _treasuryBps, _memberPoolBps);
     }
 
     /// @notice Governance action that toggles whether new members can join.

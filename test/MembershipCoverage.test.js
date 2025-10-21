@@ -576,7 +576,7 @@ describe("Membership coverage extras", function () {
     await joinMembers(templ, token, [referrer, voter]);
 
     const currentEntryFee = await templ.entryFee();
-    const memberPoolPercent = await templ.memberPoolPercent();
+    const memberPoolBps = await templ.memberPoolBps();
 
     await templ
       .connect(referrer)
@@ -589,7 +589,7 @@ describe("Membership coverage extras", function () {
     await templ.executeProposal(referralProposalId);
     expect(await templ.referralShareBps()).to.equal(BigInt(referralShare));
 
-    const memberPoolAmount = (currentEntryFee * memberPoolPercent) / 10_000n;
+    const memberPoolAmount = (currentEntryFee * memberPoolBps) / 10_000n;
     const expectedReferral = (memberPoolAmount * BigInt(referralShare)) / 10_000n;
 
     const referralBalanceBefore = await token.balanceOf(referrer.address);

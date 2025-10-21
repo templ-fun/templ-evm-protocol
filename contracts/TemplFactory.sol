@@ -9,19 +9,19 @@ import {SSTORE2} from "./libraries/SSTORE2.sol";
 /// @title Factory for deploying templ instances
 /// @notice Deploys templ contracts with shared protocol configuration and optional custom splits.
 contract TemplFactory {
-    uint256 internal constant TOTAL_PERCENT = 10_000;
-    // NOTE: The default burn/treasury/member percentages deliberately assume a
-    // factory-level protocol share of 10%. Factories deployed with a different
-    // `protocolPercent` should either adjust these constants prior to
+    uint256 internal constant BPS_DENOMINATOR = 10_000;
+    // NOTE: The default burn/treasury/member shares deliberately assume a
+    // factory-level protocol share of 10% (1,000 bps). Factories deployed with a different
+    // `protocolBps` should either adjust these constants prior to
     // deployment or call `createTemplWithConfig` with explicit splits so the
     // totals continue to sum to 100% (10_000 basis points).
-    uint256 internal constant DEFAULT_BURN_PERCENT = 3_000;
-    uint256 internal constant DEFAULT_TREASURY_PERCENT = 3_000;
-    uint256 internal constant DEFAULT_MEMBER_POOL_PERCENT = 3_000;
-    uint256 internal constant DEFAULT_QUORUM_PERCENT = 3_300;
+    uint256 internal constant DEFAULT_BURN_BPS = 3_000;
+    uint256 internal constant DEFAULT_TREASURY_BPS = 3_000;
+    uint256 internal constant DEFAULT_MEMBER_POOL_BPS = 3_000;
+    uint256 internal constant DEFAULT_QUORUM_BPS = 3_300;
     uint256 internal constant DEFAULT_EXECUTION_DELAY = 7 days;
     address internal constant DEFAULT_BURN_ADDRESS = 0x000000000000000000000000000000000000dEaD;
-    int256 internal constant USE_DEFAULT_PERCENT = -1;
+    int256 internal constant USE_DEFAULT_BPS = -1;
     uint256 internal constant DEFAULT_MAX_MEMBERS = 249;
     uint32 internal constant DEFAULT_CURVE_EXP_RATE_BPS = 11_000;
     uint256 internal constant DEFAULT_PROPOSAL_FEE_BPS = 0;
@@ -31,10 +31,10 @@ contract TemplFactory {
         address priest;
         address token;
         uint256 entryFee;
-        int256 burnPercent;
-        int256 treasuryPercent;
-        int256 memberPoolPercent;
-        uint256 quorumPercent;
+        int256 burnBps;
+        int256 treasuryBps;
+        int256 memberPoolBps;
+        uint256 quorumBps;
         uint256 executionDelaySeconds;
         address burnAddress;
         bool priestIsDictator;
@@ -49,7 +49,7 @@ contract TemplFactory {
     }
 
     address public immutable protocolFeeRecipient;
-    uint256 public immutable protocolPercent;
+    uint256 public immutable protocolBps;
     address public immutable membershipModule;
     address public immutable treasuryModule;
     address public immutable governanceModule;
@@ -68,10 +68,10 @@ contract TemplFactory {
         address indexed priest,
         address token,
         uint256 entryFee,
-        uint256 burnPercent,
-        uint256 treasuryPercent,
-        uint256 memberPoolPercent,
-        uint256 quorumPercent,
+        uint256 burnBps,
+        uint256 treasuryBps,
+        uint256 memberPoolBps,
+        uint256 quorumBps,
         uint256 executionDelaySeconds,
         address burnAddress,
         bool priestIsDictator,
@@ -98,23 +98,23 @@ contract TemplFactory {
         return CurveConfig({primary: primary, additionalSegments: extras});
     }
 
-    /// @notice Initializes factory-wide protocol recipient and fee percent.
-    /// @param _protocolFeeRecipient Address receiving the protocol share for every templ deployed.
-    /// @param _protocolPercent Fee percent reserved for the protocol across all templs.
+    /// @notice Initializes factory-wide protocol recipient and fee share (bps).
+    /// @param _protocolFeeRecipient Address receiving the protocol share from every templ deployed.
+    /// @param _protocolBps Fee share, in basis points, reserved for the protocol across all templs.
     constructor(
         address _protocolFeeRecipient,
-        uint256 _protocolPercent,
+        uint256 _protocolBps,
         address _membershipModule,
         address _treasuryModule,
         address _governanceModule
     ) {
         if (_protocolFeeRecipient == address(0)) revert TemplErrors.InvalidRecipient();
-        if (_protocolPercent > TOTAL_PERCENT) revert TemplErrors.InvalidPercentageSplit();
+        if (_protocolBps > BPS_DENOMINATOR) revert TemplErrors.InvalidPercentageSplit();
         if (_membershipModule == address(0) || _treasuryModule == address(0) || _governanceModule == address(0)) {
             revert TemplErrors.InvalidCallData();
         }
         protocolFeeRecipient = _protocolFeeRecipient;
-        protocolPercent = _protocolPercent;
+        protocolBps = _protocolBps;
         membershipModule = _membershipModule;
         treasuryModule = _treasuryModule;
         governanceModule = _governanceModule;
@@ -184,10 +184,10 @@ contract TemplFactory {
             priest: _priest,
             token: _token,
             entryFee: _entryFee,
-            burnPercent: int256(DEFAULT_BURN_PERCENT),
-            treasuryPercent: int256(DEFAULT_TREASURY_PERCENT),
-            memberPoolPercent: int256(DEFAULT_MEMBER_POOL_PERCENT),
-            quorumPercent: DEFAULT_QUORUM_PERCENT,
+            burnBps: int256(DEFAULT_BURN_BPS),
+            treasuryBps: int256(DEFAULT_TREASURY_BPS),
+            memberPoolBps: int256(DEFAULT_MEMBER_POOL_BPS),
+            quorumBps: DEFAULT_QUORUM_BPS,
             executionDelaySeconds: DEFAULT_EXECUTION_DELAY,
             burnAddress: DEFAULT_BURN_ADDRESS,
             priestIsDictator: false,
@@ -212,8 +212,8 @@ contract TemplFactory {
         if (cfg.priest == address(0)) {
             cfg.priest = msg.sender;
         }
-        if (cfg.quorumPercent == 0) {
-            cfg.quorumPercent = DEFAULT_QUORUM_PERCENT;
+        if (cfg.quorumBps == 0) {
+            cfg.quorumBps = DEFAULT_QUORUM_BPS;
         }
         if (cfg.executionDelaySeconds == 0) {
             cfg.executionDelaySeconds = DEFAULT_EXECUTION_DELAY;
@@ -234,24 +234,24 @@ contract TemplFactory {
         if (cfg.priest == address(0) || cfg.token == address(0)) revert TemplErrors.InvalidRecipient();
         if (cfg.entryFee < 10) revert TemplErrors.EntryFeeTooSmall();
         if (cfg.entryFee % 10 != 0) revert TemplErrors.InvalidEntryFee();
-        if (cfg.quorumPercent > TOTAL_PERCENT) revert TemplErrors.InvalidPercentage();
-        uint256 burnPercent = _resolvePercent(cfg.burnPercent, DEFAULT_BURN_PERCENT);
-        uint256 treasuryPercent = _resolvePercent(cfg.treasuryPercent, DEFAULT_TREASURY_PERCENT);
-        uint256 memberPoolPercent = _resolvePercent(cfg.memberPoolPercent, DEFAULT_MEMBER_POOL_PERCENT);
-        _validatePercentSplit(burnPercent, treasuryPercent, memberPoolPercent);
-        if (cfg.proposalFeeBps > TOTAL_PERCENT) revert TemplErrors.InvalidPercentage();
-        if (cfg.referralShareBps > TOTAL_PERCENT) revert TemplErrors.InvalidPercentage();
+        if (cfg.quorumBps > BPS_DENOMINATOR) revert TemplErrors.InvalidPercentage();
+        uint256 burnBps = _resolveBps(cfg.burnBps, DEFAULT_BURN_BPS);
+        uint256 treasuryBps = _resolveBps(cfg.treasuryBps, DEFAULT_TREASURY_BPS);
+        uint256 memberPoolBps = _resolveBps(cfg.memberPoolBps, DEFAULT_MEMBER_POOL_BPS);
+        _validatePercentSplit(burnBps, treasuryBps, memberPoolBps);
+        if (cfg.proposalFeeBps > BPS_DENOMINATOR) revert TemplErrors.InvalidPercentage();
+        if (cfg.referralShareBps > BPS_DENOMINATOR) revert TemplErrors.InvalidPercentage();
 
         bytes memory constructorArgs = abi.encode(
             cfg.priest,
             protocolFeeRecipient,
             cfg.token,
             cfg.entryFee,
-            burnPercent,
-            treasuryPercent,
-            memberPoolPercent,
-            protocolPercent,
-            cfg.quorumPercent,
+            burnBps,
+            treasuryBps,
+            memberPoolBps,
+            protocolBps,
+            cfg.quorumBps,
             cfg.executionDelaySeconds,
             cfg.burnAddress,
             cfg.priestIsDictator,
@@ -297,10 +297,10 @@ contract TemplFactory {
             cfg.priest,
             cfg.token,
             cfg.entryFee,
-            burnPercent,
-            treasuryPercent,
-            memberPoolPercent,
-            cfg.quorumPercent,
+            burnBps,
+            treasuryBps,
+            memberPoolBps,
+            cfg.quorumBps,
             cfg.executionDelaySeconds,
             cfg.burnAddress,
             cfg.priestIsDictator,
@@ -354,25 +354,25 @@ contract TemplFactory {
         if (offset != expectedLength) revert TemplErrors.DeploymentFailed();
     }
 
-    /// @dev Resolves a potentially sentinel-encoded percent to its final value.
-    /// @param rawPercent Raw percent supplied by callers (-1 requests the default value).
-    /// @param defaultPercent Default percent used when `rawPercent` is the sentinel.
-    /// @return resolvedPercent Final percent applied to the deployment.
-    function _resolvePercent(int256 rawPercent, uint256 defaultPercent) internal pure returns (uint256 resolvedPercent) {
-        if (rawPercent == USE_DEFAULT_PERCENT) {
-            return defaultPercent;
+    /// @dev Resolves a potentially sentinel-encoded bps value to its final value.
+    /// @param rawBps Raw basis points supplied by callers (-1 requests the default value).
+    /// @param defaultBps Default bps used when `rawBps` is the sentinel.
+    /// @return resolvedBps Final bps applied to the deployment.
+    function _resolveBps(int256 rawBps, uint256 defaultBps) internal pure returns (uint256 resolvedBps) {
+        if (rawBps == USE_DEFAULT_BPS) {
+            return defaultBps;
         }
-        if (rawPercent < 0) revert TemplErrors.InvalidPercentage();
-        return uint256(rawPercent);
+        if (rawBps < 0) revert TemplErrors.InvalidPercentage();
+        return uint256(rawBps);
     }
 
     /// @dev Ensures burn, treasury, member pool, and protocol slices sum to 100%.
     function _validatePercentSplit(
-        uint256 _burnPercent,
-        uint256 _treasuryPercent,
-        uint256 _memberPoolPercent
+        uint256 _burnBps,
+        uint256 _treasuryBps,
+        uint256 _memberPoolBps
     ) internal view {
-        if (_burnPercent + _treasuryPercent + _memberPoolPercent + protocolPercent != TOTAL_PERCENT) {
+        if (_burnBps + _treasuryBps + _memberPoolBps + protocolBps != BPS_DENOMINATOR) {
             revert TemplErrors.InvalidPercentageSplit();
         }
     }

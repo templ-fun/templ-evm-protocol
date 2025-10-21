@@ -27,12 +27,12 @@ The canonical workflow deploys shared modules once, followed by a factory and an
 2. **Deploy the factory**
    ```js
    const protocolFeeRecipient = "0x..."; // collects protocol share of each join
-   const protocolPercentBps = 1_000;     // 10% (expressed in basis points)
+   const protocolBps = 1_000;            // 10% (expressed in basis points)
 
    const Factory = await ethers.getContractFactory("TemplFactory");
    const factory = await Factory.deploy(
      protocolFeeRecipient,
-     protocolPercentBps,
+     protocolBps,
      await membershipModule.getAddress(),
      await treasuryModule.getAddress(),
      await governanceModule.getAddress()
@@ -41,7 +41,7 @@ The canonical workflow deploys shared modules once, followed by a factory and an
    ```
    Constructor parameters (see [`contracts/TemplFactory.sol`](contracts/TemplFactory.sol)):
    - `protocolFeeRecipient`: receives the protocol’s share of every join.
-   - `protocolPercent`: splitter share (basis points) kept by the protocol. All templ splits must sum to 10_000, so templ-level burn/treasury/member percentages must account for this share.
+   - `protocolBps`: splitter share (basis points) kept by the protocol. All templ splits must sum to 10_000, so templ-level burn/treasury/member shares must account for this.
    - Module addresses: delegatecall targets for every templ the factory deploys.
 
 3. **Create a templ instance**
@@ -50,10 +50,10 @@ The canonical workflow deploys shared modules once, followed by a factory and an
      priest: "0xPriest...",                 // auto-enrolled administrator (priest)
      token: "0xAccessToken...",             // ERC-20 used for joins / treasury accounting
      entryFee: ethers.parseUnits("100", 18),// base entry fee (must be ≥10 and divisible by 10)
-     burnPercent: -1,                       // burn share in %, -1 keeps factory default
-     treasuryPercent: -1,                   // treasury share in %, -1 keeps factory default
-     memberPoolPercent: -1,                 // member pool share in %, -1 keeps factory default
-     quorumPercent: 3_300,                  // YES votes required for quorum (basis points)
+     burnBps: -1,                           // burn share (bps), -1 keeps factory default
+     treasuryBps: -1,                       // treasury share (bps), -1 keeps factory default
+     memberPoolBps: -1,                     // member pool share (bps), -1 keeps factory default
+     quorumBps: 3_300,                      // YES votes required for quorum (basis points)
      executionDelaySeconds: 7 * 24 * 60 * 60,// execution delay after quorum (seconds)
      burnAddress: ethers.ZeroAddress,       // burn destination (defaults to 0x...dEaD)
      priestIsDictator: false,               // true lets the priest bypass governance
@@ -76,17 +76,17 @@ The canonical workflow deploys shared modules once, followed by a factory and an
    Key configuration knobs (resolved inside `TemplFactory._deploy` and `TEMPL`):
    - `priest`: auto-enrolled member with the ability to toggle dictatorship or act before governance is active.
    - `token`: ERC-20 used for joins, rewards, and treasury balances.
-   - `entryFee`: initial fee (must be ≥10 and divisible by 10); the curve determines how it scales.
-   - `burn/treasury/member pool percents`: fee split between burn address, templ treasury, and member rewards pool. Accepts either basis points summing with protocol share to 10_000 or raw percents summing with protocol share to 100 (factory normalizes both).
-   - `quorumPercent`: minimum YES percentage (basis points) to satisfy quorum. Values ≤100 are automatically scaled to basis points.
+   - `entryFee`: initial fee (must be ≥10 and divisible by 10). The pricing curve adjusts the next `entryFee` after each successful join.
+   - `burnBps/treasuryBps/memberPoolBps`: fee split (basis points) between burn address, templ treasury, and member rewards pool. Must sum with `protocolBps` to 10_000.
+   - `quorumBps`: minimum YES percentage (basis points) to satisfy quorum. Values ≤100 are automatically scaled to basis points.
    - `executionDelaySeconds`: waiting period after quorum before execution can occur.
    - `burnAddress`: recipient of the burned allocation (default: `0x...dEaD`).
    - `priestIsDictator`: if true, governance functions are priest-only until the dictator disables it.
    - `maxMembers`: optional membership cap that auto-pauses joins when reached.
    - `curveProvided`: set to `true` when supplying a custom `CurveConfig`; otherwise the factory default is applied.
-    - `curve`: `CurveConfig` describing how the entry fee evolves. The factory ships an exponential default; additional segments can model piecewise-linear or static phases. See [`contracts/TemplCurve.sol`](contracts/TemplCurve.sol) for enum definitions.
+   - `curve`: `CurveConfig` describing how the entry fee evolves. The factory ships an exponential default; additional segments can model piecewise-linear or static phases. See `contracts/TemplCurve.sol` for enum definitions.
    - `proposalFeeBps`: optional fee (basis points) deducted from the proposer’s wallet and credited to the templ treasury when a proposal is created.
-    - `referralShareBps`: portion of the member pool allocation paid to a referrer on each join.
+   - `referralShareBps`: portion of the member pool allocation paid to a referrer on each join.
 
 Once the templ is live, all user interactions flow through the deployed `TEMPL` address (`contracts/TEMPL.sol`), which delegates to the module responsible for the invoked selector. The `TemplFactory` can be toggled to permissionless mode (see `setPermissionless`) to allow anyone to deploy new templs.
 
@@ -136,7 +136,7 @@ Refer to the inline env-variable docs in `scripts/deploy-factory.cjs` and `scrip
   - Exposes proposal metadata, snapshot data, join sequence snapshots, voter state, and active proposal pagination.
 
 - **TemplFactory**
-  - Normalizes deployment config, validates percentage splits, enforces permissionless toggles, and emits creation metadata (including curve details).
+  - Normalizes deployment config, validates split sums (bps), enforces permissionless toggles, and emits creation metadata (including curve details).
   - Stores `TEMPL` init code across chunks to avoid large constructor bytecode.
 
 These components share `TemplBase`, which contains storage, shared helpers (entry-fee curves, reward accounting, SafeERC20 transfers), and cross-module events.
@@ -146,3 +146,23 @@ These components share `TemplBase`, which contains storage, shared helpers (entr
 - **Treasury Insights:** `getTreasuryInfo()` returns `(treasuryAvailable, memberPool, protocolFeeRecipient, totalBurned)`.
 - **Entry Fee Curves:** configure piecewise segments (`CurveConfig`) to unlock linear or exponential pricing after a given number of joins.
 - **Proposal Fees:** governance updates them via `setProposalCreationFeeBpsDAO`; the templ contract auto-collects the fee (in the access token) before recording a proposal.
+
+### Core Interfaces (selected)
+- Membership (from `TemplMembershipModule`):
+  - Actions: `join()`, `joinWithReferral(address)`, `joinFor(address)`, `joinForWithReferral(address,address)`, `claimMemberRewards()`, `claimExternalReward(address)`.
+  - Views: `getClaimableMemberRewards(address)`, `getExternalRewardTokens()`, `getExternalRewardState(address)`, `getClaimableExternalReward(address,address)`, `isMember(address)`, `getJoinDetails(address)`, `getTreasuryInfo()`, `getConfig()`.
+  - `getConfig()` returns `(accessToken, entryFee, joinPaused, totalJoins, treasuryAvailable, memberPoolBalance, burnBps, treasuryBps, memberPoolBps, protocolBps)`.
+- Treasury (from `TemplTreasuryModule`, callable by DAO via governance or priest during dictatorship):
+  - `withdrawTreasuryDAO(address token, address recipient, uint256 amount, string reason)`
+  - `disbandTreasuryDAO(address token)`
+  - `updateConfigDAO(address tokenOrZero, uint256 newEntryFeeOrZero, bool applySplit, uint256 burnBps, uint256 treasuryBps, uint256 memberPoolBps)`
+  - `setMaxMembersDAO(uint256)`, `setJoinPausedDAO(bool)`, `changePriestDAO(address)`, `setDictatorshipDAO(bool)`, `setTemplMetadataDAO(string,string,string)`, `setProposalCreationFeeBpsDAO(uint256)`, `setReferralShareBpsDAO(uint256)`, `setEntryFeeCurveDAO(CurveConfig,uint256)`
+- Governance (from `TemplGovernanceModule`):
+  - Create proposals: `createProposalSetJoinPaused`, `createProposalUpdateConfig`, `createProposalWithdrawTreasury`, `createProposalDisbandTreasury`, `createProposalChangePriest`, `createProposalSetDictatorship`, `createProposalSetMaxMembers`, `createProposalUpdateMetadata`, `createProposalSetProposalFeeBps`, `createProposalSetReferralShareBps`, `createProposalSetEntryFeeCurve`, `createProposalCallExternal`.
+  - Vote/execute: `vote(uint256,bool)`, `executeProposal(uint256)`.
+  - Views: `getProposal(uint256)`, `getProposalSnapshots(uint256)`, `getProposalJoinSequences(uint256)`, `getActiveProposals()`, `getActiveProposalsPaginated(uint256,uint256)`, `hasVoted(uint256,address)`.
+
+### Behavior Notes
+- Dictatorship mode (`priestIsDictator`) allows the priest to call `onlyDAO` functions directly. Otherwise, all `onlyDAO` actions are executed by governance via `executeProposal`.
+- `maxMembers` caps membership. When the cap is reached, `joinPaused` auto-enables; unpausing doesn’t remove the cap.
+- External-call proposals can execute arbitrary calls with optional ETH; they should be used cautiously.
