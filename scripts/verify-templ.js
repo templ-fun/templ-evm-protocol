@@ -3,8 +3,8 @@ require("dotenv").config();
 
 const FACTORY_EVENT_VARIANTS = [
   {
-    id: 'metadata-v2',
-    abi: 'event TemplCreated(address indexed templ, address indexed creator, address indexed priest, address token, uint256 entryFee, uint256 burnPercent, uint256 treasuryPercent, uint256 memberPoolPercent, uint256 quorumPercent, uint256 executionDelaySeconds, address burnAddress, bool priestIsDictator, uint256 maxMembers, uint8 curveStyle, uint32 curveRateBps, string name, string description, string logoLink, uint256 proposalFeeBps, uint256 referralShareBps)'
+    id: 'metadata-v3',
+    abi: 'event TemplCreated(address indexed templ, address indexed creator, address indexed priest, address token, uint256 entryFee, uint256 burnPercent, uint256 treasuryPercent, uint256 memberPoolPercent, uint256 quorumPercent, uint256 executionDelaySeconds, address burnAddress, bool priestIsDictator, uint256 maxMembers, uint8[] curveStyles, uint32[] curveRateBps, uint32[] curveLengths, string name, string description, string logoLink, uint256 proposalFeeBps, uint256 referralShareBps)'
   },
   {
     id: 'pivoted',
@@ -68,6 +68,17 @@ function toNumberLike(value) {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function mapNumberArray(values) {
+  if (!values) return [];
+  return Array.from(values, (value) => {
+    const numeric = toNumberLike(value);
+    if (numeric === undefined) {
+      throw new Error('Unable to normalize numeric array value');
+    }
+    return numeric;
+  });
+}
+
 function normalizeCurveValue(curve) {
   if (!curve) {
     return undefined;
@@ -77,7 +88,25 @@ function normalizeCurveValue(curve) {
     const rateBps = toNumberLike(curve.primary.rateBps ?? curve.primary[1]);
     const length = toNumberLike(curve.primary.length ?? curve.primary[2] ?? 0);
     if (style === undefined || rateBps === undefined) return undefined;
-    return { primary: { style, rateBps, length: length ?? 0 }, additionalSegments: [] };
+    const extrasRaw = curve.additionalSegments ?? curve.extras ?? [];
+    const additionalSegments = Array.isArray(extrasRaw)
+      ? extrasRaw.map((segment) => {
+          if (segment === undefined || segment === null) return undefined;
+          if (Array.isArray(segment)) {
+            const segStyle = toNumberLike(segment[0]);
+            const segRate = toNumberLike(segment[1]);
+            const segLength = toNumberLike(segment[2] ?? 0);
+            if (segStyle === undefined || segRate === undefined) return undefined;
+            return { style: segStyle, rateBps: segRate, length: segLength ?? 0 };
+          }
+          const segStyle = toNumberLike(segment.style);
+          const segRate = toNumberLike(segment.rateBps);
+          const segLength = toNumberLike(segment.length ?? 0);
+          if (segStyle === undefined || segRate === undefined) return undefined;
+          return { style: segStyle, rateBps: segRate, length: segLength ?? 0 };
+        }).filter(Boolean)
+      : [];
+    return { primary: { style, rateBps, length: length ?? 0 }, additionalSegments };
   }
   if (Array.isArray(curve)) {
     if (curve.length === 0) return undefined;
@@ -245,6 +274,55 @@ async function fetchEventSnapshot({ provider, factoryAddress, templAddress, from
         const parsed = variant.iface.parseLog(log);
         const args = parsed?.args;
         if (!args) continue;
+        const stylesArray = mapNumberArray(args.curveStyles ?? []);
+        const ratesArray = mapNumberArray(args.curveRateBps ?? []);
+        const lengthsArray = mapNumberArray(args.curveLengths ?? []);
+        const legacyPrimaryStyle = toNumberLike(
+          args.curveStyle ??
+          args.curvePrimaryStyle ??
+          (Array.isArray(args.curve) ? args.curve[0] : undefined)
+        );
+        const legacyPrimaryRate = toNumberLike(
+          args.curveRateBps ??
+          args.curvePrimaryRateBps ??
+          (Array.isArray(args.curve) ? args.curve[1] : undefined)
+        );
+        const legacySecondaryStyle = toNumberLike(args.curveSecondaryStyle);
+        const legacySecondaryRate = toNumberLike(args.curveSecondaryRateBps);
+        const legacyPivotLength = toNumberLike(args.curvePivotPercentOfMax);
+
+        let curveStyles = stylesArray;
+        let curveRates = ratesArray;
+        let curveLengths = lengthsArray;
+        if (curveStyles.length === 0 && legacyPrimaryStyle !== undefined) {
+          curveStyles = [legacyPrimaryStyle];
+          curveRates = [legacyPrimaryRate ?? 0];
+          if (legacySecondaryStyle !== undefined) {
+            curveStyles.push(legacySecondaryStyle);
+            curveRates.push(legacySecondaryRate ?? 0);
+          }
+          if (legacyPivotLength !== undefined) {
+            curveLengths = [legacyPivotLength, 0];
+          } else {
+            curveLengths = new Array(curveStyles.length).fill(0);
+          }
+        } else {
+          if (curveRates.length < curveStyles.length) {
+            const padded = new Array(curveStyles.length).fill(0);
+            for (let i = 0; i < curveRates.length; i++) {
+              padded[i] = curveRates[i];
+            }
+            curveRates = padded;
+          }
+          if (curveLengths.length < curveStyles.length) {
+            const padded = new Array(curveStyles.length).fill(0);
+            for (let i = 0; i < curveLengths.length; i++) {
+              padded[i] = curveLengths[i];
+            }
+            curveLengths = padded;
+          }
+        }
+
         return {
           priest: args.priest,
           accessToken: args.token,
@@ -260,19 +338,11 @@ async function fetchEventSnapshot({ provider, factoryAddress, templAddress, from
           templName: args.name ?? '',
           templDescription: args.description ?? '',
           templLogoLink: args.logoLink ?? '',
-          templHomeLink: args.homeLink ?? '',
           proposalFeeBps: toSerializable(args.proposalFeeBps ?? args.proposalFee),
           referralShareBps: toSerializable(args.referralShareBps),
-          curveStyle: toNumberLike(
-            args.curveStyle ??
-            args.curvePrimaryStyle ??
-            (Array.isArray(args.curve) ? args.curve[0] : undefined)
-          ),
-          curveRateBps: toNumberLike(
-            args.curveRateBps ??
-            args.curvePrimaryRateBps ??
-            (Array.isArray(args.curve) ? args.curve[1] : undefined)
-          )
+          curveStyles,
+          curveRates,
+          curveLengths
         };
       } catch (err) {
         console.warn('[verify-templ] Failed to parse factory log:', err?.message || err);
@@ -554,34 +624,45 @@ async function main() {
 
   let normalizedCurve = normalizeCurveValue(contractSnapshot.entryFeeCurve);
   if (!normalizedCurve && eventSnapshot) {
-    const style = toNumberLike(eventSnapshot.curveStyle);
-    const rateBps = toNumberLike(eventSnapshot.curveRateBps);
-    if (style !== undefined && rateBps !== undefined) {
-      normalizedCurve = { primary: { style, rateBps, length: 0 }, additionalSegments: [] };
+    const styles = eventSnapshot.curveStyles || [];
+    const rates = eventSnapshot.curveRates || [];
+    const lengths = eventSnapshot.curveLengths || [];
+    if (styles.length > 0) {
+      const segments = styles.map((style, index) => ({
+        style,
+        rateBps: rates[index] ?? 0,
+        length: lengths[index] ?? 0
+      }));
+      const [primary, ...rest] = segments;
+      normalizedCurve = { primary, additionalSegments: rest };
+    } else {
+      const legacyStyle = toNumberLike(eventSnapshot.curveStyle);
+      const legacyRate = toNumberLike(eventSnapshot.curveRateBps);
+      if (legacyStyle !== undefined && legacyRate !== undefined) {
+        normalizedCurve = { primary: { style: legacyStyle, rateBps: legacyRate, length: 0 }, additionalSegments: [] };
+      }
     }
   }
   if (!normalizedCurve) {
     throw new Error('Unable to determine curve configuration; provide deployment details or update verify script overrides.');
   }
-  const curveArgument = [
-    [
-      normalizedCurve.primary.style,
-      normalizedCurve.primary.rateBps,
-      normalizedCurve.primary.length ?? 0
-    ],
-    (normalizedCurve.additionalSegments || []).map((segment) => [
-      segment.style,
-      segment.rateBps,
-      segment.length ?? 0
-    ])
+  const curveArgumentPrimary = [
+    normalizedCurve.primary.style,
+    normalizedCurve.primary.rateBps,
+    normalizedCurve.primary.length ?? 0
   ];
+  const curveArgumentExtras = (normalizedCurve.additionalSegments || []).map((segment) => [
+    segment.style,
+    segment.rateBps,
+    segment.length ?? 0
+  ]);
+  const curveArgument = [curveArgumentPrimary, curveArgumentExtras];
 
   console.log('Verifying templ with constructor arguments:');
   console.table({
     ...constructorArgs,
-    curvePrimaryStyle: normalizedCurve.primary.style,
-    curvePrimaryRateBps: normalizedCurve.primary.rateBps,
-    curvePrimaryLength: normalizedCurve.primary.length ?? 0
+    curvePrimary: JSON.stringify(curveArgumentPrimary),
+    curveSegments: JSON.stringify(curveArgumentExtras)
   });
   console.log('Curve argument:', curveArgument);
 

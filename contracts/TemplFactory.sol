@@ -58,6 +58,10 @@ contract TemplFactory {
     address[] internal templInitCodePointers;
     uint256 internal templInitCodeLength;
 
+    /// @notice Emitted after deploying a new templ instance.
+    /// @param curveStyles Segment styles applied to the templ's join curve.
+    /// @param curveRateBps Rate parameters for each segment (basis points).
+    /// @param curveLengths Paid join counts per segment (0 = extends indefinitely).
     event TemplCreated(
         address indexed templ,
         address indexed creator,
@@ -72,8 +76,9 @@ contract TemplFactory {
         address burnAddress,
         bool priestIsDictator,
         uint256 maxMembers,
-        uint8 curveStyle,
-        uint32 curveRateBps,
+        uint8[] curveStyles,
+        uint32[] curveRateBps,
+        uint32[] curveLengths,
         string name,
         string description,
         string logoLink,
@@ -273,6 +278,19 @@ contract TemplFactory {
         }
         if (deployed == address(0)) revert TemplErrors.DeploymentFailed();
         templAddress = deployed;
+        uint256 extraLen = cfg.curve.additionalSegments.length;
+        uint8[] memory curveStyles = new uint8[](extraLen + 1);
+        uint32[] memory curveRates = new uint32[](extraLen + 1);
+        uint32[] memory curveLengths = new uint32[](extraLen + 1);
+        curveStyles[0] = uint8(cfg.curve.primary.style);
+        curveRates[0] = cfg.curve.primary.rateBps;
+        curveLengths[0] = cfg.curve.primary.length;
+        for (uint256 i = 0; i < extraLen; i++) {
+            CurveSegment memory seg = cfg.curve.additionalSegments[i];
+            curveStyles[i + 1] = uint8(seg.style);
+            curveRates[i + 1] = seg.rateBps;
+            curveLengths[i + 1] = seg.length;
+        }
         emit TemplCreated(
             templAddress,
             msg.sender,
@@ -287,8 +305,9 @@ contract TemplFactory {
             cfg.burnAddress,
             cfg.priestIsDictator,
             cfg.maxMembers,
-            uint8(cfg.curve.primary.style),
-            cfg.curve.primary.rateBps,
+            curveStyles,
+            curveRates,
+            curveLengths,
             cfg.name,
             cfg.description,
             cfg.logoLink,

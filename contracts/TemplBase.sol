@@ -122,8 +122,11 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 newProposalCreationFeeBps;
         uint256 newReferralShareBps;
         uint256 newMaxMembers;
+        /// @notice Target contract invoked when executing an external call proposal.
         address externalCallTarget;
+        /// @notice ETH value forwarded when executing the external call.
         uint256 externalCallValue;
+        /// @notice ABI-encoded calldata executed against the external target.
         bytes externalCallData;
         CurveConfig curveConfig;
         uint256 curveBaseEntryFee;
@@ -225,6 +228,10 @@ abstract contract TemplBase is ReentrancyGuard {
 
     event JoinPauseUpdated(bool joinPaused);
     event MaxMembersUpdated(uint256 maxMembers);
+    /// @notice Emitted whenever the entry fee curve configuration changes.
+    /// @param styles Segment styles in application order (primary first).
+    /// @param rateBps Segment rate parameters expressed in basis points.
+    /// @param lengths Segment lengths expressed as paid joins (0 = infinite tail).
     event EntryFeeCurveUpdated(
         uint8[] styles,
         uint32[] rateBps,

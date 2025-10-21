@@ -174,6 +174,8 @@ contract TemplGovernanceModule is TemplBase {
     }
 
     /// @notice Opens a proposal to perform an arbitrary external call through the templ.
+    /// @dev Reverts if `_target` is zero or if no calldata is supplied. Any revert
+    ///      produced by the downstream call will be bubbled up during execution.
     /// @param _target Destination contract for the call.
     /// @param _value ETH value to forward along with the call.
     /// @param _selector Function selector to invoke on the target.
@@ -500,6 +502,7 @@ contract TemplGovernanceModule is TemplBase {
         _applyCurveUpdate(curve, baseEntryFee);
     }
 
+    /// @dev Executes the arbitrary call attached to `proposal` and bubbles up revert data.
     function _governanceCallExternal(Proposal storage proposal) internal returns (bytes memory) {
         address target = proposal.externalCallTarget;
         if (target == address(0)) revert TemplErrors.InvalidRecipient();
