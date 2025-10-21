@@ -273,6 +273,38 @@ describe("EntryFeeCurve", function () {
         expect(await templ.entryFee()).to.equal(priceAfterThird);
     });
 
+    it("reverts when retargeting the entry fee floor would push the base below the minimum", async function () {
+        const RAW_ENTRY_FEE = 100n;
+        const MIN_ENTRY_FEE = 10n;
+        const { templ, token, accounts, priest } = await deployTempl({
+            entryFee: RAW_ENTRY_FEE,
+            curve: EXPONENTIAL_CURVE,
+            priestIsDictator: true,
+        });
+
+        const [, , ...rest] = accounts;
+        const joiners = rest.slice(0, 5);
+        await mintToUsers(token, joiners, RAW_ENTRY_FEE * 1_000n);
+
+        const templAddress = await templ.getAddress();
+        for (const member of joiners) {
+            const currentFee = await templ.entryFee();
+            await token.connect(member).approve(templAddress, currentFee);
+            await templ.connect(member).join();
+        }
+
+        expect(await templ.entryFee()).to.be.gt(MIN_ENTRY_FEE);
+
+        await expect(
+            templ
+                .connect(priest)
+                .updateConfigDAO(ethers.ZeroAddress, MIN_ENTRY_FEE, false, 0, 0, 0)
+        ).to.be.revertedWithCustomError(templ, "EntryFeeTooSmall");
+
+        expect(await templ.baseEntryFee()).to.be.gte(RAW_ENTRY_FEE);
+        expect(await templ.entryFee()).to.be.gte(MIN_ENTRY_FEE);
+    });
+
     it("supports exponential discount curves without saturating to the max entry fee", async function () {
         const discountCurve = {
             primary: { style: CURVE_STYLE.Exponential, rateBps: 9_000, length: 0 },
