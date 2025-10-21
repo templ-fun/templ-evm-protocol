@@ -295,7 +295,14 @@ describe("Disband Treasury", function () {
     const tokensBeforeCleanup = await templ.getExternalRewardTokens();
     expect(tokensBeforeCleanup).to.include.members([lootToken.target, goldToken.target]);
 
-    await templ.cleanupExternalRewardToken(lootToken.target);
+    // Propose and execute DAO cleanup for the settled loot token
+    await templ
+      .connect(m1)
+      .createProposalCleanupExternalRewardToken(lootToken.target, VOTING_PERIOD, "Cleanup loot", "Free slot");
+    const lootCleanupId = (await templ.proposalCount()) - 1n;
+    await templ.connect(m2).vote(Number(lootCleanupId), true);
+    await advanceTimeBeyondVoting();
+    await templ.executeProposal(Number(lootCleanupId));
 
     const tokensAfterFirstCleanup = await templ.getExternalRewardTokens();
     expect(tokensAfterFirstCleanup).to.deep.equal([goldToken.target]);
@@ -309,7 +316,14 @@ describe("Disband Treasury", function () {
     expect(goldState.poolBalance).to.equal(0n);
     expect(goldState.remainder).to.equal(0n);
 
-    await templ.cleanupExternalRewardToken(goldToken.target);
+    // Propose and execute DAO cleanup for the settled gold token
+    await templ
+      .connect(m1)
+      .createProposalCleanupExternalRewardToken(goldToken.target, VOTING_PERIOD, "Cleanup gold", "Free slot");
+    const goldCleanupId = (await templ.proposalCount()) - 1n;
+    await templ.connect(m2).vote(Number(goldCleanupId), true);
+    await advanceTimeBeyondVoting();
+    await templ.executeProposal(Number(goldCleanupId));
 
     const tokensAfterSecondCleanup = await templ.getExternalRewardTokens();
     expect(tokensAfterSecondCleanup.length).to.equal(0);
@@ -321,10 +335,11 @@ describe("Disband Treasury", function () {
     await templ
       .connect(m1)
       .createProposalDisbandTreasury(lootToken.target, VOTING_PERIOD);
-    await templ.connect(m2).vote(2, true);
-    await templ.connect(m3).vote(2, true);
+    const lootDisbandId = (await templ.proposalCount()) - 1n;
+    await templ.connect(m2).vote(Number(lootDisbandId), true);
+    await templ.connect(m3).vote(Number(lootDisbandId), true);
     await advanceTimeBeyondVoting();
-    await templ.executeProposal(2);
+    await templ.executeProposal(Number(lootDisbandId));
 
     await goldToken.mint(owner.address, goldDonation);
     await goldToken.transfer(await templ.getAddress(), goldDonation);
@@ -332,10 +347,11 @@ describe("Disband Treasury", function () {
     await templ
       .connect(m1)
       .createProposalDisbandTreasury(goldToken.target, VOTING_PERIOD);
-    await templ.connect(m2).vote(3, true);
-    await templ.connect(m3).vote(3, true);
+    const goldDisbandId = (await templ.proposalCount()) - 1n;
+    await templ.connect(m2).vote(Number(goldDisbandId), true);
+    await templ.connect(m3).vote(Number(goldDisbandId), true);
     await advanceTimeBeyondVoting();
-    await templ.executeProposal(3);
+    await templ.executeProposal(Number(goldDisbandId));
 
     const tokensFinal = await templ.getExternalRewardTokens();
     expect(tokensFinal).to.include.members([goldToken.target, lootToken.target]);
@@ -357,13 +373,25 @@ describe("Disband Treasury", function () {
     await advanceTimeBeyondVoting();
     await templ.executeProposal(0);
 
-    await expect(templ.cleanupExternalRewardToken(otherToken.target))
+    await templ
+      .connect(m1)
+      .createProposalCleanupExternalRewardToken(otherToken.target, VOTING_PERIOD, "Cleanup unsettled", "");
+    const cleanupId = (await templ.proposalCount()) - 1n;
+    await templ.connect(m2).vote(Number(cleanupId), true);
+    await advanceTimeBeyondVoting();
+    await expect(templ.executeProposal(Number(cleanupId)))
       .to.be.revertedWithCustomError(templ, "ExternalRewardsNotSettled");
   });
 
   it("rejects cleanup attempts on the access token", async function () {
     const accessToken = await templ.accessToken();
-    await expect(templ.cleanupExternalRewardToken(accessToken)).to.be.revertedWithCustomError(
+    await templ
+      .connect(m1)
+      .createProposalCleanupExternalRewardToken(accessToken, VOTING_PERIOD, "Cleanup access token", "");
+    const badCleanupId = (await templ.proposalCount()) - 1n;
+    await templ.connect(m2).vote(Number(badCleanupId), true);
+    await advanceTimeBeyondVoting();
+    await expect(templ.executeProposal(Number(badCleanupId))).to.be.revertedWithCustomError(
       templ,
       "InvalidCallData"
     );
@@ -395,7 +423,13 @@ describe("Disband Treasury", function () {
     expect(clearedState.poolBalance).to.equal(0n);
     expect(clearedState.remainder).to.equal(0n);
 
-    await templ.cleanupExternalRewardToken(lootToken.target);
+    await templ
+      .connect(m1)
+      .createProposalCleanupExternalRewardToken(lootToken.target, VOTING_PERIOD, "Cleanup loot", "");
+    const lootCleanupId2 = (await templ.proposalCount()) - 1n;
+    await templ.connect(m2).vote(Number(lootCleanupId2), true);
+    await advanceTimeBeyondVoting();
+    await templ.executeProposal(Number(lootCleanupId2));
 
     for (const member of existingMembers) {
       expect(await templ.getClaimableExternalReward(member.address, lootToken.target)).to.equal(0n);

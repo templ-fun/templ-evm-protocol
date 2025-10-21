@@ -106,17 +106,7 @@ contract TemplTreasuryModule is TemplBase {
 
     /// @notice Removes an empty external reward token so future disbands can reuse the slot.
     /// @param token Asset to remove from the enumeration set.
-    function cleanupExternalRewardToken(address token) external {
-        if (token == accessToken) revert TemplErrors.InvalidCallData();
-        ExternalRewardState storage rewards = externalRewards[token];
-        if (!rewards.exists) revert TemplErrors.InvalidCallData();
-        if (rewards.poolBalance != 0 || rewards.rewardRemainder != 0) {
-            revert TemplErrors.ExternalRewardsNotSettled();
-        }
-
-        rewards.poolBalance = 0;
-        rewards.rewardRemainder = 0;
-        rewards.exists = false;
-        _removeExternalToken(token);
+    function cleanupExternalRewardToken(address token) external onlyDAO {
+        _cleanupExternalRewardToken(token);
     }
 }

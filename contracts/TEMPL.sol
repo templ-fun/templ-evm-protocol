@@ -177,7 +177,7 @@ contract TEMPL is TemplBase {
     }
 
     function _registerGovernanceSelectors(address module) internal {
-        bytes4[] memory selectors = new bytes4[](21);
+        bytes4[] memory selectors = new bytes4[](22);
         selectors[0] = TemplGovernanceModule.createProposalSetJoinPaused.selector;
         selectors[1] = TemplGovernanceModule.createProposalUpdateConfig.selector;
         selectors[2] = TemplGovernanceModule.createProposalSetMaxMembers.selector;
@@ -199,6 +199,7 @@ contract TEMPL is TemplBase {
         selectors[18] = TemplGovernanceModule.getActiveProposalsPaginated.selector;
         selectors[19] = TemplGovernanceModule.pruneInactiveProposals.selector;
         selectors[20] = TemplGovernanceModule.getProposalJoinSequences.selector;
+        selectors[21] = TemplGovernanceModule.createProposalCleanupExternalRewardToken.selector;
         _registerModule(module, selectors);
     }
 

@@ -259,6 +259,25 @@ contract TemplGovernanceModule is TemplBase {
         return id;
     }
 
+    /// @notice Opens a proposal to cleanup an external reward token once fully settled.
+    /// @param _token External reward token to cleanup (cannot be the access token).
+    /// @param _votingPeriod Optional custom voting duration (seconds).
+    /// @param _title On-chain title for the proposal.
+    /// @param _description On-chain description for the proposal.
+    /// @return proposalId Newly created proposal identifier.
+    function createProposalCleanupExternalRewardToken(
+        address _token,
+        uint256 _votingPeriod,
+        string calldata _title,
+        string calldata _description
+    ) external returns (uint256) {
+        if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
+        (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
+        p.action = Action.CleanupExternalRewardToken;
+        p.token = _token;
+        return id;
+    }
+
     /// @notice Opens a proposal to appoint a new priest.
     /// @param _newPriest Address proposed as the new priest.
     /// @param _votingPeriod Optional custom voting duration (seconds).
@@ -441,6 +460,8 @@ contract TemplGovernanceModule is TemplBase {
             _governanceSetEntryFeeCurve(curve, proposal.curveBaseEntryFee);
         } else if (proposal.action == Action.CallExternal) {
             returnData = _governanceCallExternal(proposal);
+        } else if (proposal.action == Action.CleanupExternalRewardToken) {
+            _governanceCleanupExternalRewardToken(proposal.token);
         } else {
             revert TemplErrors.InvalidCallData();
         }
@@ -508,6 +529,10 @@ contract TemplGovernanceModule is TemplBase {
 
     function _governanceSetEntryFeeCurve(CurveConfig memory curve, uint256 baseEntryFee) internal {
         _applyCurveUpdate(curve, baseEntryFee);
+    }
+
+    function _governanceCleanupExternalRewardToken(address token) internal {
+        _cleanupExternalRewardToken(token);
     }
 
     /// @dev Executes the arbitrary call attached to `proposal` and bubbles up revert data.

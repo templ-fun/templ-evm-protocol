@@ -156,13 +156,22 @@ These components share `TemplBase`, which contains storage, shared helpers (entr
   - `withdrawTreasuryDAO(address token, address recipient, uint256 amount, string reason)`
   - `disbandTreasuryDAO(address token)`
   - `updateConfigDAO(address tokenOrZero, uint256 newEntryFeeOrZero, bool applySplit, uint256 burnBps, uint256 treasuryBps, uint256 memberPoolBps)`
-  - `setMaxMembersDAO(uint256)`, `setJoinPausedDAO(bool)`, `changePriestDAO(address)`, `setDictatorshipDAO(bool)`, `setTemplMetadataDAO(string,string,string)`, `setProposalCreationFeeBpsDAO(uint256)`, `setReferralShareBpsDAO(uint256)`, `setEntryFeeCurveDAO(CurveConfig,uint256)`
+  - `setMaxMembersDAO(uint256)`, `setJoinPausedDAO(bool)`, `changePriestDAO(address)`, `setDictatorshipDAO(bool)`, `setTemplMetadataDAO(string,string,string)`, `setProposalCreationFeeBpsDAO(uint256)`, `setReferralShareBpsDAO(uint256)`, `setEntryFeeCurveDAO(CurveConfig,uint256)`, `cleanupExternalRewardToken(address)` (DAO‑only)
 - Governance (from `TemplGovernanceModule`):
   - Create proposals: `createProposalSetJoinPaused`, `createProposalUpdateConfig`, `createProposalWithdrawTreasury`, `createProposalDisbandTreasury`, `createProposalChangePriest`, `createProposalSetDictatorship`, `createProposalSetMaxMembers`, `createProposalUpdateMetadata`, `createProposalSetProposalFeeBps`, `createProposalSetReferralShareBps`, `createProposalSetEntryFeeCurve`, `createProposalCallExternal`.
+  - Cleanup proposals: `createProposalCleanupExternalRewardToken(address,uint256,string,string)` to remove an empty external reward token from enumeration (DAO‑gated; reverts unless pool and remainder are zero).
   - Vote/execute: `vote(uint256,bool)`, `executeProposal(uint256)`.
   - Views: `getProposal(uint256)`, `getProposalSnapshots(uint256)`, `getProposalJoinSequences(uint256)`, `getActiveProposals()`, `getActiveProposalsPaginated(uint256,uint256)`, `hasVoted(uint256,address)`.
 
 ### Behavior Notes
 - Dictatorship mode (`priestIsDictator`) allows the priest to call `onlyDAO` functions directly. Otherwise, all `onlyDAO` actions are executed by governance via `executeProposal`.
-- `maxMembers` caps membership. When the cap is reached, `joinPaused` auto-enables; unpausing doesn’t remove the cap.
+- Membership cap vs. pause:
+  - When `memberCount >= maxMembers`, the contract auto-pauses joins (`joinPaused = true`). See `TemplBase._autoPauseIfLimitReached()` (contracts/TemplBase.sol:1081).
+  - Unpausing without increasing `maxMembers` does not enable new joins. Join attempts will revert with `MemberLimitReached` due to the cap check in `TemplMembershipModule._join` (contracts/TemplMembership.sol:50–52).
+  - Recommended practice: if the cap is reached and you want to reopen membership, first increase `maxMembers` (or remove the cap), then unpause. This avoids confusing states where the templ appears unpaused but joins still revert at the cap guard.
 - External-call proposals can execute arbitrary calls with optional ETH; they should be used cautiously.
+
+### Security Notes
+- Dictatorship mode (`priestIsDictator`): when enabled, the priest can call DAO‑only functions directly. Otherwise, they must be executed via proposals.
+- External-call proposals: allow arbitrary calls/value and can drain treasury; ensure UIs warn voters appropriately.
+- Cleanup of external rewards: `cleanupExternalRewardToken(address)` is now DAO‑only. It can only remove tokens whose external reward pool and remainder are fully settled; otherwise it reverts.

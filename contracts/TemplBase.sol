@@ -182,6 +182,7 @@ abstract contract TemplBase is ReentrancyGuard {
         SetReferralShare,
         CallExternal,
         SetEntryFeeCurve,
+        CleanupExternalRewardToken,
         Undefined
     }
 
@@ -371,6 +372,20 @@ abstract contract TemplBase is ReentrancyGuard {
         }
 
         return checkpoints[low - 1].cumulative;
+    }
+
+    /// @dev Clears an external reward token from enumeration once fully settled.
+    function _cleanupExternalRewardToken(address token) internal {
+        if (token == accessToken) revert TemplErrors.InvalidCallData();
+        ExternalRewardState storage rewards = externalRewards[token];
+        if (!rewards.exists) revert TemplErrors.InvalidCallData();
+        if (rewards.poolBalance != 0 || rewards.rewardRemainder != 0) {
+            revert TemplErrors.ExternalRewardsNotSettled();
+        }
+        rewards.poolBalance = 0;
+        rewards.rewardRemainder = 0;
+        rewards.exists = false;
+        _removeExternalToken(token);
     }
 
     /// @dev Distributes any outstanding external reward remainders to existing members before new joins.
