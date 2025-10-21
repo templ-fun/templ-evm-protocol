@@ -16,9 +16,19 @@
   - Access token (ERC‑20): paid to join; used for member rewards, treasury accounting, and proposal fees.
   - External rewards: donated ETH/ERC‑20 that can be distributed evenly to members via a “disband” action.
 - Modules
-  - `TemplMembershipModule`: joins, claims, member views.
+ - `TemplMembershipModule`: joins, claims, member views.
   - `TemplTreasuryModule`: DAO actions for treasury/config/metadata/curves and cleanup.
   - `TemplGovernanceModule`: proposals, voting, snapshots, execution (including external calls).
+
+```mermaid
+graph TD
+  A[TEMPL (router)] -->|delegatecall by selector| M[TemplMembershipModule]
+  A -->|delegatecall by selector| T[TemplTreasuryModule]
+  A -->|delegatecall by selector| G[TemplGovernanceModule]
+  B[(TemplBase shared storage)] --- M
+  B --- T
+  B --- G
+```
 
 ## Join Flow & Fee Split
 Given `price = entryFee` and `BPS_DENOMINATOR = 10_000`:
@@ -43,8 +53,26 @@ Distribution and accounting:
 - Balances:
   - `treasuryBalance += treasuryAmount` (access token only)
   - `memberPoolBalance += distributablePool` (reserved for claims)
-- Unsupported tokens: fee‑on‑transfer or rebasing access tokens are not supported.
+ - Unsupported tokens: fee‑on‑transfer or rebasing access tokens are not supported.
  - Code: splits and transfers in `TemplMembershipModule._join` (contracts/TemplMembership.sol:58).
+
+```mermaid
+flowchart TD
+  P[Join payer] -->|approve + join()| R[TEMPL]
+  R --> C[Compute splits]
+  C -->|burnBps| Burn[burnAddress]
+  C -->|protocolBps| Protocol[protocolFeeRecipient]
+  C -->|memberPoolBps| Pool[memberPoolAmount]
+  C -->|treasury| Treasury[treasuryAmount]
+  P -.->|transfer burnAmount| Burn
+  P -.->|transfer protocolAmount| Protocol
+  P -.->|transfer memberPoolAmount + treasuryAmount| R
+  Pool -->|optional referralShareBps| Ref[referral]
+  R -->|update| Bal[treasuryBalance + memberPoolBalance]
+  R -->|distribute to existing members| Acc[cumulativeMemberRewards + remainder]
+  R -->|record| Snap[rewardSnapshot + joinSequence]
+  R -->|recompute| Fee[next entryFee via curve]
+```
 
 ## Proposal Creation Fee
 - `proposalCreationFeeBps` charges proposers a fee in the access token:
@@ -62,8 +90,17 @@ Distribution and accounting:
     - Access token → moves into `memberPoolBalance` and updates the main member accumulator.
     - Other ERC‑20/ETH → credited into a per‑token external reward pool with its own accumulator + checkpoints.
   - Members claim via `claimExternalReward(tokenOrZero)`; snapshots ensure new members don’t claim past distributions.
-  - External reward enumeration is capped at 256 tokens; DAO can remove a fully settled token via `cleanupExternalRewardToken(address)`.
-  - Code: disband logic in `TemplBase._disbandTreasury` (contracts/TemplBase.sol:1149); cleanup helper in `TemplBase._cleanupExternalRewardToken` (contracts/TemplBase.sol:378).
+- External reward enumeration is capped at 256 tokens; DAO can remove a fully settled token via `cleanupExternalRewardToken(address)`.
+- Code: disband logic in `TemplBase._disbandTreasury` (contracts/TemplBase.sol:1149); cleanup helper in `TemplBase._cleanupExternalRewardToken` (contracts/TemplBase.sol:378).
+
+```mermaid
+flowchart TD
+  X[executeProposal: DisbandTreasury(token)] -->|token == accessToken| A[Move to memberPoolBalance]
+  A -->|even split| AR[cumulativeMemberRewards + remainder]
+  X -->|token == ETH/ERC20| E[Increase external pool]
+  E --> EC[external cumulative + checkpoint]
+  EC --> Members[Members claim via claimExternalReward(token)]
+```
 
 ## Deployment Flow & Public Interfaces
 The canonical workflow deploys shared modules once, followed by a factory and any number of templ instances. The snippets below assume a Hardhat project (`npx hardhat console` or scripts that import `hardhat`) using ethers v6.
@@ -252,3 +289,12 @@ These components share `TemplBase`, which contains storage, shared helpers (entr
 - Quorum‑exempt proposals (priest’s `DisbandTreasury`):
   - Do not use the execution delay; they require waiting until the original `votingPeriod` elapses, then a simple majority (`yesVotes > noVotes`).
   - Execute guard for quorum‑exempt: [contracts/TemplGovernance.sol#L375](contracts/TemplGovernance.sol#L375).
+
+```mermaid
+flowchart LR
+  C[Create proposal] -->|endTime = now + votingPeriod| Pre[Pre-quorum voting]
+  Pre -->|quorum reached| Q[Record quorumReachedAt + snapshots\nendTime = now + executionDelay]
+  Q --> Delay[Post-quorum delay\n(voting allowed)]
+  Delay -->|time >= quorumReachedAt + executionDelay\nAND quorum maintained\nAND YES > NO| Exec[executeProposal()]
+  Pre -->|endTime reached without quorum| Fail[Not executable: QuorumNotReached]
+```
