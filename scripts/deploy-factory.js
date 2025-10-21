@@ -17,6 +17,25 @@ async function waitForContractCode(address, provider, attempts = 20, delayMs = 3
   throw new Error(`Timed out waiting for contract code at ${address}`);
 }
 
+async function deployModuleIfNeeded(label, contractName, envKey) {
+  const existing = (process.env[envKey] || "").trim();
+  if (existing) {
+    if (!hre.ethers.isAddress(existing)) {
+      throw new Error(`${envKey} must be a valid address`);
+    }
+    console.log(`${label} module provided via env: ${existing}`);
+    return existing;
+  }
+
+  console.log(`Deploying ${label} module (${contractName})...`);
+  const Factory = await hre.ethers.getContractFactory(contractName);
+  const module = await Factory.deploy();
+  await module.waitForDeployment();
+  const address = await module.getAddress();
+  console.log(`${label} module deployed at: ${address}`);
+  return address;
+}
+
 async function main() {
   const [deployer] = await hre.ethers.getSigners();
   if (!deployer) {
@@ -64,6 +83,9 @@ async function main() {
   }
 
   let factoryAddress = (process.env.FACTORY_ADDRESS || "").trim();
+  let membershipModuleAddress = (process.env.MEMBERSHIP_MODULE_ADDRESS || "").trim();
+  let treasuryModuleAddress = (process.env.TREASURY_MODULE_ADDRESS || "").trim();
+  let governanceModuleAddress = (process.env.GOVERNANCE_MODULE_ADDRESS || "").trim();
 
   const network = await hre.ethers.provider.getNetwork();
   const chainIdNumber = Number(network.chainId);
@@ -89,6 +111,13 @@ async function main() {
       protocolPercentBps = onChainBps;
       protocolPercent = onChainBps / 100;
       protocolPercentSource = "factory";
+      membershipModuleAddress = await existingFactory.membershipModule();
+      treasuryModuleAddress = await existingFactory.treasuryModule();
+      governanceModuleAddress = await existingFactory.governanceModule();
+      console.log("Existing modules:");
+      console.log("  - membership:", membershipModuleAddress);
+      console.log("  - treasury:", treasuryModuleAddress);
+      console.log("  - governance:", governanceModuleAddress);
     } catch (err) {
       console.warn("Warning: unable to read protocol percent from factory:", err?.message || err);
     }
@@ -99,9 +128,31 @@ async function main() {
       await new Promise((resolve) => setTimeout(resolve, 5000));
     }
 
+    membershipModuleAddress = await deployModuleIfNeeded(
+      "Membership",
+      "TemplMembershipModule",
+      "MEMBERSHIP_MODULE_ADDRESS"
+    );
+    treasuryModuleAddress = await deployModuleIfNeeded(
+      "Treasury",
+      "TemplTreasuryModule",
+      "TREASURY_MODULE_ADDRESS"
+    );
+    governanceModuleAddress = await deployModuleIfNeeded(
+      "Governance",
+      "TemplGovernanceModule",
+      "GOVERNANCE_MODULE_ADDRESS"
+    );
+
     console.log("\nDeploying TemplFactory...");
     const Factory = await hre.ethers.getContractFactory("TemplFactory");
-    const factory = await Factory.deploy(protocolRecipient, protocolPercentBps);
+    const factory = await Factory.deploy(
+      protocolRecipient,
+      protocolPercentBps,
+      membershipModuleAddress,
+      treasuryModuleAddress,
+      governanceModuleAddress
+    );
     await factory.waitForDeployment();
     factoryAddress = await factory.getAddress();
     console.log("Factory deployed at:", factoryAddress);
@@ -121,6 +172,10 @@ async function main() {
   console.log("Protocol fee recipient:", protocolRecipient);
   console.log(`Protocol percent (${protocolPercentSource}):`, protocolPercent);
   console.log("Protocol percent (bps):", protocolPercentBps);
+  console.log("\nFactory module wiring:");
+  console.log("- Membership Module:", membershipModuleAddress);
+  console.log("- Treasury Module:", treasuryModuleAddress);
+  console.log("- Governance Module:", governanceModuleAddress);
 
   await waitForContractCode(factoryAddress, hre.ethers.provider);
   console.log("\n✅ TemplFactory ready at:", factoryAddress);
@@ -133,6 +188,9 @@ async function main() {
     protocolFeeRecipient: protocolRecipient,
     protocolPercentBps,
     protocolPercent,
+    membershipModule: membershipModuleAddress,
+    treasuryModule: treasuryModuleAddress,
+    governanceModule: governanceModuleAddress,
     deployedAt: new Date().toISOString(),
     deployer: deployer.address,
     deploymentTx: deploymentReceipt?.hash || null,
@@ -151,7 +209,9 @@ async function main() {
 
   if (network.chainId === 8453n && !process.env.SKIP_VERIFY_NOTE) {
     console.log("\nVerification command:");
-    console.log(`npx hardhat verify --network base ${factoryAddress} ${protocolRecipient} ${protocolPercentBps}`);
+    console.log(
+      `npx hardhat verify --network base ${factoryAddress} ${protocolRecipient} ${protocolPercentBps} ${membershipModuleAddress} ${treasuryModuleAddress} ${governanceModuleAddress}`
+    );
   }
 
   console.log("\n========================================");

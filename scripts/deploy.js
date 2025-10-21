@@ -230,6 +230,25 @@ function readSplitPercent(label, percentEnv, bpsEnv, defaultPercent) {
   };
 }
 
+async function deployModuleIfNeeded(label, contractName, envKey) {
+  const existing = (process.env[envKey] || '').trim();
+  if (existing) {
+    if (!hre.ethers.isAddress(existing)) {
+      throw new Error(`${envKey} must be a valid address`);
+    }
+    console.log(`${label} module provided via env: ${existing}`);
+    return existing;
+  }
+
+  console.log(`Deploying ${label} module (${contractName})...`);
+  const Factory = await hre.ethers.getContractFactory(contractName);
+  const module = await Factory.deploy();
+  await module.waitForDeployment();
+  const address = await module.getAddress();
+  console.log(`${label} module deployed at: ${address}`);
+  return address;
+}
+
 async function waitForContractCode(address, provider, attempts = 20, delayMs = 3000) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const code = await provider.getCode(address);
@@ -277,6 +296,9 @@ async function main() {
   const TOKEN_ADDRESS = process.env.TOKEN_ADDRESS;
   const ENTRY_FEE = process.env.ENTRY_FEE;
   const FACTORY_ADDRESS_ENV = process.env.FACTORY_ADDRESS;
+  let membershipModuleAddress = (process.env.MEMBERSHIP_MODULE_ADDRESS || '').trim();
+  let treasuryModuleAddress = (process.env.TREASURY_MODULE_ADDRESS || '').trim();
+  let governanceModuleAddress = (process.env.GOVERNANCE_MODULE_ADDRESS || '').trim();
   const burnPercent = readSplitPercent('BURN_PERCENT', process.env.BURN_PERCENT, process.env.BURN_BP, DEFAULT_BURN_PERCENT);
   const treasuryPercent = readSplitPercent('TREASURY_PERCENT', process.env.TREASURY_PERCENT, process.env.TREASURY_BP, DEFAULT_TREASURY_PERCENT);
   const memberPoolPercent = readSplitPercent('MEMBER_POOL_PERCENT', process.env.MEMBER_POOL_PERCENT, process.env.MEMBER_POOL_BP, DEFAULT_MEMBER_POOL_PERCENT);
@@ -336,6 +358,9 @@ async function main() {
       protocolPercentPercent = onChainPercent;
       protocolPercentBps = onChainPercentBps;
       protocolPercentSource = 'factory';
+      membershipModuleAddress = await existingFactory.membershipModule();
+      treasuryModuleAddress = await existingFactory.treasuryModule();
+      governanceModuleAddress = await existingFactory.governanceModule();
     } catch (err) {
       throw new Error(`Failed to read protocol percent from factory ${FACTORY_ADDRESS_ENV}: ${err?.message || err}`);
     }
@@ -439,10 +464,33 @@ async function main() {
   }
   
   let factoryAddress = FACTORY_ADDRESS_ENV;
+  let factoryContract;
   if (!factoryAddress) {
+    membershipModuleAddress = await deployModuleIfNeeded(
+      'Membership',
+      'TemplMembershipModule',
+      'MEMBERSHIP_MODULE_ADDRESS'
+    );
+    treasuryModuleAddress = await deployModuleIfNeeded(
+      'Treasury',
+      'TemplTreasuryModule',
+      'TREASURY_MODULE_ADDRESS'
+    );
+    governanceModuleAddress = await deployModuleIfNeeded(
+      'Governance',
+      'TemplGovernanceModule',
+      'GOVERNANCE_MODULE_ADDRESS'
+    );
+
     console.log("\nDeploying TemplFactory...");
     const Factory = await hre.ethers.getContractFactory("TemplFactory");
-    const factory = await Factory.deploy(PROTOCOL_FEE_RECIPIENT, protocolPercentBps);
+    const factory = await Factory.deploy(
+      PROTOCOL_FEE_RECIPIENT,
+      protocolPercentBps,
+      membershipModuleAddress,
+      treasuryModuleAddress,
+      governanceModuleAddress
+    );
     await factory.waitForDeployment();
     factoryAddress = await factory.getAddress();
     console.log("Factory deployed at:", factoryAddress);
@@ -450,10 +498,26 @@ async function main() {
       console.log("Waiting for confirmations...");
       await factory.deploymentTransaction().wait(2);
     }
+    factoryContract = factory;
+  } else {
+    factoryContract = await hre.ethers.getContractAt("TemplFactory", factoryAddress);
+    if (!membershipModuleAddress) {
+      membershipModuleAddress = await factoryContract.membershipModule();
+    }
+    if (!treasuryModuleAddress) {
+      treasuryModuleAddress = await factoryContract.treasuryModule();
+    }
+    if (!governanceModuleAddress) {
+      governanceModuleAddress = await factoryContract.governanceModule();
+    }
   }
 
+  console.log("\nFactory wiring:");
+  console.log("- Membership Module:", membershipModuleAddress);
+  console.log("- Treasury Module:", treasuryModuleAddress);
+  console.log("- Governance Module:", governanceModuleAddress);
+
   console.log("\nCreating TEMPL via factory...");
-  const factoryContract = await hre.ethers.getContractAt("TemplFactory", factoryAddress);
   if (!Number.isFinite(MAX_MEMBERS) || MAX_MEMBERS < 0) {
     throw new Error('MAX_MEMBERS must be a non-negative number');
   }
@@ -587,6 +651,9 @@ async function main() {
     priestAddress: PRIEST_ADDRESS,
     protocolFeeRecipient: PROTOCOL_FEE_RECIPIENT,
     factoryAddress,
+    membershipModule: membershipModuleAddress,
+    treasuryModule: treasuryModuleAddress,
+    governanceModule: governanceModuleAddress,
     burnPercent: burnPercent.resolvedPercent,
     treasuryPercent: treasuryPercent.resolvedPercent,
     memberPoolPercent: memberPoolPercent.resolvedPercent,
@@ -628,7 +695,9 @@ async function main() {
     console.log("\nVerification note:");
     console.log("TemplFactory deployed => use factory logs to verify downstream TEMPL instances on Basescan.");
     console.log("You can verify the factory itself with:");
-    console.log(`npx hardhat verify --network base ${factoryAddress} ${PROTOCOL_FEE_RECIPIENT} ${protocolPercentBps}`);
+    console.log(
+      `npx hardhat verify --network base ${factoryAddress} ${PROTOCOL_FEE_RECIPIENT} ${protocolPercentBps} ${membershipModuleAddress} ${treasuryModuleAddress} ${governanceModuleAddress}`
+    );
   }
   
   console.log("\n========================================");
