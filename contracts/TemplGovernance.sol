@@ -176,6 +176,8 @@ contract TemplGovernanceModule is TemplBase {
     /// @notice Opens a proposal to perform an arbitrary external call through the templ.
     /// @dev Reverts if `_target` is zero or if no calldata is supplied. Any revert
     ///      produced by the downstream call will be bubbled up during execution.
+    ///      This is extremely dangerous—frontends surface prominent warnings clarifying that approving
+    ///      these proposals grants arbitrary control and may allow the treasury to be drained.
     /// @param _target Destination contract for the call.
     /// @param _value ETH value to forward along with the call.
     /// @param _selector Function selector to invoke on the target.
@@ -719,6 +721,10 @@ contract TemplGovernanceModule is TemplBase {
                 activeProposalId[msg.sender] = 0;
             }
         }
+        if (proposalCreationLock[msg.sender]) {
+            revert TemplErrors.ActiveProposalExists();
+        }
+        proposalCreationLock[msg.sender] = true;
         uint256 period = _votingPeriod == 0 ? DEFAULT_VOTING_PERIOD : _votingPeriod;
         if (period < MIN_VOTING_PERIOD) revert TemplErrors.VotingPeriodTooShort();
         if (period > MAX_VOTING_PERIOD) revert TemplErrors.VotingPeriodTooLong();
@@ -763,6 +769,7 @@ contract TemplGovernanceModule is TemplBase {
         hasActiveProposal[msg.sender] = true;
         activeProposalId[msg.sender] = proposalId;
         emit ProposalCreated(proposalId, msg.sender, proposal.endTime, _title, _description);
+        proposalCreationLock[msg.sender] = false;
     }
 
     /// @notice Removes proposals that are no longer active from the tracked set.
