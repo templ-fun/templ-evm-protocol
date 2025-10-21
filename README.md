@@ -143,14 +143,14 @@ These components share `TemplBase`, which contains storage, shared helpers (entr
 ### High-Level Architecture
 ```mermaid
 flowchart LR
-    subgraph Templ[- TEMPL proxy (TemplBase storage) -]
+    subgraph Templ["TEMPL proxy\n(TemplBase storage)"]
         direction LR
-        A[Membership module\n(TemplMembershipModule)]
-        B[Treasury module\n(TemplTreasuryModule)]
-        C[Governance module\n(TemplGovernanceModule)]
+        A["Membership module\n(TemplMembershipModule)"]
+        B["Treasury module\n(TemplTreasuryModule)"]
+        C["Governance module\n(TemplGovernanceModule)"]
     end
 
-    User[User / Priest / Member] -- delegatecall --> Templ
+    User["User / Priest / Member"] -- delegatecall --> Templ
     Templ -- delegatecall --> A
     Templ -- delegatecall --> B
     Templ -- delegatecall --> C
