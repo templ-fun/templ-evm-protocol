@@ -102,7 +102,7 @@ describe("Voting Eligibility Based on Join Time", function () {
             await expect(templ.connect(member3).vote(0, false)).to.emit(templ, "VoteCast");
         });
 
-        it("Should allow members who joined earlier in the quorum block to vote", async function () {
+        it("Should block members who joined in the quorum block from voting", async function () {
             // Four members join to avoid auto-quorum at creation
             await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
             await templ.connect(member1).join();
@@ -137,8 +137,9 @@ describe("Voting Eligibility Based on Join Time", function () {
 
             await Promise.all([voteTx.wait(), joinTx.wait()]);
 
-            // Late member joined in the quorum block -> allowed to vote post-quorum
-            await expect(templ.connect(lateMember).vote(0, true)).to.emit(templ, "VoteCast");
+            // Late member joined in the quorum block -> now blocked from voting
+            await expect(templ.connect(lateMember).vote(0, true))
+                .to.be.revertedWithCustomError(templ, "JoinedAfterProposal");
         });
 
         it("Should block members who joined after proposal creation until quorum is reached", async function () {
@@ -181,6 +182,39 @@ describe("Voting Eligibility Based on Join Time", function () {
             const snapshots = await templ.getProposalSnapshots(0);
             expect(snapshots.eligibleVotersPreQuorum).to.equal(5n);
             expect(snapshots.eligibleVotersPostQuorum).to.equal(6n);
+        });
+
+        it("Should reject same-block joiners from influencing an active proposal", async function () {
+            // Ensure a healthy voter set prior to proposal creation
+            await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
+            await templ.connect(member1).join();
+            await token.connect(member2).approve(await templ.getAddress(), ENTRY_FEE);
+            await templ.connect(member2).join();
+            await token.connect(member3).approve(await templ.getAddress(), ENTRY_FEE);
+            await templ.connect(member3).join();
+            await token.connect(member4).approve(await templ.getAddress(), ENTRY_FEE);
+            await templ.connect(member4).join();
+
+            // Prepare the late member for a batched join
+            await token.connect(lateMember).approve(await templ.getAddress(), ENTRY_FEE);
+
+            await ethers.provider.send("evm_setAutomine", [false]);
+            const txOverrides = { gasLimit: 1_000_000 };
+
+            const createTxPromise = templ
+                .connect(member1)
+                .createProposalSetJoinPaused(true, 7 * 24 * 60 * 60, txOverrides);
+            const joinTxPromise = templ.connect(lateMember).join({ ...txOverrides });
+
+            const [createTx, joinTx] = await Promise.all([createTxPromise, joinTxPromise]);
+
+            await ethers.provider.send("evm_mine");
+            await ethers.provider.send("evm_setAutomine", [true]);
+
+            await Promise.all([createTx.wait(), joinTx.wait()]);
+
+            await expect(templ.connect(lateMember).vote(0, true))
+                .to.be.revertedWithCustomError(templ, "JoinedAfterProposal");
         });
 
         it("Should prevent gaming the system by adding members after quorum", async function () {
@@ -295,32 +329,33 @@ describe("Voting Eligibility Based on Join Time", function () {
     });
 
     describe("Edge Cases", function () {
-        it("Should handle proposals created in the same block as membership", async function () {
+        it("Should block proposals created in the same block as a new membership", async function () {
             // Member 1 joins first
             await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
             await templ.connect(member1).join();
 
-            // In a real scenario, these would be in the same block, but we can't
-            // perfectly simulate that in tests. The contract should handle it correctly
-            // by using < instead of <= for timestamp comparison
-            
             await token.connect(member2).approve(await templ.getAddress(), ENTRY_FEE);
-            await templ.connect(member2).join();
-            
-            // Create proposal immediately
-            await templ.connect(member1).createProposal(
-                "Quick Proposal",
-                "Same block test",
-                encodeSetJoinPausedDAO(true),
-                7 * 24 * 60 * 60
-            );
 
-            // member2 joined before the proposal, so should be able to vote
+            await ethers.provider.send("evm_setAutomine", [false]);
+            const txOverrides = { gasLimit: 1_000_000 };
+
+            const joinTxPromise = templ.connect(member2).join({ ...txOverrides });
+            const proposalTxPromise = templ
+                .connect(member1)
+                .createProposalSetJoinPaused(true, 7 * 24 * 60 * 60, txOverrides);
+
+            const [joinTx, proposalTx] = await Promise.all([joinTxPromise, proposalTxPromise]);
+
+            await ethers.provider.send("evm_mine");
+            await ethers.provider.send("evm_setAutomine", [true]);
+
+            await Promise.all([joinTx.wait(), proposalTx.wait()]);
+
             await ethers.provider.send("evm_increaseTime", [100]);
             await ethers.provider.send("evm_mine");
-            
+
             await expect(templ.connect(member2).vote(0, true))
-                .to.emit(templ, "VoteCast");
+                .to.be.revertedWithCustomError(templ, "JoinedAfterProposal");
         });
     });
 });

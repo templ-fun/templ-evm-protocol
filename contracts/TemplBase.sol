@@ -1037,7 +1037,7 @@ abstract contract TemplBase is ReentrancyGuard {
         if (memberInfo.blockNumber > snapshotBlock) {
             return true;
         }
-        if (memberInfo.blockNumber == snapshotBlock && memberInfo.timestamp > snapshotTimestamp) {
+        if (memberInfo.blockNumber == snapshotBlock && memberInfo.timestamp >= snapshotTimestamp) {
             return true;
         }
         return false;
