@@ -52,24 +52,10 @@ async function main() {
     throw new Error("PROTOCOL_FEE_RECIPIENT must be a valid address");
   }
 
-  const percentInput = (process.env.PROTOCOL_PERCENT ?? "").trim();
   const bpsInput = (process.env.PROTOCOL_BP ?? "").trim();
   let protocolPercentSource = "default";
-  let protocolPercent = 10;
   let protocolPercentBps = 1_000;
-
-  if (percentInput) {
-    const parsedPercent = Number(percentInput);
-    if (!Number.isFinite(parsedPercent)) {
-      throw new Error("PROTOCOL_PERCENT must be a valid number");
-    }
-    if (parsedPercent < 0 || parsedPercent > 100) {
-      throw new Error("PROTOCOL_PERCENT must be between 0 and 100");
-    }
-    protocolPercent = parsedPercent;
-    protocolPercentBps = Math.round(parsedPercent * 100);
-    protocolPercentSource = "percent";
-  } else if (bpsInput) {
+  if (bpsInput) {
     const parsedBps = Number(bpsInput);
     if (!Number.isFinite(parsedBps)) {
       throw new Error("PROTOCOL_BP must be a valid number");
@@ -78,7 +64,6 @@ async function main() {
       throw new Error("PROTOCOL_BP must be between 0 and 10_000");
     }
     protocolPercentBps = Math.round(parsedBps);
-    protocolPercent = protocolPercentBps / 100;
     protocolPercentSource = "bps";
   }
 
@@ -106,10 +91,9 @@ async function main() {
       const existingFactory = await hre.ethers.getContractAt("TemplFactory", factoryAddress);
       const onChainBps = Number(await existingFactory.protocolBps());
       if (!Number.isFinite(onChainBps)) {
-        throw new Error("protocolPercent is not a finite number");
+        throw new Error("protocolBps is not a finite number");
       }
       protocolPercentBps = onChainBps;
-      protocolPercent = onChainBps / 100;
       protocolPercentSource = "factory";
       membershipModuleAddress = await existingFactory.membershipModule();
       treasuryModuleAddress = await existingFactory.treasuryModule();
@@ -119,7 +103,7 @@ async function main() {
       console.log("  - treasury:", treasuryModuleAddress);
       console.log("  - governance:", governanceModuleAddress);
     } catch (err) {
-      console.warn("Warning: unable to read protocol percent from factory:", err?.message || err);
+    console.warn("Warning: unable to read protocol bps from factory:", err?.message || err);
     }
   } else {
     if (network.chainId === 8453n) {
@@ -170,8 +154,7 @@ async function main() {
   }
 
   console.log("Protocol fee recipient:", protocolRecipient);
-  console.log(`Protocol percent (${protocolPercentSource}):`, protocolPercent);
-  console.log("Protocol percent (bps):", protocolPercentBps);
+  console.log(`Protocol bps (${protocolPercentSource}):`, protocolPercentBps);
   console.log("\nFactory module wiring:");
   console.log("- Membership Module:", membershipModuleAddress);
   console.log("- Treasury Module:", treasuryModuleAddress);
@@ -186,8 +169,7 @@ async function main() {
     chainId: chainIdNumber,
     factoryAddress,
     protocolFeeRecipient: protocolRecipient,
-    protocolPercentBps,
-    protocolPercent,
+    protocolBps: protocolPercentBps,
     membershipModule: membershipModuleAddress,
     treasuryModule: treasuryModuleAddress,
     governanceModule: governanceModuleAddress,

@@ -3,10 +3,10 @@ const fs = require("fs");
 const path = require("path");
 require("dotenv").config();
 
-const DEFAULT_BURN_PERCENT = 30;
-const DEFAULT_TREASURY_PERCENT = 30;
-const DEFAULT_MEMBER_POOL_PERCENT = 30;
-const USE_DEFAULT_PERCENT = -1;
+const DEFAULT_BURN_BP = 3_000;
+const DEFAULT_TREASURY_BP = 3_000;
+const DEFAULT_MEMBER_POOL_BP = 3_000;
+const USE_DEFAULT_SENTINEL = -1;
 const CURVE_STYLE_INDEX = {
   static: 0,
   linear: 1,
@@ -36,15 +36,7 @@ function parseBoolean(value) {
 }
 
 function resolvePercentToBps({ label, percentSource, bpsSource, defaultBps = 0 }) {
-  const percentCandidate = percentSource ?? '';
-  if (percentCandidate !== undefined && percentCandidate !== null && String(percentCandidate).trim() !== '') {
-    const asNumber = parseFiniteNumber(percentCandidate, label);
-    if (asNumber < 0 || asNumber > 100) {
-      throw new Error(`${label} percent must be between 0 and 100`);
-    }
-    return Math.round(asNumber * 100);
-  }
-
+  // Percent inputs are deprecated; only accept basis points
   const bpsCandidate = bpsSource ?? '';
   if (bpsCandidate !== undefined && bpsCandidate !== null && String(bpsCandidate).trim() !== '') {
     const asNumber = parseFiniteNumber(bpsCandidate, `${label} (bps)`);
@@ -129,25 +121,8 @@ function resolveCurveConfigFromEnv() {
   };
 }
 
-function resolveProtocolPercentFromEnv() {
-  const percentInput = (process.env.PROTOCOL_PERCENT ?? '').trim();
+function resolveProtocolBpsFromEnv() {
   const bpsInput = (process.env.PROTOCOL_BP ?? '').trim();
-
-  if (percentInput) {
-    const parsedPercent = Number(percentInput);
-    if (!Number.isFinite(parsedPercent)) {
-      throw new Error('PROTOCOL_PERCENT must be a valid number');
-    }
-    if (parsedPercent < 0 || parsedPercent > 100) {
-      throw new Error('PROTOCOL_PERCENT must be between 0 and 100');
-    }
-    return {
-      percent: parsedPercent,
-      bps: Math.round(parsedPercent * 100),
-      source: 'percent'
-    };
-  }
-
   if (bpsInput) {
     const parsedBps = Number(bpsInput);
     if (!Number.isFinite(parsedBps)) {
@@ -158,56 +133,30 @@ function resolveProtocolPercentFromEnv() {
     }
     const roundedBps = Math.round(parsedBps);
     return {
-      percent: roundedBps / 100,
       bps: roundedBps,
       source: 'bps'
     };
   }
 
   return {
-    percent: 10,
     bps: 1_000,
     source: 'default'
   };
 }
 
-function readSplitPercent(label, percentEnv, bpsEnv, defaultPercent) {
-  const trimmedPercent = percentEnv?.trim?.();
-  if (trimmedPercent && trimmedPercent !== '') {
-    const parsed = Number(trimmedPercent);
-    if (!Number.isFinite(parsed)) {
-      throw new Error(`${label} must be a valid number`);
-    }
-    if (parsed === USE_DEFAULT_PERCENT) {
-      return {
-        configValue: USE_DEFAULT_PERCENT,
-        resolvedPercent: defaultPercent,
-        resolvedBps: defaultPercent * 100,
-        usedDefault: true
-      };
-    }
-    if (parsed < 0 || parsed > 100) {
-      throw new Error(`${label} must be between 0 and 100`);
-    }
-    return {
-      configValue: Math.round(parsed * 100),
-      resolvedPercent: parsed,
-      resolvedBps: Math.round(parsed * 100),
-      usedDefault: false
-    };
-  }
-
+function readSplitPercent(label, percentEnv, bpsEnv, defaultBps) {
+  // Percent inputs are deprecated; only accept BPS via bpsEnv
   const trimmedBps = bpsEnv?.trim?.();
   if (trimmedBps && trimmedBps !== '') {
     const parsedBps = Number(trimmedBps);
     if (!Number.isFinite(parsedBps)) {
       throw new Error(`${label} (basis points) must be a valid number`);
     }
-    if (parsedBps === USE_DEFAULT_PERCENT) {
+    if (parsedBps === USE_DEFAULT_SENTINEL) {
       return {
-        configValue: USE_DEFAULT_PERCENT,
-        resolvedPercent: defaultPercent,
-        resolvedBps: defaultPercent * 100,
+        configValue: USE_DEFAULT_SENTINEL,
+        resolvedPercent: defaultBps / 100,
+        resolvedBps: defaultBps,
         usedDefault: true
       };
     }
@@ -223,9 +172,9 @@ function readSplitPercent(label, percentEnv, bpsEnv, defaultPercent) {
   }
 
   return {
-    configValue: defaultPercent * 100,
-    resolvedPercent: defaultPercent,
-    resolvedBps: defaultPercent * 100,
+    configValue: defaultBps,
+    resolvedPercent: defaultBps / 100,
+    resolvedBps: defaultBps,
     usedDefault: true
   };
 }
@@ -299,14 +248,15 @@ async function main() {
   let membershipModuleAddress = (process.env.MEMBERSHIP_MODULE_ADDRESS || '').trim();
   let treasuryModuleAddress = (process.env.TREASURY_MODULE_ADDRESS || '').trim();
   let governanceModuleAddress = (process.env.GOVERNANCE_MODULE_ADDRESS || '').trim();
-  const burnPercent = readSplitPercent('BURN_PERCENT', process.env.BURN_PERCENT, process.env.BURN_BP, DEFAULT_BURN_PERCENT);
-  const treasuryPercent = readSplitPercent('TREASURY_PERCENT', process.env.TREASURY_PERCENT, process.env.TREASURY_BP, DEFAULT_TREASURY_PERCENT);
-  const memberPoolPercent = readSplitPercent('MEMBER_POOL_PERCENT', process.env.MEMBER_POOL_PERCENT, process.env.MEMBER_POOL_BP, DEFAULT_MEMBER_POOL_PERCENT);
-  const protocolPercentEnv = resolveProtocolPercentFromEnv();
-  let protocolPercentPercent = protocolPercentEnv.percent;
+  const burnSplit = readSplitPercent('BURN_BP', undefined, process.env.BURN_BP, DEFAULT_BURN_BP);
+  const treasurySplit = readSplitPercent('TREASURY_BP', undefined, process.env.TREASURY_BP, DEFAULT_TREASURY_BP);
+  const memberPoolSplit = readSplitPercent('MEMBER_POOL_BP', undefined, process.env.MEMBER_POOL_BP, DEFAULT_MEMBER_POOL_BP);
+  const protocolPercentEnv = resolveProtocolBpsFromEnv();
+  // Only bps inputs are supported
+  let protocolPercentPercent = undefined;
   let protocolPercentBps = protocolPercentEnv.bps;
   let protocolPercentSource = protocolPercentEnv.source;
-  const QUORUM_PERCENT = process.env.QUORUM_PERCENT !== undefined ? Number(process.env.QUORUM_PERCENT) : undefined;
+  const QUORUM_BP = process.env.QUORUM_BP !== undefined ? Number(process.env.QUORUM_BP) : undefined;
   const EXECUTION_DELAY_SECONDS = process.env.EXECUTION_DELAY_SECONDS !== undefined ? Number(process.env.EXECUTION_DELAY_SECONDS) : undefined;
   const BURN_ADDRESS = (process.env.BURN_ADDRESS || '').trim();
   const MAX_MEMBERS = process.env.MAX_MEMBERS !== undefined ? Number(process.env.MAX_MEMBERS) : 0;
@@ -315,13 +265,13 @@ async function main() {
   const LOGO_LINK = (process.env.TEMPL_LOGO_LINK ?? process.env.TEMPL_LOGO_URL ?? '').trim();
   const PROPOSAL_FEE_BPS = resolvePercentToBps({
     label: 'PROPOSAL_FEE',
-    percentSource: process.env.PROPOSAL_FEE_PERCENT ?? process.env.PROPOSAL_FEE_PCT,
+    percentSource: undefined,
     bpsSource: process.env.PROPOSAL_FEE_BPS,
     defaultBps: 0
   });
   const REFERRAL_SHARE_BPS = resolvePercentToBps({
     label: 'REFERRAL_SHARE',
-    percentSource: process.env.REFERRAL_SHARE_PERCENT ?? process.env.REFERRAL_PERCENT,
+    percentSource: undefined,
     bpsSource: process.env.REFERRAL_SHARE_BPS ?? process.env.REFERRAL_BPS,
     defaultBps: 0
   });
@@ -347,38 +297,29 @@ async function main() {
       const existingFactory = await hre.ethers.getContractAt('TemplFactory', FACTORY_ADDRESS_ENV);
       const onChainPercentBps = Number(await existingFactory.protocolBps());
       if (!Number.isFinite(onChainPercentBps)) {
-        throw new Error('Factory protocol percent is not a finite number');
+        throw new Error('Factory protocol bps is not a finite number');
       }
-      const onChainPercent = onChainPercentBps / 100;
-      if (protocolPercentSource !== 'factory' && protocolPercentPercent !== onChainPercent) {
+      if (protocolPercentSource !== 'factory' && protocolPercentBps !== onChainPercentBps) {
         console.warn(
-          `[warn] Ignoring PROTOCOL_${protocolPercentSource === 'bps' ? 'BP' : 'PERCENT'}=${protocolPercentSource === 'bps' ? protocolPercentBps : protocolPercentPercent} from environment; factory ${FACTORY_ADDRESS_ENV} enforces ${onChainPercent}.`
+          `[warn] Ignoring PROTOCOL_BP=${protocolPercentBps} from environment; factory ${FACTORY_ADDRESS_ENV} enforces ${onChainPercentBps}.`
         );
       }
-      protocolPercentPercent = onChainPercent;
       protocolPercentBps = onChainPercentBps;
       protocolPercentSource = 'factory';
       membershipModuleAddress = await existingFactory.membershipModule();
       treasuryModuleAddress = await existingFactory.treasuryModule();
       governanceModuleAddress = await existingFactory.governanceModule();
     } catch (err) {
-      throw new Error(`Failed to read protocol percent from factory ${FACTORY_ADDRESS_ENV}: ${err?.message || err}`);
+      throw new Error(`Failed to read protocol bps from factory ${FACTORY_ADDRESS_ENV}: ${err?.message || err}`);
     }
   }
 
-  if (!Number.isFinite(protocolPercentPercent)) {
-    throw new Error('Resolved protocol percent is not a valid number');
+  const totalSplitBps = burnSplit.resolvedBps + treasurySplit.resolvedBps + memberPoolSplit.resolvedBps + protocolPercentBps;
+  if (totalSplitBps !== 10_000) {
+    throw new Error(`Fee split must sum to 10,000 bps; received ${totalSplitBps}`);
   }
-  if (protocolPercentPercent < 0 || protocolPercentPercent > 100) {
-    throw new Error('Resolved protocol percent must be between 0 and 100');
-  }
-
-  const totalSplit = burnPercent.resolvedPercent + treasuryPercent.resolvedPercent + memberPoolPercent.resolvedPercent + protocolPercentPercent;
-  if (totalSplit !== 100) {
-    throw new Error(`Fee split must sum to 100 percent; received ${totalSplit}`);
-  }
-  if (QUORUM_PERCENT !== undefined && (!Number.isFinite(QUORUM_PERCENT) || QUORUM_PERCENT < 0 || QUORUM_PERCENT > 100)) {
-    throw new Error('QUORUM_PERCENT must be between 0 and 100');
+  if (QUORUM_BP !== undefined && (!Number.isFinite(QUORUM_BP) || QUORUM_BP < 0 || QUORUM_BP > 10_000)) {
+    throw new Error('QUORUM_BP must be between 0 and 10,000');
   }
   if (EXECUTION_DELAY_SECONDS !== undefined && (!Number.isFinite(EXECUTION_DELAY_SECONDS) || EXECUTION_DELAY_SECONDS <= 0)) {
     throw new Error('EXECUTION_DELAY_SECONDS must be a positive number of seconds');
@@ -389,7 +330,7 @@ async function main() {
   const DEFAULT_BURN_ADDRESS = '0x000000000000000000000000000000000000dead';
   const effectiveBurnAddress = BURN_ADDRESS || DEFAULT_BURN_ADDRESS;
 
-  const quorumPercentBps = QUORUM_PERCENT !== undefined ? Math.round(QUORUM_PERCENT * 100) : 0;
+  const quorumPercentBps = QUORUM_BP !== undefined ? Math.round(QUORUM_BP) : 0;
 
   const entryFee = BigInt(ENTRY_FEE);
   if (entryFee < 10n) {
@@ -407,34 +348,24 @@ async function main() {
   console.log("Token Address:", TOKEN_ADDRESS);
   console.log("Factory Address (env):", FACTORY_ADDRESS_ENV || '<will deploy>');
 
-  const describeSplit = (info) => {
-    if (info.configValue === USE_DEFAULT_PERCENT) {
-      return `${info.resolvedPercent} (default via -1)`;
-    }
-    if (info.usedDefault) {
-      return `${info.resolvedPercent} (default)`;
-    }
-    return String(info.resolvedPercent);
-  };
-
   console.log(
-    "Fee Split (%): burn=%s treasury=%s memberPool=%s protocol=%d",
-    describeSplit(burnPercent),
-    describeSplit(treasuryPercent),
-    describeSplit(memberPoolPercent),
-    protocolPercentPercent
+    "Fee Split (bps): burn=%d treasury=%d memberPool=%d protocol=%d",
+    burnSplit.resolvedBps,
+    treasurySplit.resolvedBps,
+    memberPoolSplit.resolvedBps,
+    protocolPercentBps
   );
 
-  const burnAmount = (entryFee * BigInt(Math.round(burnPercent.resolvedPercent * 100))) / 10_000n;
-  const treasuryAmount = (entryFee * BigInt(Math.round(treasuryPercent.resolvedPercent * 100))) / 10_000n;
-  const memberPoolAmount = (entryFee * BigInt(Math.round(memberPoolPercent.resolvedPercent * 100))) / 10_000n;
+  const burnAmount = (entryFee * BigInt(burnSplit.resolvedBps)) / 10_000n;
+  const treasuryAmount = (entryFee * BigInt(treasurySplit.resolvedBps)) / 10_000n;
+  const memberPoolAmount = (entryFee * BigInt(memberPoolSplit.resolvedBps)) / 10_000n;
   const protocolAmount = (entryFee * BigInt(protocolPercentBps)) / 10_000n;
   console.log("\nEntry Fee:", entryFee.toString());
   console.log("Fee Split:");
-  console.log(`  - ${burnPercent.resolvedPercent}% Burn:`, burnAmount.toString());
-  console.log(`  - ${treasuryPercent.resolvedPercent}% DAO Treasury:`, treasuryAmount.toString());
-  console.log(`  - ${memberPoolPercent.resolvedPercent}% Member Pool:`, memberPoolAmount.toString());
-  console.log(`  - ${protocolPercentPercent}% Protocol Fee:`, protocolAmount.toString());
+  console.log(`  - ${burnSplit.resolvedBps} bps Burn:`, burnAmount.toString());
+  console.log(`  - ${treasurySplit.resolvedBps} bps DAO Treasury:`, treasuryAmount.toString());
+  console.log(`  - ${memberPoolSplit.resolvedBps} bps Member Pool:`, memberPoolAmount.toString());
+  console.log(`  - ${protocolPercentBps} bps Protocol Fee:`, protocolAmount.toString());
   
   console.log("\nDeploying from:", deployer.address);
   const balance = await hre.ethers.provider.getBalance(deployer.address);
@@ -443,13 +374,12 @@ async function main() {
   const network = await hre.ethers.provider.getNetwork();
   const chainIdNumber = Number(network.chainId);
   console.log("Network Chain ID:", network.chainId.toString());
-  console.log("Quorum Percent:", QUORUM_PERCENT ?? 33);
+  console.log("Quorum Bps:", quorumPercentBps || 3300);
   console.log("Execution Delay (seconds):", EXECUTION_DELAY_SECONDS ?? 7 * 24 * 60 * 60);
   console.log("Burn Address:", effectiveBurnAddress);
   console.log("Priest Dictatorship:", PRIEST_IS_DICTATOR ? 'enabled' : 'disabled');
   console.log('Curve configuration:', curveConfigEnv.description);
-  console.log(`Protocol Percent (${protocolPercentSource}):`, protocolPercentPercent);
-  console.log('Protocol Percent (bps):', protocolPercentBps);
+  console.log(`Protocol Bps (${protocolPercentSource}):`, protocolPercentBps);
   console.log('\nMetadata:');
   console.log('- Name:', NAME);
   console.log('- Description:', DESCRIPTION || '<empty>');
@@ -526,9 +456,9 @@ async function main() {
     priest: PRIEST_ADDRESS,
     token: TOKEN_ADDRESS,
     entryFee: ENTRY_FEE,
-    burnBps: burnPercent.configValue,
-    treasuryBps: treasuryPercent.configValue,
-    memberPoolBps: memberPoolPercent.configValue,
+    burnBps: burnSplit.configValue,
+    treasuryBps: treasurySplit.configValue,
+    memberPoolBps: memberPoolSplit.configValue,
     quorumBps: quorumPercentBps,
     executionDelaySeconds: EXECUTION_DELAY_SECONDS ?? 0,
     burnAddress: BURN_ADDRESS || hre.ethers.ZeroAddress,
@@ -658,17 +588,12 @@ async function main() {
     membershipModule: membershipModuleAddress,
     treasuryModule: treasuryModuleAddress,
     governanceModule: governanceModuleAddress,
-    // Fee split (bps and percent for human-friendly context)
-    burnBps: burnPercent.resolvedBps,
-    treasuryBps: treasuryPercent.resolvedBps,
-    memberPoolBps: memberPoolPercent.resolvedBps,
-    burnPercent: burnPercent.resolvedPercent,
-    treasuryPercent: treasuryPercent.resolvedPercent,
-    memberPoolPercent: memberPoolPercent.resolvedPercent,
+    // Fee split (bps)
+    burnBps: burnSplit.resolvedBps,
+    treasuryBps: treasurySplit.resolvedBps,
+    memberPoolBps: memberPoolSplit.resolvedBps,
     protocolBps: protocolPercentBps,
-    protocolPercent: protocolPercentPercent,
     quorumBps: quorumPercentBps,
-    quorumPercent: QUORUM_PERCENT ?? 33,
     executionDelaySeconds: EXECUTION_DELAY_SECONDS ?? 7 * 24 * 60 * 60,
     burnAddress: effectiveBurnAddress,
     priestIsDictator: PRIEST_IS_DICTATOR,

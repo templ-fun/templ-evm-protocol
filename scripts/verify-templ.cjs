@@ -388,14 +388,10 @@ async function main() {
     priest: readCliOption(process.argv, ['--priest']),
     accessToken: readCliOption(process.argv, ['--token', '--access-token']),
     entryFee: readCliOption(process.argv, ['--entry-fee']),
-    burnBps: readCliOption(process.argv, ['--burn-bps', '--burn-percent-bps']),
-    burnPercent: readCliOption(process.argv, ['--burn-percent']),
-    treasuryBps: readCliOption(process.argv, ['--treasury-bps', '--treasury-percent-bps']),
-    treasuryPercent: readCliOption(process.argv, ['--treasury-percent']),
-    memberBps: readCliOption(process.argv, ['--member-bps', '--member-percent-bps']),
-    memberPercent: readCliOption(process.argv, ['--member-percent']),
+    burnBps: readCliOption(process.argv, ['--burn-bps']),
+    treasuryBps: readCliOption(process.argv, ['--treasury-bps']),
+    memberBps: readCliOption(process.argv, ['--member-bps']),
     quorumBps: readCliOption(process.argv, ['--quorum-bps']),
-    quorumPercent: readCliOption(process.argv, ['--quorum-percent']),
     executionDelay: readCliOption(process.argv, ['--execution-delay', '--execution-delay-seconds']),
     burnAddress: readCliOption(process.argv, ['--burn-address']),
     priestIsDictator: readCliOption(process.argv, ['--dictator', '--priest-is-dictator']),
@@ -404,9 +400,7 @@ async function main() {
     templDescription: readCliOption(process.argv, ['--templ-description', '--description']),
     templLogoLink: readCliOption(process.argv, ['--templ-logo', '--logo-link']),
     proposalFeeBps: readCliOption(process.argv, ['--proposal-fee-bps']),
-    proposalFeePercent: readCliOption(process.argv, ['--proposal-fee-percent']),
-    referralShareBps: readCliOption(process.argv, ['--referral-share-bps', '--referral-bps']),
-    referralSharePercent: readCliOption(process.argv, ['--referral-share-percent', '--referral-percent'])
+    referralShareBps: readCliOption(process.argv, ['--referral-share-bps', '--referral-bps'])
   };
 
   const protocolRecipientOverride = firstDefined([
@@ -418,37 +412,20 @@ async function main() {
 
   const protocolPercentOverride = resolvePercentLike({
     bpsValues: [
-      readCliOption(process.argv, ['--protocol-bps', '--protocol-percent-bps']),
-      process.env.PROTOCOL_BP,
-      process.env.PROTOCOL_PERCENT_BPS,
-      process.env.TEMPL_FACTORY_PROTOCOL_PERCENT
+      readCliOption(process.argv, ['--protocol-bps']),
+      process.env.PROTOCOL_BP
     ],
-    percentValues: [
-      readCliOption(process.argv, ['--protocol-percent']),
-      process.env.PROTOCOL_PERCENT
-    ]
+    percentValues: []
   });
 
   const envOverrides = {
     priest: firstDefined([cliOverrides.priest, process.env.PRIEST_ADDRESS]),
     accessToken: firstDefined([cliOverrides.accessToken, process.env.TOKEN_ADDRESS]),
     entryFee: firstDefined([cliOverrides.entryFee, process.env.ENTRY_FEE]),
-    burnPercent: resolvePercentLike({
-      bpsValues: [cliOverrides.burnBps, process.env.BURN_BP],
-      percentValues: [cliOverrides.burnPercent, process.env.BURN_PERCENT]
-    }),
-    treasuryPercent: resolvePercentLike({
-      bpsValues: [cliOverrides.treasuryBps, process.env.TREASURY_BP],
-      percentValues: [cliOverrides.treasuryPercent, process.env.TREASURY_PERCENT]
-    }),
-    memberPoolPercent: resolvePercentLike({
-      bpsValues: [cliOverrides.memberBps, process.env.MEMBER_POOL_BP],
-      percentValues: [cliOverrides.memberPercent, process.env.MEMBER_POOL_PERCENT]
-    }),
-    quorumPercent: resolvePercentLike({
-      bpsValues: [cliOverrides.quorumBps],
-      percentValues: [cliOverrides.quorumPercent, process.env.QUORUM_PERCENT]
-    }),
+    burnBps: resolvePercentLike({ bpsValues: [cliOverrides.burnBps, process.env.BURN_BP], percentValues: [] }),
+    treasuryBps: resolvePercentLike({ bpsValues: [cliOverrides.treasuryBps, process.env.TREASURY_BP], percentValues: [] }),
+    memberPoolBps: resolvePercentLike({ bpsValues: [cliOverrides.memberBps, process.env.MEMBER_POOL_BP], percentValues: [] }),
+    quorumBps: resolvePercentLike({ bpsValues: [cliOverrides.quorumBps, process.env.QUORUM_BP], percentValues: [] }),
     executionDelayAfterQuorum: firstDefined([cliOverrides.executionDelay, process.env.EXECUTION_DELAY_SECONDS]),
     burnAddress: firstDefined([cliOverrides.burnAddress, process.env.BURN_ADDRESS]),
     priestIsDictator: firstDefined([
@@ -461,11 +438,11 @@ async function main() {
     templLogoLink: firstDefined([cliOverrides.templLogoLink, process.env.TEMPL_LOGO_LINK, process.env.TEMPL_LOGO_URL]),
     proposalFeeBps: resolvePercentLike({
       bpsValues: [cliOverrides.proposalFeeBps, process.env.PROPOSAL_FEE_BPS],
-      percentValues: [cliOverrides.proposalFeePercent, process.env.PROPOSAL_FEE_PERCENT, process.env.PROPOSAL_FEE_PCT]
+      percentValues: []
     }),
     referralShareBps: resolvePercentLike({
       bpsValues: [cliOverrides.referralShareBps, process.env.REFERRAL_SHARE_BPS, process.env.REFERRAL_BPS],
-      percentValues: [cliOverrides.referralSharePercent, process.env.REFERRAL_SHARE_PERCENT, process.env.REFERRAL_PERCENT]
+      percentValues: []
     })
   };
 
@@ -502,21 +479,21 @@ async function main() {
       label: 'burnBps',
       contractValue: contractSnapshot.burnBps,
       eventValue: eventSnapshot?.burnBps,
-      overrideValue: envOverrides.burnPercent,
+      overrideValue: envOverrides.burnBps,
       normalizer: (value) => toSerializable(value)
     }),
     treasuryBps: resolveField({
       label: 'treasuryBps',
       contractValue: contractSnapshot.treasuryBps,
       eventValue: eventSnapshot?.treasuryBps,
-      overrideValue: envOverrides.treasuryPercent,
+      overrideValue: envOverrides.treasuryBps,
       normalizer: (value) => toSerializable(value)
     }),
     memberPoolBps: resolveField({
       label: 'memberPoolBps',
       contractValue: contractSnapshot.memberPoolBps,
       eventValue: eventSnapshot?.memberPoolBps,
-      overrideValue: envOverrides.memberPoolPercent,
+      overrideValue: envOverrides.memberPoolBps,
       normalizer: (value) => toSerializable(value)
     }),
     protocolBps: resolveField({
@@ -530,7 +507,7 @@ async function main() {
       label: 'quorumBps',
       contractValue: contractSnapshot.quorumBps,
       eventValue: eventSnapshot?.quorumBps,
-      overrideValue: envOverrides.quorumPercent,
+      overrideValue: envOverrides.quorumBps,
       normalizer: (value) => toSerializable(value)
     }),
     executionDelayAfterQuorum: resolveField({

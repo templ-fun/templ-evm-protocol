@@ -102,7 +102,7 @@ Example commands (environment variables follow the same names used inside each s
 ```bash
 # Deploy shared modules + factory (examples use Base mainnet; adjust --network as needed)
 PROTOCOL_FEE_RECIPIENT=0xYourRecipient \
-PROTOCOL_PERCENT=10 \
+PROTOCOL_BP=1000 \
 npx hardhat run --network base scripts/deploy-factory.cjs
 
 # Deploy a templ via factory (token, priest, fee splits, etc. come from env)
