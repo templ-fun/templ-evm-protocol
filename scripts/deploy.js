@@ -258,38 +258,10 @@ async function registerTemplWithBackend({
   referralShareBps
 }) {
   if (!backendUrl) return null;
-  const baseUrl = backendUrl.replace(/\/$/, '');
-  const { buildCreateTypedData } = await import('../shared/signing.js');
-  const typed = buildCreateTypedData({ chainId, contractAddress: templAddress.toLowerCase() });
-  const signature = await signer.signTypedData(typed.domain, typed.types, typed.message);
-  const payload = {
-    contractAddress: templAddress,
-    priestAddress,
-    signature,
-    chainId,
-    nonce: typed.message.nonce,
-    issuedAt: typed.message.issuedAt,
-    expiry: typed.message.expiry
-  };
-  if (telegramChatId) {
-    payload.telegramChatId = telegramChatId;
-  }
-  payload.templName = templName;
-  payload.templDescription = templDescription;
-  payload.templLogoLink = templLogoLink;
-  payload.proposalFeeBps = proposalFeeBps;
-  payload.referralShareBps = referralShareBps;
-
-  const response = await fetch(`${baseUrl}/templs`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
-  if (!response.ok) {
-    const text = await response.text().catch(() => '');
-    throw new Error(`Backend registration failed (${response.status} ${response.statusText}): ${text}`.trim());
-  }
-  return response.json();
+  console.warn(
+    'Backend registration is disabled in the contracts-only distribution. Set BACKEND_URL to register manually.'
+  );
+  return null;
 }
 
 async function main() {
