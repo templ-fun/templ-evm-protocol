@@ -27,24 +27,43 @@ contract TemplFactory {
     uint256 internal constant DEFAULT_PROPOSAL_FEE_BPS = 0;
     uint256 internal constant MAX_INIT_CODE_CHUNK_SIZE = 24_000;
 
+    /// @notice Full templ creation configuration. Use `createTemplWithConfig` to apply.
     struct CreateConfig {
+        /// @notice Initial priest wallet (auto-enrolled as member #1).
         address priest;
+        /// @notice ERC-20 token used for membership payments.
         address token;
+        /// @notice Initial entry fee (must be ≥ 10 and divisible by 10).
         uint256 entryFee;
+        /// @notice Burn share (bps). Use -1 to apply factory default.
         int256 burnBps;
+        /// @notice Treasury share (bps). Use -1 to apply factory default.
         int256 treasuryBps;
+        /// @notice Member pool share (bps). Use -1 to apply factory default.
         int256 memberPoolBps;
+        /// @notice Quorum threshold (bps). 0 applies factory default.
         uint256 quorumBps;
+        /// @notice Execution delay after quorum (seconds). 0 applies factory default.
         uint256 executionDelaySeconds;
+        /// @notice Burn address (zero applies default dead address).
         address burnAddress;
+        /// @notice Start in dictatorship mode (priest may call onlyDAO actions directly).
         bool priestIsDictator;
+        /// @notice Optional membership cap (0 = uncapped).
         uint256 maxMembers;
+        /// @notice Whether a custom curve is provided (false uses factory default curve).
         bool curveProvided;
+        /// @notice Pricing curve configuration (see TemplCurve).
         CurveConfig curve;
+        /// @notice Human-readable templ name.
         string name;
+        /// @notice Short description.
         string description;
+        /// @notice Canonical logo URL.
         string logoLink;
+        /// @notice Proposal creation fee (bps of current entry fee).
         uint256 proposalFeeBps;
+        /// @notice Referral share (bps of the member pool allocation).
         uint256 referralShareBps;
     }
 
@@ -59,9 +78,27 @@ contract TemplFactory {
     uint256 internal templInitCodeLength;
 
     /// @notice Emitted after deploying a new templ instance.
+    /// @param templ Address of the deployed templ.
+    /// @param creator Transaction sender that invoked the creation.
+    /// @param priest Priest wallet configured on the templ.
+    /// @param token Access token used for joins.
+    /// @param entryFee Initial entry fee.
+    /// @param burnBps Burn share (bps) applied on joins.
+    /// @param treasuryBps Treasury share (bps) applied on joins.
+    /// @param memberPoolBps Member pool share (bps) applied on joins.
+    /// @param quorumBps Quorum threshold (bps).
+    /// @param executionDelaySeconds Seconds to wait after quorum before execution.
+    /// @param burnAddress Burn sink address.
+    /// @param priestIsDictator Whether dictatorship is enabled at deploy.
+    /// @param maxMembers Membership cap (0 = uncapped).
     /// @param curveStyles Segment styles applied to the templ's join curve.
     /// @param curveRateBps Rate parameters for each segment (basis points).
     /// @param curveLengths Paid join counts per segment (0 = extends indefinitely).
+    /// @param name Templ name.
+    /// @param description Templ description.
+    /// @param logoLink Templ logo URL.
+    /// @param proposalFeeBps Proposal fee (bps of entry fee).
+    /// @param referralShareBps Referral share (bps of member pool).
     event TemplCreated(
         address indexed templ,
         address indexed creator,
@@ -86,6 +123,8 @@ contract TemplFactory {
         uint256 referralShareBps
     );
 
+    /// @notice Emitted when factory permissionless mode is toggled.
+    /// @param enabled True when any address may create templs.
     event PermissionlessModeUpdated(bool enabled);
 
     function _defaultCurveConfig() internal pure returns (CurveConfig memory) {
@@ -101,6 +140,9 @@ contract TemplFactory {
     /// @notice Initializes factory-wide protocol recipient and fee share (bps).
     /// @param _protocolFeeRecipient Address receiving the protocol share from every templ deployed.
     /// @param _protocolBps Fee share, in basis points, reserved for the protocol across all templs.
+    /// @param _membershipModule Address of the deployed membership module implementation.
+    /// @param _treasuryModule Address of the deployed treasury module implementation.
+    /// @param _governanceModule Address of the deployed governance module implementation.
     constructor(
         address _protocolFeeRecipient,
         uint256 _protocolBps,
@@ -164,6 +206,11 @@ contract TemplFactory {
     /// @param _priest Wallet that will assume the templ priest role after deployment.
     /// @param _token ERC-20 access token for the templ.
     /// @param _entryFee Entry fee denominated in `_token`.
+    /// @param _name Human-readable templ name.
+    /// @param _description Short templ description.
+    /// @param _logoLink Canonical logo URL.
+    /// @param _proposalFeeBps Proposal creation fee (bps of entry fee).
+    /// @param _referralShareBps Referral share (bps of member pool allocation).
     /// @return templAddress Address of the deployed templ.
     function createTemplFor(
         address _priest,

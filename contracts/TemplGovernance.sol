@@ -132,6 +132,11 @@ contract TemplGovernanceModule is TemplBase {
     }
 
     /// @notice Opens a proposal to update the referral share basis points.
+    /// @param _newReferralBps New referral share (bps of member pool allocation).
+    /// @param _votingPeriod Optional custom voting duration (seconds).
+    /// @param _title On-chain title for the proposal.
+    /// @param _description On-chain description for the proposal.
+    /// @return proposalId Newly created proposal identifier.
     function createProposalSetReferralShareBps(
         uint256 _newReferralBps,
         uint256 _votingPeriod,
@@ -185,6 +190,7 @@ contract TemplGovernanceModule is TemplBase {
     /// @param _votingPeriod Optional custom voting duration (seconds).
     /// @param _title On-chain title for the proposal.
     /// @param _description On-chain description for the proposal.
+    /// @return proposalId Newly created proposal identifier.
     function createProposalCallExternal(
         address _target,
         uint256 _value,

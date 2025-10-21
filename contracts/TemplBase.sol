@@ -186,6 +186,17 @@ abstract contract TemplBase is ReentrancyGuard {
         Undefined
     }
 
+    /// @notice Emitted after a successful join.
+    /// @param payer Wallet that paid the entry fee.
+    /// @param member Wallet that received membership.
+    /// @param totalAmount Total entry fee paid (in access token units).
+    /// @param burnedAmount Portion sent to `burnAddress`.
+    /// @param treasuryAmount Portion accrued to the templ treasury.
+    /// @param memberPoolAmount Portion streamed to the member pool (before referral payout).
+    /// @param protocolAmount Portion forwarded to the protocol fee recipient.
+    /// @param timestamp Block timestamp when the join completed.
+    /// @param blockNumber Block number when the join completed.
+    /// @param joinId Monotonic index for non‑priest joins, starting at 0 for the first non‑priest member.
     event MemberJoined(
         address indexed payer,
         address indexed member,
@@ -259,6 +270,10 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 remainder
     );
 
+    /// @notice Emitted when a member claims external rewards.
+    /// @param token ERC-20 token address or address(0) for ETH.
+    /// @param member Recipient wallet.
+    /// @param amount Claimed amount.
     event ExternalRewardClaimed(
         address indexed token,
         address indexed member,

@@ -9,6 +9,10 @@ import {TemplErrors} from "./TemplErrors.sol";
 /// @notice Handles joins, reward accounting, and member-facing views.
 contract TemplMembershipModule is TemplBase {
 
+    /// @notice Emitted when a valid referral is credited during a join.
+    /// @param referral The referrer wallet that receives the payout.
+    /// @param newMember The wallet that just joined.
+    /// @param amount Amount of access token paid to `referral`.
     event ReferralRewardPaid(address indexed referral, address indexed newMember, uint256 amount);
 
     /// @notice Join the templ by paying the configured entry fee on behalf of the caller.
@@ -29,6 +33,8 @@ contract TemplMembershipModule is TemplBase {
     }
 
     /// @notice Join the templ for another wallet while crediting a referral.
+    /// @param recipient Wallet receiving membership. Must not already be a member.
+    /// @param referral Member credited with the referral reward.
     function joinForWithReferral(address recipient, address referral)
         external
         whenNotPaused

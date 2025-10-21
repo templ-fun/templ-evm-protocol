@@ -116,7 +116,9 @@ contract TEMPL is TemplBase {
     /// @notice Accepts ETH so proposals can later disburse it as external rewards.
     receive() external payable {}
     /// @notice Exposes the module registered for a given function selector.
-    function getModuleForSelector(bytes4 selector) external view returns (address) {
+    /// @param selector The 4-byte function selector.
+    /// @return module Address of the module that will handle calls for `selector` (zero address if none).
+    function getModuleForSelector(bytes4 selector) external view returns (address module) {
         return _moduleForSelector[selector];
     }
 
