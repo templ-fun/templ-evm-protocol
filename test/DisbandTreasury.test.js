@@ -369,6 +369,78 @@ describe("Disband Treasury", function () {
     );
   });
 
+  it("prevents legacy claims after cleanup when external rewards are re-registered", async function () {
+    const TokenFactory = await ethers.getContractFactory("TestToken");
+    const lootToken = await TokenFactory.deploy("Loot", "LOOT", 18);
+    const initialDonation = ethers.parseUnits("8", 18);
+
+    await lootToken.mint(owner.address, initialDonation);
+    await lootToken.transfer(await templ.getAddress(), initialDonation);
+
+    await templ
+      .connect(m1)
+      .createProposalDisbandTreasury(lootToken.target, VOTING_PERIOD);
+    await templ.connect(m2).vote(0, true);
+    await templ.connect(m3).vote(0, true);
+
+    await advanceTimeBeyondVoting();
+    await templ.executeProposal(0);
+
+    const existingMembers = [priest, m1, m2, m3];
+    for (const member of existingMembers) {
+      await templ.connect(member).claimExternalReward(lootToken.target);
+    }
+
+    const clearedState = await templ.getExternalRewardState(lootToken.target);
+    expect(clearedState.poolBalance).to.equal(0n);
+    expect(clearedState.remainder).to.equal(0n);
+
+    await templ.cleanupExternalRewardToken(lootToken.target);
+
+    for (const member of existingMembers) {
+      expect(await templ.getClaimableExternalReward(member.address, lootToken.target)).to.equal(0n);
+    }
+
+    const newcomer = accounts[6];
+    await mintToUsers(token, [newcomer], TOKEN_SUPPLY);
+    await token.connect(newcomer).approve(await templ.getAddress(), ENTRY_FEE);
+    await templ.connect(newcomer).join();
+
+    const secondDonation = ethers.parseUnits("10", 18);
+    await lootToken.mint(owner.address, secondDonation);
+    await lootToken.transfer(await templ.getAddress(), secondDonation);
+
+    await templ
+      .connect(m1)
+      .createProposalDisbandTreasury(lootToken.target, VOTING_PERIOD);
+    const secondProposalId = Number((await templ.proposalCount()) - 1n);
+    await templ.connect(m2).vote(secondProposalId, true);
+    await templ.connect(m3).vote(secondProposalId, true);
+    await templ.connect(newcomer).vote(secondProposalId, true);
+
+    await advanceTimeBeyondVoting();
+    await templ.executeProposal(secondProposalId);
+
+    const memberCount = await templ.getMemberCount();
+    const expectedShare = secondDonation / memberCount;
+    const allMembers = [...existingMembers, newcomer];
+    for (const member of allMembers) {
+      const claimable = await templ.getClaimableExternalReward(member.address, lootToken.target);
+      expect(claimable).to.equal(expectedShare);
+    }
+
+    for (const member of allMembers) {
+      await templ.connect(member).claimExternalReward(lootToken.target);
+    }
+
+    const finalState = await templ.getExternalRewardState(lootToken.target);
+    expect(finalState.poolBalance).to.equal(0n);
+    expect(finalState.remainder).to.equal(0n);
+
+    const tokens = await templ.getExternalRewardTokens();
+    expect(tokens).to.deep.equal([lootToken.target]);
+  });
+
   it("returns zero external rewards for non-members and unknown tokens", async function () {
     const unknownToken = accounts[6].address;
 
