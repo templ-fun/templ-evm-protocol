@@ -495,6 +495,25 @@ Formulas
 - Segment rules: if there are extras, primary must have `length > 0`; all middle extras must have `length > 0`; the final segment must have `length = 0` (unbounded tail).
 - The contract keeps `baseEntryFee` and recomputes current `entryFee` from the stored curve and completed paid joins after each join.
 
+Multi‑segment example
+```js
+// Static for first 100 members, then linear for next 900, then exponential for next 1000,
+// then freeze price (static tail as required by the final length=0 rule)
+const curve = {
+  primary: { style: 0, rateBps: 0,    length: 100 },   // Static
+  additionalSegments: [
+    { style: 1, rateBps: 10,   length: 900 },          // Linear: +0.10% per join
+    { style: 2, rateBps: 10050, length: 1000 },        // Exponential: ~+0.50% per join
+    { style: 0, rateBps: 0,    length: 0 }             // Final static tail (required)
+  ]
+};
+// Segment activation points (paid joins = non‑priest joins):
+// - Linear starts at join #101, exponential at #1,001, final tail at #2,001
+```
+
+Notes
+- Exponential segments can model price decreases when `rateBps < 10_000` (e.g., 9_500 = −5% per join). Linear segments are non‑decreasing in this design.
+
 ## Core Invariants
 - Entry fee must be ≥ 10 and divisible by 10 (constructor and updates enforce).
 - Fee splits must sum to 10_000 with protocol share included.
