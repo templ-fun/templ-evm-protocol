@@ -37,8 +37,8 @@ flowchart LR
   M --> Token[Access Token ERC-20]
   M --> Protocol[Protocol Fee Recipient]
   M --> Burn[Burn Address]
-  M --> Treas[Treasury Balance]
-  M --> Pool[Member Pool]
+  M -.-> B
+  Tr -.-> B
 
   G --> Tr
   G --> Priest[Priest dictator]
@@ -289,7 +289,7 @@ flowchart LR
   - `disbandTreasuryDAO(address token)`
   - `updateConfigDAO(address tokenOrZero, uint256 newEntryFeeOrZero, bool applySplit, uint256 burnBps, uint256 treasuryBps, uint256 memberPoolBps)`
   - `setMaxMembersDAO(uint256)`, `setJoinPausedDAO(bool)`, `changePriestDAO(address)`, `setDictatorshipDAO(bool)`, `setTemplMetadataDAO(string,string,string)`, `setProposalCreationFeeBpsDAO(uint256)`, `setReferralShareBpsDAO(uint256)`, `setEntryFeeCurveDAO(CurveConfig,uint256)`
-  - Helper (public): `cleanupExternalRewardToken(address)` — removes an exhausted external reward token slot.
+  - DAO-only helper: `cleanupExternalRewardToken(address)` — removes an exhausted external reward token slot once balances are fully settled.
 - Governance (from [`TemplGovernanceModule`](contracts/TemplGovernance.sol)):
   - Create proposals: `createProposalSetJoinPaused`, `createProposalUpdateConfig`, `createProposalWithdrawTreasury`, `createProposalDisbandTreasury`, `createProposalCleanupExternalRewardToken`, `createProposalChangePriest`, `createProposalSetDictatorship`, `createProposalSetMaxMembers`, `createProposalUpdateMetadata`, `createProposalSetProposalFeeBps`, `createProposalSetReferralShareBps`, `createProposalSetEntryFeeCurve`, `createProposalCallExternal`.
   - Vote/execute: `vote(uint256,bool)`, `executeProposal(uint256)`, `pruneInactiveProposals(uint256)`.
