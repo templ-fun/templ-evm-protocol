@@ -124,7 +124,7 @@ Refer to the inline env-variable docs in `scripts/deploy-factory.cjs` and `scrip
 ## Module Responsibilities
 - **TemplMembershipModule**
   - Handles joins (with optional referrals), distributes entry-fee splits, accrues member rewards, and exposes read APIs for membership state and treasury summaries.
-  - Maintains join sequencing to enforce governance eligibility snapshots.
+  - Maintains join sequencing to enforce governance eligibility snapshots and reports cumulative burns (`getTreasuryInfo` → `burned`).
 
 - **TemplTreasuryModule**
   - Provides governance-controlled treasury actions: withdrawals, disbands to member/external pools, priest changes, metadata updates, referral/proposal-fee adjustments, and entry-fee curve updates.
@@ -139,3 +139,59 @@ Refer to the inline env-variable docs in `scripts/deploy-factory.cjs` and `scrip
   - Stores `TEMPL` init code across chunks to avoid large constructor bytecode.
 
 These components share `TemplBase`, which contains storage, shared helpers (entry-fee curves, reward accounting, SafeERC20 transfers), and cross-module events.
+
+### High-Level Architecture
+```mermaid
+flowchart LR
+    subgraph Templ[- TEMPL proxy (TemplBase storage) -]
+        direction LR
+        A[Membership module\n(TemplMembershipModule)]
+        B[Treasury module\n(TemplTreasuryModule)]
+        C[Governance module\n(TemplGovernanceModule)]
+    end
+
+    User[User / Priest / Member] -- delegatecall --> Templ
+    Templ -- delegatecall --> A
+    Templ -- delegatecall --> B
+    Templ -- delegatecall --> C
+    Factory[TemplFactory] -- deploys --> Templ
+```
+
+### Join & Referral Flow at a Glance
+```mermaid
+sequenceDiagram
+    participant J as Joiner
+    participant T as TEMPL (Membership)
+    participant R as Referral
+    participant P as Protocol Fee Recipient
+    participant Burn as Burn Address
+    J->>T: join / joinWithReferral(referral)
+    T->>J: Reverts if paused / limit reached / already member
+    T->>Burn: burn share (updates totalBurned)
+    T->>T: Treasury + Member pool balances updated
+    T->>R: referral share (if referral is active member)
+    T->>P: protocol fee share
+    T->>J: emits MemberJoined event
+```
+
+### Governance Timeline Overview
+```mermaid
+sequenceDiagram
+    participant Proposer
+    participant Gov as TEMPL (Governance)
+    note over Proposer,Gov: proposal created → pre-quorum snapshot\n(join sequence recorded)
+    Proposer->>Gov: createProposal*
+    Gov->>Gov: proposal end = now + votingPeriod
+    participant Member as Eligible Members
+    Member->>Gov: vote()
+    alt quorum reached
+        Gov->>Gov: quorumJoinSequence recorded\nend = now + executionDelay
+    end
+    Member->>Gov: executeProposal() after delay
+```
+
+### Quick Reference
+- **Testing:** `npx hardhat test` (default), `npx hardhat coverage` for coverage, `npm run slither` for static analysis.
+- **Treasury Insights:** `getTreasuryInfo()` returns `(treasuryAvailable, memberPool, protocolFeeRecipient, totalBurned)`.
+- **Entry Fee Curves:** configure piecewise segments (`CurveConfig`) to unlock linear or exponential pricing after a given number of joins.
+- **Proposal Fees:** governance updates them via `setProposalCreationFeeBpsDAO`; the templ contract auto-collects the fee (in the access token) before recording a proposal.
