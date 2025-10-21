@@ -32,7 +32,7 @@ flowchart LR
   TEMPL --> M
   TEMPL --> Tr
   TEMPL --> G
-  TEMPL -.-> B[TemplBase Storage]
+  TEMPL -.-> B[TemplBase Shared Storage]
 
   M --> Token[Access Token ERC-20]
   M --> Protocol[Protocol Fee Recipient]
@@ -43,6 +43,18 @@ flowchart LR
   G --> Tr
   G --> Priest[Priest dictator]
 ```
+
+Architecture map (jump to: Modules → see [Module Responsibilities](#module-responsibilities))
+- `TEMPL` (router): Entry point that routes calls to modules via delegatecall and exposes selector→module lookup.
+- Membership: Joins, fee split accounting, member rewards accrual/claims, join snapshots.
+- Treasury: DAO/priest actions for withdrawals, disbands, config/split/fee/curve/metadata/priest updates.
+- Governance: Proposal create/vote/execute, quorum and delay tracking, dictatorship toggle, external calls.
+- TemplBase (shared storage): Single storage layout and helpers used by all modules through delegatecall.
+
+What “TemplBase Shared Storage” means
+- All persistent state is declared in [`TemplBase`](contracts/TemplBase.sol). Because modules execute via `delegatecall`, they read/write the same storage as `TEMPL`.
+- This pattern keeps module code small and composable while behaving like one contract from a state perspective.
+- It centralizes helpers (entry‑fee curves, safe token transfers, reward math) and ensures storage layout consistency across modules.
 
 ## Deployment Flow & Public Interfaces
 The canonical workflow deploys shared modules once, followed by a factory and any number of templ instances. The snippets below assume a Hardhat project (`npx hardhat console` or scripts that import `hardhat`) using ethers v6.
@@ -234,11 +246,11 @@ sequenceDiagram
   User->>Token: approve(T, entryFee)
   User->>T: join or joinWithReferral
   T->>M: delegatecall join(...)
-  M->>Token: transferFrom(User, T, entryFee)
-  M->>Prot: send protocol share
-  M->>Burn: send burn share
-  M->>Treas: credit treasury share
-  M->>Pool: credit member pool share
+  M->>Token: transferFrom(User, Burn, burnAmount)
+  M->>Token: transferFrom(User, T, treasuryAmount + memberPoolAmount)
+  M->>Token: transferFrom(User, Prot, protocolAmount)
+  M->>Treas: credit treasury share (accounting)
+  M->>Pool: credit member pool share (accounting)
   alt with referral
     M->>Ref: pay referral share (from member pool allocation)
   end
@@ -295,6 +307,7 @@ flowchart LR
 - Dictatorship mode (`priestIsDictator`) allows the priest to call `onlyDAO` functions directly. Otherwise, all `onlyDAO` actions are executed by governance via `executeProposal`.
 - `maxMembers` caps membership. When the cap is reached, `joinPaused` auto-enables; unpausing doesn’t remove the cap.
 - External-call proposals can execute arbitrary calls with optional ETH; they should be used cautiously.
+- Priest-initiated disband proposals are quorum‑exempt (still require simple YES>NO to pass).
 
 ### Proposal Lifecycle
 
