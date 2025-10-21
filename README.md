@@ -44,7 +44,7 @@ flowchart LR
   G --> Priest[Priest dictator]
 ```
 
-Architecture map (jump to: Modules → see [Module Responsibilities](#module-responsibilities))
+Architecture map (see more at [Module Responsibilities](#module-responsibilities))
 - `TEMPL` (router): Entry point that routes calls to modules via delegatecall and exposes selector→module lookup.
 - Membership: Joins, fee split accounting, member rewards accrual/claims, join snapshots.
 - Treasury: DAO/priest actions for withdrawals, disbands, config/split/fee/curve/metadata/priest updates.
@@ -55,6 +55,7 @@ What “TemplBase Shared Storage” means
 - All persistent state is declared in [`TemplBase`](contracts/TemplBase.sol). Because modules execute via `delegatecall`, they read/write the same storage as `TEMPL`.
 - This pattern keeps module code small and composable while behaving like one contract from a state perspective.
 - It centralizes helpers (entry‑fee curves, safe token transfers, reward math) and ensures storage layout consistency across modules.
+- Standards note: This is a diamond‑style modular architecture (EIP‑2535–inspired) using `delegatecall` and shared storage. It is not a full EIP‑2535 implementation (no `diamondCut`/loupe and modules are wired once in the constructor), and it is not an ERC; it’s a common Solidity composition pattern.
 
 ## Deployment Flow & Public Interfaces
 The canonical workflow deploys shared modules once, followed by a factory and any number of templ instances. The snippets below assume a Hardhat project (`npx hardhat console` or scripts that import `hardhat`) using ethers v6.
@@ -290,7 +291,7 @@ flowchart LR
   - `setMaxMembersDAO(uint256)`, `setJoinPausedDAO(bool)`, `changePriestDAO(address)`, `setDictatorshipDAO(bool)`, `setTemplMetadataDAO(string,string,string)`, `setProposalCreationFeeBpsDAO(uint256)`, `setReferralShareBpsDAO(uint256)`, `setEntryFeeCurveDAO(CurveConfig,uint256)`
   - Helper (public): `cleanupExternalRewardToken(address)` — removes an exhausted external reward token slot.
 - Governance (from [`TemplGovernanceModule`](contracts/TemplGovernance.sol)):
-  - Create proposals: `createProposalSetJoinPaused`, `createProposalUpdateConfig`, `createProposalWithdrawTreasury`, `createProposalDisbandTreasury`, `createProposalChangePriest`, `createProposalSetDictatorship`, `createProposalSetMaxMembers`, `createProposalUpdateMetadata`, `createProposalSetProposalFeeBps`, `createProposalSetReferralShareBps`, `createProposalSetEntryFeeCurve`, `createProposalCallExternal`.
+  - Create proposals: `createProposalSetJoinPaused`, `createProposalUpdateConfig`, `createProposalWithdrawTreasury`, `createProposalDisbandTreasury`, `createProposalCleanupExternalRewardToken`, `createProposalChangePriest`, `createProposalSetDictatorship`, `createProposalSetMaxMembers`, `createProposalUpdateMetadata`, `createProposalSetProposalFeeBps`, `createProposalSetReferralShareBps`, `createProposalSetEntryFeeCurve`, `createProposalCallExternal`.
   - Vote/execute: `vote(uint256,bool)`, `executeProposal(uint256)`, `pruneInactiveProposals(uint256)`.
   - Views: `getProposal(uint256)`, `getProposalSnapshots(uint256)`, `getProposalJoinSequences(uint256)`, `getActiveProposals()`, `getActiveProposalsPaginated(uint256,uint256)`, `hasVoted(uint256,address)`.
 
@@ -307,7 +308,7 @@ flowchart LR
 - Dictatorship mode (`priestIsDictator`) allows the priest to call `onlyDAO` functions directly. Otherwise, all `onlyDAO` actions are executed by governance via `executeProposal`.
 - `maxMembers` caps membership. When the cap is reached, `joinPaused` auto-enables; unpausing doesn’t remove the cap.
 - External-call proposals can execute arbitrary calls with optional ETH; they should be used cautiously.
-- Priest-initiated disband proposals are quorum‑exempt (still require simple YES>NO to pass).
+- Only priest-initiated disband proposals are quorum‑exempt; this exists to safely unwind inactive templs without bricking governance, distributing treasury evenly across members (still requires YES greater than NO).
 
 ### Proposal Lifecycle
 
@@ -344,12 +345,12 @@ sequenceDiagram
   participant G as Governance
 
   A->>T: createProposal(...)
-  T->>G: delegatecall create; record preQuorumJoinSequence
+  T->>G: create proposal and record preQuorumJoinSequence
   B->>T: join()
   B->>G: vote(id)
   G-->>B: rejected (joined after snapshot)
   A->>G: vote(id, YES)
-  G->>G: on quorum -> set quorumJoinSequence
+  G->>G: on quorum: set quorumJoinSequence
   B->>G: vote(id)
   G-->>B: still ineligible for this proposal
 ```
