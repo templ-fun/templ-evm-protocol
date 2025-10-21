@@ -6,7 +6,7 @@ const { deployTemplModules } = require("./utils/modules");
 const { getTemplAt, attachTemplInterface } = require("./utils/templ");
 
 const MAX_ENTRY_FEE = (1n << 128n) - 1n;
-const TOTAL_JOINS = 100; // not 20k so tests wont take too long for now, will bring back in future after all refactors are done
+const TOTAL_JOINS = 100; // not 20k so tests wont take too long, but increase to stress if needed
 const TOTAL_PERCENT_BPS = 10_000n;
 const VOTING_PERIOD_SECONDS = 7 * 24 * 60 * 60;
 const CurveStyle = { Static: 0, Linear: 1, Exponential: 2 };
