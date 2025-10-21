@@ -165,6 +165,7 @@ abstract contract TemplBase is ReentrancyGuard {
     mapping(address => bool) public hasActiveProposal;
     uint256[] internal activeProposalIds;
     mapping(uint256 => uint256) internal activeProposalIndex;
+    mapping(address => bool) internal proposalCreationLock;
     uint256 public constant DEFAULT_VOTING_PERIOD = 7 days;
     uint256 public constant MIN_VOTING_PERIOD = 7 days;
     uint256 public constant MAX_VOTING_PERIOD = 30 days;

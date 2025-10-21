@@ -128,6 +128,7 @@ library TemplStorageLib {
         mapping(address => bool) hasActiveProposal;
         uint256[] activeProposalIds;
         mapping(uint256 => uint256) activeProposalIndex;
+        mapping(address => bool) proposalCreationLock;
     }
 
     /// @notice Returns the shared storage layout for the current templ instance.
