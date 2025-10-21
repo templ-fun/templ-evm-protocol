@@ -21,7 +21,14 @@ contract TemplHarness is TEMPL {
         address _burnAddress,
         bool _priestIsDictator,
         uint256 _maxMembers,
-        string memory _homeLink
+        string memory _name,
+        string memory _description,
+        string memory _logoLink,
+        uint256 _proposalCreationFeeBps,
+        uint256 _referralShareBps,
+        address _membershipModule,
+        address _treasuryModule,
+        address _governanceModule
     )
         TEMPL(
             _priest,
@@ -37,8 +44,18 @@ contract TemplHarness is TEMPL {
             _burnAddress,
             _priestIsDictator,
             _maxMembers,
-            _homeLink,
-            CurveConfig({primary: CurveSegment({style: CurveStyle.Static, rateBps: 0})})
+            _name,
+            _description,
+            _logoLink,
+            _proposalCreationFeeBps,
+            _referralShareBps,
+            _membershipModule,
+            _treasuryModule,
+            _governanceModule,
+            CurveConfig({
+                primary: CurveSegment({style: CurveStyle.Static, rateBps: 0, length: 0}),
+                additionalSegments: new CurveSegment[](0)
+            })
         )
     {}
 

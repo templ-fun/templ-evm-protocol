@@ -2,15 +2,13 @@
 pragma solidity ^0.8.23;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {TemplBase} from "./TemplBase.sol";
 import {TemplErrors} from "./TemplErrors.sol";
 import {CurveConfig} from "./TemplCurve.sol";
 
 /// @title templ treasury module
 /// @notice Adds treasury controls, fee configuration, and external reward management.
-abstract contract TemplTreasury is TemplBase {
-    using SafeERC20 for IERC20;
+contract TemplTreasuryModule is TemplBase {
 
     /// @notice Governance action that transfers available treasury or external funds to a recipient.
     /// @param token Token to withdraw (`address(0)` for ETH, access token, or arbitrary ERC-20).
@@ -74,10 +72,28 @@ abstract contract TemplTreasury is TemplBase {
         _updateDictatorship(enabled);
     }
 
-    /// @notice Governance action that updates the templ home link shared across surfaces.
-    /// @param newLink Canonical URL to persist.
-    function setTemplHomeLinkDAO(string calldata newLink) external onlyDAO {
-        _setTemplHomeLink(newLink);
+    /// @notice Governance action that updates templ metadata.
+    /// @param newName New templ name to persist.
+    /// @param newDescription New templ description to persist.
+    /// @param newLogoLink New templ logo link to persist.
+    function setTemplMetadataDAO(
+        string calldata newName,
+        string calldata newDescription,
+        string calldata newLogoLink
+    ) external onlyDAO {
+        _setTemplMetadata(newName, newDescription, newLogoLink);
+    }
+
+    /// @notice Governance action that updates the proposal creation fee expressed in basis points.
+    /// @param newFeeBps New proposal creation fee in basis points.
+    function setProposalCreationFeeBpsDAO(uint256 newFeeBps) external onlyDAO {
+        _setProposalCreationFee(newFeeBps);
+    }
+
+    /// @notice Governance action that updates the referral share basis points.
+    /// @param newReferralBps New referral share expressed in basis points.
+    function setReferralShareBpsDAO(uint256 newReferralBps) external onlyDAO {
+        _setReferralShareBps(newReferralBps);
     }
 
     /// @notice Governance action that reconfigures the entry fee curve.
@@ -86,147 +102,6 @@ abstract contract TemplTreasury is TemplBase {
     function setEntryFeeCurveDAO(CurveConfig calldata curve, uint256 baseEntryFee) external onlyDAO {
         CurveConfig memory config = curve;
         _applyCurveUpdate(config, baseEntryFee);
-    }
-
-    /// @dev Internal helper that executes a treasury withdrawal and emits the corresponding event.
-    function _withdrawTreasury(
-        address token,
-        address recipient,
-        uint256 amount,
-        string memory reason,
-        uint256 proposalId
-    ) internal {
-        if (recipient == address(0)) revert TemplErrors.InvalidRecipient();
-        if (amount == 0) revert TemplErrors.AmountZero();
-
-        if (token == accessToken) {
-            uint256 currentBalance = IERC20(accessToken).balanceOf(address(this));
-            if (currentBalance <= memberPoolBalance) revert TemplErrors.InsufficientTreasuryBalance();
-            uint256 availableBalance = currentBalance - memberPoolBalance;
-            if (amount > availableBalance) revert TemplErrors.InsufficientTreasuryBalance();
-            uint256 debitedFromFees = amount <= treasuryBalance ? amount : treasuryBalance;
-            treasuryBalance -= debitedFromFees;
-
-            IERC20(accessToken).safeTransfer(recipient, amount);
-        } else if (token == address(0)) {
-            ExternalRewardState storage rewards = externalRewards[address(0)];
-            uint256 currentBalance = address(this).balance;
-            uint256 reservedForMembers = rewards.poolBalance;
-            uint256 availableBalance = currentBalance > reservedForMembers ? currentBalance - reservedForMembers : 0;
-            if (amount > availableBalance) revert TemplErrors.InsufficientTreasuryBalance();
-            (bool success, ) = payable(recipient).call{value: amount}("");
-            if (!success) revert TemplErrors.ProposalExecutionFailed();
-        } else {
-            ExternalRewardState storage rewards = externalRewards[token];
-            uint256 currentBalance = IERC20(token).balanceOf(address(this));
-            uint256 reservedForMembers = rewards.poolBalance;
-            uint256 availableBalance = currentBalance > reservedForMembers
-                ? currentBalance - reservedForMembers
-                : 0;
-            if (amount > availableBalance) revert TemplErrors.InsufficientTreasuryBalance();
-            IERC20(token).safeTransfer(recipient, amount);
-        }
-        emit TreasuryAction(proposalId, token, recipient, amount, reason);
-    }
-
-    /// @dev Backend listeners consume PriestChanged to persist the new priest and notify off-chain services.
-    function _changePriest(address newPriest) internal {
-        if (newPriest == address(0)) revert TemplErrors.InvalidRecipient();
-        address old = priest;
-        if (newPriest == old) revert TemplErrors.InvalidCallData();
-        priest = newPriest;
-        emit PriestChanged(old, newPriest);
-    }
-
-    /// @dev Applies updates to the entry fee and fee split configuration.
-    function _updateConfig(
-        address _token,
-        uint256 _entryFee,
-        bool _updateFeeSplit,
-        uint256 _burnPercent,
-        uint256 _treasuryPercent,
-        uint256 _memberPoolPercent
-    ) internal {
-        if (_token != address(0) && _token != accessToken) revert TemplErrors.TokenChangeDisabled();
-        if (_entryFee > 0) {
-            _setCurrentEntryFee(_entryFee);
-        }
-        if (_updateFeeSplit) {
-            _setPercentSplit(_burnPercent, _treasuryPercent, _memberPoolPercent);
-        }
-        emit ConfigUpdated(accessToken, entryFee, burnPercent, treasuryPercent, memberPoolPercent, protocolPercent);
-    }
-
-    /// @dev Sets the join pause flag without mutating membership limits during manual resumes.
-    function _setJoinPaused(bool _paused) internal {
-        joinPaused = _paused;
-        emit JoinPauseUpdated(_paused);
-    }
-
-    /// @dev Routes treasury balances into member or external pools so members can claim them evenly.
-    function _disbandTreasury(address token, uint256 proposalId) internal {
-        uint256 activeMembers = memberCount;
-        if (activeMembers == 0) revert TemplErrors.NoMembers();
-
-        if (token == accessToken) {
-            uint256 accessTokenBalance = IERC20(accessToken).balanceOf(address(this));
-            if (accessTokenBalance <= memberPoolBalance) revert TemplErrors.NoTreasuryFunds();
-            uint256 accessTokenAmount = accessTokenBalance - memberPoolBalance;
-
-            uint256 debitedFromFees = accessTokenAmount <= treasuryBalance ? accessTokenAmount : treasuryBalance;
-            treasuryBalance -= debitedFromFees;
-
-            memberPoolBalance += accessTokenAmount;
-
-            uint256 poolTotalRewards = accessTokenAmount + memberRewardRemainder;
-            uint256 poolPerMember = poolTotalRewards / activeMembers;
-            uint256 poolRemainder = poolTotalRewards % activeMembers;
-            cumulativeMemberRewards += poolPerMember;
-            memberRewardRemainder = poolRemainder;
-
-            emit TreasuryDisbanded(proposalId, token, accessTokenAmount, poolPerMember, poolRemainder);
-            return;
-        }
-
-        uint256 currentBalance;
-        if (token == address(0)) {
-            currentBalance = address(this).balance;
-        } else {
-            currentBalance = IERC20(token).balanceOf(address(this));
-        }
-
-        ExternalRewardState storage rewards = externalRewards[token];
-        uint256 reserved = rewards.poolBalance;
-        if (currentBalance <= reserved) revert TemplErrors.NoTreasuryFunds();
-
-        uint256 amount = currentBalance - reserved;
-
-        _registerExternalToken(token);
-
-        rewards.poolBalance += amount;
-
-        uint256 totalRewards = amount + rewards.rewardRemainder;
-        uint256 perMember = totalRewards / activeMembers;
-        uint256 remainder = totalRewards % activeMembers;
-        rewards.cumulativeRewards += perMember;
-        rewards.rewardRemainder = remainder;
-
-        _recordExternalCheckpoint(rewards);
-
-        emit TreasuryDisbanded(proposalId, token, amount, perMember, remainder);
-    }
-
-    /// @dev Registers a token so external rewards can be enumerated by frontends.
-    function _registerExternalToken(address token) internal {
-        ExternalRewardState storage rewards = externalRewards[token];
-        if (!rewards.exists) {
-            if (externalRewardTokens.length >= MAX_EXTERNAL_REWARD_TOKENS) {
-                revert TemplErrors.ExternalRewardLimitReached();
-            }
-            rewards.exists = true;
-            externalRewardTokens.push(token);
-            externalRewardTokenIndex[token] = externalRewardTokens.length;
-        }
     }
 
     /// @notice Removes an empty external reward token so future disbands can reuse the slot.

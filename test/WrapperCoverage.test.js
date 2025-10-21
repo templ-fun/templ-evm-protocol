@@ -1,5 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { deployTemplModules } = require("./utils/modules");
+const { attachTemplInterface } = require("./utils/templ");
 
 const ENTRY_FEE = ethers.parseUnits("100", 18);
 
@@ -11,9 +13,19 @@ async function deployHarness(entryFee = ENTRY_FEE) {
   const token = await Token.deploy("Test", "TEST", 18);
   await token.waitForDeployment();
 
+  const modules = await deployTemplModules();
   const Harness = await ethers.getContractFactory("contracts/mocks/DaoCallerHarness.sol:DaoCallerHarness");
-  const templ = await Harness.deploy(priest.address, priest.address, token.target, entryFee);
+  let templ = await Harness.deploy(
+    priest.address,
+    priest.address,
+    token.target,
+    entryFee,
+    modules.membershipModule,
+    modules.treasuryModule,
+    modules.governanceModule
+  );
   await templ.waitForDeployment();
+  templ = await attachTemplInterface(templ);
 
   return { accounts, token, templ };
 }
@@ -114,13 +126,16 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
     await token.connect(member).approve(templ.target, ENTRY_FEE);
     await templ.connect(member).join();
     await token.mint(secondMember.address, ENTRY_FEE);
-    await token.connect(secondMember).approve(templ.target, ENTRY_FEE);
-    await templ.connect(secondMember).join();
+  await token.connect(secondMember).approve(templ.target, ENTRY_FEE);
+  await templ.connect(secondMember).join();
 
-    await templ.daoDisband(token.target);
-    await expect(
-      templ.daoWithdraw(token.target, owner.address, 1n, "pool-locked")
-    ).to.be.revertedWithCustomError(templ, "InsufficientTreasuryBalance");
+  // Donate additional access tokens so disband has funds even if treasury accounting is zeroed.
+  await token.mint(templ.target, ENTRY_FEE);
+
+  await templ.daoDisband(token.target);
+  await expect(
+    templ.daoWithdraw(token.target, owner.address, 1n, "pool-locked")
+  ).to.be.revertedWithCustomError(templ, "InsufficientTreasuryBalance");
 
     const Extra = await ethers.getContractFactory("contracts/mocks/TestToken.sol:TestToken");
     const extra = await Extra.deploy("Reserve", "RSV", 18);
@@ -168,13 +183,19 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
     await expect(templ.connect(memberC).join())
       .to.be.revertedWithCustomError(templ, "MemberLimitReached");
 
-    const link = "https://example.templ";
-    await templ.daoSetHomeLink(link);
-    expect(await templ.templHomeLink()).to.equal(link);
+    const metadata = {
+      name: "Example Templ",
+      description: "Example description",
+      logo: "https://example.templ/logo.png"
+    };
+    await templ.daoSetMetadata(metadata.name, metadata.description, metadata.logo);
+    expect(await templ.templName()).to.equal(metadata.name);
+    expect(await templ.templDescription()).to.equal(metadata.description);
+    expect(await templ.templLogoLink()).to.equal(metadata.logo);
 
-    // Same link should short-circuit without emitting events but still succeed
-    await templ.daoSetHomeLink(link);
-    expect(await templ.templHomeLink()).to.equal(link);
+    // Same metadata should no-op but still succeed
+    await templ.daoSetMetadata(metadata.name, metadata.description, metadata.logo);
+    expect(await templ.templLogoLink()).to.equal(metadata.logo);
   });
 
   it("permits dictator priests to call DAO functions directly", async function () {
@@ -187,8 +208,13 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
     await expect(templ.connect(priest).setJoinPausedDAO(false)).to.not.be.reverted;
 
     await expect(templ.connect(priest).setMaxMembersDAO(5)).to.not.be.reverted;
-    await expect(templ.connect(priest).setTemplHomeLinkDAO("https://dictator.templ"))
-      .to.emit(templ, "TemplHomeLinkUpdated");
+    await expect(
+      templ.connect(priest).setTemplMetadataDAO(
+        "Dictator Templ",
+        "Dictator description",
+        "https://dictator.templ/logo.png"
+      )
+    ).to.emit(templ, "TemplMetadataUpdated");
 
     await token.mint(member.address, ENTRY_FEE);
     await token.connect(member).approve(templ.target, ENTRY_FEE);

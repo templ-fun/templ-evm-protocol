@@ -24,6 +24,7 @@ contract TemplFactory {
     int256 internal constant USE_DEFAULT_PERCENT = -1;
     uint256 internal constant DEFAULT_MAX_MEMBERS = 249;
     uint32 internal constant DEFAULT_CURVE_EXP_RATE_BPS = 11_000;
+    uint256 internal constant DEFAULT_PROPOSAL_FEE_BPS = 0;
     uint256 internal constant MAX_INIT_CODE_CHUNK_SIZE = 24_000;
 
     struct CreateConfig {
@@ -40,16 +41,27 @@ contract TemplFactory {
         uint256 maxMembers;
         bool curveProvided;
         CurveConfig curve;
-        string homeLink;
+        string name;
+        string description;
+        string logoLink;
+        uint256 proposalFeeBps;
+        uint256 referralShareBps;
     }
 
     address public immutable protocolFeeRecipient;
     uint256 public immutable protocolPercent;
+    address public immutable membershipModule;
+    address public immutable treasuryModule;
+    address public immutable governanceModule;
     address public immutable factoryDeployer;
     bool public permissionless;
     address[] internal templInitCodePointers;
     uint256 internal templInitCodeLength;
 
+    /// @notice Emitted after deploying a new templ instance.
+    /// @param curveStyles Segment styles applied to the templ's join curve.
+    /// @param curveRateBps Rate parameters for each segment (basis points).
+    /// @param curveLengths Paid join counts per segment (0 = extends indefinitely).
     event TemplCreated(
         address indexed templ,
         address indexed creator,
@@ -64,26 +76,48 @@ contract TemplFactory {
         address burnAddress,
         bool priestIsDictator,
         uint256 maxMembers,
-        uint8 curveStyle,
-        uint32 curveRateBps,
-        string homeLink
+        uint8[] curveStyles,
+        uint32[] curveRateBps,
+        uint32[] curveLengths,
+        string name,
+        string description,
+        string logoLink,
+        uint256 proposalFeeBps,
+        uint256 referralShareBps
     );
 
     event PermissionlessModeUpdated(bool enabled);
 
     function _defaultCurveConfig() internal pure returns (CurveConfig memory) {
-        CurveSegment memory primary = CurveSegment({style: CurveStyle.Exponential, rateBps: DEFAULT_CURVE_EXP_RATE_BPS});
-        return CurveConfig({primary: primary});
+        CurveSegment memory primary = CurveSegment({
+            style: CurveStyle.Exponential,
+            rateBps: DEFAULT_CURVE_EXP_RATE_BPS,
+            length: 0
+        });
+        CurveSegment[] memory extras = new CurveSegment[](0);
+        return CurveConfig({primary: primary, additionalSegments: extras});
     }
 
     /// @notice Initializes factory-wide protocol recipient and fee percent.
     /// @param _protocolFeeRecipient Address receiving the protocol share for every templ deployed.
     /// @param _protocolPercent Fee percent reserved for the protocol across all templs.
-    constructor(address _protocolFeeRecipient, uint256 _protocolPercent) {
+    constructor(
+        address _protocolFeeRecipient,
+        uint256 _protocolPercent,
+        address _membershipModule,
+        address _treasuryModule,
+        address _governanceModule
+    ) {
         if (_protocolFeeRecipient == address(0)) revert TemplErrors.InvalidRecipient();
         if (_protocolPercent > TOTAL_PERCENT) revert TemplErrors.InvalidPercentageSplit();
+        if (_membershipModule == address(0) || _treasuryModule == address(0) || _governanceModule == address(0)) {
+            revert TemplErrors.InvalidCallData();
+        }
         protocolFeeRecipient = _protocolFeeRecipient;
         protocolPercent = _protocolPercent;
+        membershipModule = _membershipModule;
+        treasuryModule = _treasuryModule;
+        governanceModule = _governanceModule;
         factoryDeployer = msg.sender;
         permissionless = false;
         bytes memory initCode = type(TEMPL).creationCode;
@@ -103,9 +137,27 @@ contract TemplFactory {
     /// @notice Deploys a templ using default fee splits and quorum settings.
     /// @param _token ERC-20 access token for the templ.
     /// @param _entryFee Entry fee denominated in `_token`.
+    /// @param _name Human-readable templ name surfaced in UIs.
+    /// @param _description Short templ description.
+    /// @param _logoLink Canonical logo link for the templ.
     /// @return templAddress Address of the deployed templ.
-    function createTempl(address _token, uint256 _entryFee) external returns (address templAddress) {
-        return createTemplFor(msg.sender, _token, _entryFee);
+    function createTempl(
+        address _token,
+        uint256 _entryFee,
+        string calldata _name,
+        string calldata _description,
+        string calldata _logoLink
+    ) external returns (address templAddress) {
+        return createTemplFor(
+            msg.sender,
+            _token,
+            _entryFee,
+            _name,
+            _description,
+            _logoLink,
+            DEFAULT_PROPOSAL_FEE_BPS,
+            0
+        );
     }
 
     /// @notice Deploys a templ on behalf of an explicit priest using default configuration.
@@ -113,7 +165,16 @@ contract TemplFactory {
     /// @param _token ERC-20 access token for the templ.
     /// @param _entryFee Entry fee denominated in `_token`.
     /// @return templAddress Address of the deployed templ.
-    function createTemplFor(address _priest, address _token, uint256 _entryFee)
+    function createTemplFor(
+        address _priest,
+        address _token,
+        uint256 _entryFee,
+        string calldata _name,
+        string calldata _description,
+        string calldata _logoLink,
+        uint256 _proposalFeeBps,
+        uint256 _referralShareBps
+    )
         public
         returns (address templAddress)
     {
@@ -133,7 +194,11 @@ contract TemplFactory {
             maxMembers: DEFAULT_MAX_MEMBERS,
             curveProvided: true,
             curve: _defaultCurveConfig(),
-            homeLink: ""
+            name: _name,
+            description: _description,
+            logoLink: _logoLink,
+            proposalFeeBps: _proposalFeeBps,
+            referralShareBps: _referralShareBps
         });
         return _deploy(cfg);
     }
@@ -174,6 +239,8 @@ contract TemplFactory {
         uint256 treasuryPercent = _resolvePercent(cfg.treasuryPercent, DEFAULT_TREASURY_PERCENT);
         uint256 memberPoolPercent = _resolvePercent(cfg.memberPoolPercent, DEFAULT_MEMBER_POOL_PERCENT);
         _validatePercentSplit(burnPercent, treasuryPercent, memberPoolPercent);
+        if (cfg.proposalFeeBps > TOTAL_PERCENT) revert TemplErrors.InvalidPercentage();
+        if (cfg.referralShareBps > TOTAL_PERCENT) revert TemplErrors.InvalidPercentage();
 
         bytes memory constructorArgs = abi.encode(
             cfg.priest,
@@ -189,7 +256,14 @@ contract TemplFactory {
             cfg.burnAddress,
             cfg.priestIsDictator,
             cfg.maxMembers,
-            cfg.homeLink,
+            cfg.name,
+            cfg.description,
+            cfg.logoLink,
+            cfg.proposalFeeBps,
+            cfg.referralShareBps,
+            membershipModule,
+            treasuryModule,
+            governanceModule,
             cfg.curve
         );
         bytes memory templInitCode = _loadTemplInitCode();
@@ -204,6 +278,19 @@ contract TemplFactory {
         }
         if (deployed == address(0)) revert TemplErrors.DeploymentFailed();
         templAddress = deployed;
+        uint256 extraLen = cfg.curve.additionalSegments.length;
+        uint8[] memory curveStyles = new uint8[](extraLen + 1);
+        uint32[] memory curveRates = new uint32[](extraLen + 1);
+        uint32[] memory curveLengths = new uint32[](extraLen + 1);
+        curveStyles[0] = uint8(cfg.curve.primary.style);
+        curveRates[0] = cfg.curve.primary.rateBps;
+        curveLengths[0] = cfg.curve.primary.length;
+        for (uint256 i = 0; i < extraLen; i++) {
+            CurveSegment memory seg = cfg.curve.additionalSegments[i];
+            curveStyles[i + 1] = uint8(seg.style);
+            curveRates[i + 1] = seg.rateBps;
+            curveLengths[i + 1] = seg.length;
+        }
         emit TemplCreated(
             templAddress,
             msg.sender,
@@ -218,9 +305,14 @@ contract TemplFactory {
             cfg.burnAddress,
             cfg.priestIsDictator,
             cfg.maxMembers,
-            uint8(cfg.curve.primary.style),
-            cfg.curve.primary.rateBps,
-            cfg.homeLink
+            curveStyles,
+            curveRates,
+            curveLengths,
+            cfg.name,
+            cfg.description,
+            cfg.logoLink,
+            cfg.proposalFeeBps,
+            cfg.referralShareBps
         );
     }
 

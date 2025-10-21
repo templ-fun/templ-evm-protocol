@@ -31,7 +31,15 @@ describe("Governance coverage gaps", function () {
     await expect(
       templ
         .connect(outsider)
-        .createProposalUpdateConfig(0, 0, 0, 0, false, VOTING_PERIOD)
+      .createProposalUpdateConfig(
+        ethers.ZeroAddress,
+        0,
+        0,
+        0,
+        0,
+        false,
+        VOTING_PERIOD
+      )
     ).to.be.revertedWithCustomError(templ, "NotMember");
 
     await expect(
@@ -73,7 +81,15 @@ describe("Governance coverage gaps", function () {
 
     await templ
       .connect(secondMember)
-      .createProposalUpdateConfig(0, 0, 0, 0, false, VOTING_PERIOD);
+      .createProposalUpdateConfig(
+        ethers.ZeroAddress,
+        0,
+        0,
+        0,
+        0,
+        false,
+        VOTING_PERIOD
+      );
 
     const createdAfterUpdate = (await templ.proposalCount()) - 1n;
     const stored = await templ.proposals(createdAfterUpdate);
@@ -82,7 +98,15 @@ describe("Governance coverage gaps", function () {
 
     await templ
       .connect(thirdMember)
-      .createProposalUpdateConfig(0, 2000, 2000, 5000, true, VOTING_PERIOD);
+      .createProposalUpdateConfig(
+        ethers.ZeroAddress,
+        0,
+        2000,
+        2000,
+        5000,
+        true,
+        VOTING_PERIOD
+      );
 
     await templ
       .connect(fourthMember)
@@ -129,20 +153,42 @@ describe("Governance coverage gaps", function () {
     expect(await templ.joinPaused()).to.equal(true);
   });
 
-  it("allows governance to update the templ home link", async function () {
-    const initialLink = "https://start.templ";
-    const updatedLink = "https://new.templ";
-    const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE, homeLink: initialLink });
+  it("allows governance to update templ metadata", async function () {
+    const initialMeta = {
+      name: "Genesis Templ",
+      description: "Initial description",
+      logo: "https://start.templ/logo.png"
+    };
+    const updatedMeta = {
+      name: "Upgraded Templ",
+      description: "New mission and vibe",
+      logo: "https://new.templ/logo.png"
+    };
+    const { templ, token, accounts } = await deployTempl({
+      entryFee: ENTRY_FEE,
+      name: initialMeta.name,
+      description: initialMeta.description,
+      logoLink: initialMeta.logo
+    });
     const [, , memberA, memberB] = accounts;
 
     await mintToUsers(token, [memberA, memberB], ENTRY_FEE * 4n);
     await joinMembers(templ, token, [memberA, memberB]);
 
-    expect(await templ.templHomeLink()).to.equal(initialLink);
+    expect(await templ.templName()).to.equal(initialMeta.name);
+    expect(await templ.templDescription()).to.equal(initialMeta.description);
+    expect(await templ.templLogoLink()).to.equal(initialMeta.logo);
 
     await templ
       .connect(memberA)
-      .createProposalSetHomeLink(updatedLink, VOTING_PERIOD, "Update home", "Set new home link");
+      .createProposalUpdateMetadata(
+        updatedMeta.name,
+        updatedMeta.description,
+        updatedMeta.logo,
+        VOTING_PERIOD,
+        "Update metadata",
+        "Set new templ metadata"
+      );
     const proposalId = (await templ.proposalCount()) - 1n;
 
     await templ.connect(memberB).vote(proposalId, true);
@@ -151,7 +197,40 @@ describe("Governance coverage gaps", function () {
     await ethers.provider.send("evm_mine", []);
 
     await templ.executeProposal(proposalId);
-    expect(await templ.templHomeLink()).to.equal(updatedLink);
+    expect(await templ.templName()).to.equal(updatedMeta.name);
+    expect(await templ.templDescription()).to.equal(updatedMeta.description);
+    expect(await templ.templLogoLink()).to.equal(updatedMeta.logo);
+  });
+
+  it("configures proposal fees and referral shares via governance", async function () {
+    const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE });
+    const [, , memberA, memberB] = accounts;
+
+    await mintToUsers(token, [memberA, memberB], ENTRY_FEE * 6n);
+    await joinMembers(templ, token, [memberA, memberB]);
+
+    await token.connect(memberA).approve(await templ.getAddress(), ENTRY_FEE * 10n);
+
+    await templ
+      .connect(memberA)
+      .createProposalSetProposalFeeBps(500, VOTING_PERIOD, "Set proposal fee", "Increase proposal cost");
+    const proposalFeeId = (await templ.proposalCount()) - 1n;
+    await templ.connect(memberB).vote(proposalFeeId, true);
+    const delay = Number(await templ.executionDelayAfterQuorum());
+    await ethers.provider.send("evm_increaseTime", [delay + 1]);
+    await ethers.provider.send("evm_mine", []);
+    await templ.executeProposal(proposalFeeId);
+    expect(await templ.proposalCreationFeeBps()).to.equal(500n);
+
+    await templ
+      .connect(memberA)
+      .createProposalSetReferralShareBps(1_500, VOTING_PERIOD, "Set referral", "Enable referrals");
+    const referralProposalId = (await templ.proposalCount()) - 1n;
+    await templ.connect(memberB).vote(referralProposalId, true);
+    await ethers.provider.send("evm_increaseTime", [delay + 1]);
+    await ethers.provider.send("evm_mine", []);
+    await templ.executeProposal(referralProposalId);
+    expect(await templ.referralShareBps()).to.equal(1_500n);
   });
 
   it("clears active proposals once earlier windows expire", async function () {
@@ -170,7 +249,15 @@ describe("Governance coverage gaps", function () {
 
     await templ
       .connect(member)
-      .createProposalUpdateConfig(0, 0, 0, 0, false, VOTING_PERIOD);
+      .createProposalUpdateConfig(
+        ethers.ZeroAddress,
+        0,
+        0,
+        0,
+        0,
+        false,
+        VOTING_PERIOD
+      );
     const secondId = await templ.activeProposalId(member.address);
     expect(secondId).to.equal(1n);
   });

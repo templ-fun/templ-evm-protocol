@@ -40,7 +40,7 @@ describe("Treasury coverage extras", function () {
     ).to.be.revertedWithCustomError(templ, "NotDAO");
 
     await expect(
-      templ.connect(member).setTemplHomeLinkDAO("https://templ.fun/new-home")
+      templ.connect(member).setTemplMetadataDAO("DAO", "Update", "https://templ.fun/new-home.png")
     ).to.be.revertedWithCustomError(templ, "NotDAO");
   });
 

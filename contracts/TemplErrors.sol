@@ -50,6 +50,8 @@ library TemplErrors {
     error EntryFeeTooSmall();
     /// @notice Thrown when the entry fee is not a multiple of ten.
     error InvalidEntryFee();
+    /// @notice Thrown when the entry fee exceeds the supported maximum.
+    error EntryFeeTooLarge();
     /// @notice Thrown when an entry fee curve configuration is invalid.
     error InvalidCurveConfig();
     /// @notice Thrown when fee percentages do not sum correctly or exceed limits.
@@ -92,4 +94,6 @@ library TemplErrors {
     error NotFactoryDeployer();
     /// @notice Thrown when attempting to set permissionless mode to its current state.
     error PermissionlessUnchanged();
+    /// @notice Thrown when an ERC-20 token transfer or approval fails.
+    error TokenTransferFailed();
 }

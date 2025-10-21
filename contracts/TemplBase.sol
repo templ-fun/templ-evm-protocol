@@ -2,7 +2,6 @@
 pragma solidity ^0.8.23;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {TemplErrors} from "./TemplErrors.sol";
@@ -11,7 +10,6 @@ import {CurveConfig, CurveSegment, CurveStyle} from "./TemplCurve.sol";
 /// @title Base templ storage and shared helpers
 /// @notice Hosts shared state, events, and internal helpers used by membership, treasury, and governance modules.
 abstract contract TemplBase is ReentrancyGuard {
-    using SafeERC20 for IERC20;
     using TemplErrors for *;
 
     /// @dev Basis used for fee split math so every percent is represented as an integer.
@@ -24,6 +22,8 @@ abstract contract TemplBase is ReentrancyGuard {
     address internal constant DEFAULT_BURN_ADDRESS = 0x000000000000000000000000000000000000dEaD;
     /// @dev Caps the number of external reward tokens tracked to keep join gas bounded.
     uint256 internal constant MAX_EXTERNAL_REWARD_TOKENS = 256;
+    /// @dev Maximum entry fee supported before arithmetic would overflow downstream accounting.
+    uint256 internal constant MAX_ENTRY_FEE = type(uint128).max;
 
     /// @notice Percent of the entry fee that is burned on every join.
     uint256 public burnPercent;
@@ -32,14 +32,14 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @notice Percent of the entry fee set aside for the member rewards pool.
     uint256 public memberPoolPercent;
     /// @notice Percent of the entry fee forwarded to the protocol on every join.
-    uint256 public immutable protocolPercent;
+    uint256 public protocolPercent;
 
     /// @notice Address empowered to act as the priest (and temporary dictator).
     address public priest;
     /// @notice Address that receives the protocol share during joins and distributions.
-    address public immutable protocolFeeRecipient;
+    address public protocolFeeRecipient;
     /// @notice ERC-20 token required to join the templ.
-    address public immutable accessToken;
+    address public accessToken;
     /// @notice Tracks whether dictatorship mode is enabled.
     bool public priestIsDictator;
     /// @notice Current entry fee denominated in the access token.
@@ -63,9 +63,15 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @notice Seconds governance must wait after quorum before executing a proposal.
     uint256 public executionDelayAfterQuorum;
     /// @notice Address that receives burn allocations.
-    address public immutable burnAddress;
-    /// @notice Canonical templ home link surfaced across UIs and off-chain services.
-    string public templHomeLink;
+    address public burnAddress;
+    /// @notice Templ metadata surfaced across UIs and off-chain services.
+    string public templName;
+    string public templDescription;
+    string public templLogoLink;
+    /// @notice Basis points of the entry fee that must be paid to create proposals.
+    uint256 public proposalCreationFeeBps;
+    /// @notice Basis points of the member pool share paid to a referral during joins.
+    uint256 public referralShareBps;
 
     struct Member {
         /// @notice Whether the address has successfully joined.
@@ -110,8 +116,18 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 newBurnPercent;
         uint256 newTreasuryPercent;
         uint256 newMemberPoolPercent;
-        string newHomeLink;
+        string newTemplName;
+        string newTemplDescription;
+        string newLogoLink;
+        uint256 newProposalCreationFeeBps;
+        uint256 newReferralShareBps;
         uint256 newMaxMembers;
+        /// @notice Target contract invoked when executing an external call proposal.
+        address externalCallTarget;
+        /// @notice ETH value forwarded when executing the external call.
+        uint256 externalCallValue;
+        /// @notice ABI-encoded calldata executed against the external target.
+        bytes externalCallData;
         CurveConfig curveConfig;
         uint256 curveBaseEntryFee;
         uint256 yesVotes;
@@ -149,7 +165,10 @@ abstract contract TemplBase is ReentrancyGuard {
         ChangePriest,
         SetDictatorship,
         SetMaxMembers,
-        SetHomeLink,
+        SetMetadata,
+        SetProposalFee,
+        SetReferralShare,
+        CallExternal,
         SetEntryFeeCurve,
         Undefined
     }
@@ -209,9 +228,14 @@ abstract contract TemplBase is ReentrancyGuard {
 
     event JoinPauseUpdated(bool joinPaused);
     event MaxMembersUpdated(uint256 maxMembers);
+    /// @notice Emitted whenever the entry fee curve configuration changes.
+    /// @param styles Segment styles in application order (primary first).
+    /// @param rateBps Segment rate parameters expressed in basis points.
+    /// @param lengths Segment lengths expressed as paid joins (0 = infinite tail).
     event EntryFeeCurveUpdated(
-        uint8 primaryStyle,
-        uint32 primaryRateBps
+        uint8[] styles,
+        uint32[] rateBps,
+        uint32[] lengths
     );
     event PriestChanged(address indexed oldPriest, address indexed newPriest);
     event TreasuryDisbanded(
@@ -228,7 +252,9 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 amount
     );
 
-    event TemplHomeLinkUpdated(string previousLink, string newLink);
+    event TemplMetadataUpdated(string name, string description, string logoLink);
+    event ProposalCreationFeeUpdated(uint256 previousFeeBps, uint256 newFeeBps);
+    event ReferralShareBpsUpdated(uint256 previousBps, uint256 newBps);
 
     struct ExternalRewardState {
         uint256 poolBalance;
@@ -297,6 +323,68 @@ abstract contract TemplBase is ReentrancyGuard {
         }
     }
 
+    /// @dev Determines the cumulative rewards baseline for a member given join-time snapshots.
+    function _externalBaselineForMember(
+        ExternalRewardState storage rewards,
+        Member storage memberInfo
+    ) internal view returns (uint256) {
+        RewardCheckpoint[] storage checkpoints = rewards.checkpoints;
+        uint256 len = checkpoints.length;
+        if (len == 0) {
+            return rewards.cumulativeRewards;
+        }
+
+        uint256 memberBlockNumber = memberInfo.blockNumber;
+        uint256 memberTimestamp = memberInfo.timestamp;
+        uint256 low = 0;
+        uint256 high = len;
+
+        while (low < high) {
+            uint256 mid = (low + high) >> 1;
+            RewardCheckpoint storage cp = checkpoints[mid];
+            if (memberBlockNumber < cp.blockNumber) {
+                high = mid;
+            } else if (memberBlockNumber > cp.blockNumber) {
+                low = mid + 1;
+            } else if (memberTimestamp < cp.timestamp) {
+                high = mid;
+            } else {
+                low = mid + 1;
+            }
+        }
+
+        if (low == 0) {
+            return 0;
+        }
+
+        return checkpoints[low - 1].cumulative;
+    }
+
+    /// @dev Distributes any outstanding external reward remainders to existing members before new joins.
+    function _flushExternalRemainders() internal {
+        uint256 currentMembers = memberCount;
+        if (currentMembers == 0) {
+            return;
+        }
+        uint256 tokenCount = externalRewardTokens.length;
+        for (uint256 i = 0; i < tokenCount; i++) {
+            address token = externalRewardTokens[i];
+            ExternalRewardState storage rewards = externalRewards[token];
+            uint256 remainder = rewards.rewardRemainder;
+            if (remainder == 0) {
+                continue;
+            }
+            uint256 perMember = remainder / currentMembers;
+            if (perMember == 0) {
+                continue;
+            }
+            uint256 leftover = remainder % currentMembers;
+            rewards.rewardRemainder = leftover;
+            rewards.cumulativeRewards += perMember;
+            _recordExternalCheckpoint(rewards);
+        }
+    }
+
     /// @notice Sets immutable configuration and initial governance parameters shared across modules.
     /// @param _protocolFeeRecipient Address receiving the protocol share of entry fees.
     /// @param _accessToken ERC-20 token that gates membership.
@@ -308,8 +396,12 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param _executionDelay Seconds to wait after quorum before execution (defaults when zero).
     /// @param _burnAddress Address receiving burn allocations (fallbacks to the dead address).
     /// @param _priestIsDictator Whether the templ starts in dictatorship mode.
-    /// @param _homeLink Canonical templ home link emitted on initialization.
-    constructor(
+    /// @param _name Initial templ name surfaced off-chain.
+    /// @param _description Initial templ description.
+    /// @param _logoLink Initial templ logo link.
+    /// @param _proposalCreationFeeBps Proposal creation fee in basis points of the entry fee.
+    /// @param _referralShareBps Referral share in basis points of the member pool allocation.
+    function _initializeTempl(
         address _protocolFeeRecipient,
         address _accessToken,
         uint256 _burnPercent,
@@ -320,8 +412,12 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 _executionDelay,
         address _burnAddress,
         bool _priestIsDictator,
-        string memory _homeLink
-    ) {
+        string memory _name,
+        string memory _description,
+        string memory _logoLink,
+        uint256 _proposalCreationFeeBps,
+        uint256 _referralShareBps
+    ) internal {
         if (_protocolFeeRecipient == address(0) || _accessToken == address(0)) {
             revert TemplErrors.InvalidRecipient();
         }
@@ -362,10 +458,9 @@ abstract contract TemplBase is ReentrancyGuard {
 
         executionDelayAfterQuorum = _executionDelay == 0 ? DEFAULT_EXECUTION_DELAY : _executionDelay;
         burnAddress = _burnAddress == address(0) ? DEFAULT_BURN_ADDRESS : _burnAddress;
-        templHomeLink = _homeLink;
-        if (bytes(_homeLink).length != 0) {
-            emit TemplHomeLinkUpdated("", _homeLink);
-        }
+        _setTemplMetadata(_name, _description, _logoLink);
+        _setProposalCreationFee(_proposalCreationFeeBps);
+        _setReferralShareBps(_referralShareBps);
     }
 
     /// @dev Updates the split between burn, treasury, and member pool slices.
@@ -414,7 +509,7 @@ abstract contract TemplBase is ReentrancyGuard {
     function _setCurrentEntryFee(uint256 targetEntryFee) internal {
         _validateEntryFeeAmount(targetEntryFee);
         uint256 paidJoins = _currentPaidJoins();
-        CurveConfig memory curve = entryFeeCurve;
+        CurveConfig memory curve = _copyCurveConfig(entryFeeCurve);
         if (paidJoins == 0 || !_curveHasGrowth(curve)) {
             baseEntryFee = targetEntryFee;
             entryFee = targetEntryFee;
@@ -435,6 +530,18 @@ abstract contract TemplBase is ReentrancyGuard {
         }
     }
 
+    /// @dev Creates a memory copy of a curve stored on-chain.
+    function _copyCurveConfig(CurveConfig storage stored) internal view returns (CurveConfig memory cfg) {
+        CurveSegment[] storage extras = stored.additionalSegments;
+        uint256 len = extras.length;
+        CurveSegment[] memory extraCopy = new CurveSegment[](len);
+        for (uint256 i = 0; i < len; i++) {
+            extraCopy[i] = extras[i];
+        }
+        cfg.primary = stored.primary;
+        cfg.additionalSegments = extraCopy;
+    }
+
     /// @dev Recomputes the entry fee for the next join in response to membership changes.
     function _advanceEntryFeeAfterJoin() internal {
         _refreshEntryFeeFromState();
@@ -445,7 +552,7 @@ abstract contract TemplBase is ReentrancyGuard {
         if (baseEntryFee == 0) {
             return;
         }
-        entryFee = _priceForPaidJoins(baseEntryFee, entryFeeCurve, _currentPaidJoins());
+        entryFee = _priceForPaidJoinsFromStorage(baseEntryFee, entryFeeCurve, _currentPaidJoins());
     }
 
     /// @dev Returns the number of paid joins that have occurred (excludes the auto-enrolled priest).
@@ -458,10 +565,19 @@ abstract contract TemplBase is ReentrancyGuard {
 
     /// @dev Reports whether any curve segment introduces dynamic pricing.
     function _curveHasGrowth(CurveConfig memory curve) internal pure returns (bool) {
-        return curve.primary.style != CurveStyle.Static;
+        if (curve.primary.style != CurveStyle.Static) {
+            return true;
+        }
+        uint256 len = curve.additionalSegments.length;
+        for (uint256 i = 0; i < len; i++) {
+            if (curve.additionalSegments[i].style != CurveStyle.Static) {
+                return true;
+            }
+        }
+        return false;
     }
 
-    /// @dev Computes the entry fee for a given number of completed paid joins.
+    /// @dev Computes the entry fee for a given number of completed paid joins (memory curve).
     function _priceForPaidJoins(
         uint256 baseFee,
         CurveConfig memory curve,
@@ -470,8 +586,44 @@ abstract contract TemplBase is ReentrancyGuard {
         if (paidJoins == 0) {
             return baseFee;
         }
+        uint256 remaining = paidJoins;
+        uint256 amount = baseFee;
+        (amount, remaining) = _consumeSegment(amount, curve.primary, remaining, true);
+        if (remaining == 0) {
+            return amount;
+        }
+        CurveSegment[] memory extras = curve.additionalSegments;
+        uint256 len = extras.length;
+        for (uint256 i = 0; i < len && remaining > 0; i++) {
+            (amount, remaining) = _consumeSegment(amount, extras[i], remaining, true);
+        }
+        if (remaining > 0) revert TemplErrors.InvalidCurveConfig();
+        return amount;
+    }
 
-        return _applySegment(baseFee, curve.primary, paidJoins, true);
+    /// @dev Computes the entry fee for a given number of completed paid joins (storage curve).
+    function _priceForPaidJoinsFromStorage(
+        uint256 baseFee,
+        CurveConfig storage curve,
+        uint256 paidJoins
+    ) internal view returns (uint256) {
+        if (paidJoins == 0) {
+            return baseFee;
+        }
+        uint256 remaining = paidJoins;
+        uint256 amount = baseFee;
+        (amount, remaining) = _consumeSegment(amount, curve.primary, remaining, true);
+        if (remaining == 0) {
+            return amount;
+        }
+        CurveSegment[] storage extras = curve.additionalSegments;
+        uint256 len = extras.length;
+        for (uint256 i = 0; i < len && remaining > 0; i++) {
+            CurveSegment memory seg = extras[i];
+            (amount, remaining) = _consumeSegment(amount, seg, remaining, true);
+        }
+        if (remaining > 0) revert TemplErrors.InvalidCurveConfig();
+        return amount;
     }
 
     /// @dev Derives the base entry fee that produces a target price after `paidJoins` joins.
@@ -483,8 +635,41 @@ abstract contract TemplBase is ReentrancyGuard {
         if (paidJoins == 0) {
             return targetPrice;
         }
+        uint256 remaining = paidJoins;
+        uint256 amount = targetPrice;
+        (amount, remaining) = _consumeSegment(amount, curve.primary, remaining, false);
+        if (remaining == 0) {
+            return amount;
+        }
+        CurveSegment[] memory extras = curve.additionalSegments;
+        uint256 len = extras.length;
+        for (uint256 i = 0; i < len && remaining > 0; i++) {
+            (amount, remaining) = _consumeSegment(amount, extras[i], remaining, false);
+        }
+        if (remaining > 0) revert TemplErrors.InvalidCurveConfig();
+        return amount;
+    }
 
-        return _applySegment(targetPrice, curve.primary, paidJoins, false);
+    /// @dev Applies a curve segment for up to `remaining` steps and returns the updated amount + remaining steps.
+    function _consumeSegment(
+        uint256 amount,
+        CurveSegment memory segment,
+        uint256 remaining,
+        bool forward
+    ) internal pure returns (uint256, uint256) {
+        if (remaining == 0) {
+            return (amount, remaining);
+        }
+        uint256 segmentLength = uint256(segment.length);
+        uint256 steps = segmentLength == 0 ? remaining : _min(remaining, segmentLength);
+        if (steps > 0) {
+            amount = _applySegment(amount, segment, steps, forward);
+            remaining -= steps;
+        }
+        if (segmentLength == 0) {
+            remaining = 0;
+        }
+        return (amount, remaining);
     }
 
     /// @dev Applies a curve segment forward or inverse for the specified number of steps.
@@ -498,50 +683,106 @@ abstract contract TemplBase is ReentrancyGuard {
             return amount;
         }
         if (segment.style == CurveStyle.Linear) {
-            uint256 scaled = uint256(segment.rateBps) * steps;
-            uint256 offset = TOTAL_PERCENT + scaled;
-            if (forward) {
-                return Math.mulDiv(amount, offset, TOTAL_PERCENT);
+            uint256 rate = uint256(segment.rateBps);
+            if (rate == 0 || steps == 0) {
+                return amount;
             }
-            if (offset == 0) revert TemplErrors.InvalidCurveConfig();
-            // Round up when solving the inverse so recomputing the curve never prices below the target.
-            return Math.mulDiv(amount, TOTAL_PERCENT, offset, Math.Rounding.Ceil);
+            if (steps > type(uint256).max / rate) {
+                return MAX_ENTRY_FEE;
+            }
+            uint256 scaled = rate * steps;
+            uint256 offset;
+            unchecked {
+                offset = TOTAL_PERCENT + scaled;
+            }
+            if (offset < TOTAL_PERCENT) {
+                return MAX_ENTRY_FEE;
+            }
+            if (forward) {
+                if (_mulWouldOverflow(amount, offset)) {
+                    return MAX_ENTRY_FEE;
+                }
+                uint256 linearResult = Math.mulDiv(amount, offset, TOTAL_PERCENT);
+                return linearResult > MAX_ENTRY_FEE ? MAX_ENTRY_FEE : linearResult;
+            }
+            if (_mulWouldOverflow(amount, TOTAL_PERCENT)) {
+                return MAX_ENTRY_FEE;
+            }
+            uint256 inverseResult = Math.mulDiv(amount, TOTAL_PERCENT, offset, Math.Rounding.Ceil);
+            return inverseResult > MAX_ENTRY_FEE ? MAX_ENTRY_FEE : inverseResult;
         }
         if (segment.style == CurveStyle.Exponential) {
-            uint256 factor = _powBps(segment.rateBps, steps);
-            if (forward) {
-                return Math.mulDiv(amount, factor, TOTAL_PERCENT);
+            (uint256 factor, bool overflow) = _powBps(segment.rateBps, steps);
+            if (overflow) {
+                return MAX_ENTRY_FEE;
             }
-            if (factor == 0) revert TemplErrors.InvalidCurveConfig();
-            // Factor applies the same rounding guard as the linear segment case.
-            return Math.mulDiv(amount, TOTAL_PERCENT, factor, Math.Rounding.Ceil);
+            return forward ? _scaleForward(amount, factor) : _scaleInverse(amount, factor);
         }
         revert TemplErrors.InvalidCurveConfig();
     }
 
     /// @dev Computes a basis-point scaled exponent using exponentiation by squaring.
-    function _powBps(uint256 factorBps, uint256 exponent) internal pure returns (uint256) {
+    function _powBps(uint256 factorBps, uint256 exponent) internal pure returns (uint256 result, bool overflow) {
         if (exponent == 0) {
-            return TOTAL_PERCENT;
+            return (TOTAL_PERCENT, false);
         }
-        uint256 result = TOTAL_PERCENT;
+        result = TOTAL_PERCENT;
         uint256 baseFactor = factorBps;
         uint256 remaining = exponent;
         while (remaining > 0) {
             if (remaining & 1 == 1) {
-                result = Math.mulDiv(result, baseFactor, TOTAL_PERCENT);
+                if (_mulWouldOverflow(result, baseFactor)) {
+                    return (0, true);
+                }
+                result = (result * baseFactor) / TOTAL_PERCENT;
+                if (result == 0) {
+                    return (0, true);
+                }
             }
             remaining >>= 1;
-            if (remaining > 0) {
-                baseFactor = Math.mulDiv(baseFactor, baseFactor, TOTAL_PERCENT);
+            if (remaining == 0) {
+                break;
+            }
+            if (_mulWouldOverflow(baseFactor, baseFactor)) {
+                return (0, true);
+            }
+            baseFactor = (baseFactor * baseFactor) / TOTAL_PERCENT;
+            if (baseFactor == 0) {
+                return (0, true);
             }
         }
-        return result;
+        return (result, false);
+    }
+
+    function _min(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a < b ? a : b;
     }
 
     /// @dev Validates curve configuration input.
     function _validateCurveConfig(CurveConfig memory curve) internal pure {
         _validateCurveSegment(curve.primary);
+        CurveSegment[] memory extras = curve.additionalSegments;
+        uint256 extrasLen = extras.length;
+        if (extrasLen == 0) {
+            if (curve.primary.length != 0) {
+                revert TemplErrors.InvalidCurveConfig();
+            }
+            return;
+        }
+        if (curve.primary.length == 0) {
+            revert TemplErrors.InvalidCurveConfig();
+        }
+        for (uint256 i = 0; i < extrasLen; i++) {
+            CurveSegment memory segment = extras[i];
+            bool isLast = i == extrasLen - 1;
+            _validateCurveSegment(segment);
+            if (!isLast && segment.length == 0) {
+                revert TemplErrors.InvalidCurveConfig();
+            }
+            if (isLast && segment.length != 0) {
+                revert TemplErrors.InvalidCurveConfig();
+            }
+        }
     }
 
     /// @dev Validates a single curve segment.
@@ -564,12 +805,27 @@ abstract contract TemplBase is ReentrancyGuard {
     function _validateEntryFeeAmount(uint256 amount) internal pure {
         if (amount < 10) revert TemplErrors.EntryFeeTooSmall();
         if (amount % 10 != 0) revert TemplErrors.InvalidEntryFee();
+        if (amount > MAX_ENTRY_FEE) revert TemplErrors.EntryFeeTooLarge();
     }
 
     /// @dev Emits the standardized curve update event with the current configuration.
     function _emitEntryFeeCurveUpdated() internal {
-        CurveConfig memory cfg = entryFeeCurve;
-        emit EntryFeeCurveUpdated(uint8(cfg.primary.style), cfg.primary.rateBps);
+        CurveConfig storage cfg = entryFeeCurve;
+        uint256 additional = cfg.additionalSegments.length;
+        uint256 segmentCount = 1 + additional;
+        uint8[] memory styles = new uint8[](segmentCount);
+        uint32[] memory rates = new uint32[](segmentCount);
+        uint32[] memory lengths = new uint32[](segmentCount);
+        styles[0] = uint8(cfg.primary.style);
+        rates[0] = cfg.primary.rateBps;
+        lengths[0] = cfg.primary.length;
+        for (uint256 i = 0; i < additional; i++) {
+            CurveSegment storage seg = cfg.additionalSegments[i];
+            styles[i + 1] = uint8(seg.style);
+            rates[i + 1] = seg.rateBps;
+            lengths[i + 1] = seg.length;
+        }
+        emit EntryFeeCurveUpdated(styles, rates, lengths);
     }
 
     /// @dev Toggles dictatorship governance mode, emitting an event when the state changes.
@@ -591,14 +847,204 @@ abstract contract TemplBase is ReentrancyGuard {
         _autoPauseIfLimitReached();
     }
 
-    /// @dev Writes a new templ home link and emits an event when it changes.
-    function _setTemplHomeLink(string memory newLink) internal {
-        if (keccak256(bytes(templHomeLink)) == keccak256(bytes(newLink))) {
+    /// @dev Writes new templ metadata and emits an event when it changes.
+    function _setTemplMetadata(
+        string memory newName,
+        string memory newDescription,
+        string memory newLogoLink
+    ) internal {
+        templName = newName;
+        templDescription = newDescription;
+        templLogoLink = newLogoLink;
+        emit TemplMetadataUpdated(newName, newDescription, newLogoLink);
+    }
+
+    /// @dev Updates the proposal creation fee and emits an event when it changes.
+    function _setProposalCreationFee(uint256 newFeeBps) internal {
+        if (newFeeBps > TOTAL_PERCENT) revert TemplErrors.InvalidPercentage();
+        uint256 previous = proposalCreationFeeBps;
+        proposalCreationFeeBps = newFeeBps;
+        emit ProposalCreationFeeUpdated(previous, newFeeBps);
+    }
+
+    /// @dev Updates the referral share BPS and emits an event when it changes.
+    function _setReferralShareBps(uint256 newBps) internal {
+        if (newBps > TOTAL_PERCENT) revert TemplErrors.InvalidPercentage();
+        uint256 previous = referralShareBps;
+        referralShareBps = newBps;
+        emit ReferralShareBpsUpdated(previous, newBps);
+    }
+
+    /// @dev Internal helper that executes a treasury withdrawal and emits the corresponding event.
+    function _withdrawTreasury(
+        address token,
+        address recipient,
+        uint256 amount,
+        string memory reason,
+        uint256 proposalId
+    ) internal {
+        if (recipient == address(0)) revert TemplErrors.InvalidRecipient();
+        if (amount == 0) revert TemplErrors.AmountZero();
+
+        if (token == accessToken) {
+            uint256 currentBalance = IERC20(accessToken).balanceOf(address(this));
+            if (currentBalance <= memberPoolBalance) revert TemplErrors.InsufficientTreasuryBalance();
+            uint256 availableBalance = currentBalance - memberPoolBalance;
+            if (amount > availableBalance) revert TemplErrors.InsufficientTreasuryBalance();
+            uint256 debitedFromFees = amount <= treasuryBalance ? amount : treasuryBalance;
+            treasuryBalance -= debitedFromFees;
+
+            _safeTransfer(accessToken, recipient, amount);
+        } else if (token == address(0)) {
+            ExternalRewardState storage rewards = externalRewards[address(0)];
+            uint256 currentBalance = address(this).balance;
+            uint256 reservedForMembers = rewards.poolBalance;
+            uint256 availableBalance = currentBalance > reservedForMembers ? currentBalance - reservedForMembers : 0;
+            if (amount > availableBalance) revert TemplErrors.InsufficientTreasuryBalance();
+            (bool success, ) = payable(recipient).call{value: amount}("");
+            if (!success) revert TemplErrors.ProposalExecutionFailed();
+        } else {
+            ExternalRewardState storage rewards = externalRewards[token];
+            uint256 currentBalance = IERC20(token).balanceOf(address(this));
+            uint256 reservedForMembers = rewards.poolBalance;
+            uint256 availableBalance = currentBalance > reservedForMembers
+                ? currentBalance - reservedForMembers
+                : 0;
+            if (amount > availableBalance) revert TemplErrors.InsufficientTreasuryBalance();
+            _safeTransfer(token, recipient, amount);
+        }
+        emit TreasuryAction(proposalId, token, recipient, amount, reason);
+    }
+
+    /// @dev Applies updates to the entry fee and fee split configuration.
+    function _updateConfig(
+        address _token,
+        uint256 _entryFee,
+        bool _updateFeeSplit,
+        uint256 _burnPercent,
+        uint256 _treasuryPercent,
+        uint256 _memberPoolPercent
+    ) internal {
+        if (_token != address(0) && _token != accessToken) revert TemplErrors.TokenChangeDisabled();
+        if (_entryFee > 0) {
+            _setCurrentEntryFee(_entryFee);
+        }
+        if (_updateFeeSplit) {
+            _setPercentSplit(_burnPercent, _treasuryPercent, _memberPoolPercent);
+        }
+        emit ConfigUpdated(accessToken, entryFee, burnPercent, treasuryPercent, memberPoolPercent, protocolPercent);
+    }
+
+    /// @dev Sets the join pause flag without mutating membership limits during manual resumes.
+    function _setJoinPaused(bool _paused) internal {
+        joinPaused = _paused;
+        emit JoinPauseUpdated(_paused);
+    }
+
+    /// @dev Backend listeners consume PriestChanged to persist the new priest and notify off-chain services.
+    function _changePriest(address newPriest) internal {
+        if (newPriest == address(0)) revert TemplErrors.InvalidRecipient();
+        address old = priest;
+        if (newPriest == old) revert TemplErrors.InvalidCallData();
+        priest = newPriest;
+        emit PriestChanged(old, newPriest);
+    }
+
+    /// @dev Routes treasury balances into member or external pools so members can claim them evenly.
+    function _disbandTreasury(address token, uint256 proposalId) internal {
+        uint256 activeMembers = memberCount;
+        if (activeMembers == 0) revert TemplErrors.NoMembers();
+
+        if (token == accessToken) {
+            uint256 accessTokenBalance = IERC20(accessToken).balanceOf(address(this));
+            if (accessTokenBalance <= memberPoolBalance) revert TemplErrors.NoTreasuryFunds();
+            uint256 accessTokenAmount = accessTokenBalance - memberPoolBalance;
+
+            uint256 debitedFromFees = accessTokenAmount <= treasuryBalance ? accessTokenAmount : treasuryBalance;
+            treasuryBalance -= debitedFromFees;
+
+            memberPoolBalance += accessTokenAmount;
+
+            uint256 poolTotalRewards = accessTokenAmount + memberRewardRemainder;
+            uint256 poolPerMember = poolTotalRewards / activeMembers;
+            uint256 remainder = poolTotalRewards % activeMembers;
+
+            memberRewardRemainder = remainder;
+            cumulativeMemberRewards += poolPerMember;
+            emit TreasuryDisbanded(proposalId, token, accessTokenAmount, poolPerMember, remainder);
             return;
         }
-        string memory previous = templHomeLink;
-        templHomeLink = newLink;
-        emit TemplHomeLinkUpdated(previous, newLink);
+
+        ExternalRewardState storage rewards = externalRewards[token];
+        if (!rewards.exists) {
+            _registerExternalToken(token);
+            rewards = externalRewards[token];
+        }
+        uint256 tokenBalance;
+        if (token == address(0)) {
+            tokenBalance = address(this).balance;
+        } else {
+            tokenBalance = IERC20(token).balanceOf(address(this));
+        }
+        if (tokenBalance == 0) revert TemplErrors.NoTreasuryFunds();
+
+        uint256 poolBalance = rewards.poolBalance;
+        uint256 totalAmount = tokenBalance > poolBalance ? tokenBalance - poolBalance : 0;
+        if (totalAmount == 0) revert TemplErrors.NoTreasuryFunds();
+
+        uint256 perMember = totalAmount / activeMembers;
+        uint256 remainderExternal = totalAmount % activeMembers;
+
+        rewards.poolBalance += totalAmount;
+        rewards.rewardRemainder += remainderExternal;
+        rewards.cumulativeRewards += perMember;
+        _recordExternalCheckpoint(rewards);
+
+        emit TreasuryDisbanded(proposalId, token, totalAmount, perMember, remainderExternal);
+    }
+
+    function _addActiveProposal(uint256 proposalId) internal {
+        activeProposalIds.push(proposalId);
+        activeProposalIndex[proposalId] = activeProposalIds.length;
+    }
+
+    function _removeActiveProposal(uint256 proposalId) internal {
+        uint256 indexPlusOne = activeProposalIndex[proposalId];
+        if (indexPlusOne == 0) {
+            return;
+        }
+        uint256 index = indexPlusOne - 1;
+        uint256 lastIndex = activeProposalIds.length - 1;
+        if (index != lastIndex) {
+            uint256 movedId = activeProposalIds[lastIndex];
+            activeProposalIds[index] = movedId;
+            activeProposalIndex[movedId] = index + 1;
+        }
+        activeProposalIds.pop();
+        activeProposalIndex[proposalId] = 0;
+    }
+
+    /// @dev Checks whether a member joined after a particular snapshot point, invalidating their vote.
+    function _joinedAfterSnapshot(
+        Member storage memberInfo,
+        uint256 snapshotBlock,
+        uint256 snapshotTimestamp
+    ) internal view returns (bool) {
+        if (snapshotBlock == 0) {
+            return false;
+        }
+        if (memberInfo.blockNumber > snapshotBlock) {
+            return true;
+        }
+        if (memberInfo.blockNumber == snapshotBlock && memberInfo.timestamp > snapshotTimestamp) {
+            return true;
+        }
+        return false;
+    }
+
+    /// @dev Helper that determines if a proposal is still active based on time and execution status.
+    function _isActiveProposal(Proposal storage proposal, uint256 currentTime) internal view returns (bool) {
+        return currentTime < proposal.endTime && !proposal.executed;
     }
 
     /// @dev Pauses new joins when a membership cap is set and already reached.
@@ -607,6 +1053,51 @@ abstract contract TemplBase is ReentrancyGuard {
         if (limit > 0 && memberCount >= limit && !joinPaused) {
             joinPaused = true;
             emit JoinPauseUpdated(true);
+        }
+    }
+
+    /// @dev Executes an ERC-20 call and verifies optional boolean return values.
+    function _safeERC20Call(address token, bytes memory data) internal {
+        (bool success, bytes memory returndata) = token.call(data);
+        if (!success) {
+            if (returndata.length > 0) {
+                assembly ("memory-safe") {
+                    revert(add(returndata, 32), mload(returndata))
+                }
+            }
+            revert TemplErrors.TokenTransferFailed();
+        }
+        if (returndata.length != 0 && !abi.decode(returndata, (bool))) {
+            revert TemplErrors.TokenTransferFailed();
+        }
+    }
+
+    /// @dev Transfers tokens from the current contract to `to`, reverting on failure.
+    function _safeTransfer(address token, address to, uint256 amount) internal {
+        if (amount == 0) {
+            return;
+        }
+        _safeERC20Call(token, abi.encodeWithSelector(IERC20.transfer.selector, to, amount));
+    }
+
+    /// @dev Transfers tokens from `from` to `to`, reverting when allowances are insufficient.
+    function _safeTransferFrom(address token, address from, address to, uint256 amount) internal {
+        if (amount == 0) {
+            return;
+        }
+        _safeERC20Call(token, abi.encodeWithSelector(IERC20.transferFrom.selector, from, to, amount));
+    }
+
+    /// @dev Registers a token so external rewards can be enumerated by frontends.
+    function _registerExternalToken(address token) internal {
+        ExternalRewardState storage rewards = externalRewards[token];
+        if (!rewards.exists) {
+            if (externalRewardTokens.length >= MAX_EXTERNAL_REWARD_TOKENS) {
+                revert TemplErrors.ExternalRewardLimitReached();
+            }
+            rewards.exists = true;
+            externalRewardTokens.push(token);
+            externalRewardTokenIndex[token] = externalRewardTokens.length;
         }
     }
 
@@ -625,6 +1116,33 @@ abstract contract TemplBase is ReentrancyGuard {
         }
         externalRewardTokens.pop();
         externalRewardTokenIndex[token] = 0;
+    }
+
+    /// @dev Scales `amount` by `multiplier` (basis points) with saturation at MAX_ENTRY_FEE.
+    function _scaleForward(uint256 amount, uint256 multiplier) internal pure returns (uint256) {
+        if (_mulWouldOverflow(amount, multiplier)) {
+            return MAX_ENTRY_FEE;
+        }
+        uint256 result = Math.mulDiv(amount, multiplier, TOTAL_PERCENT);
+        return result > MAX_ENTRY_FEE ? MAX_ENTRY_FEE : result;
+    }
+
+    /// @dev Inverts the scaling by dividing `amount` by `divisor` (basis points) while rounding up.
+    function _scaleInverse(uint256 amount, uint256 divisor) internal pure returns (uint256) {
+        if (divisor == 0) revert TemplErrors.InvalidCurveConfig();
+        if (_mulWouldOverflow(amount, TOTAL_PERCENT)) {
+            return MAX_ENTRY_FEE;
+        }
+        uint256 result = Math.mulDiv(amount, TOTAL_PERCENT, divisor, Math.Rounding.Ceil);
+        return result > MAX_ENTRY_FEE ? MAX_ENTRY_FEE : result;
+    }
+
+    /// @dev Returns true when multiplying `a` and `b` would overflow uint256.
+    function _mulWouldOverflow(uint256 a, uint256 b) internal pure returns (bool) {
+        if (a == 0 || b == 0) {
+            return false;
+        }
+        return a > type(uint256).max / b;
     }
 
 }

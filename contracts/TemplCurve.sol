@@ -9,15 +9,19 @@ enum CurveStyle {
 }
 
 /// @notice Segment configuration applied to member joins.
-/// @param style Style of growth applied across all joins.
+/// @param style Style of growth applied while this segment is active.
 /// @param rateBps Rate parameter whose interpretation depends on `style`.
+/// @param length Number of paid joins covered by this segment (0 = infinite tail).
 struct CurveSegment {
     CurveStyle style;
     uint32 rateBps;
+    uint32 length;
 }
 
-/// @notice Pricing curve configuration applied uniformly across joins.
-/// @param primary Growth segment that determines how the entry fee evolves.
+/// @notice Pricing curve configuration composed of sequential segments.
+/// @param primary First segment applied to new joins.
+/// @param additionalSegments Optional follow-on segments processed in order.
 struct CurveConfig {
     CurveSegment primary;
+    CurveSegment[] additionalSegments;
 }

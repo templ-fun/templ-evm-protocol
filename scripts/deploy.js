@@ -13,11 +13,51 @@ const CURVE_STYLE_INDEX = {
   exponential: 2
 };
 
+function parseFiniteNumber(input, label) {
+  if (input === undefined || input === null) {
+    throw new Error(`${label} must be provided`);
+  }
+  const trimmed = String(input).trim();
+  if (trimmed === '') {
+    throw new Error(`${label} must not be empty`);
+  }
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`${label} must be a finite number`);
+  }
+  return parsed;
+}
+
 function parseBoolean(value) {
   if (value === undefined || value === null) return false;
   const trimmed = String(value).trim();
   if (trimmed === '') return false;
   return /^(?:1|true|yes)$/i.test(trimmed);
+}
+
+function resolvePercentToBps({ label, percentSource, bpsSource, defaultBps = 0 }) {
+  const percentCandidate = percentSource ?? '';
+  if (percentCandidate !== undefined && percentCandidate !== null && String(percentCandidate).trim() !== '') {
+    const asNumber = parseFiniteNumber(percentCandidate, label);
+    if (asNumber < 0 || asNumber > 100) {
+      throw new Error(`${label} percent must be between 0 and 100`);
+    }
+    return Math.round(asNumber * 100);
+  }
+
+  const bpsCandidate = bpsSource ?? '';
+  if (bpsCandidate !== undefined && bpsCandidate !== null && String(bpsCandidate).trim() !== '') {
+    const asNumber = parseFiniteNumber(bpsCandidate, `${label} (bps)`);
+    if (asNumber < 0 || asNumber > 10_000) {
+      throw new Error(`${label} basis points must be between 0 and 10,000`);
+    }
+    return Math.round(asNumber);
+  }
+
+  if (defaultBps < 0 || defaultBps > 10_000) {
+    throw new Error(`${label} default basis points must be between 0 and 10,000`);
+  }
+  return defaultBps;
 }
 
 function resolveCurveConfigFromEnv() {
@@ -33,7 +73,8 @@ function resolveCurveConfigFromEnv() {
     return {
       curveProvided: false,
       curve: {
-        primary: { style: CURVE_STYLE_INDEX.static, rateBps: 0 }
+        primary: { style: CURVE_STYLE_INDEX.static, rateBps: 0, length: 0 },
+        additionalSegments: []
       },
       description: 'factory default'
     };
@@ -79,8 +120,10 @@ function resolveCurveConfigFromEnv() {
     curve: {
       primary: {
         style: resolvedStyle,
-        rateBps: resolvedRate
-      }
+        rateBps: resolvedRate,
+        length: 0
+      },
+      additionalSegments: []
     },
     description: `${styleKey} @ ${resolvedRate} bps`
   };
@@ -208,7 +251,11 @@ async function registerTemplWithBackend({
   priestAddress,
   chainId,
   telegramChatId,
-  templHomeLink
+  templName,
+  templDescription,
+  templLogoLink,
+  proposalFeeBps,
+  referralShareBps
 }) {
   if (!backendUrl) return null;
   const baseUrl = backendUrl.replace(/\/$/, '');
@@ -227,9 +274,11 @@ async function registerTemplWithBackend({
   if (telegramChatId) {
     payload.telegramChatId = telegramChatId;
   }
-  if (templHomeLink) {
-    payload.templHomeLink = templHomeLink;
-  }
+  payload.templName = templName;
+  payload.templDescription = templDescription;
+  payload.templLogoLink = templLogoLink;
+  payload.proposalFeeBps = proposalFeeBps;
+  payload.referralShareBps = referralShareBps;
 
   const response = await fetch(`${baseUrl}/templs`, {
     method: 'POST',
@@ -267,7 +316,21 @@ async function main() {
   const EXECUTION_DELAY_SECONDS = process.env.EXECUTION_DELAY_SECONDS !== undefined ? Number(process.env.EXECUTION_DELAY_SECONDS) : undefined;
   const BURN_ADDRESS = (process.env.BURN_ADDRESS || '').trim();
   const MAX_MEMBERS = process.env.MAX_MEMBERS !== undefined ? Number(process.env.MAX_MEMBERS) : 0;
-  const HOME_LINK = process.env.TEMPL_HOME_LINK || "";
+  const NAME = (process.env.TEMPL_NAME ?? 'Templ').trim() || 'Templ';
+  const DESCRIPTION = (process.env.TEMPL_DESCRIPTION ?? '').trim();
+  const LOGO_LINK = (process.env.TEMPL_LOGO_LINK ?? process.env.TEMPL_LOGO_URL ?? '').trim();
+  const PROPOSAL_FEE_BPS = resolvePercentToBps({
+    label: 'PROPOSAL_FEE',
+    percentSource: process.env.PROPOSAL_FEE_PERCENT ?? process.env.PROPOSAL_FEE_PCT,
+    bpsSource: process.env.PROPOSAL_FEE_BPS,
+    defaultBps: 0
+  });
+  const REFERRAL_SHARE_BPS = resolvePercentToBps({
+    label: 'REFERRAL_SHARE',
+    percentSource: process.env.REFERRAL_SHARE_PERCENT ?? process.env.REFERRAL_PERCENT,
+    bpsSource: process.env.REFERRAL_SHARE_BPS ?? process.env.REFERRAL_BPS,
+    defaultBps: 0
+  });
   const BACKEND_URL = (process.env.BACKEND_URL || process.env.TEMPL_BACKEND_URL || '').trim();
   const TELEGRAM_CHAT_ID = (process.env.TELEGRAM_CHAT_ID || process.env.CHAT_ID || '').trim();
   const PRIEST_IS_DICTATOR = /^(?:1|true)$/i.test((process.env.PRIEST_IS_DICTATOR || '').trim());
@@ -390,6 +453,12 @@ async function main() {
   console.log('Curve configuration:', curveConfigEnv.description);
   console.log(`Protocol Percent (${protocolPercentSource}):`, protocolPercentPercent);
   console.log('Protocol Percent (bps):', protocolPercentBps);
+  console.log('\nMetadata:');
+  console.log('- Name:', NAME);
+  console.log('- Description:', DESCRIPTION || '<empty>');
+  console.log('- Logo Link:', LOGO_LINK || '<empty>');
+  console.log('- Proposal Fee (bps):', PROPOSAL_FEE_BPS);
+  console.log('- Referral Share (bps):', REFERRAL_SHARE_BPS);
   
   if (network.chainId === 8453n) {
     console.log("\n⚠️  Deploying to BASE MAINNET");
@@ -431,7 +500,11 @@ async function main() {
     maxMembers: MAX_MEMBERS,
     curveProvided: curveConfigEnv.curveProvided,
     curve: curveConfigEnv.curve,
-    homeLink: HOME_LINK
+    name: NAME,
+    description: DESCRIPTION,
+    logoLink: LOGO_LINK,
+    proposalFeeBps: PROPOSAL_FEE_BPS,
+    referralShareBps: REFERRAL_SHARE_BPS
   };
   const expectedTempl = await factoryContract.createTemplWithConfig.staticCall(templConfig);
   const createTx = await factoryContract.createTemplWithConfig(templConfig);
@@ -478,7 +551,11 @@ async function main() {
           priestAddress: PRIEST_ADDRESS,
           chainId: chainIdNumber,
           telegramChatId: TELEGRAM_CHAT_ID || undefined,
-          templHomeLink: HOME_LINK
+          templName: NAME,
+          templDescription: DESCRIPTION,
+          templLogoLink: LOGO_LINK,
+          proposalFeeBps: PROPOSAL_FEE_BPS,
+          referralShareBps: REFERRAL_SHARE_BPS
         });
         if (registration) {
           if (registration.bindingCode) {
@@ -487,8 +564,14 @@ async function main() {
           if (registration.telegramChatId) {
             console.log('Backend stored chat id:', registration.telegramChatId);
           }
-          if (registration.templHomeLink) {
-            console.log('Backend templ home link:', registration.templHomeLink);
+          if (registration.templName || registration.templDescription || registration.templLogoLink) {
+            console.log('Backend metadata:', {
+              name: registration.templName,
+              description: registration.templDescription,
+              logoLink: registration.templLogoLink,
+              proposalFeeBps: registration.proposalFeeBps,
+              referralShareBps: registration.referralShareBps
+            });
           }
         }
       } catch (err) {
@@ -543,6 +626,11 @@ async function main() {
     priestIsDictator: PRIEST_IS_DICTATOR,
     tokenAddress: TOKEN_ADDRESS,
     entryFee: ENTRY_FEE,
+    templName: NAME,
+    templDescription: DESCRIPTION,
+    templLogoLink: LOGO_LINK,
+    proposalFeeBps: PROPOSAL_FEE_BPS,
+    referralShareBps: REFERRAL_SHARE_BPS,
     curveProvided: curveConfigEnv.curveProvided,
     curve: curveConfigEnv.curve,
     deployedAt: new Date().toISOString(),

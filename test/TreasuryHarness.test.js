@@ -1,5 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { deployTemplModules } = require("./utils/modules");
+const { attachTemplInterface } = require("./utils/templ");
 
 describe("Treasury harness withdrawals", function () {
   it("covers withdraw branches through self-call", async function () {
@@ -14,13 +16,18 @@ describe("Treasury harness withdrawals", function () {
     const Harness = await ethers.getContractFactory(
       "contracts/mocks/DaoCallerHarness.sol:DaoCallerHarness"
     );
-    const harness = await Harness.deploy(
+    const modules = await deployTemplModules();
+    let harness = await Harness.deploy(
       priest.address,
       protocol.address,
       accessToken.target,
-      1_000_000n
+      1_000_000n,
+      modules.membershipModule,
+      modules.treasuryModule,
+      modules.governanceModule
     );
     await harness.waitForDeployment();
+    harness = await attachTemplInterface(harness);
 
     const accessAmount = ethers.parseUnits("5", 18);
     await accessToken.mint(await harness.getAddress(), accessAmount);

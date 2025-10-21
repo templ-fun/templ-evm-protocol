@@ -4,8 +4,14 @@ pragma solidity ^0.8.23;
 import {TemplFactory} from "../TemplFactory.sol";
 
 contract TemplFactoryHarness is TemplFactory {
-    constructor(address protocolFeeRecipient, uint256 protocolPercent)
-        TemplFactory(protocolFeeRecipient, protocolPercent)
+    constructor(
+        address protocolFeeRecipient,
+        uint256 protocolPercent,
+        address membershipModule,
+        address treasuryModule,
+        address governanceModule
+    )
+        TemplFactory(protocolFeeRecipient, protocolPercent, membershipModule, treasuryModule, governanceModule)
     {}
 
     function exposeInitPointers() external view returns (address[] memory) {

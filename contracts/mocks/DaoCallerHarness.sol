@@ -3,6 +3,7 @@ pragma solidity ^0.8.23;
 
 import {TEMPL} from "../TEMPL.sol";
 import {CurveConfig, CurveSegment, CurveStyle} from "../TemplCurve.sol";
+import {TemplTreasuryModule} from "../TemplTreasury.sol";
 
 /// @dev Harness that triggers onlyDAO externals via self-calls to cover wrapper paths
 contract DaoCallerHarness is TEMPL {
@@ -11,7 +12,10 @@ contract DaoCallerHarness is TEMPL {
         address priest,
         address protocolFeeRecipient,
         address token,
-        uint256 entryFee
+        uint256 entryFee,
+        address membershipModule,
+        address treasuryModule,
+        address governanceModule
     )
         TEMPL(
             priest,
@@ -27,15 +31,23 @@ contract DaoCallerHarness is TEMPL {
             0x000000000000000000000000000000000000dEaD,
             false,
             0,
-            "",
+            "Test Templ",
+            "Harness",
+            "https://templ.fun/logo.png",
+            500,
+            0,
+            membershipModule,
+            treasuryModule,
+            governanceModule,
             CurveConfig({
-                primary: CurveSegment({style: CurveStyle.Static, rateBps: 0})
+                primary: CurveSegment({style: CurveStyle.Static, rateBps: 0, length: 0}),
+                additionalSegments: new CurveSegment[](0)
             })
         )
     {}
     /// @notice Wrapper to call withdrawTreasuryDAO via contract self-call
     function daoWithdraw(address token, address recipient, uint256 amount, string calldata reason) external {
-        this.withdrawTreasuryDAO(token, recipient, amount, reason);
+        TemplTreasuryModule(address(this)).withdrawTreasuryDAO(token, recipient, amount, reason);
     }
     // withdrawAll wrapper removed
     /// @notice Wrapper to call updateConfigDAO via contract self-call
@@ -47,33 +59,50 @@ contract DaoCallerHarness is TEMPL {
         uint256 treasuryPercent,
         uint256 memberPoolPercent
     ) external {
-        this.updateConfigDAO(token, fee, updateSplit, burnPercent, treasuryPercent, memberPoolPercent);
+        TemplTreasuryModule(address(this)).updateConfigDAO(
+            token,
+            fee,
+            updateSplit,
+            burnPercent,
+            treasuryPercent,
+            memberPoolPercent
+        );
     }
     /// @notice Wrapper to call setJoinPausedDAO via contract self-call
     function daoPause(bool p) external {
-        this.setJoinPausedDAO(p);
+        TemplTreasuryModule(address(this)).setJoinPausedDAO(p);
     }
     /// @notice Wrapper to call disbandTreasuryDAO via contract self-call
     function daoDisband(address token) external {
-        this.disbandTreasuryDAO(token);
+        TemplTreasuryModule(address(this)).disbandTreasuryDAO(token);
     }
     /// @notice Wrapper to call changePriestDAO via contract self-call
     function daoChangePriest(address newPriest) external {
-        this.changePriestDAO(newPriest);
+        TemplTreasuryModule(address(this)).changePriestDAO(newPriest);
     }
     /// @notice Wrapper to call setDictatorshipDAO via contract self-call
     function daoSetDictatorship(bool enabled) external {
-        this.setDictatorshipDAO(enabled);
+        TemplTreasuryModule(address(this)).setDictatorshipDAO(enabled);
     }
 
     /// @notice Wrapper to call setMaxMembersDAO via contract self-call
     function daoSetMaxMembers(uint256 newMax) external {
-        this.setMaxMembersDAO(newMax);
+        TemplTreasuryModule(address(this)).setMaxMembersDAO(newMax);
     }
 
-    /// @notice Wrapper to call setTemplHomeLinkDAO via contract self-call
-    function daoSetHomeLink(string calldata newLink) external {
-        this.setTemplHomeLinkDAO(newLink);
+    /// @notice Wrapper to call setTemplMetadataDAO via contract self-call
+    function daoSetMetadata(string calldata newName, string calldata newDescription, string calldata newLogo) external {
+        TemplTreasuryModule(address(this)).setTemplMetadataDAO(newName, newDescription, newLogo);
+    }
+
+    /// @notice Wrapper to call setProposalCreationFeeBpsDAO via contract self-call
+    function daoSetProposalFee(uint256 newFeeBps) external {
+        TemplTreasuryModule(address(this)).setProposalCreationFeeBpsDAO(newFeeBps);
+    }
+
+    /// @notice Wrapper to call setReferralShareBpsDAO via contract self-call
+    function daoSetReferralShare(uint256 newReferralBps) external {
+        TemplTreasuryModule(address(this)).setReferralShareBpsDAO(newReferralBps);
     }
 
     /// @dev Test helper to set action to an undefined value (testing only)

@@ -115,8 +115,8 @@ describe("Priest dictatorship governance toggle", function () {
     await templ.executeProposal(0);
 
     await expect(
-      templ.connect(priest).setTemplHomeLinkDAO("https://dict-templ")
-    ).to.emit(templ, "TemplHomeLinkUpdated");
+      templ.connect(priest).setTemplMetadataDAO("Dict Templ", "Dictatorship active", "https://dict-templ/logo.png")
+    ).to.emit(templ, "TemplMetadataUpdated");
   });
 
   it("blocks new governance proposals while dictatorship is active", async function () {
@@ -133,7 +133,17 @@ describe("Priest dictatorship governance toggle", function () {
     await revertWithDictatorship(
       templ
         .connect(member)
-        .createProposalUpdateConfig(0, 0, 0, 0, false, VOTING_PERIOD, "cfg", "dict")
+        .createProposalUpdateConfig(
+          ethers.ZeroAddress,
+          0,
+          0,
+          0,
+          0,
+          false,
+          VOTING_PERIOD,
+          "cfg",
+          "dict"
+        )
     );
     await revertWithDictatorship(
       templ
@@ -143,7 +153,14 @@ describe("Priest dictatorship governance toggle", function () {
     await revertWithDictatorship(
       templ
         .connect(member)
-        .createProposalSetHomeLink('https://templ', VOTING_PERIOD, "home", "dict")
+        .createProposalUpdateMetadata(
+          "Dict Name",
+          "Dict desc",
+          "https://templ/logo.png",
+          VOTING_PERIOD,
+          "home",
+          "dict"
+        )
     );
     await revertWithDictatorship(
       templ
@@ -193,7 +210,6 @@ describe("Priest dictatorship governance toggle", function () {
   });
 
   it("blocks voting and execution of existing proposals once dictatorship begins", async function () {
-    const homeLink = "https://templ.example";
     const secondMember = accounts[3];
 
     await mintToUsers(token, [secondMember], TOKEN_SUPPLY);
@@ -201,7 +217,14 @@ describe("Priest dictatorship governance toggle", function () {
 
     await templ
       .connect(member)
-      .createProposalSetHomeLink(homeLink, VOTING_PERIOD, "Set home link", "Initial link");
+      .createProposalUpdateMetadata(
+        "Dict Name",
+        "Dict desc",
+        "https://templ.example/logo.png",
+        VOTING_PERIOD,
+        "Set metadata",
+        "Initial metadata"
+      );
 
     await templ
       .connect(secondMember)

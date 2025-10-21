@@ -33,9 +33,41 @@ function encodeSetMaxMembersDAO(limit) {
   return iface.encodeFunctionData("setMaxMembersDAO", [limit]);
 }
 
+function encodeSetTemplMetadataDAO(name, description, logoLink) {
+  const iface = new ethers.Interface([
+    "function setTemplMetadataDAO(string,string,string)"
+  ]);
+  return iface.encodeFunctionData("setTemplMetadataDAO", [name, description, logoLink]);
+}
+
+function encodeSetProposalCreationFeeBpsDAO(feeBps) {
+  const iface = new ethers.Interface([
+    "function setProposalCreationFeeBpsDAO(uint256)"
+  ]);
+  return iface.encodeFunctionData("setProposalCreationFeeBpsDAO", [feeBps]);
+}
+
+function encodeSetReferralShareBpsDAO(referralBps) {
+  const iface = new ethers.Interface([
+    "function setReferralShareBpsDAO(uint256)"
+  ]);
+  return iface.encodeFunctionData("setReferralShareBpsDAO", [referralBps]);
+}
+
+function encodeSetEntryFeeCurveDAO(curve, baseEntryFee) {
+  const iface = new ethers.Interface([
+    "function setEntryFeeCurveDAO((uint8,uint32),uint256)"
+  ]);
+  return iface.encodeFunctionData("setEntryFeeCurveDAO", [curve, baseEntryFee]);
+}
+
 module.exports = {
   encodeSetJoinPausedDAO,
   encodeWithdrawTreasuryDAO,
   encodeUpdateConfigDAO,
   encodeSetMaxMembersDAO,
+  encodeSetTemplMetadataDAO,
+  encodeSetProposalCreationFeeBpsDAO,
+  encodeSetReferralShareBpsDAO,
+  encodeSetEntryFeeCurveDAO,
 };

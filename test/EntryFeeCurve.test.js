@@ -1,6 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { deployTempl, EXPONENTIAL_CURVE, STATIC_CURVE } = require("./utils/deploy");
+const { deployTempl, deployTemplContracts, EXPONENTIAL_CURVE, STATIC_CURVE } = require("./utils/deploy");
 const { mintToUsers } = require("./utils/mintAndPurchase");
 
 describe("EntryFeeCurve", function () {
@@ -63,18 +63,66 @@ describe("EntryFeeCurve", function () {
         throw new Error("unsupported curve style");
     };
 
+    const consumeSegment = (amount, segment, remaining, forward) => {
+        if (remaining === 0n) {
+            return { amount, remaining };
+        }
+        const segmentLength = BigInt(segment.length ?? 0);
+        let steps;
+        if (segmentLength === 0n) {
+            steps = remaining;
+        } else {
+            steps = remaining < segmentLength ? remaining : segmentLength;
+        }
+        if (steps > 0n) {
+            amount = forward
+                ? applySegmentForward(amount, segment, steps)
+                : applySegmentInverse(amount, segment, steps);
+            remaining -= steps;
+        }
+        if (segmentLength === 0n) {
+            remaining = 0n;
+        }
+        return { amount, remaining };
+    };
+
+    const segmentList = (curve) => {
+        const extras = curve.additionalSegments || [];
+        return [curve.primary, ...extras];
+    };
+
     const priceForPaidJoins = (base, curve, paidJoins) => {
         if (paidJoins === 0n) {
             return base;
         }
-        return applySegmentForward(base, curve.primary, paidJoins);
+        let amount = base;
+        let remaining = paidJoins;
+        const segments = segmentList(curve);
+        for (const segment of segments) {
+            ({ amount, remaining } = consumeSegment(amount, segment, remaining, true));
+            if (remaining === 0n) break;
+        }
+        if (remaining !== 0n) {
+            throw new Error("invalid curve configuration");
+        }
+        return amount;
     };
 
     const solveBaseEntryFee = (targetPrice, curve, paidJoins) => {
         if (paidJoins === 0n) {
             return targetPrice;
         }
-        return applySegmentInverse(targetPrice, curve.primary, paidJoins);
+        let amount = targetPrice;
+        let remaining = paidJoins;
+        const segments = segmentList(curve);
+        for (const segment of segments) {
+            ({ amount, remaining } = consumeSegment(amount, segment, remaining, false));
+            if (remaining === 0n) break;
+        }
+        if (remaining !== 0n) {
+            throw new Error("invalid curve configuration");
+        }
+        return amount;
     };
 
     it("applies the default exponential curve and allows DAO updates", async function () {
@@ -93,13 +141,13 @@ describe("EntryFeeCurve", function () {
         const expectedAfterFirstJoin = priceForPaidJoins(
             ENTRY_FEE,
             EXPONENTIAL_CURVE,
-            await templ.totalJoins(),
-            await templ.MAX_MEMBERS()
+            await templ.totalJoins()
         );
         expect(await templ.entryFee()).to.equal(expectedAfterFirstJoin);
 
         const linearCurve = {
-            primary: { style: CURVE_STYLE.Linear, rateBps: 500 },
+            primary: { style: CURVE_STYLE.Linear, rateBps: 500, length: 0 },
+            additionalSegments: []
         };
 
         const baseAnchor = await templ.baseEntryFee();
@@ -143,7 +191,8 @@ describe("EntryFeeCurve", function () {
         await templ.connect(voterB).join();
 
         const upgradedCurve = {
-            primary: { style: CURVE_STYLE.Exponential, rateBps: 12_000 },
+            primary: { style: CURVE_STYLE.Exponential, rateBps: 12_000, length: 0 },
+            additionalSegments: []
         };
 
         const newCurrentFee = ENTRY_FEE * 2n;
@@ -184,5 +233,52 @@ describe("EntryFeeCurve", function () {
             await templ.totalJoins()
         );
         expect(await templ.entryFee()).to.equal(nextExpected);
+    });
+
+    it("handles multi-segment curves with saturation", async function () {
+        const multiCurve = {
+            primary: { style: CURVE_STYLE.Linear, rateBps: 250, length: 2 },
+            additionalSegments: [
+                { style: CURVE_STYLE.Static, rateBps: 0, length: 0 }
+            ]
+        };
+
+        const { templ, token, accounts } = await deployTempl({
+            entryFee: ENTRY_FEE,
+            curve: multiCurve,
+        });
+
+        const [, , memberA, memberB, memberC] = accounts;
+        await mintToUsers(token, [memberA, memberB, memberC], ENTRY_FEE * 10n);
+        const templAddress = await templ.getAddress();
+
+        const base = await templ.baseEntryFee();
+        expect(await templ.entryFee()).to.equal(ENTRY_FEE);
+
+        await token.connect(memberA).approve(templAddress, ENTRY_FEE);
+        await templ.connect(memberA).join();
+        const priceAfterFirst = priceForPaidJoins(base, multiCurve, 1n);
+        expect(await templ.entryFee()).to.equal(priceAfterFirst);
+
+        await token.connect(memberB).approve(templAddress, priceAfterFirst);
+        await templ.connect(memberB).join();
+        const priceAfterSecond = priceForPaidJoins(base, multiCurve, 2n);
+        expect(await templ.entryFee()).to.equal(priceAfterSecond);
+
+        await token.connect(memberC).approve(templAddress, priceAfterSecond);
+        await templ.connect(memberC).join();
+        const priceAfterThird = priceForPaidJoins(base, multiCurve, 3n);
+        expect(priceAfterThird).to.equal(priceAfterSecond);
+        expect(await templ.entryFee()).to.equal(priceAfterThird);
+    });
+
+    it("rejects curve configurations without an infinite tail", async function () {
+        const invalidCurve = {
+            primary: { style: CURVE_STYLE.Linear, rateBps: 500, length: 1 },
+            additionalSegments: []
+        };
+
+        await expect(deployTemplContracts({ entryFee: ENTRY_FEE, curve: invalidCurve }))
+            .to.be.rejectedWith(/InvalidCurveConfig/);
     });
 });

@@ -2,29 +2,44 @@
 pragma solidity ^0.8.23;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {TemplBase} from "./TemplBase.sol";
 import {TemplErrors} from "./TemplErrors.sol";
-import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 /// @title templ membership module
 /// @notice Handles joins, reward accounting, and member-facing views.
-abstract contract TemplMembership is TemplBase {
-    using SafeERC20 for IERC20;
+contract TemplMembershipModule is TemplBase {
+
+    event ReferralRewardPaid(address indexed referral, address indexed newMember, uint256 amount);
 
     /// @notice Join the templ by paying the configured entry fee on behalf of the caller.
     function join() external whenNotPaused notSelf nonReentrant {
-        _join(msg.sender, msg.sender);
+        _join(msg.sender, msg.sender, address(0));
+    }
+
+    /// @notice Join the templ by paying the entry fee on behalf of the caller with a referral.
+    /// @param referral Member credited with the referral reward.
+    function joinWithReferral(address referral) external whenNotPaused notSelf nonReentrant {
+        _join(msg.sender, msg.sender, referral);
     }
 
     /// @notice Join the templ on behalf of another wallet by covering their entry fee.
     /// @param recipient Wallet receiving membership. Must not already be a member.
     function joinFor(address recipient) external whenNotPaused notSelf nonReentrant {
-        _join(msg.sender, recipient);
+        _join(msg.sender, recipient, address(0));
+    }
+
+    /// @notice Join the templ for another wallet while crediting a referral.
+    function joinForWithReferral(address recipient, address referral)
+        external
+        whenNotPaused
+        notSelf
+        nonReentrant
+    {
+        _join(msg.sender, recipient, referral);
     }
 
     /// @dev Shared join workflow that handles accounting updates for new members.
-    function _join(address payer, address recipient) internal {
+    function _join(address payer, address recipient, address referral) internal {
         if (recipient == address(0)) revert TemplErrors.InvalidRecipient();
 
         Member storage joiningMember = members[recipient];
@@ -42,9 +57,18 @@ abstract contract TemplMembership is TemplBase {
 
         uint256 price = entryFee;
 
-        uint256 burnAmount = Math.mulDiv(price, burnPercent, TOTAL_PERCENT);
-        uint256 memberPoolAmount = Math.mulDiv(price, memberPoolPercent, TOTAL_PERCENT);
-        uint256 protocolAmount = Math.mulDiv(price, protocolPercent, TOTAL_PERCENT);
+        uint256 burnAmount = (price * burnPercent) / TOTAL_PERCENT;
+        uint256 memberPoolAmount = (price * memberPoolPercent) / TOTAL_PERCENT;
+        uint256 referralAmount = 0;
+        address referralTarget = address(0);
+        if (referral != address(0) && referralShareBps != 0) {
+            Member storage referralMember = members[referral];
+            if (referralMember.joined && referral != recipient) {
+                referralAmount = (memberPoolAmount * referralShareBps) / TOTAL_PERCENT;
+                referralTarget = referral;
+            }
+        }
+        uint256 protocolAmount = (price * protocolPercent) / TOTAL_PERCENT;
         uint256 treasuryAmount = price - burnAmount - memberPoolAmount - protocolAmount;
         uint256 toContract = treasuryAmount + memberPoolAmount;
 
@@ -55,8 +79,10 @@ abstract contract TemplMembership is TemplBase {
         joiningMember.blockNumber = block.number;
         memberCount = currentMemberCount + 1;
 
+        uint256 distributablePool = memberPoolAmount - referralAmount;
+
         if (currentMemberCount > 0) {
-            uint256 totalRewards = memberPoolAmount + memberRewardRemainder;
+            uint256 totalRewards = distributablePool + memberRewardRemainder;
             uint256 rewardPerMember = totalRewards / currentMemberCount;
             memberRewardRemainder = totalRewards % currentMemberCount;
             cumulativeMemberRewards += rewardPerMember;
@@ -65,12 +91,16 @@ abstract contract TemplMembership is TemplBase {
         joiningMember.rewardSnapshot = cumulativeMemberRewards;
 
         treasuryBalance += treasuryAmount;
-        memberPoolBalance += memberPoolAmount;
-        IERC20 accessTokenContract = IERC20(accessToken);
+        memberPoolBalance += distributablePool;
         // NOTE: Fee-on-transfer tokens are unsupported; transfer-based fees break internal accounting.
-        accessTokenContract.safeTransferFrom(payer, burnAddress, burnAmount);
-        accessTokenContract.safeTransferFrom(payer, address(this), toContract);
-        accessTokenContract.safeTransferFrom(payer, protocolFeeRecipient, protocolAmount);
+        _safeTransferFrom(accessToken, payer, burnAddress, burnAmount);
+        _safeTransferFrom(accessToken, payer, address(this), toContract);
+        _safeTransferFrom(accessToken, payer, protocolFeeRecipient, protocolAmount);
+
+        if (referralAmount > 0) {
+            _safeTransfer(accessToken, referralTarget, referralAmount);
+            emit ReferralRewardPaid(referralTarget, recipient, referralAmount);
+        }
 
         uint256 joinId = currentMemberCount == 0 ? 0 : currentMemberCount - 1;
 
@@ -160,7 +190,7 @@ abstract contract TemplMembership is TemplBase {
         memberPoolClaims[msg.sender] += claimableAmount;
         memberPoolBalance -= claimableAmount;
 
-        IERC20(accessToken).safeTransfer(msg.sender, claimableAmount);
+        _safeTransfer(accessToken, msg.sender, claimableAmount);
 
         emit MemberRewardsClaimed(msg.sender, claimableAmount, block.timestamp);
     }
@@ -185,7 +215,7 @@ abstract contract TemplMembership is TemplBase {
             (bool success, ) = payable(msg.sender).call{value: claimable}("");
             if (!success) revert TemplErrors.ProposalExecutionFailed();
         } else {
-            IERC20(token).safeTransfer(msg.sender, claimable);
+            _safeTransfer(token, msg.sender, claimable);
         }
 
         emit ExternalRewardClaimed(token, msg.sender, claimable);
@@ -292,65 +322,4 @@ abstract contract TemplMembership is TemplBase {
         return 1;
     }
 
-    /// @dev Determines the cumulative rewards baseline for a member given join-time snapshots.
-    function _externalBaselineForMember(
-        ExternalRewardState storage rewards,
-        Member storage memberInfo
-    ) internal view returns (uint256) {
-        RewardCheckpoint[] storage checkpoints = rewards.checkpoints;
-        uint256 len = checkpoints.length;
-        if (len == 0) {
-            return rewards.cumulativeRewards;
-        }
-
-        uint256 memberBlockNumber = memberInfo.blockNumber;
-        uint256 memberTimestamp = memberInfo.timestamp;
-        uint256 low = 0;
-        uint256 high = len;
-
-        while (low < high) {
-            uint256 mid = (low + high) >> 1;
-            RewardCheckpoint storage cp = checkpoints[mid];
-            if (memberBlockNumber < cp.blockNumber) {
-                high = mid;
-            } else if (memberBlockNumber > cp.blockNumber) {
-                low = mid + 1;
-            } else if (memberTimestamp < cp.timestamp) {
-                high = mid;
-            } else {
-                low = mid + 1;
-            }
-        }
-
-        if (low == 0) {
-            return 0;
-        }
-
-        return checkpoints[low - 1].cumulative;
-    }
-
-    /// @dev Distributes any outstanding external reward remainders to existing members before new joins.
-    function _flushExternalRemainders() internal {
-        uint256 currentMembers = memberCount;
-        if (currentMembers == 0) {
-            return;
-        }
-        uint256 tokenCount = externalRewardTokens.length;
-        for (uint256 i = 0; i < tokenCount; i++) {
-            address token = externalRewardTokens[i];
-            ExternalRewardState storage rewards = externalRewards[token];
-            uint256 remainder = rewards.rewardRemainder;
-            if (remainder == 0) {
-                continue;
-            }
-            uint256 perMember = remainder / currentMembers;
-            if (perMember == 0) {
-                continue;
-            }
-            uint256 leftover = remainder % currentMembers;
-            rewards.rewardRemainder = leftover;
-            rewards.cumulativeRewards += perMember;
-            _recordExternalCheckpoint(rewards);
-        }
-    }
 }
