@@ -370,7 +370,7 @@ Example commands (environment variables follow the same names used inside each s
 ```bash
 # Deploy shared modules + factory (examples use Base mainnet; adjust --network as needed)
 PROTOCOL_FEE_RECIPIENT=0xYourRecipient \
-PROTOCOL_BP=1000 \
+PROTOCOL_BPS=1000 \
 npx hardhat run --network base scripts/deploy-factory.cjs
 
 # Deploy a templ via factory (token, priest, fee splits, etc. come from env)
@@ -404,7 +404,7 @@ await factory.setPermissionless(true); // anyone can create templs now
   - `MEMBERSHIP_MODULE_ADDRESS`, `TREASURY_MODULE_ADDRESS`, `GOVERNANCE_MODULE_ADDRESS` (optional; reuse existing)
   - `FACTORY_ADDRESS` (optional; reuse existing factory; script introspects protocol bps and modules)
 - scripts/deploy-templ.cjs
-  - `FACTORY_ADDRESS`, `TOKEN_ADDRESS`, `ENTRY_FEE`, `TEMPL_NAME`, `TEMPL_DESCRIPTION`, `LOGO_LINK`
+  - `FACTORY_ADDRESS`, `TOKEN_ADDRESS`, `ENTRY_FEE`, `TEMPL_NAME`, `TEMPL_DESCRIPTION`, `TEMPL_LOGO_LINK`
   - Optional: `PRIEST_ADDRESS`, `QUORUM_BPS`, `EXECUTION_DELAY_SECONDS`, `BURN_ADDRESS`, `PRIEST_IS_DICTATOR`, `MAX_MEMBERS`, `PROPOSAL_FEE_BPS`, `REFERRAL_SHARE_BPS`, and curve config (see script for shapes)
 
 ## Module Responsibilities
