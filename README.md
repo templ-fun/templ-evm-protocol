@@ -192,7 +192,7 @@ Learn-by-reading map (each claim backed by code/tests):
   - Voting remains allowed during this delay window; join eligibility stays frozen by `quorumJoinSequence`.
 - Execution checks:
   - Quorum‑exempt proposals (priest‑initiated Disband only): require `(block.timestamp >= endTime)` and `YES > NO`.
-  - All other proposals: require quorum was reached, `block.timestamp >= quorumReachedAt + executionDelayAfterQuorum`, `YES > NO`, and quorum still maintained vs. the baseline: `YES * 10_000 >= quorumBps * eligibleVoters`.
+  - All other proposals: require quorum was reached, `block.timestamp >= quorumReachedAt + executionDelayAfterQuorum`, `YES > NO`, and quorum still maintained vs. the post‑quorum eligible baseline: `YES * 10_000 >= quorumBps * eligibleVotersPostQuorum`.
   - On success, the proposal executes once and is marked `executed`.
 - External rewards: accounting in [`contracts/TemplBase.sol`](contracts/TemplBase.sol); tests in `test/RewardWithdrawals.test.js`, `test/MembershipCoverage.test.js`.
 
