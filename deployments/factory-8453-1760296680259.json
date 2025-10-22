@@ -1,0 +1,13 @@
+{
+  "contractVersion": "factory-1.0.0",
+  "network": "base",
+  "chainId": 8453,
+  "factoryAddress": "0xc4d698c34A05424178B5ba96C0dA23aB535c407b",
+  "protocolFeeRecipient": "0x123fde6c36a9e58731491ab4d781c5c999d37918",
+  "protocolPercentBps": 1000,
+  "protocolPercent": 10,
+  "deployedAt": "2025-10-12T19:18:00.259Z",
+  "deployer": "0x5b87102358a61BC9a6D32b20B121bbfd2A535C8d",
+  "deploymentTx": "0x4ad12f617843c8f5b286c35c28aac370bb1220950a73d063d654e4e1d873dc85",
+  "deploymentBlock": 36753665
+}

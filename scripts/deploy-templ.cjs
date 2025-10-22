@@ -122,7 +122,7 @@ function resolveCurveConfigFromEnv() {
 }
 
 function resolveProtocolBpsFromEnv() {
-  const bpsInput = (process.env.PROTOCOL_BP ?? '').trim();
+  const bpsInput = (process.env.PROTOCOL_BP ?? process.env.PROTOCOL_BPS ?? '').trim();
   if (bpsInput) {
     const parsedBps = Number(bpsInput);
     if (!Number.isFinite(parsedBps)) {
@@ -241,28 +241,29 @@ async function main() {
     );
   }
   const PRIEST_ADDRESS = process.env.PRIEST_ADDRESS || deployer.address;
-  const PROTOCOL_FEE_RECIPIENT = process.env.PROTOCOL_FEE_RECIPIENT;
+  let PROTOCOL_FEE_RECIPIENT = process.env.PROTOCOL_FEE_RECIPIENT;
   const TOKEN_ADDRESS = process.env.TOKEN_ADDRESS;
   const ENTRY_FEE = process.env.ENTRY_FEE;
   const FACTORY_ADDRESS_ENV = process.env.FACTORY_ADDRESS;
   let membershipModuleAddress = (process.env.MEMBERSHIP_MODULE_ADDRESS || '').trim();
   let treasuryModuleAddress = (process.env.TREASURY_MODULE_ADDRESS || '').trim();
   let governanceModuleAddress = (process.env.GOVERNANCE_MODULE_ADDRESS || '').trim();
-  const burnSplit = readSplitPercent('BURN_BP', undefined, process.env.BURN_BP, DEFAULT_BURN_BP);
-  const treasurySplit = readSplitPercent('TREASURY_BP', undefined, process.env.TREASURY_BP, DEFAULT_TREASURY_BP);
-  const memberPoolSplit = readSplitPercent('MEMBER_POOL_BP', undefined, process.env.MEMBER_POOL_BP, DEFAULT_MEMBER_POOL_BP);
+  const burnSplit = readSplitPercent('BURN_BP', undefined, (process.env.BURN_BPS ?? process.env.BURN_BP), DEFAULT_BURN_BP);
+  const treasurySplit = readSplitPercent('TREASURY_BP', undefined, (process.env.TREASURY_BPS ?? process.env.TREASURY_BP), DEFAULT_TREASURY_BP);
+  const memberPoolSplit = readSplitPercent('MEMBER_POOL_BP', undefined, (process.env.MEMBER_POOL_BPS ?? process.env.MEMBER_POOL_BP), DEFAULT_MEMBER_POOL_BP);
   const protocolPercentEnv = resolveProtocolBpsFromEnv();
   // Only bps inputs are supported
   let protocolPercentPercent = undefined;
   let protocolPercentBps = protocolPercentEnv.bps;
   let protocolPercentSource = protocolPercentEnv.source;
-  const QUORUM_BP = process.env.QUORUM_BP !== undefined ? Number(process.env.QUORUM_BP) : undefined;
+  const QUORUM_BP_RAW = process.env.QUORUM_BPS ?? process.env.QUORUM_BP;
+  const QUORUM_BP = QUORUM_BP_RAW !== undefined ? Number(QUORUM_BP_RAW) : undefined;
   const EXECUTION_DELAY_SECONDS = process.env.EXECUTION_DELAY_SECONDS !== undefined ? Number(process.env.EXECUTION_DELAY_SECONDS) : undefined;
   const BURN_ADDRESS = (process.env.BURN_ADDRESS || '').trim();
   const MAX_MEMBERS = process.env.MAX_MEMBERS !== undefined ? Number(process.env.MAX_MEMBERS) : 0;
   const NAME = (process.env.TEMPL_NAME ?? 'Templ').trim() || 'Templ';
   const DESCRIPTION = (process.env.TEMPL_DESCRIPTION ?? '').trim();
-  const LOGO_LINK = (process.env.TEMPL_LOGO_LINK ?? process.env.TEMPL_LOGO_URL ?? '').trim();
+  const LOGO_LINK = (process.env.TEMPL_LOGO_LINK ?? process.env.TEMPL_LOGO_URL ?? process.env.LOGO_LINK ?? '').trim();
   const PROPOSAL_FEE_BPS = resolvePercentToBps({
     label: 'PROPOSAL_FEE',
     percentSource: undefined,
@@ -286,9 +287,6 @@ async function main() {
   console.warn(
     '[warn] Confirm TOKEN_ADDRESS is a standard ERC-20 without transfer taxes or hooks; templ fee splits assume exact transfer amounts.'
   );
-  if (!PROTOCOL_FEE_RECIPIENT) {
-    throw new Error("PROTOCOL_FEE_RECIPIENT not set in environment");
-  }
   if (!ENTRY_FEE) {
     throw new Error("ENTRY_FEE not set in environment");
   }
@@ -306,11 +304,20 @@ async function main() {
       }
       protocolPercentBps = onChainPercentBps;
       protocolPercentSource = 'factory';
+      try {
+        const onChainRecipient = await existingFactory.protocolFeeRecipient();
+        PROTOCOL_FEE_RECIPIENT = onChainRecipient;
+        console.log('Factory protocol fee recipient:', onChainRecipient);
+      } catch {}
       membershipModuleAddress = await existingFactory.membershipModule();
       treasuryModuleAddress = await existingFactory.treasuryModule();
       governanceModuleAddress = await existingFactory.governanceModule();
     } catch (err) {
       throw new Error(`Failed to read protocol bps from factory ${FACTORY_ADDRESS_ENV}: ${err?.message || err}`);
+    }
+  } else {
+    if (!PROTOCOL_FEE_RECIPIENT) {
+      throw new Error("PROTOCOL_FEE_RECIPIENT not set in environment");
     }
   }
 

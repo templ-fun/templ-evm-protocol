@@ -34,7 +34,6 @@ build/
 # Hardhat
 artifacts/
 cache/
-deployments/
 
 # State files
 .monitor-state.json
