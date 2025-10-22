@@ -183,7 +183,8 @@ contract TemplGovernanceModule is TemplBase {
         uint256 _votingPeriod,
         string calldata _title,
         string calldata _description
-    ) external returns (uint256 proposalId) {
+    ) external nonReentrant returns (uint256 proposalId) {
+        _requireDelegatecall();
         if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         if (_newBurn == address(0)) revert TemplErrors.InvalidRecipient();
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
@@ -203,7 +204,7 @@ contract TemplGovernanceModule is TemplBase {
         uint256 _votingPeriod,
         string calldata _title,
         string calldata _description
-    ) external returns (uint256 proposalId) {
+    ) external nonReentrant returns (uint256 proposalId) {
         _requireDelegatecall();
         if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         if (_newFeeBps > BPS_DENOMINATOR) revert TemplErrors.InvalidPercentage();
@@ -224,7 +225,7 @@ contract TemplGovernanceModule is TemplBase {
         uint256 _votingPeriod,
         string calldata _title,
         string calldata _description
-    ) external returns (uint256 proposalId) {
+    ) external nonReentrant returns (uint256 proposalId) {
         _requireDelegatecall();
         if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         if (_newReferralBps > BPS_DENOMINATOR) revert TemplErrors.InvalidPercentage();
@@ -247,7 +248,7 @@ contract TemplGovernanceModule is TemplBase {
         uint256 _votingPeriod,
         string calldata _title,
         string calldata _description
-    ) external returns (uint256 proposalId) {
+    ) external nonReentrant returns (uint256 proposalId) {
         _requireDelegatecall();
         if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         CurveConfig memory curve = _curve;
