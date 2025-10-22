@@ -122,6 +122,86 @@ contract TEMPL is TemplBase {
         return _moduleForSelector[selector];
     }
 
+    /// @notice Returns the static selector sets handled by each module.
+    /// @dev Helpful for tooling and off-chain introspection. These mirror the
+    ///      registrations performed in the constructor and do not change at runtime.
+    /// @return membership Selectors routed to the membership module.
+    /// @return treasury Selectors routed to the treasury module.
+    /// @return governance Selectors routed to the governance module.
+    function getRegisteredSelectors()
+        external
+        pure
+        returns (
+            bytes4[] memory membership,
+            bytes4[] memory treasury,
+            bytes4[] memory governance
+        )
+    {
+        membership = new bytes4[](18);
+        membership[0] = TemplMembershipModule.join.selector;
+        membership[1] = TemplMembershipModule.joinWithReferral.selector;
+        membership[2] = TemplMembershipModule.joinFor.selector;
+        membership[3] = TemplMembershipModule.joinForWithReferral.selector;
+        membership[4] = TemplMembershipModule.claimMemberRewards.selector;
+        membership[5] = TemplMembershipModule.claimExternalReward.selector;
+        membership[6] = TemplMembershipModule.getClaimableMemberRewards.selector;
+        membership[7] = TemplMembershipModule.getExternalRewardTokens.selector;
+        membership[8] = TemplMembershipModule.getExternalRewardState.selector;
+        membership[9] = TemplMembershipModule.getClaimableExternalReward.selector;
+        membership[10] = TemplMembershipModule.isMember.selector;
+        membership[11] = TemplMembershipModule.getJoinDetails.selector;
+        membership[12] = TemplMembershipModule.getTreasuryInfo.selector;
+        membership[13] = TemplMembershipModule.getConfig.selector;
+        membership[14] = TemplMembershipModule.getMemberCount.selector;
+        membership[15] = TemplMembershipModule.getVoteWeight.selector;
+        membership[16] = TemplMembershipModule.totalJoins.selector;
+        membership[17] = TemplMembershipModule.getExternalRewardTokensPaginated.selector;
+
+        treasury = new bytes4[](15);
+        treasury[0] = TemplTreasuryModule.withdrawTreasuryDAO.selector;
+        treasury[1] = TemplTreasuryModule.updateConfigDAO.selector;
+        treasury[2] = TemplTreasuryModule.setJoinPausedDAO.selector;
+        treasury[3] = TemplTreasuryModule.setMaxMembersDAO.selector;
+        treasury[4] = TemplTreasuryModule.disbandTreasuryDAO.selector;
+        treasury[5] = TemplTreasuryModule.changePriestDAO.selector;
+        treasury[6] = TemplTreasuryModule.setDictatorshipDAO.selector;
+        treasury[7] = TemplTreasuryModule.setTemplMetadataDAO.selector;
+        treasury[8] = TemplTreasuryModule.setProposalCreationFeeBpsDAO.selector;
+        treasury[9] = TemplTreasuryModule.setReferralShareBpsDAO.selector;
+        treasury[10] = TemplTreasuryModule.setEntryFeeCurveDAO.selector;
+        treasury[11] = TemplTreasuryModule.cleanupExternalRewardToken.selector;
+        treasury[12] = TemplTreasuryModule.setQuorumBpsDAO.selector;
+        treasury[13] = TemplTreasuryModule.setExecutionDelayAfterQuorumDAO.selector;
+        treasury[14] = TemplTreasuryModule.setBurnAddressDAO.selector;
+
+        governance = new bytes4[](25);
+        governance[0] = TemplGovernanceModule.createProposalSetJoinPaused.selector;
+        governance[1] = TemplGovernanceModule.createProposalUpdateConfig.selector;
+        governance[2] = TemplGovernanceModule.createProposalSetMaxMembers.selector;
+        governance[3] = TemplGovernanceModule.createProposalUpdateMetadata.selector;
+        governance[4] = TemplGovernanceModule.createProposalSetProposalFeeBps.selector;
+        governance[5] = TemplGovernanceModule.createProposalSetReferralShareBps.selector;
+        governance[6] = TemplGovernanceModule.createProposalSetEntryFeeCurve.selector;
+        governance[7] = TemplGovernanceModule.createProposalCallExternal.selector;
+        governance[8] = TemplGovernanceModule.createProposalWithdrawTreasury.selector;
+        governance[9] = TemplGovernanceModule.createProposalDisbandTreasury.selector;
+        governance[10] = TemplGovernanceModule.createProposalChangePriest.selector;
+        governance[11] = TemplGovernanceModule.createProposalSetDictatorship.selector;
+        governance[12] = TemplGovernanceModule.vote.selector;
+        governance[13] = TemplGovernanceModule.executeProposal.selector;
+        governance[14] = TemplGovernanceModule.getProposal.selector;
+        governance[15] = TemplGovernanceModule.getProposalSnapshots.selector;
+        governance[16] = TemplGovernanceModule.hasVoted.selector;
+        governance[17] = TemplGovernanceModule.getActiveProposals.selector;
+        governance[18] = TemplGovernanceModule.getActiveProposalsPaginated.selector;
+        governance[19] = TemplGovernanceModule.pruneInactiveProposals.selector;
+        governance[20] = TemplGovernanceModule.getProposalJoinSequences.selector;
+        governance[21] = TemplGovernanceModule.createProposalCleanupExternalRewardToken.selector;
+        governance[22] = TemplGovernanceModule.createProposalSetQuorumBps.selector;
+        governance[23] = TemplGovernanceModule.createProposalSetExecutionDelay.selector;
+        governance[24] = TemplGovernanceModule.createProposalSetBurnAddress.selector;
+    }
+
     fallback() external payable {
         address module = _moduleForSelector[msg.sig];
         if (module == address(0)) revert TemplErrors.InvalidCallData();

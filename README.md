@@ -12,7 +12,7 @@
 - Prereqs: Node >=22, `npm`, Foundry optional.
 - Setup: `npm install`
 - Test: `npm test` (Hardhat). Coverage: `npx hardhat coverage`.
-- Fuzzing (randomized): `npm run test:fuzz` (see below)
+- Property fuzzing: `npm run test:fuzz` (Echidna via Docker; see below)
 - Static analysis: `npm run slither` (requires Slither in PATH)
 - Property fuzzing: Echidna via Docker (optional; see below)
 
@@ -31,14 +31,9 @@ Notes:
 - 1M joiners implies ~1M transactions and will take a long time; progress logs are printed periodically. Ensure ample CPU/RAM, and consider running on a local Hardhat node.
 
 ### Fuzzing
-- JS fuzz (quick): `npm run test:fuzz`
-- Control iterations and seed:
-  - Iterations: `TEMPL_FUZZ_ITERS=500 npm run test:fuzz`
-  - Seed: `TEMPL_FUZZ_SEED=123 npm run test:fuzz`
-- What’s included:
-  - Randomized scenario runner exercising joins, proposal creation, voting, and execution with invariants on fee‑split sums and entry‑fee bounds (`test/fuzz/RandomScenarioFuzz.test.js`).
-  - Property test that fuzzes fee‑split updates ensuring burn/treasury/member + protocol always sum to 10_000 bps (`test/fuzz/ConfigBpsFuzz.test.js`).
-- Default `npm test` excludes `@fuzz` and `@load` suites to keep CI fast.
+- The repo uses property-based fuzzing with Echidna. Run: `npm run test:fuzz` (Docker required), which executes the harness in `contracts/echidna/EchidnaTemplHarness.sol` using `echidna.yaml`.
+- Tune limits/seeds in `echidna.yaml`. The `TEMPL_FUZZ_*` env vars referenced in older docs are not used.
+- Default `npm test` excludes the heavy `@load` suite to keep CI fast.
 
 ### Echidna (Property-Based)
 - Requirements: Docker (or native Echidna install). Node deps are used only for OZ remappings.
@@ -363,8 +358,8 @@ Once the templ is live, all user interactions flow through the deployed [`TEMPL`
 - Fee-on-transfer/rebasing ERC-20s are unsupported for membership. Joins verify exact token receipts and revert with `UnsupportedToken` if amounts do not match.
 - `ProposalExecuted` emits `keccak256(returndata)` instead of raw bytes to keep events small. Off-chain, hash the return data for correlation.
 - For large sets, use paginated queries: `getExternalRewardTokensPaginated(offset, limit)` and `getActiveProposalsPaginated(offset, limit)`.
-- Introspection: `getRegisteredSelectors()` returns static selector lists per module to aid tooling.
- - Introspection: Use `getModuleForSelector(bytes4)` on `TEMPL` to see which module handles a function.
+- Introspection: Use `getModuleForSelector(bytes4)` on `TEMPL` to see which module handles a function.
+- Introspection: `getRegisteredSelectors()` returns `(bytes4[] membership, bytes4[] treasury, bytes4[] governance)` for static per‑module selector sets.
 
 ### Hardhat Deployment Scripts
 The repository ships end-to-end scripts at the repository root that mirror the sequence above:
@@ -570,6 +565,7 @@ await templ.connect(alice).claimExternalReward(otherErc20.target);
 
 ### Root Contract Introspection (from [`TEMPL`](contracts/TEMPL.sol))
 - `getModuleForSelector(bytes4)` — returns the module address responsible for a given function selector.
+- `getRegisteredSelectors()` — returns `(bytes4[] membership, bytes4[] treasury, bytes4[] governance)`.
   - Notes: the `fallback` routes only registered selectors; unknown selectors revert (`InvalidCallData`).
 
 ## Access Control & Modifiers
