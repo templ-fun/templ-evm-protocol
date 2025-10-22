@@ -375,6 +375,9 @@ describe("@load Templ High-Load Stress", function () {
       );
       let id = (await templ.proposalCount()) - 1n;
       await templ.connect(accessibleMembers[1]).vote(id, true);
+      const hv = await templ.hasVoted(id, accessibleMembers[1].address);
+      expect(hv[0]).to.equal(true);
+      expect(hv[1]).to.equal(true);
       await ensureQuorum(templ, id);
       await ethers.provider.send("evm_increaseTime", [2]);
       await ethers.provider.send("evm_mine");
@@ -618,6 +621,11 @@ describe("@load Templ High-Load Stress", function () {
       await templ.executeProposal(id);
 
       // One member claims their external reward share
+      const tokens = await templ.getExternalRewardTokens();
+      expect(tokens).to.include(rewardAddr);
+      const [poolBalance, cumulative, remainder] = await templ.getExternalRewardState(rewardAddr);
+      expect(poolBalance).to.be.gt(0n);
+      expect(cumulative).to.be.gt(0n);
       const before = await reward.balanceOf(accessibleMembers[0].address);
       const claimable = await templ.getClaimableExternalReward(accessibleMembers[0].address, rewardAddr);
       expect(claimable).to.equal(perMember);
