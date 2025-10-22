@@ -403,16 +403,16 @@ async function main() {
     process.env.PROTOCOL_RECIPIENT
   ]);
 
-  const protocolPercentOverride = resolveBpsLike({ bpsValues: [readCliOption(process.argv, ['--protocol-bps']), process.env.PROTOCOL_BP] });
+  const protocolPercentOverride = resolveBpsLike({ bpsValues: [readCliOption(process.argv, ['--protocol-bps']), process.env.PROTOCOL_BPS, process.env.PROTOCOL_BP] });
 
   const envOverrides = {
     priest: firstDefined([cliOverrides.priest, process.env.PRIEST_ADDRESS]),
     accessToken: firstDefined([cliOverrides.accessToken, process.env.TOKEN_ADDRESS]),
     entryFee: firstDefined([cliOverrides.entryFee, process.env.ENTRY_FEE]),
-    burnBps: resolveBpsLike({ bpsValues: [cliOverrides.burnBps, process.env.BURN_BP] }),
-    treasuryBps: resolveBpsLike({ bpsValues: [cliOverrides.treasuryBps, process.env.TREASURY_BP] }),
-    memberPoolBps: resolveBpsLike({ bpsValues: [cliOverrides.memberBps, process.env.MEMBER_POOL_BP] }),
-    quorumBps: resolveBpsLike({ bpsValues: [cliOverrides.quorumBps, process.env.QUORUM_BP] }),
+    burnBps: resolveBpsLike({ bpsValues: [cliOverrides.burnBps, process.env.BURN_BPS, process.env.BURN_BP] }),
+    treasuryBps: resolveBpsLike({ bpsValues: [cliOverrides.treasuryBps, process.env.TREASURY_BPS, process.env.TREASURY_BP] }),
+    memberPoolBps: resolveBpsLike({ bpsValues: [cliOverrides.memberBps, process.env.MEMBER_POOL_BPS, process.env.MEMBER_POOL_BP] }),
+    quorumBps: resolveBpsLike({ bpsValues: [cliOverrides.quorumBps, process.env.QUORUM_BPS, process.env.QUORUM_BP] }),
     executionDelayAfterQuorum: firstDefined([cliOverrides.executionDelay, process.env.EXECUTION_DELAY_SECONDS]),
     burnAddress: firstDefined([cliOverrides.burnAddress, process.env.BURN_ADDRESS]),
     priestIsDictator: firstDefined([
@@ -422,7 +422,7 @@ async function main() {
     maxMembers: firstDefined([cliOverrides.maxMembers, process.env.MAX_MEMBERS]),
     templName: firstDefined([cliOverrides.templName, process.env.TEMPL_NAME]),
     templDescription: firstDefined([cliOverrides.templDescription, process.env.TEMPL_DESCRIPTION]),
-    templLogoLink: firstDefined([cliOverrides.templLogoLink, process.env.TEMPL_LOGO_LINK, process.env.TEMPL_LOGO_URL]),
+    templLogoLink: firstDefined([cliOverrides.templLogoLink, process.env.TEMPL_LOGO_LINK, process.env.TEMPL_LOGO_URL, process.env.LOGO_LINK]),
     proposalFeeBps: resolveBpsLike({ bpsValues: [cliOverrides.proposalFeeBps, process.env.PROPOSAL_FEE_BPS] }),
     referralShareBps: resolveBpsLike({ bpsValues: [cliOverrides.referralShareBps, process.env.REFERRAL_SHARE_BPS, process.env.REFERRAL_BPS] })
   };

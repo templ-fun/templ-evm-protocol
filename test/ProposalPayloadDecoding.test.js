@@ -150,4 +150,45 @@ describe("Proposal payload decode coverage (getProposalActionData)", function ()
     expect(rAmt).to.equal(amount);
     expect(rReason).to.equal(reason);
   });
+
+  it("decodes SetProposalFee and SetReferralShare", async function () {
+    // Set proposal fee
+    await templ.connect(m1).createProposalSetProposalFeeBps(600, VOTING_PERIOD, "Fee", "");
+    let id = (await templ.proposalCount()) - 1n;
+    let [, payload] = await templ.getProposalActionData(id);
+    let [fee] = ethers.AbiCoder.defaultAbiCoder().decode(["uint256"], payload);
+    expect(fee).to.equal(600n);
+
+    // Set referral share
+    await templ.connect(m2).createProposalSetReferralShareBps(1_250, VOTING_PERIOD, "Referral", "");
+    id = (await templ.proposalCount()) - 1n;
+    ;[, payload] = await templ.getProposalActionData(id);
+    const [refBps] = ethers.AbiCoder.defaultAbiCoder().decode(["uint256"], payload);
+    expect(refBps).to.equal(1250n);
+  });
+
+  it("decodes DisbandTreasury, CleanupExternalRewardToken, and SetDictatorship", async function () {
+    const tokenAddr = await token.getAddress();
+
+    // Disband treasury (token payload)
+    await templ.connect(m1).createProposalDisbandTreasury(tokenAddr, VOTING_PERIOD, "Disband", "");
+    let id = (await templ.proposalCount()) - 1n;
+    let [, payload] = await templ.getProposalActionData(id);
+    let [addr] = ethers.AbiCoder.defaultAbiCoder().decode(["address"], payload);
+    expect(addr).to.equal(tokenAddr);
+
+    // Cleanup external reward token (token payload)
+    await templ.connect(m2).createProposalCleanupExternalRewardToken(tokenAddr, VOTING_PERIOD, "Cleanup", "");
+    id = (await templ.proposalCount()) - 1n;
+    ;[, payload] = await templ.getProposalActionData(id);
+    ;[addr] = ethers.AbiCoder.defaultAbiCoder().decode(["address"], payload);
+    expect(addr).to.equal(tokenAddr);
+
+    // Set dictatorship (bool payload)
+    await templ.connect(m3).createProposalSetDictatorship(true, VOTING_PERIOD, "Dictatorship", "");
+    id = (await templ.proposalCount()) - 1n;
+    ;[, payload] = await templ.getProposalActionData(id);
+    const [enable] = ethers.AbiCoder.defaultAbiCoder().decode(["bool"], payload);
+    expect(enable).to.equal(true);
+  });
 });

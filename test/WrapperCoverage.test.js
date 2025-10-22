@@ -224,4 +224,38 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
 
     await expect(templ.connect(priest).changePriestDAO(newPriest.address)).to.not.be.reverted;
   });
+
+  it("covers proposal fee and referral wrappers via self-call", async function () {
+    const { templ } = await deployHarness();
+
+    // Proposal fee bps
+    expect(await templ.proposalCreationFeeBps()).to.equal(500n);
+    await templ.daoSetProposalFee(750);
+    expect(await templ.proposalCreationFeeBps()).to.equal(750n);
+
+    // Referral share bps
+    expect(await templ.referralShareBps()).to.equal(0n);
+    await templ.daoSetReferralShare(1200);
+    expect(await templ.referralShareBps()).to.equal(1200n);
+  });
+
+  it("covers curve + cleanup wrappers (DAO calls)", async function () {
+    const { templ, token, accounts } = await deployHarness();
+    const [, priest, member] = accounts;
+
+    // Enable dictatorship so priest can call onlyDAO externals
+    await templ.daoSetDictatorship(true);
+
+    // setEntryFeeCurveDAO via direct call
+    const newCurve = { primary: { style: 2, rateBps: 12000, length: 0 }, additionalSegments: [] };
+    const baseBefore = await templ.baseEntryFee();
+    await expect(templ.connect(priest).setEntryFeeCurveDAO(newCurve, 0)).to.emit(templ, "EntryFeeCurveUpdated");
+    // base remains unchanged when baseEntryFee is zero
+    expect(await templ.baseEntryFee()).to.equal(baseBefore);
+
+    // cleanupExternalRewardToken should revert for access token, still covers function path
+    await expect(
+      templ.connect(priest).cleanupExternalRewardToken(await token.getAddress())
+    ).to.be.revertedWithCustomError(templ, "InvalidCallData");
+  });
 });

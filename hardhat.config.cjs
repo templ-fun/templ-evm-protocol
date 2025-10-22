@@ -42,7 +42,9 @@ const config = {
   networks: {
     hardhat: {
       chainId: 1337,
-      allowUnlimitedContractSize: process.env.SKIP_MOCKS === "true" ? false : true
+      allowUnlimitedContractSize: process.env.SKIP_MOCKS === "true" ? false : true,
+      blockGasLimit: 120_000_000,
+      initialBaseFeePerGas: 0
     },
     base: {
       url: process.env.RPC_URL || "https://mainnet.base.org",
@@ -68,6 +70,12 @@ const config = {
     tests: "./test",
     cache: "./cache",
     artifacts: "./artifacts"
+  },
+  mocha: {
+    timeout: usingCoverage ? 180_000 : 60_000,
+    // Exclude heavy @load suites from coverage runs
+    grep: usingCoverage ? '@load' : undefined,
+    invert: usingCoverage ? true : undefined
   }
 };
 
