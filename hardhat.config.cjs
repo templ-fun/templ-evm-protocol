@@ -24,6 +24,8 @@ const usingCoverage =
   process.env.SOLIDITY_COVERAGE === "1";
 
 const viaIRDefault = process.env.SOLC_VIA_IR === "false" ? false : true;
+// Use a production-friendly optimizer default; allow override via SOLC_RUNS.
+const runsDefault = process.env.SOLC_RUNS ? (parseInt(process.env.SOLC_RUNS, 10) || 500) : 500;
 
 /** @type import("hardhat/config").HardhatUserConfig */
 const config = {
@@ -33,7 +35,7 @@ const config = {
       viaIR: viaIRDefault,
       optimizer: {
         enabled: true,
-        runs: usingCoverage ? 1 : 1
+        runs: usingCoverage ? 1 : runsDefault
       }
     }
   },
