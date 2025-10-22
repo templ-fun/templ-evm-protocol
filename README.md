@@ -48,6 +48,19 @@ await templ.vote(id, true);
 await templ.executeProposal(id);
 ```
 
+## Conventions
+
+- Units
+  - Percentages use basis points out of 10,000 (`BPS_DENOMINATOR = 10_000`).
+  - Durations are seconds (e.g., `7*24*60*60` for 7 days).
+  - Token amounts are in the token’s smallest units (no decimals on-chain).
+- ETH sentinel
+  - Use `address(0)` to represent ETH in withdraw/disband/claim flows and external reward APIs.
+- Ethers v6
+  - Contract address is available at `contract.target` (examples here use this pattern).
+- Call routing
+  - All public calls go to the deployed `TEMPL` and are delegated to modules by selector; unknown selectors revert with `InvalidCallData`.
+
 ## Five-Minute Tour
 
 1) Start a local chain and deploy factory + modules
@@ -102,7 +115,7 @@ await templ.executeProposal(id);
 - `getProposal(id)`: essential metadata + derived pass status
 - `getProposalSnapshots(id)`: quorum timing + blocks + eligible counts
 - `getProposalJoinSequences(id)`: pre‑quorum and quorum join‑sequence snapshots
-- `getActiveProposals()` / `getActiveProposalsPaginated(offset,limit)`
+- `getActiveProposals()` / `getActiveProposalsPaginated(offset,limit)` → returns `(uint256[] proposalIds, bool hasMore)`
 - `getProposalActionData(id)`: returns `(Action action, bytes payload)` where `payload` is ABI‑encoded per action:
   - SetJoinPaused → (bool paused)
   - UpdateConfig → (address token, uint256 newEntryFee, bool updateFeeSplit, uint256 newBurnBps, uint256 newTreasuryBps, uint256 newMemberPoolBps)
@@ -506,6 +519,21 @@ await templ.connect(alice).claimExternalReward(otherErc20.target);
 
 ### Root Contract Introspection (from [`TEMPL`](contracts/TEMPL.sol))
 - `getModuleForSelector(bytes4)` — returns the module address responsible for a given function selector.
+  - Notes: the `fallback` routes only registered selectors; unknown selectors revert (`InvalidCallData`).
+
+## Access Control & Modifiers
+
+- onlyMember
+  - Caller must have joined; otherwise `NotMember`.
+- onlyDAO
+  - When `priestIsDictator == false`, only the contract (via governance execution) may call; otherwise `NotDAO`.
+  - When `priestIsDictator == true`, the priest or the contract may call; others revert `PriestOnly`.
+- whenNotPaused
+  - Protects join flows; reverts with `JoinIntakePaused`.
+- notSelf
+  - Blocks direct calls from the contract in join flows; reverts `InvalidSender`.
+- Proposal creation limits
+  - One active proposal per proposer at a time (`ActiveProposalExists` if another is still active). Proposer auto‑casts an initial YES.
 
 ### Factory API (from [`TemplFactory`](contracts/TemplFactory.sol))
 - `setPermissionless(bool)` — toggles who may call create functions (deployer-only vs anyone).
@@ -528,6 +556,10 @@ await templ.connect(alice).claimExternalReward(otherErc20.target);
 
 Notes
 - `MemberJoined.joinId` starts at 0 for the first non‑priest joiner and increments per successful join.
+- Event field highlights
+  - `MemberJoined(payer, member, totalAmount, burnedAmount, treasuryAmount, memberPoolAmount, protocolAmount, timestamp, blockNumber, joinId)`
+  - `TreasuryAction(proposalId, token /* address(0) for ETH */, recipient, amount, reason)`
+  - `TemplCreated(templ, creator, priest, token, entryFee, burnBps, treasuryBps, memberPoolBps, quorumBps, executionDelaySeconds, burnAddress, priestIsDictator, maxMembers, curveStyles, curveRateBps, curveLengths, name, description, logoLink, proposalFeeBps, referralShareBps)`
 
 ## Limits & Constants
 - `BPS_DENOMINATOR = 10_000`
