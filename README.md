@@ -1,7 +1,6 @@
 # templ.fun Protocol Overview
 
-<img width="100%" alt="Screenshot 2025-10-21 at 18 19 13" src="https://github.com/user-attachments/assets/ef8bfc49-5f8d-44ac-ac96-6901723f3ccf" />
-
+<img width="100%"  alt="Screenshot 2025-10-22 at 00 44 48" src="https://github.com/user-attachments/assets/287b7300-2314-4b88-b4be-1cf0190f4989" />
 
 ## What It Does
 - templ.fun lets communities spin up private “templ” groups that collect an access-token treasury, stream rewards to existing members, and govern configuration or payouts on-chain.
