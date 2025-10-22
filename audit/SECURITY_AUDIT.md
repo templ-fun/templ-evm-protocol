@@ -1,7 +1,9 @@
 TEMPL Smart Contracts Security Audit
 
 Date: 2025-10-22
-Commit: fd0322a
+Model: gpt5-codex-high
+CLI: codex 0.46.0
+Commit: fd0322a565ef3c59081514c91c8f68fca4d489a0
 Scope: contracts, modules, factory, libraries, config (Hardhat)
 
 1) Executive Summary
