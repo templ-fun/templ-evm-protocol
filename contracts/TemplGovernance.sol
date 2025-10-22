@@ -159,6 +159,7 @@ contract TemplGovernanceModule is TemplBase {
     /// @param _votingPeriod Optional custom voting duration (seconds).
     /// @param _title On-chain title for the proposal.
     /// @param _description On-chain description for the proposal.
+    /// @return proposalId Newly created proposal identifier.
     function createProposalSetExecutionDelay(
         uint256 _newDelaySeconds,
         uint256 _votingPeriod,
@@ -178,6 +179,7 @@ contract TemplGovernanceModule is TemplBase {
     /// @param _votingPeriod Optional custom voting duration (seconds).
     /// @param _title On-chain title for the proposal.
     /// @param _description On-chain description for the proposal.
+    /// @return proposalId Newly created proposal identifier.
     function createProposalSetBurnAddress(
         address _newBurn,
         uint256 _votingPeriod,
@@ -817,7 +819,7 @@ contract TemplGovernanceModule is TemplBase {
         return (proposal.hasVoted[_voter], proposal.voteChoice[_voter]);
     }
 
-    // (Deprecated) Per-action payload getters removed in favor of getProposalActionData
+    
 
     /// @notice Lists proposal ids that are still within their active voting/execution window.
     /// @return proposalIds Array of currently active proposal ids.
@@ -896,7 +898,7 @@ contract TemplGovernanceModule is TemplBase {
         string memory _description
     ) internal returns (uint256 proposalId, Proposal storage proposal) {
         _requireDelegatecall();
-        // Prune removed to reduce bytecode size
+        
         if (!members[msg.sender].joined) revert TemplErrors.NotMember();
         if (hasActiveProposal[msg.sender]) {
             uint256 existingId = activeProposalId[msg.sender];

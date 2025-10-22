@@ -364,6 +364,7 @@ Once the templ is live, all user interactions flow through the deployed [`TEMPL`
 - `ProposalExecuted` emits `keccak256(returndata)` instead of raw bytes to keep events small. Off-chain, hash the return data for correlation.
 - For large sets, use paginated queries: `getExternalRewardTokensPaginated(offset, limit)` and `getActiveProposalsPaginated(offset, limit)`.
 - Introspection: `getRegisteredSelectors()` returns static selector lists per module to aid tooling.
+ - Introspection: Use `getModuleForSelector(bytes4)` on `TEMPL` to see which module handles a function.
 
 ### Hardhat Deployment Scripts
 The repository ships end-to-end scripts at the repository root that mirror the sequence above:
@@ -668,11 +669,6 @@ Notes
 - Track `VoteCast` and `ProposalExecuted` for live updates.
 - For treasury views, either derive from `getTreasuryInfo()` or track `TreasuryAction`/`TreasuryDisbanded` with access-token balance deltas.
 - Use `EntryFeeCurveUpdated` to reflect curve changes without recomputing from storage.
-
-Compatibility
-- Node: `>=22` (see `package.json:engines`)
-- Solidity: `0.8.23`
-- Hardhat: `^2.19.2`, ethers v6
 
 See event definitions in [`contracts/TemplBase.sol`](contracts/TemplBase.sol) and usage across modules; tests assert on these logs throughout `test/*.test.js` (e.g. `test/MembershipCoverage.test.js`, `test/GovernanceCoverage.test.js`).
 

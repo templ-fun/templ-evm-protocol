@@ -25,7 +25,7 @@ contract TemplFactory {
     uint256 internal constant DEFAULT_MAX_MEMBERS = 249;
     uint32 internal constant DEFAULT_CURVE_EXP_RATE_BPS = 11_000;
     uint256 internal constant DEFAULT_PROPOSAL_FEE_BPS = 0;
-    // Init code chunking removed; deploy directly via new TEMPL(...)
+    
 
     /// @notice Full templ creation configuration. Use `createTemplWithConfig` to apply.
     struct CreateConfig {
@@ -74,7 +74,7 @@ contract TemplFactory {
     address public immutable governanceModule;
     address public immutable factoryDeployer;
     bool public permissionless;
-    // SSTORE2 pointers removed
+    
 
     /// @notice Emitted after deploying a new templ instance.
     /// @param templ Address of the deployed templ.
@@ -348,7 +348,7 @@ contract TemplFactory {
         );
     }
 
-    // SSTORE2 chunking helpers removed
+    
 
     /// @dev Resolves a potentially sentinel-encoded bps value to its final value.
     /// @param rawBps Raw basis points supplied by callers (-1 requests the default value).

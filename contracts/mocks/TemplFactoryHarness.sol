@@ -14,5 +14,5 @@ contract TemplFactoryHarness is TemplFactory {
         TemplFactory(protocolFeeRecipient, protocolBps, membershipModule, treasuryModule, governanceModule)
     {}
 
-    // Init code pointers removed in factory simplification; keep harness compiling
+    
 }

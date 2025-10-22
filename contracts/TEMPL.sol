@@ -212,7 +212,7 @@ contract TEMPL is TemplBase {
         _registerModule(module, selectors);
     }
 
-    // Selector introspection helpers removed to keep bytecode lean and avoid via-IR stack limits.
+    
 
     /// @notice Returns the action and ABI-encoded payload for a proposal.
     /// @dev See README Proposal Views for payload types per action.

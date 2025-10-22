@@ -49,7 +49,7 @@ contract DaoCallerHarness is TEMPL {
     function daoWithdraw(address token, address recipient, uint256 amount, string calldata reason) external {
         TemplTreasuryModule(address(this)).withdrawTreasuryDAO(token, recipient, amount, reason);
     }
-    // withdrawAll wrapper removed
+    
     /// @notice Wrapper to call updateConfigDAO via contract self-call
     function daoUpdate(
         address token,
