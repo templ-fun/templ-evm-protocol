@@ -8,8 +8,9 @@
   },
   "scripts": {
     "compile": "npx hardhat compile",
-    "test": "npx hardhat test --grep '^(?!.*@load).*'",
+    "test": "npx hardhat test --grep '^(?!.*@(load|fuzz)).*'",
     "test:load": "npx hardhat test --grep @load",
+    "test:fuzz": "npx hardhat test --grep @fuzz",
     "test:allwithload": "npx hardhat test",
     "coverage": "NODE_OPTIONS=--max-old-space-size=16384 npx hardhat coverage",
     "slither": "solc-select install 0.8.23 && solc-select use 0.8.23 && slither . --config-file slither.config.json",

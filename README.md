@@ -12,6 +12,7 @@
 - Prereqs: Node >=22, `npm`, Foundry optional.
 - Setup: `npm install`
 - Test: `npm test` (Hardhat). Coverage: `npx hardhat coverage`.
+- Fuzzing (randomized): `npm run test:fuzz` (see below)
 - Static analysis: `npm run slither` (requires Slither in PATH)
 
 ### High‑Load Stress Test
@@ -27,6 +28,16 @@ What it exercises under load (1% quorum to keep voting tractable):
 
 Notes:
 - 1M joiners implies ~1M transactions and will take a long time; progress logs are printed periodically. Ensure ample CPU/RAM, and consider running on a local Hardhat node.
+
+### Fuzzing
+- Run the fuzz suites: `npm run test:fuzz`
+- Control iterations and seed:
+  - Iterations: `TEMPL_FUZZ_ITERS=500 npm run test:fuzz`
+  - Seed: `TEMPL_FUZZ_SEED=123 npm run test:fuzz`
+- What’s included:
+  - Randomized scenario runner exercising joins, proposal creation, voting, and execution with invariants on fee‑split sums and entry‑fee bounds (`test/fuzz/RandomScenarioFuzz.test.js`).
+  - Property test that fuzzes fee‑split updates ensuring burn/treasury/member + protocol always sum to 10_000 bps (`test/fuzz/ConfigBpsFuzz.test.js`).
+- Default `npm test` excludes `@fuzz` and `@load` suites to keep CI fast.
 
 Local deploy (scripts mirror production flow):
 

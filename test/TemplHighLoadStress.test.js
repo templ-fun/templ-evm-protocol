@@ -528,8 +528,9 @@ describe("@load Templ High-Load Stress", function () {
     });
 
     it("explicitly pauses and resumes joins via governance under load", async function () {
-      const { templ, accessibleMembers, priest } = context;
+      const { templ, accessibleMembers, priest, token } = context;
       // Pause joins
+      await ensureProposalFee(templ, token, accessibleMembers[0], context);
       await templ.connect(accessibleMembers[0]).createProposalSetJoinPaused(true, 0, "Pause", "");
       let id = (await templ.proposalCount()) - 1n;
       await templ.connect(accessibleMembers[1]).vote(id, true);
@@ -544,6 +545,7 @@ describe("@load Templ High-Load Stress", function () {
       await expect(templ.connect(priest).joinFor(blocked.address)).to.be.revertedWithCustomError(templ, "JoinIntakePaused");
 
       // Resume joins
+      await ensureProposalFee(templ, token, accessibleMembers[0], context);
       await templ.connect(accessibleMembers[0]).createProposalSetJoinPaused(false, 0, "Resume", "");
       id = (await templ.proposalCount()) - 1n;
       await templ.connect(accessibleMembers[1]).vote(id, true);
@@ -560,8 +562,9 @@ describe("@load Templ High-Load Stress", function () {
     });
 
     it("changes priest and exercises dictatorship-only gates under load", async function () {
-      const { templ, accessibleMembers } = context;
+      const { templ, accessibleMembers, token } = context;
       // Change priest
+      await ensureProposalFee(templ, token, accessibleMembers[0], context);
       await templ.connect(accessibleMembers[0]).createProposalChangePriest(accessibleMembers[0].address, 0, "Priest", "");
       let id = (await templ.proposalCount()) - 1n;
       await templ.connect(accessibleMembers[1]).vote(id, true);
@@ -572,6 +575,7 @@ describe("@load Templ High-Load Stress", function () {
       expect(await templ.priest()).to.equal(accessibleMembers[0].address);
 
       // Enable dictatorship
+      await ensureProposalFee(templ, token, accessibleMembers[0], context);
       await templ.connect(accessibleMembers[0]).createProposalSetDictatorship(true, 0, "Dict", "");
       id = (await templ.proposalCount()) - 1n;
       await templ.connect(accessibleMembers[1]).vote(id, true);
@@ -655,17 +659,17 @@ describe("@load Templ High-Load Stress", function () {
     it("updates quorum and execution delay; updates burn address then verifies burn on next join", async function () {
       const { templ, accessibleMembers, priest, token } = context;
 
-      // Set quorum to 2% (percent mode) and set 2s execution delay
+      // Set quorum to 0.5% (percent mode) and set 2s execution delay
       await ensureProposalFee(templ, token, accessibleMembers[0], context);
-      await templ.connect(accessibleMembers[0]).createProposalSetQuorumBps(2, 0, "Quorum", "");
+      await templ.connect(accessibleMembers[0]).createProposalSetQuorumBps(0.5, 0, "Quorum", "");
       let id = (await templ.proposalCount()) - 1n;
       await templ.connect(accessibleMembers[1]).vote(id, true);
       await ensureQuorum(templ, id);
       await ethers.provider.send("evm_increaseTime", [2]);
       await ethers.provider.send("evm_mine");
       await templ.executeProposal(id);
-      // Using percent mode: 2 → multiplied by 100 inside, becomes 200 bps
-      expect(await templ.quorumBps()).to.equal(200n);
+      // Using percent mode: 0.5 → multiplied by 100 inside, becomes 50 bps
+      expect(await templ.quorumBps()).to.equal(50n);
 
       await ensureProposalFee(templ, token, accessibleMembers[0], context);
       await templ.connect(accessibleMembers[0]).createProposalSetExecutionDelay(2, 0, "Delay", "");
@@ -701,11 +705,23 @@ describe("@load Templ High-Load Stress", function () {
     it("manages active-proposals index and pagination; prunes inactive under load", async function () {
       const { templ, token, priest, accessibleMembers, randomWallets } = context;
 
-      // Prepare a set of proposers (alternate to bypass single-active-per-proposer gating)
-      const proposers = [accessibleMembers[0], accessibleMembers[1]];
-      for (let i = 0; i < 4 && i < randomWallets.length; i += 1) {
-        proposers.push(randomWallets[i]);
+      // Prepare a set of proposers (avoid wallets with active proposals)
+      const candidates = [];
+      // Prefer random wallets used only for voting (skip accessibleMembers which may have active leftovers)
+      for (let i = 0; i < randomWallets.length && candidates.length < 8; i += 1) {
+        const w = randomWallets[i];
+        if (!(await templ.hasActiveProposal(w.address))) {
+          candidates.push(w);
+        }
       }
+      // Fallback: use accessible members only if they don't have active proposals
+      for (const m of accessibleMembers) {
+        if (candidates.length >= 8) break;
+        if (!(await templ.hasActiveProposal(m.address))) {
+          candidates.push(m);
+        }
+      }
+      let proposers = [...candidates];
 
       // Ensure each proposer can afford proposal fees
       for (const p of proposers) {
@@ -716,6 +732,10 @@ describe("@load Templ High-Load Stress", function () {
       const created = [];
       for (let i = 0; i < Math.min(6, proposers.length); i += 1) {
         const p = proposers[i];
+        // Final guard against single-active-per-proposer
+        if (await templ.hasActiveProposal(p.address)) {
+          continue;
+        }
         await templ.connect(p).createProposalUpdateMetadata(
           `Meta-${i}`,
           "",
@@ -763,7 +783,8 @@ describe("@load Templ High-Load Stress", function () {
       // Withdraw 1 ETH to member
       const recipient = context.accessibleMembers[1];
       const ethBefore = await ethers.provider.getBalance(recipient.address);
-      const idW = await templ.createProposalWithdrawTreasury.staticCall(
+      await ensureProposalFee(templ, context.token, accessibleMembers[0], context);
+      const idW = await templ.connect(accessibleMembers[0]).createProposalWithdrawTreasury.staticCall(
         ethers.ZeroAddress,
         recipient.address,
         ethers.parseEther("1"),
@@ -772,7 +793,7 @@ describe("@load Templ High-Load Stress", function () {
         "ETH W",
         ""
       );
-      await templ.createProposalWithdrawTreasury(
+      await templ.connect(accessibleMembers[0]).createProposalWithdrawTreasury(
         ethers.ZeroAddress,
         recipient.address,
         ethers.parseEther("1"),
@@ -800,7 +821,10 @@ describe("@load Templ High-Load Stress", function () {
 
       const half = amount / 2n;
       const balBefore = await other.balanceOf(recipient.address);
-      await templ.createProposalWithdrawTreasury(otherAddr, recipient.address, half, "ERC20 withdraw", 0, "ERC20 W", "");
+      await ensureProposalFee(templ, context.token, accessibleMembers[0], context);
+      await templ
+        .connect(accessibleMembers[0])
+        .createProposalWithdrawTreasury(otherAddr, recipient.address, half, "ERC20 withdraw", 0, "ERC20 W", "");
       const id2 = (await templ.proposalCount()) - 1n;
       await templ.connect(context.accessibleMembers[0]).vote(id2, true);
       await ensureQuorum(templ, id2);
@@ -809,6 +833,91 @@ describe("@load Templ High-Load Stress", function () {
       await templ.executeProposal(id2);
       const balAfter = await other.balanceOf(recipient.address);
       expect(balAfter - balBefore).to.equal(half);
+    });
+
+    it("creates many concurrent proposals across distinct proposers and paginates reliably", async function () {
+      const { templ, token, priest, accessibleMembers, randomWallets } = context;
+
+      // Decide a target based on load: scales gently up to 200
+      const TARGET = Math.max(10, Math.min(200, Math.ceil(Math.sqrt(TOTAL_JOINS) / 10)));
+
+      // Ensure enough proposers: start from accessible + random, then join more if needed
+      let proposers = [];
+      // Prefer wallets without any active proposals
+      for (const w of randomWallets) {
+        if (proposers.length >= TARGET) break;
+        if (!(await templ.hasActiveProposal(w.address))) {
+          proposers.push(w);
+        }
+      }
+      // Avoid accessible members unless they are free of active proposals
+      for (const m of accessibleMembers) {
+        if (proposers.length >= TARGET) break;
+        if (!(await templ.hasActiveProposal(m.address))) {
+          proposers.push(m);
+        }
+      }
+      if (proposers.length < TARGET) {
+        const extra = TARGET - proposers.length;
+        // Top-up priest budget and join extra proposers
+        await token.connect(priest).mint(priest.address, MAX_ENTRY_FEE * BigInt(extra));
+        for (let i = 0; i < extra; i += 1) {
+          const w = ethers.Wallet.createRandom().connect(ethers.provider);
+          await templ.connect(priest).joinFor(w.address);
+          proposers.push(w);
+        }
+      }
+
+      // Ensure fee coverage for all proposers
+      for (const p of proposers) {
+        await ensureProposalFee(templ, token, p, context);
+      }
+
+      // Batch-create concurrent proposals (1 per proposer, respecting single-active-per-proposer gate)
+      const created = [];
+      const prog = progressEvery(TARGET);
+      for (let i = 0; i < TARGET; i += 1) {
+        const p = proposers[i];
+        if (await templ.hasActiveProposal(p.address)) {
+          continue;
+        }
+        const kind = i % 3;
+        if (kind === 0) {
+          await templ.connect(p).createProposalUpdateMetadata(`Batch-${i}`, "", "", 0, `B-${i}`, "");
+        } else if (kind === 1) {
+          await templ.connect(p).createProposalSetReferralShareBps(1_000, 0, `Ref-${i}`, "");
+        } else {
+          await templ.connect(p).createProposalSetQuorumBps(2, 0, `Q-${i}`, "");
+        }
+        const id = (await templ.proposalCount()) - 1n;
+        created.push(id);
+        if ((i + 1) % prog.step === 0) {
+          const pct = Math.ceil(((i + 1) * 100) / Math.max(1, TARGET));
+          console.log(`[load] proposals created: ${i + 1}/${TARGET} (${pct}%)`);
+        }
+      }
+
+      // Verify listing via pagination across pages of 25
+      const limit = 25;
+      let offset = 0;
+      const seen = new Set();
+      while (true) {
+        const [page, hasMore] = await templ.getActiveProposalsPaginated(offset, limit);
+        for (const id of page) {
+          seen.add(id.toString());
+        }
+        if (!hasMore) break;
+        offset += page.length;
+      }
+
+      for (const id of created) {
+        if (!seen.has(id.toString())) {
+          throw new Error(`missing proposal id ${id}`);
+        }
+      }
+
+      const activeAll = await templ.getActiveProposals();
+      expect(activeAll.length).to.be.gte(created.length);
     });
   });
 });
