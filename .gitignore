@@ -34,6 +34,8 @@ build/
 # Hardhat
 artifacts/
 cache/
+crytic-export/
+deployments/
 
 # State files
 .monitor-state.json

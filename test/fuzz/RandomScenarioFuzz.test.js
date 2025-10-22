@@ -44,11 +44,11 @@ describe("@fuzz Randomized Governance + Membership", function () {
   let rng;
 
   const FUZZ_ITERS = (() => {
-    const v = Number(process.env.TEMPL_FUZZ_ITERS || process.env.FUZZ_ITERS || 200);
+    const v = Number(process.env.TEMPL_FUZZ_ITERS || 200);
     return Number.isFinite(v) && v > 0 ? v : 200;
   })();
   const FUZZ_SEED = (() => {
-    const raw = process.env.TEMPL_FUZZ_SEED || process.env.FUZZ_SEED;
+    const raw = process.env.TEMPL_FUZZ_SEED;
     if (!raw) return Date.now() >>> 0;
     const n = Number(raw);
     if (Number.isFinite(n)) return n >>> 0;
@@ -229,4 +229,3 @@ describe("@fuzz Randomized Governance + Membership", function () {
     await checkInvariants();
   });
 });
-

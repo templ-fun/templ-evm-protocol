@@ -18,9 +18,9 @@ const METADATA = {
   logo: "https://templ.test/saturation.png"
 };
 
-// Single knob for load size. Prefer TEMPL_LOAD, fallback to legacy names for compatibility.
+// Single knob for load size.
 // Example: TEMPL_LOAD=1000000 npm run test:load
-const LOAD_ENV = process.env.TEMPL_LOAD || process.env.TEMPL_JOINERS || process.env.JOINERS || process.env.STRESS_JOINS;
+const LOAD_ENV = process.env.TEMPL_LOAD;
 const TOTAL_JOINS = Number.isFinite(Number(LOAD_ENV)) && Number(LOAD_ENV) > 0 ? Number(LOAD_ENV) : 500;
 
 function progressEvery(total) {
