@@ -253,7 +253,6 @@ async function main() {
   const memberPoolSplit = readSplitPercent('MEMBER_POOL_BP', undefined, (process.env.MEMBER_POOL_BPS ?? process.env.MEMBER_POOL_BP), DEFAULT_MEMBER_POOL_BP);
   const protocolPercentEnv = resolveProtocolBpsFromEnv();
   // Only bps inputs are supported
-  let protocolPercentPercent = undefined;
   let protocolPercentBps = protocolPercentEnv.bps;
   let protocolPercentSource = protocolPercentEnv.source;
   const QUORUM_BP_RAW = process.env.QUORUM_BPS ?? process.env.QUORUM_BP;
@@ -565,7 +564,7 @@ async function main() {
   console.log("- Token:", config[0]);
   console.log("- Entry Fee:", config[1].toString());
   console.log("- Paused:", config[2]);
-  console.log("- Total Purchases:", config[3].toString());
+  console.log("- Total Joins:", config[3].toString());
   console.log("- Treasury Balance:", config[4].toString());
   console.log("- Member Pool Balance:", config[5].toString());
   
@@ -653,7 +652,7 @@ async function main() {
   console.log("- One member = one vote (proposer auto‑YES; votes changeable until deadline)");
   console.log("\n🔒 Security Features:");
   console.log("- No backdoor functions");
-  console.log("- All tokens only movable via DAO votes");
+  console.log("- Treasury/token moves via DAO votes (or priest in dictatorship mode)");
   console.log("- One join per wallet");
   console.log("- Vote gaming prevention");
 }

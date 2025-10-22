@@ -225,6 +225,10 @@ async function fetchContractSnapshot(contract) {
     templLogoLink: await safeCall(contract, 'templLogoLink'),
     proposalCreationFeeBps: await safeCall(contract, 'proposalCreationFeeBps'),
     referralShareBps: await safeCall(contract, 'referralShareBps'),
+    // Module wiring (immutable in TEMPL constructor)
+    membershipModule: await safeCall(contract, 'membershipModule'),
+    treasuryModule: await safeCall(contract, 'treasuryModule'),
+    governanceModule: await safeCall(contract, 'governanceModule'),
     entryFeeCurve: await safeCall(contract, 'entryFeeCurve', normalizeCurveValue)
   };
 }
@@ -393,7 +397,10 @@ async function main() {
     templDescription: readCliOption(process.argv, ['--templ-description', '--description']),
     templLogoLink: readCliOption(process.argv, ['--templ-logo', '--logo-link']),
     proposalFeeBps: readCliOption(process.argv, ['--proposal-fee-bps']),
-    referralShareBps: readCliOption(process.argv, ['--referral-share-bps', '--referral-bps'])
+    referralShareBps: readCliOption(process.argv, ['--referral-share-bps', '--referral-bps']),
+    membershipModule: readCliOption(process.argv, ['--membership-module']),
+    treasuryModule: readCliOption(process.argv, ['--treasury-module']),
+    governanceModule: readCliOption(process.argv, ['--governance-module'])
   };
 
   const protocolRecipientOverride = firstDefined([
@@ -424,7 +431,10 @@ async function main() {
     templDescription: firstDefined([cliOverrides.templDescription, process.env.TEMPL_DESCRIPTION]),
     templLogoLink: firstDefined([cliOverrides.templLogoLink, process.env.TEMPL_LOGO_LINK, process.env.TEMPL_LOGO_URL, process.env.LOGO_LINK]),
     proposalFeeBps: resolveBpsLike({ bpsValues: [cliOverrides.proposalFeeBps, process.env.PROPOSAL_FEE_BPS] }),
-    referralShareBps: resolveBpsLike({ bpsValues: [cliOverrides.referralShareBps, process.env.REFERRAL_SHARE_BPS, process.env.REFERRAL_BPS] })
+    referralShareBps: resolveBpsLike({ bpsValues: [cliOverrides.referralShareBps, process.env.REFERRAL_SHARE_BPS, process.env.REFERRAL_BPS] }),
+    membershipModule: firstDefined([cliOverrides.membershipModule, process.env.MEMBERSHIP_MODULE_ADDRESS]),
+    treasuryModule: firstDefined([cliOverrides.treasuryModule, process.env.TREASURY_MODULE_ADDRESS]),
+    governanceModule: firstDefined([cliOverrides.governanceModule, process.env.GOVERNANCE_MODULE_ADDRESS])
   };
 
   const constructorArgs = {
@@ -569,6 +579,28 @@ async function main() {
         if (numeric === undefined) throw new Error('referralShareBps must be numeric');
         return numeric;
       }
+    }),
+    // Module addresses
+    membershipModule: resolveField({
+      label: 'membershipModule',
+      contractValue: contractSnapshot.membershipModule,
+      eventValue: undefined,
+      overrideValue: envOverrides.membershipModule,
+      normalizer: (value) => normalizeAddress(value, 'membershipModule')
+    }),
+    treasuryModule: resolveField({
+      label: 'treasuryModule',
+      contractValue: contractSnapshot.treasuryModule,
+      eventValue: undefined,
+      overrideValue: envOverrides.treasuryModule,
+      normalizer: (value) => normalizeAddress(value, 'treasuryModule')
+    }),
+    governanceModule: resolveField({
+      label: 'governanceModule',
+      contractValue: contractSnapshot.governanceModule,
+      eventValue: undefined,
+      overrideValue: envOverrides.governanceModule,
+      normalizer: (value) => normalizeAddress(value, 'governanceModule')
     })
   };
 
@@ -635,6 +667,9 @@ async function main() {
     constructorArgs.templLogoLink,
     constructorArgs.proposalFeeBps,
     constructorArgs.referralShareBps,
+    constructorArgs.membershipModule,
+    constructorArgs.treasuryModule,
+    constructorArgs.governanceModule,
     curveArgument
   ];
 
