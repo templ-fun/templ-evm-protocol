@@ -5,7 +5,7 @@ import {TemplBase} from "./TemplBase.sol";
 import {TemplErrors} from "./TemplErrors.sol";
 import {CurveConfig} from "./TemplCurve.sol";
 
-/// @title templ governance module
+/// @title Templ Governance Module
 /// @notice Adds proposal creation, voting, and execution flows on top of treasury + membership logic.
 contract TemplGovernanceModule is TemplBase {
 
@@ -14,13 +14,13 @@ contract TemplGovernanceModule is TemplBase {
     /// @param _votingPeriod Optional custom voting duration (seconds).
     /// @param _title On-chain title for the proposal.
     /// @param _description On-chain description for the proposal.
-    /// @return Proposal id for tracking and voting.
+    /// @return proposalId Proposal id for tracking and voting.
     function createProposalSetJoinPaused(
         bool _paused,
         uint256 _votingPeriod,
         string calldata _title,
         string calldata _description
-    ) external returns (uint256) {
+    ) external returns (uint256 proposalId) {
         if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
         p.action = Action.SetJoinPaused;
@@ -49,7 +49,7 @@ contract TemplGovernanceModule is TemplBase {
         uint256 _votingPeriod,
         string calldata _title,
         string calldata _description
-    ) external returns (uint256) {
+    ) external returns (uint256 proposalId) {
         if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         if (_newEntryFee > 0) {
             if (_newEntryFee < 10) revert TemplErrors.EntryFeeTooSmall();
@@ -80,7 +80,7 @@ contract TemplGovernanceModule is TemplBase {
         uint256 _votingPeriod,
         string calldata _title,
         string calldata _description
-    ) external returns (uint256) {
+    ) external returns (uint256 proposalId) {
         if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         if (_newMaxMembers > 0 && _newMaxMembers < memberCount) {
             revert TemplErrors.MemberLimitTooLow();
@@ -106,7 +106,7 @@ contract TemplGovernanceModule is TemplBase {
         uint256 _votingPeriod,
         string calldata _title,
         string calldata _description
-    ) external returns (uint256) {
+    ) external returns (uint256 proposalId) {
         if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
         p.action = Action.SetMetadata;
@@ -127,7 +127,7 @@ contract TemplGovernanceModule is TemplBase {
         uint256 _votingPeriod,
         string calldata _title,
         string calldata _description
-    ) external returns (uint256) {
+    ) external returns (uint256 proposalId) {
         if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         if (_newQuorumBps > BPS_DENOMINATOR && _newQuorumBps > 100) {
             revert TemplErrors.InvalidPercentage();
@@ -148,7 +148,7 @@ contract TemplGovernanceModule is TemplBase {
         uint256 _votingPeriod,
         string calldata _title,
         string calldata _description
-    ) external returns (uint256) {
+    ) external returns (uint256 proposalId) {
         if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
         p.action = Action.SetExecutionDelay;
@@ -166,7 +166,7 @@ contract TemplGovernanceModule is TemplBase {
         uint256 _votingPeriod,
         string calldata _title,
         string calldata _description
-    ) external returns (uint256) {
+    ) external returns (uint256 proposalId) {
         if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         if (_newBurn == address(0)) revert TemplErrors.InvalidRecipient();
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
@@ -186,7 +186,7 @@ contract TemplGovernanceModule is TemplBase {
         uint256 _votingPeriod,
         string calldata _title,
         string calldata _description
-    ) external returns (uint256) {
+    ) external returns (uint256 proposalId) {
         if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         if (_newFeeBps > BPS_DENOMINATOR) revert TemplErrors.InvalidPercentage();
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
@@ -206,7 +206,7 @@ contract TemplGovernanceModule is TemplBase {
         uint256 _votingPeriod,
         string calldata _title,
         string calldata _description
-    ) external returns (uint256) {
+    ) external returns (uint256 proposalId) {
         if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         if (_newReferralBps > BPS_DENOMINATOR) revert TemplErrors.InvalidPercentage();
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
@@ -228,7 +228,7 @@ contract TemplGovernanceModule is TemplBase {
         uint256 _votingPeriod,
         string calldata _title,
         string calldata _description
-    ) external returns (uint256) {
+    ) external returns (uint256 proposalId) {
         if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         CurveConfig memory curve = _curve;
         _validateCurveConfig(curve);
@@ -263,7 +263,7 @@ contract TemplGovernanceModule is TemplBase {
         uint256 _votingPeriod,
         string calldata _title,
         string calldata _description
-    ) external returns (uint256) {
+    ) external returns (uint256 proposalId) {
         if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         if (_target == address(0)) revert TemplErrors.InvalidRecipient();
         bytes memory callData = abi.encodePacked(_selector, _params);
@@ -294,7 +294,7 @@ contract TemplGovernanceModule is TemplBase {
         uint256 _votingPeriod,
         string calldata _title,
         string calldata _description
-    ) external returns (uint256) {
+    ) external returns (uint256 proposalId) {
         if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
         p.action = Action.WithdrawTreasury;
@@ -316,7 +316,7 @@ contract TemplGovernanceModule is TemplBase {
         uint256 _votingPeriod,
         string calldata _title,
         string calldata _description
-    ) external returns (uint256) {
+    ) external returns (uint256 proposalId) {
         if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
         p.action = Action.DisbandTreasury;
@@ -340,7 +340,7 @@ contract TemplGovernanceModule is TemplBase {
         uint256 _votingPeriod,
         string calldata _title,
         string calldata _description
-    ) external returns (uint256) {
+    ) external returns (uint256 proposalId) {
         if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
         p.action = Action.CleanupExternalRewardToken;
@@ -359,7 +359,7 @@ contract TemplGovernanceModule is TemplBase {
         uint256 _votingPeriod,
         string calldata _title,
         string calldata _description
-    ) external returns (uint256) {
+    ) external returns (uint256 proposalId) {
         if (_newPriest == address(0)) revert TemplErrors.InvalidRecipient();
         if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
@@ -379,7 +379,7 @@ contract TemplGovernanceModule is TemplBase {
         uint256 _votingPeriod,
         string calldata _title,
         string calldata _description
-    ) external returns (uint256) {
+    ) external returns (uint256 proposalId) {
         if (priestIsDictator == _enable) revert TemplErrors.DictatorshipUnchanged();
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
         p.action = Action.SetDictatorship;
@@ -752,7 +752,8 @@ contract TemplGovernanceModule is TemplBase {
     // (Deprecated) Per-action payload getters removed in favor of getProposalActionData
 
     /// @notice Lists proposal ids that are still within their active voting/execution window.
-    function getActiveProposals() external view returns (uint256[] memory) {
+    /// @return proposalIds Array of currently active proposal ids.
+    function getActiveProposals() external view returns (uint256[] memory proposalIds) {
         uint256 len = activeProposalIds.length;
         uint256 currentTime = block.timestamp;
         uint256[] memory temp = new uint256[](len);

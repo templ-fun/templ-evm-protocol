@@ -5,7 +5,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {TemplBase} from "./TemplBase.sol";
 import {TemplErrors} from "./TemplErrors.sol";
 
-/// @title templ membership module
+/// @title Templ Membership Module
 /// @notice Handles joins, reward accounting, and member-facing views.
 contract TemplMembershipModule is TemplBase {
 
@@ -136,7 +136,7 @@ contract TemplMembershipModule is TemplBase {
     /// @notice Returns the member pool allocation pending for a given wallet.
     /// @param member Wallet to inspect.
     /// @return amount Claimable balance denominated in the access token.
-    function getClaimableMemberRewards(address member) public view returns (uint256) {
+    function getClaimableMemberRewards(address member) public view returns (uint256 amount) {
         if (!members[member].joined) {
             return 0;
         }
@@ -234,7 +234,9 @@ contract TemplMembershipModule is TemplBase {
     }
 
     /// @notice Reports whether a wallet currently counts as a member.
-    function isMember(address user) external view returns (bool) {
+    /// @param user Wallet to inspect.
+    /// @return joined True when the wallet has an active membership.
+    function isMember(address user) external view returns (bool joined) {
         return members[user].joined;
     }
 
@@ -313,13 +315,13 @@ contract TemplMembershipModule is TemplBase {
 
     /// @notice Returns the number of active members.
     /// @return count Number of wallets with active membership (includes the auto-enrolled priest).
-    function getMemberCount() external view returns (uint256) {
+    function getMemberCount() external view returns (uint256 count) {
         return memberCount;
     }
 
     /// @notice Historical counter for total successful joins (mirrors member count without storing extra state).
     /// @return joins Number of completed joins excluding the auto-enrolled priest.
-    function totalJoins() public view returns (uint256) {
+    function totalJoins() public view returns (uint256 joins) {
         if (memberCount == 0) {
             return 0;
         }
