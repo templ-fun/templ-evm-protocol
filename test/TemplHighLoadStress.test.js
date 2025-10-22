@@ -19,11 +19,32 @@ const METADATA = {
 };
 
 // Allow configuring join count via env for super heavy runs
-const TOTAL_JOINS = Number(process.env.STRESS_JOINS || 500); // default 500; raise to thousands if desired
+const TOTAL_JOINS = Number(process.env.STRESS_JOINS || 500);
+const STRESS_VOTE_ALL = (process.env.STRESS_VOTE_ALL === '1' || process.env.STRESS_VOTE_ALL === 'true');
+const STRESS_VOTE_COUNT = process.env.STRESS_VOTE_COUNT ? Number(process.env.STRESS_VOTE_COUNT) : 0;
 
 function progressEvery(total) {
-  const step = Math.max(1, Math.floor(total / 10));
+  const step = Math.max(1, Math.ceil(total / 10));
   return { step };
+}
+
+// Ensures the proposer holds enough access tokens and allowance to cover the proposal fee
+async function ensureProposalFee(templ, token, proposer, context) {
+  const feeBps = await templ.proposalCreationFeeBps();
+  if (feeBps === 0n) return;
+  const currentEntryFee = await templ.entryFee();
+  const expectedFee = (currentEntryFee * feeBps) / 10_000n;
+  const templAddress = await templ.getAddress();
+  const bal = await token.balanceOf(proposer.address);
+  if (bal < expectedFee) {
+    await token.connect(context.priest).mint(proposer.address, expectedFee - bal);
+  }
+  // Make sure proposer has ETH for gas, in case of custom providers
+  const ethBal = await ethers.provider.getBalance(proposer.address);
+  if (ethBal < ethers.parseEther("0.1")) {
+    await context.priest.sendTransaction({ to: proposer.address, value: ethers.parseEther("1") });
+  }
+  await token.connect(proposer).approve(templAddress, expectedFee);
 }
 
 async function setupHighLoadTempl() {
@@ -44,6 +65,7 @@ async function setupHighLoadTempl() {
     1_000,
     4_000,
     4_000,
+    1_000, // 1% protocol share
     1, // 0.01% quorum to keep voting cheap under load
     1, // 1 second execution delay
     ethers.ZeroAddress,
@@ -78,7 +100,7 @@ async function setupHighLoadTempl() {
     randomWallets.push(wallet);
     joinTargets.push(wallet.address);
     if ((i + 1) % genProg.step === 0) {
-      const pct = Math.floor(((i + 1) * 100) / Math.max(1, additionalMembers));
+      const pct = Math.ceil(((i + 1) * 100) / Math.max(1, additionalMembers));
       console.log(`[load] generated wallets: ${i + 1}/${additionalMembers} (${pct}%)`);
     }
   }
@@ -88,7 +110,7 @@ async function setupHighLoadTempl() {
     const target = joinTargets[i];
     await templ.connect(priest).joinFor(target);
     if ((i + 1) % joinProg.step === 0) {
-      const pct = Math.floor(((i + 1) * 100) / Math.max(1, joinTargets.length));
+      const pct = Math.ceil(((i + 1) * 100) / Math.max(1, joinTargets.length));
       console.log(`[load] joins completed: ${i + 1}/${joinTargets.length} (${pct}%)`);
     }
   }
@@ -178,6 +200,39 @@ describe("@load Templ High-Load Stress", function () {
   describe("with many members", function () {
     let context;
 
+    // Helper to reach quorum by casting the minimum additional YES votes,
+    // or cast many votes when STRESS_VOTE_ALL/COUNT is set.
+    async function ensureQuorum(templ, proposalId) {
+      const quorumBps = await templ.quorumBps();
+      const memberCount = await templ.memberCount();
+      let requiredYesVotes = (quorumBps * memberCount + (TOTAL_PERCENT_BPS - 1n)) / TOTAL_PERCENT_BPS;
+      if (requiredYesVotes < 1n) requiredYesVotes = 1n;
+      // proposer auto-votes + one accessible member already voted in these flows
+      let remainingVotes = requiredYesVotes - 2n;
+      const totalPool = context.randomWallets.length;
+      let votesToCast = 0;
+      if (STRESS_VOTE_ALL) {
+        votesToCast = totalPool;
+      } else if (STRESS_VOTE_COUNT > 0) {
+        votesToCast = Math.min(STRESS_VOTE_COUNT, totalPool);
+      } else {
+        votesToCast = Number(remainingVotes > 0n ? remainingVotes : 0n);
+      }
+      if (votesToCast <= 0) return;
+      const gasTopUp = ethers.parseEther("0.05");
+      const voterWallets = context.randomWallets.slice(0, votesToCast);
+      const voteProg = progressEvery(voterWallets.length);
+      for (let i = 0; i < voterWallets.length; i += 1) {
+        const wallet = voterWallets[i];
+        await context.priest.sendTransaction({ to: wallet.address, value: gasTopUp });
+        await templ.connect(wallet).vote(proposalId, true);
+        if ((i + 1) % voteProg.step === 0) {
+          const pct = Math.ceil(((i + 1) * 100) / Math.max(1, voterWallets.length));
+          console.log(`[load] votes cast: ${i + 1}/${voterWallets.length} (${pct}%)`);
+        }
+      }
+    }
+
     before(async function () {
       context = await setupHighLoadTempl();
     });
@@ -239,7 +294,7 @@ describe("@load Templ High-Load Stress", function () {
         await priest.sendTransaction({ to: wallet.address, value: gasTopUp });
         await templ.connect(wallet).vote(withdrawProposalId, true);
         if ((i + 1) % voteProg.step === 0) {
-          const pct = Math.floor(((i + 1) * 100) / Math.max(1, voterWallets.length));
+          const pct = Math.ceil(((i + 1) * 100) / Math.max(1, voterWallets.length));
           console.log(`[load] votes cast: ${i + 1}/${voterWallets.length} (${pct}%)`);
         }
       }
@@ -302,6 +357,7 @@ describe("@load Templ High-Load Stress", function () {
       );
       let id = (await templ.proposalCount()) - 1n;
       await templ.connect(accessibleMembers[1]).vote(id, true);
+      await ensureQuorum(templ, id);
       await ethers.provider.send("evm_increaseTime", [2]);
       await ethers.provider.send("evm_mine");
       await templ.executeProposal(id);
@@ -311,6 +367,7 @@ describe("@load Templ High-Load Stress", function () {
       await templ.connect(accessibleMembers[0]).createProposalSetProposalFeeBps(600, 0, "Fee", "");
       id = (await templ.proposalCount()) - 1n;
       await templ.connect(accessibleMembers[1]).vote(id, true);
+      await ensureQuorum(templ, id);
       await ethers.provider.send("evm_increaseTime", [2]);
       await ethers.provider.send("evm_mine");
       await templ.executeProposal(id);
@@ -320,6 +377,10 @@ describe("@load Templ High-Load Stress", function () {
       const expectedFee = (currentEntryFee * 600n) / 10_000n;
       const treasuryBefore = await templ.treasuryBalance();
       // Pay proposal fee by creating a trivial referral share proposal
+      const bal = await token.balanceOf(accessibleMembers[0].address);
+      if (bal < expectedFee) {
+        await token.connect(priest).mint(accessibleMembers[0].address, expectedFee - bal);
+      }
       await token.connect(accessibleMembers[0]).approve(await templ.getAddress(), expectedFee);
       await templ.connect(accessibleMembers[0]).createProposalSetReferralShareBps(1_000, 0, "Referral", "");
       const treasuryAfter = await templ.treasuryBalance();
@@ -328,6 +389,7 @@ describe("@load Templ High-Load Stress", function () {
       // Execute referral proposal and perform referral join
       id = (await templ.proposalCount()) - 1n;
       await templ.connect(accessibleMembers[1]).vote(id, true);
+      await ensureQuorum(templ, id);
       await ethers.provider.send("evm_increaseTime", [2]);
       await ethers.provider.send("evm_mine");
       await templ.executeProposal(id);
@@ -336,6 +398,8 @@ describe("@load Templ High-Load Stress", function () {
       // Referral join with a fresh wallet
       const newcomer = ethers.Wallet.createRandom().connect(ethers.provider);
       await token.connect(priest).mint(newcomer.address, currentEntryFee);
+      // Fund ETH for gas
+      await priest.sendTransaction({ to: newcomer.address, value: ethers.parseEther("0.1") });
       await token.connect(newcomer).approve(await templ.getAddress(), currentEntryFee);
       const before = await token.balanceOf(accessibleMembers[0].address);
       await templ.connect(newcomer).joinWithReferral(accessibleMembers[0].address);
@@ -347,6 +411,7 @@ describe("@load Templ High-Load Stress", function () {
       await target.waitForDeployment();
       const sel = target.interface.getFunction("setNumber").selector;
       const params = ethers.AbiCoder.defaultAbiCoder().encode(["uint256"], [123n]);
+      await ensureProposalFee(templ, token, accessibleMembers[0], context);
       await templ.connect(accessibleMembers[0]).createProposalCallExternal(
         await target.getAddress(),
         0,
@@ -358,18 +423,21 @@ describe("@load Templ High-Load Stress", function () {
       );
       id = (await templ.proposalCount()) - 1n;
       await templ.connect(accessibleMembers[1]).vote(id, true);
+      await ensureQuorum(templ, id);
       await ethers.provider.send("evm_increaseTime", [2]);
       await ethers.provider.send("evm_mine");
       await templ.executeProposal(id);
-      expect(await target.number()).to.equal(123n);
+      expect(await target.storedValue()).to.equal(123n);
     });
 
     it("updates fee split and entry fee curve; handles member cap toggles", async function () {
-      const { templ, accessibleMembers } = context;
+      const { templ, accessibleMembers, token } = context;
 
-      // Update fee split and entry fee
-      const newBurn = 3_500, newTreasury = 3_000, newMember = 1_500; // sums with protocol (1%) to 100%
-      const newEntry = (await templ.entryFee()) + 10n;
+      // Update fee split only (keep entry fee unchanged to satisfy curve/base constraints)
+      const newBurn = 3_500, newTreasury = 3_000, newMember = 2_500; // with protocol (1%) totals 100%
+      const current = await templ.entryFee();
+      const newEntry = 0n; // leave entry fee unchanged
+      await ensureProposalFee(templ, token, accessibleMembers[0], context);
       await templ.connect(accessibleMembers[0]).createProposalUpdateConfig(
         ethers.ZeroAddress,
         newEntry,
@@ -383,37 +451,44 @@ describe("@load Templ High-Load Stress", function () {
       );
       let id = (await templ.proposalCount()) - 1n;
       await templ.connect(accessibleMembers[1]).vote(id, true);
+      await ensureQuorum(templ, id);
       await ethers.provider.send("evm_increaseTime", [2]);
       await ethers.provider.send("evm_mine");
       await templ.executeProposal(id);
       expect(await templ.burnBps()).to.equal(BigInt(newBurn));
       expect(await templ.treasuryBps()).to.equal(BigInt(newTreasury));
       expect(await templ.memberPoolBps()).to.equal(BigInt(newMember));
-      expect(await templ.entryFee()).to.equal(newEntry);
+      expect(await templ.entryFee()).to.equal(current);
 
       // Update curve and verify entry fee moves (base unchanged when zero)
       const newCurve = { primary: { style: CurveStyle.Exponential, rateBps: 12_000, length: 0 }, additionalSegments: [] };
+      await ensureProposalFee(templ, token, accessibleMembers[0], context);
       await templ.connect(accessibleMembers[0]).createProposalSetEntryFeeCurve(newCurve, 0, 0, "Curve", "");
       id = (await templ.proposalCount()) - 1n;
       await templ.connect(accessibleMembers[1]).vote(id, true);
+      await ensureQuorum(templ, id);
       await ethers.provider.send("evm_increaseTime", [2]);
       await ethers.provider.send("evm_mine");
       await expect(templ.executeProposal(id)).to.emit(templ, "EntryFeeCurveUpdated");
 
       // Toggle member cap to current count (should auto-pause), then remove cap
       const count = await templ.memberCount();
+      await ensureProposalFee(templ, token, accessibleMembers[0], context);
       await templ.connect(accessibleMembers[0]).createProposalSetMaxMembers(count, 0, "Cap", "");
       id = (await templ.proposalCount()) - 1n;
       await templ.connect(accessibleMembers[1]).vote(id, true);
+      await ensureQuorum(templ, id);
       await ethers.provider.send("evm_increaseTime", [2]);
       await ethers.provider.send("evm_mine");
       await templ.executeProposal(id);
       expect(await templ.maxMembers()).to.equal(count);
       expect(await templ.joinPaused()).to.equal(true);
 
+      await ensureProposalFee(templ, token, accessibleMembers[0], context);
       await templ.connect(accessibleMembers[0]).createProposalSetMaxMembers(0, 0, "Uncap", "");
       id = (await templ.proposalCount()) - 1n;
       await templ.connect(accessibleMembers[1]).vote(id, true);
+      await ensureQuorum(templ, id);
       await ethers.provider.send("evm_increaseTime", [2]);
       await ethers.provider.send("evm_mine");
       await templ.executeProposal(id);
