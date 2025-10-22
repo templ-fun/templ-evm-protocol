@@ -91,6 +91,13 @@ await templ.executeProposal(id);
 - Treasury Ops: withdraw/disband (disband disperses the treasury equally across members), config/split/entry fee/curve updates, metadata, priest changes.
 - Factory: [`TemplFactory`](contracts/TemplFactory.sol) with `setPermissionless`, `createTempl`, `createTemplFor`, `createTemplWithConfig`.
 
+### Token Requirements
+- Access token must be a vanilla ERC‑20 (no fee‑on‑transfer, no rebasing). Accounting assumes exact transfer amounts. Non‑standard tokens can desync balances and break claims.
+- If you need to support non‑standard tokens, consider an adapter token or gateway outside this core protocol.
+
+### Build Settings
+- Solidity 0.8.23, via‑IR enabled by default. For production, consider increasing optimizer runs (e.g., 200–500) for lower runtime gas; keep runs=1 for coverage.
+
 Learn-by-reading map (each claim backed by code/tests):
 - Entry fee constraints: enforced in constructors and updates: see [`contracts/TemplFactory.sol`](contracts/TemplFactory.sol), [`contracts/TEMPL.sol`](contracts/TEMPL.sol), [`contracts/TemplGovernance.sol`](contracts/TemplGovernance.sol); tests in `test/TemplFactory.test.js`, `test/UpdateConfigDAO.test.js`.
 - Fee split totals: validated in [`contracts/TemplFactory.sol`](contracts/TemplFactory.sol); invariant tests in `test/FeeDistributionInvariant.test.js`.
