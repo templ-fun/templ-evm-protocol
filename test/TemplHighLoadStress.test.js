@@ -66,7 +66,7 @@ async function setupHighLoadTempl() {
     4_000,
     4_000,
     1_000, // 1% protocol share
-    1, // 0.01% quorum to keep voting cheap under load
+    1, // 1% quorum (percent mode) to keep voting cheap under load
     1, // 1 second execution delay
     ethers.ZeroAddress,
     false,
@@ -200,36 +200,34 @@ describe("@load Templ High-Load Stress", function () {
   describe("with many members", function () {
     let context;
 
-    // Helper to reach quorum by casting the minimum additional YES votes,
-    // or cast many votes when STRESS_VOTE_ALL/COUNT is set.
+    // Helper to reach quorum and ensure YES > NO by casting the minimum additional YES votes.
     async function ensureQuorum(templ, proposalId) {
       const quorumBps = await templ.quorumBps();
       const memberCount = await templ.memberCount();
-      let requiredYesVotes = (quorumBps * memberCount + (TOTAL_PERCENT_BPS - 1n)) / TOTAL_PERCENT_BPS;
-      if (requiredYesVotes < 1n) requiredYesVotes = 1n;
-      // proposer auto-votes + one accessible member already voted in these flows
-      let remainingVotes = requiredYesVotes - 2n;
-      const totalPool = context.randomWallets.length;
-      let votesToCast = 0;
-      if (STRESS_VOTE_ALL) {
-        votesToCast = totalPool;
-      } else if (STRESS_VOTE_COUNT > 0) {
-        votesToCast = Math.min(STRESS_VOTE_COUNT, totalPool);
-      } else {
-        votesToCast = Number(remainingVotes > 0n ? remainingVotes : 0n);
-      }
-      if (votesToCast <= 0) return;
+      let requiredYesByQuorum = (quorumBps * memberCount + (TOTAL_PERCENT_BPS - 1n)) / TOTAL_PERCENT_BPS;
+      if (requiredYesByQuorum < 1n) requiredYesByQuorum = 1n;
+
+      // Read current yes/no to ensure we also satisfy YES > NO
+      const prop = await templ.getProposal(proposalId);
+      let yes = BigInt(prop[1]);
+      const no = BigInt(prop[2]);
+      const targetYes = yes >= requiredYesByQuorum ? (no + 1n > yes ? no + 1n : yes) : (no + 1n > requiredYesByQuorum ? no + 1n : requiredYesByQuorum);
+      let remaining = targetYes > yes ? targetYes - yes : 0n;
+      if (remaining <= 0n) return;
+
       const gasTopUp = ethers.parseEther("0.05");
-      const voterWallets = context.randomWallets.slice(0, votesToCast);
+      const voterWallets = context.randomWallets.slice(0, Number(remaining));
       const voteProg = progressEvery(voterWallets.length);
       for (let i = 0; i < voterWallets.length; i += 1) {
         const wallet = voterWallets[i];
         await context.priest.sendTransaction({ to: wallet.address, value: gasTopUp });
         await templ.connect(wallet).vote(proposalId, true);
+        yes += 1n;
         if ((i + 1) % voteProg.step === 0) {
           const pct = Math.ceil(((i + 1) * 100) / Math.max(1, voterWallets.length));
           console.log(`[load] votes cast: ${i + 1}/${voterWallets.length} (${pct}%)`);
         }
+        if (yes >= targetYes) break;
       }
     }
 
