@@ -446,7 +446,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             ).to.emit(templ, "ProposalCreated");
         });
 
-        // withdrawAll proposal removed
+        
 
         it("Should enforce minimum voting period", async function () {
             await expect(templ.connect(user1).createProposalSetJoinPaused(
@@ -791,7 +791,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             )).to.be.revertedWithCustomError(templ, "NotDAO");
         });
 
-        // withdrawAll DAO call removed
+        
 
 
         it("Should only allow treasury withdrawal through passed proposals", async function () {
@@ -1175,7 +1175,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             await joinMembers(templ, token, [user2]);
         });
 
-        // withdrawAll proposal path removed
+        
 
         
     });

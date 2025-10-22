@@ -75,7 +75,7 @@ describe("Treasury withdrawals for arbitrary assets", function () {
     expect(after - before).to.equal(DONATED_AMOUNT);
   });
 
-  // withdrawAll removed; partial withdraw tests cover functionality
+  
 
   it("should withdraw donated accessToken beyond tracked treasuryBalance while preserving member pool", async function () {
     // At this point, two members have joined. The contract holds:
@@ -139,5 +139,5 @@ describe("Treasury withdrawals for arbitrary assets", function () {
     expect(info.burned).to.equal(await templ.totalBurned());
   });
 
-  // withdrawAll accessToken removed; covered by targeted withdraw + disband scenarios
+  
 });

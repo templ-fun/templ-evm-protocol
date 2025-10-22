@@ -271,7 +271,7 @@ describe("TEMPL - Proposal Pagination", function () {
     });
   });
 
-  describe("Backwards compatibility", function () {
+  describe("Pagination behavior", function () {
     it("getActiveProposals should still work", async function () {
       // Create a few proposals
       const calldata = encodeSetJoinPausedDAO(false);

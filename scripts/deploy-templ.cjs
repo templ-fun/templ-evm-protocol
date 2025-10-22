@@ -36,7 +36,7 @@ function parseBoolean(value) {
 }
 
 function resolvePercentToBps({ label, percentSource, bpsSource, defaultBps = 0 }) {
-  // Percent inputs are deprecated; only accept basis points
+  
   const bpsCandidate = bpsSource ?? '';
   if (bpsCandidate !== undefined && bpsCandidate !== null && String(bpsCandidate).trim() !== '') {
     const asNumber = parseFiniteNumber(bpsCandidate, `${label} (bps)`);
@@ -145,7 +145,7 @@ function resolveProtocolBpsFromEnv() {
 }
 
 function readSplitPercent(label, percentEnv, bpsEnv, defaultBps) {
-  // Percent inputs are deprecated; only accept BPS via bpsEnv
+  
   const trimmedBps = bpsEnv?.trim?.();
   if (trimmedBps && trimmedBps !== '') {
     const parsedBps = Number(trimmedBps);

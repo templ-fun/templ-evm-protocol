@@ -397,7 +397,7 @@ describe("Disband Treasury", function () {
     );
   });
 
-  it("prevents legacy claims after cleanup when external rewards are re-registered", async function () {
+  it("prevents stale claims after cleanup when external rewards are re-registered", async function () {
     const TokenFactory = await ethers.getContractFactory("TestToken");
     const lootToken = await TokenFactory.deploy("Loot", "LOOT", 18);
     const initialDonation = ethers.parseUnits("8", 18);

@@ -844,7 +844,7 @@ describe("TemplFactory", function () {
         expect(await templ.burnAddress()).to.equal("0x000000000000000000000000000000000000dEaD");
     });
 
-    // SSTORE2 init code chunking removed; deployment proceeds via direct new TEMPL(...)
+    
 
     it("restricts templ creation to the deployer until permissionless mode is enabled", async function () {
         const [deployer, outsider, protocolRecipient] = await ethers.getSigners();

@@ -12,7 +12,7 @@ function encodeWithdrawTreasuryDAO(token, recipient, amount, reason) {
   return iface.encodeFunctionData("withdrawTreasuryDAO", [token, recipient, amount, reason]);
 }
 
-// withdrawAll removed
+//
 
 function encodeUpdateConfigDAO(token, entryFee, updateSplit, burnBps, treasuryBps, memberPoolBps) {
   const iface = new ethers.Interface([
