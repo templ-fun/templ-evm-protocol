@@ -28,3 +28,24 @@ jobs:
       - name: Run tests (excluding high-load)
         run: npm test
 
+  slither:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js (for remappings)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: 'npm'
+
+      - name: Install dependencies (for OZ remap)
+        run: npm ci
+
+      - name: Run Slither
+        uses: crytic/slither-action@v0.3.4
+        with:
+          target: .
+          slither-args: "--config-file slither.config.json"
+          solc-version: '0.8.23'
