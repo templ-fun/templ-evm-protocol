@@ -3,6 +3,8 @@ module.exports = {
   // Be explicit so mocks never affect protocol coverage
   skipFiles: [
     // Paths are relative to the contracts/ directory used by solidity-coverage
-    'mocks/**'
+    'mocks/**',
+    // Exclude Echidna harnesses from coverage metrics
+    'echidna/**'
   ]
 };

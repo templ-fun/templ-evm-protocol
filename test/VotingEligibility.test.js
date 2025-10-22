@@ -235,7 +235,7 @@ describe("Voting Eligibility Based on Join Time", function () {
                 .to.be.revertedWithCustomError(templ, "ProposalNotPassed");
         });
 
-        it("BUG: Members who join after proposal creation in the same block can still vote", async function () {
+        it("Members who join after proposal creation in the same block cannot vote", async function () {
             this.timeout(120000);
 
             // Member 1 joins so they can open a proposal
@@ -347,6 +347,27 @@ describe("Voting Eligibility Based on Join Time", function () {
             
             await expect(templ.connect(member2).vote(0, true))
                 .to.emit(templ, "VoteCast");
+        });
+
+        it("Same block: join after proposal creation cannot vote until quorum", async function () {
+            // Set up: member1 can propose; lateMember will try to join in same block as proposal creation
+            await token.connect(member1).approve(await templ.getAddress(), ENTRY_FEE);
+            await templ.connect(member1).join();
+
+            await token.connect(lateMember).approve(await templ.getAddress(), ENTRY_FEE);
+
+            // Put both tx in a single block with ordering: create then join
+            await ethers.provider.send("evm_setAutomine", [false]);
+            const create = templ.connect(member1).createProposalSetJoinPaused(true, 7 * 24 * 60 * 60);
+            const join = templ.connect(lateMember).join();
+            await create;
+            await join;
+            await ethers.provider.send("evm_mine");
+            await ethers.provider.send("evm_setAutomine", [true]);
+
+            // Late member joined after creation in the same block: cannot vote pre‑quorum
+            await expect(templ.connect(lateMember).vote(0, true))
+                .to.be.revertedWithCustomError(templ, "JoinedAfterProposal");
         });
     });
 });
