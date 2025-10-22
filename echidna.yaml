@@ -1,0 +1,14 @@
+testMode: property
+# Keep CI-friendly bounds; bump locally for deeper fuzzing
+testLimit: 2000
+seqLen: 50
+shrinkLimit: 1000
+workers: 1
+
+cryticArgs:
+  # remapping for OpenZeppelin imports used in contracts
+  - --solc-remaps
+  - '@openzeppelin/=node_modules/@openzeppelin/'
+  # enable via-IR and optimizer to avoid stack-too-deep on complex constructors
+  - --solc-args
+  - '--via-ir --optimize --optimize-runs 200'

@@ -14,6 +14,7 @@
 - Test: `npm test` (Hardhat). Coverage: `npx hardhat coverage`.
 - Fuzzing (randomized): `npm run test:fuzz` (see below)
 - Static analysis: `npm run slither` (requires Slither in PATH)
+- Property fuzzing: Echidna via Docker (optional; see below)
 
 ### High‑Load Stress Test
 - Run only the heavy suite: `npm run test:load`
@@ -30,7 +31,7 @@ Notes:
 - 1M joiners implies ~1M transactions and will take a long time; progress logs are printed periodically. Ensure ample CPU/RAM, and consider running on a local Hardhat node.
 
 ### Fuzzing
-- Run the fuzz suites: `npm run test:fuzz`
+- JS fuzz (quick): `npm run test:fuzz`
 - Control iterations and seed:
   - Iterations: `TEMPL_FUZZ_ITERS=500 npm run test:fuzz`
   - Seed: `TEMPL_FUZZ_SEED=123 npm run test:fuzz`
@@ -38,6 +39,19 @@ Notes:
   - Randomized scenario runner exercising joins, proposal creation, voting, and execution with invariants on fee‑split sums and entry‑fee bounds (`test/fuzz/RandomScenarioFuzz.test.js`).
   - Property test that fuzzes fee‑split updates ensuring burn/treasury/member + protocol always sum to 10_000 bps (`test/fuzz/ConfigBpsFuzz.test.js`).
 - Default `npm test` excludes `@fuzz` and `@load` suites to keep CI fast.
+
+### Echidna (Property-Based)
+- Requirements: Docker (or native Echidna install). Node deps are used only for OZ remappings.
+- Run locally with Docker:
+  - `docker run --rm -v "$PWD":/src -w /src trailofbits/echidna \
+     echidna-test contracts/echidna/EchidnaTemplHarness.sol --contract EchidnaTemplHarness --config ./echidna.yaml`
+- What it checks by default:
+  - Fee split sum invariant: burn + treasury + member + protocol = 10_000 bps
+  - Entry fee bounded by uint128 saturation limit
+  - Member count never exceeds cap
+- Targets exposed to fuzzer:
+  - `fuzzJoinFor(address)` and `fuzzJoinForWithReferral(address,address)` — mint/approve/pay to join on behalf of arbitrary recipients
+- CI: GitHub Actions job `echidna` runs a smoke fuzz with conservative limits; increase `testLimit` in `echidna.yaml` for deeper runs.
 
 Local deploy (scripts mirror production flow):
 

@@ -59,3 +59,28 @@ jobs:
       - name: Run Slither (non-blocking)
         run: slither . --config-file slither.config.json
         continue-on-error: true
+
+  echidna:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: 'npm'
+
+      - name: Install dependencies (for remaps)
+        run: npm ci
+
+      - name: Run Echidna (Docker)
+        run: |
+          docker run --rm \
+            -v "$PWD":/src \
+            -w /src \
+            trailofbits/echidna \
+            echidna-test contracts/echidna/EchidnaTemplHarness.sol \
+              --contract EchidnaTemplHarness \
+              --config ./echidna.yaml
