@@ -810,68 +810,6 @@ contract TemplGovernanceModule is TemplBase {
         return (proposalIds, hasMore);
     }
 
-    /// @notice Returns the action and ABI-encoded payload for a proposal.
-    /// @dev The payload encoding depends on the action:
-    ///  - SetJoinPaused: (bool paused)
-    ///  - UpdateConfig: (address token, uint256 newEntryFee, bool updateFeeSplit, uint256 newBurnBps, uint256 newTreasuryBps, uint256 newMemberPoolBps)
-    ///  - SetMaxMembers: (uint256 newMaxMembers)
-    ///  - SetMetadata: (string name, string description, string logoLink)
-    ///  - SetProposalFee: (uint256 newFeeBps)
-    ///  - SetReferralShare: (uint256 newReferralShareBps)
-    ///  - SetEntryFeeCurve: (CurveConfig curve, uint256 baseEntryFee)
-    ///  - CallExternal: (address target, uint256 value, bytes data)
-    ///  - WithdrawTreasury: (address token, address recipient, uint256 amount, string reason)
-    ///  - DisbandTreasury: (address token)
-    ///  - CleanupExternalRewardToken: (address token)
-    ///  - ChangePriest: (address newPriest)
-    ///  - SetDictatorship: (bool enable)
-    ///  - SetQuorumBps: (uint256 newQuorumBps)
-    ///  - SetExecutionDelay: (uint256 newDelaySeconds)
-    ///  - SetBurnAddress: (address newBurn)
-    /// @param _proposalId Proposal id to inspect.
-    /// @return action The proposal action enum value.
-    /// @return payload ABI-encoded payload corresponding to `action`.
-    function getProposalActionData(uint256 _proposalId) external view returns (Action action, bytes memory payload) {
-        if (_proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
-        Proposal storage p = proposals[_proposalId];
-        action = p.action;
-        if (action == Action.SetJoinPaused) {
-            payload = abi.encode(p.joinPaused);
-        } else if (action == Action.UpdateConfig) {
-            payload = abi.encode(p.token, p.newEntryFee, p.updateFeeSplit, p.newBurnBps, p.newTreasuryBps, p.newMemberPoolBps);
-        } else if (action == Action.SetMaxMembers) {
-            payload = abi.encode(p.newMaxMembers);
-        } else if (action == Action.SetMetadata) {
-            payload = abi.encode(p.newTemplName, p.newTemplDescription, p.newLogoLink);
-        } else if (action == Action.SetProposalFee) {
-            payload = abi.encode(p.newProposalCreationFeeBps);
-        } else if (action == Action.SetReferralShare) {
-            payload = abi.encode(p.newReferralShareBps);
-        } else if (action == Action.SetEntryFeeCurve) {
-            CurveConfig memory curve = p.curveConfig;
-            payload = abi.encode(curve, p.curveBaseEntryFee);
-        } else if (action == Action.CallExternal) {
-            payload = abi.encode(p.externalCallTarget, p.externalCallValue, p.externalCallData);
-        } else if (action == Action.WithdrawTreasury) {
-            payload = abi.encode(p.token, p.recipient, p.amount, p.reason);
-        } else if (action == Action.DisbandTreasury) {
-            payload = abi.encode(p.token);
-        } else if (action == Action.CleanupExternalRewardToken) {
-            payload = abi.encode(p.token);
-        } else if (action == Action.ChangePriest) {
-            payload = abi.encode(p.recipient);
-        } else if (action == Action.SetDictatorship) {
-            payload = abi.encode(p.setDictatorship);
-        } else if (action == Action.SetQuorumBps) {
-            payload = abi.encode(p.newQuorumBps);
-        } else if (action == Action.SetExecutionDelay) {
-            payload = abi.encode(p.newExecutionDelay);
-        } else if (action == Action.SetBurnAddress) {
-            payload = abi.encode(p.newBurnAddress);
-        } else {
-            payload = hex"";
-        }
-    }
 
     /// @dev Creates the base proposal structure, including quorum pre-checks and proposer tracking.
     function _createBaseProposal(
