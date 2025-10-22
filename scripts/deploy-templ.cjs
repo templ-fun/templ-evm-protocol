@@ -3,9 +3,9 @@ const fs = require("fs");
 const path = require("path");
 require("dotenv").config();
 
-const DEFAULT_BURN_BP = 3_000;
-const DEFAULT_TREASURY_BP = 3_000;
-const DEFAULT_MEMBER_POOL_BP = 3_000;
+const DEFAULT_BURN_BPS = 3_000;
+const DEFAULT_TREASURY_BPS = 3_000;
+const DEFAULT_MEMBER_POOL_BPS = 3_000;
 const USE_DEFAULT_SENTINEL = -1;
 const CURVE_STYLE_INDEX = {
   static: 0,
@@ -53,8 +53,8 @@ function resolvePercentToBps({ label, percentSource, bpsSource, defaultBps = 0 }
 }
 
 function resolveCurveConfigFromEnv() {
-  const styleInput = (process.env.CURVE_PRIMARY_STYLE || process.env.CURVE_STYLE || '').trim().toLowerCase();
-  const rateInputRaw = process.env.CURVE_PRIMARY_RATE_BPS ?? process.env.CURVE_RATE_BPS;
+  const styleInput = (process.env.CURVE_PRIMARY_STYLE || '').trim().toLowerCase();
+  const rateInputRaw = process.env.CURVE_PRIMARY_RATE_BPS;
   const providedFlag = parseBoolean(process.env.CURVE_PROVIDED);
 
   const hasStyleOverride = styleInput !== '';
@@ -122,14 +122,14 @@ function resolveCurveConfigFromEnv() {
 }
 
 function resolveProtocolBpsFromEnv() {
-  const bpsInput = (process.env.PROTOCOL_BP ?? process.env.PROTOCOL_BPS ?? '').trim();
+  const bpsInput = (process.env.PROTOCOL_BPS || '').trim();
   if (bpsInput) {
     const parsedBps = Number(bpsInput);
     if (!Number.isFinite(parsedBps)) {
-      throw new Error('PROTOCOL_BP must be a valid number');
+      throw new Error('PROTOCOL_BPS must be a valid number');
     }
     if (parsedBps < 0 || parsedBps > 10_000) {
-      throw new Error('PROTOCOL_BP must be between 0 and 10_000');
+      throw new Error('PROTOCOL_BPS must be between 0 and 10_000');
     }
     const roundedBps = Math.round(parsedBps);
     return {
@@ -248,21 +248,21 @@ async function main() {
   let membershipModuleAddress = (process.env.MEMBERSHIP_MODULE_ADDRESS || '').trim();
   let treasuryModuleAddress = (process.env.TREASURY_MODULE_ADDRESS || '').trim();
   let governanceModuleAddress = (process.env.GOVERNANCE_MODULE_ADDRESS || '').trim();
-  const burnSplit = readSplitPercent('BURN_BP', undefined, (process.env.BURN_BPS ?? process.env.BURN_BP), DEFAULT_BURN_BP);
-  const treasurySplit = readSplitPercent('TREASURY_BP', undefined, (process.env.TREASURY_BPS ?? process.env.TREASURY_BP), DEFAULT_TREASURY_BP);
-  const memberPoolSplit = readSplitPercent('MEMBER_POOL_BP', undefined, (process.env.MEMBER_POOL_BPS ?? process.env.MEMBER_POOL_BP), DEFAULT_MEMBER_POOL_BP);
+  const burnSplit = readSplitPercent('BURN_BPS', undefined, process.env.BURN_BPS, DEFAULT_BURN_BPS);
+  const treasurySplit = readSplitPercent('TREASURY_BPS', undefined, process.env.TREASURY_BPS, DEFAULT_TREASURY_BPS);
+  const memberPoolSplit = readSplitPercent('MEMBER_POOL_BPS', undefined, process.env.MEMBER_POOL_BPS, DEFAULT_MEMBER_POOL_BPS);
   const protocolPercentEnv = resolveProtocolBpsFromEnv();
   // Only bps inputs are supported
   let protocolPercentBps = protocolPercentEnv.bps;
   let protocolPercentSource = protocolPercentEnv.source;
-  const QUORUM_BP_RAW = process.env.QUORUM_BPS ?? process.env.QUORUM_BP;
-  const QUORUM_BP = QUORUM_BP_RAW !== undefined ? Number(QUORUM_BP_RAW) : undefined;
+  const QUORUM_BPS_RAW = process.env.QUORUM_BPS;
+  const QUORUM_BPS = QUORUM_BPS_RAW !== undefined ? Number(QUORUM_BPS_RAW) : undefined;
   const EXECUTION_DELAY_SECONDS = process.env.EXECUTION_DELAY_SECONDS !== undefined ? Number(process.env.EXECUTION_DELAY_SECONDS) : undefined;
   const BURN_ADDRESS = (process.env.BURN_ADDRESS || '').trim();
   const MAX_MEMBERS = process.env.MAX_MEMBERS !== undefined ? Number(process.env.MAX_MEMBERS) : 0;
   const NAME = (process.env.TEMPL_NAME ?? 'Templ').trim() || 'Templ';
   const DESCRIPTION = (process.env.TEMPL_DESCRIPTION ?? '').trim();
-  const LOGO_LINK = (process.env.TEMPL_LOGO_LINK ?? process.env.TEMPL_LOGO_URL ?? process.env.LOGO_LINK ?? '').trim();
+  const LOGO_LINK = (process.env.TEMPL_LOGO_LINK || '').trim();
   const PROPOSAL_FEE_BPS = resolvePercentToBps({
     label: 'PROPOSAL_FEE',
     percentSource: undefined,
@@ -272,7 +272,7 @@ async function main() {
   const REFERRAL_SHARE_BPS = resolvePercentToBps({
     label: 'REFERRAL_SHARE',
     percentSource: undefined,
-    bpsSource: process.env.REFERRAL_SHARE_BPS ?? process.env.REFERRAL_BPS,
+    bpsSource: process.env.REFERRAL_SHARE_BPS,
     defaultBps: 0
   });
   const BACKEND_URL = (process.env.BACKEND_URL || process.env.TEMPL_BACKEND_URL || '').trim();
@@ -298,7 +298,7 @@ async function main() {
       }
       if (protocolPercentSource !== 'factory' && protocolPercentBps !== onChainPercentBps) {
         console.warn(
-          `[warn] Ignoring PROTOCOL_BP=${protocolPercentBps} from environment; factory ${FACTORY_ADDRESS_ENV} enforces ${onChainPercentBps}.`
+          `[warn] Ignoring PROTOCOL_BPS=${protocolPercentBps} from environment; factory ${FACTORY_ADDRESS_ENV} enforces ${onChainPercentBps}.`
         );
       }
       protocolPercentBps = onChainPercentBps;
@@ -324,8 +324,8 @@ async function main() {
   if (totalSplitBps !== 10_000) {
     throw new Error(`Fee split must sum to 10,000 bps; received ${totalSplitBps}`);
   }
-  if (QUORUM_BP !== undefined && (!Number.isFinite(QUORUM_BP) || QUORUM_BP < 0 || QUORUM_BP > 10_000)) {
-    throw new Error('QUORUM_BP must be between 0 and 10,000');
+  if (QUORUM_BPS !== undefined && (!Number.isFinite(QUORUM_BPS) || QUORUM_BPS < 0 || QUORUM_BPS > 10_000)) {
+    throw new Error('QUORUM_BPS must be between 0 and 10,000');
   }
   if (EXECUTION_DELAY_SECONDS !== undefined && (!Number.isFinite(EXECUTION_DELAY_SECONDS) || EXECUTION_DELAY_SECONDS <= 0)) {
     throw new Error('EXECUTION_DELAY_SECONDS must be a positive number of seconds');
@@ -336,7 +336,7 @@ async function main() {
   const DEFAULT_BURN_ADDRESS = '0x000000000000000000000000000000000000dEaD';
   const effectiveBurnAddress = BURN_ADDRESS || DEFAULT_BURN_ADDRESS;
 
-  const quorumPercentBps = QUORUM_BP !== undefined ? Math.round(QUORUM_BP) : 0;
+  const quorumPercentBps = QUORUM_BPS !== undefined ? Math.round(QUORUM_BPS) : 0;
 
   const entryFee = BigInt(ENTRY_FEE);
   if (entryFee < 10n) {
@@ -347,7 +347,10 @@ async function main() {
   }
 
   console.log("========================================");
-  console.log("Deploying TemplFactory + TEMPL");
+  const headerAction = FACTORY_ADDRESS_ENV
+    ? "Creating TEMPL via existing factory"
+    : "Deploying TemplFactory and creating TEMPL";
+  console.log(headerAction);
   console.log("========================================");
   console.log("Priest Address:", PRIEST_ADDRESS);
   console.log("Protocol Fee Recipient:", PROTOCOL_FEE_RECIPIENT);
@@ -647,7 +650,7 @@ async function main() {
   console.log("\nContract Address:", contractAddress);
   console.log("\n🗳️ DAO Governance:");
   console.log("- Treasury controlled by member voting");
-  console.log("- Proposals require >50% yes votes to pass");
+  console.log("- Proposals pass when YES > NO and quorum/time checks are met");
   console.log("- Voting period: 7-30 days");
   console.log("- One member = one vote (proposer auto‑YES; votes changeable until deadline)");
   console.log("\n🔒 Security Features:");

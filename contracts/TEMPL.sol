@@ -8,8 +8,8 @@ import {TemplGovernanceModule} from "./TemplGovernance.sol";
 import {TemplErrors} from "./TemplErrors.sol";
 import {CurveConfig} from "./TemplCurve.sol";
 
-/// @title templ.fun core templ implementation
-/// @notice Wires governance, treasury, and membership modules for a single templ instance.
+/// @title Templ Core
+/// @notice Wires governance, treasury, and membership modules for a single Templ instance.
 contract TEMPL is TemplBase {
     address public immutable membershipModule;
     address public immutable treasuryModule;

@@ -6,7 +6,7 @@ import {TemplBase} from "./TemplBase.sol";
 import {TemplErrors} from "./TemplErrors.sol";
 import {CurveConfig} from "./TemplCurve.sol";
 
-/// @title templ treasury module
+/// @title Templ Treasury Module
 /// @notice Adds treasury controls, fee configuration, and external reward management.
 contract TemplTreasuryModule is TemplBase {
 

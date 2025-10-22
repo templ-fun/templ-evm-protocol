@@ -8,7 +8,7 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {TemplErrors} from "./TemplErrors.sol";
 import {CurveConfig, CurveSegment, CurveStyle} from "./TemplCurve.sol";
 
-/// @title Base templ storage and shared helpers
+/// @title Base Templ Storage and Helpers
 /// @notice Hosts shared state, events, and internal helpers used by membership, treasury, and governance modules.
 abstract contract TemplBase is ReentrancyGuard {
     using TemplErrors for *;

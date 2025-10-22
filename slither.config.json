@@ -1,7 +1,7 @@
 {
   "fail_on": "medium",
   "solc_remaps": [
-    "@openzeppelin=node_modules/@openzeppelin"
+    "@openzeppelin/=node_modules/@openzeppelin/"
   ],
   "detectors_to_exclude": [
     "arbitrary-send-eth"

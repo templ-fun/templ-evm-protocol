@@ -52,16 +52,16 @@ async function main() {
     throw new Error("PROTOCOL_FEE_RECIPIENT must be a valid address");
   }
 
-  const bpsInput = (process.env.PROTOCOL_BP ?? "").trim();
+  const bpsInput = (process.env.PROTOCOL_BPS || "").trim();
   let protocolPercentSource = "default";
   let protocolPercentBps = 1_000;
   if (bpsInput) {
     const parsedBps = Number(bpsInput);
     if (!Number.isFinite(parsedBps)) {
-      throw new Error("PROTOCOL_BP must be a valid number");
+      throw new Error("PROTOCOL_BPS must be a valid number");
     }
     if (parsedBps < 0 || parsedBps > 10_000) {
-      throw new Error("PROTOCOL_BP must be between 0 and 10_000");
+      throw new Error("PROTOCOL_BPS must be between 0 and 10_000");
     }
     protocolPercentBps = Math.round(parsedBps);
     protocolPercentSource = "bps";

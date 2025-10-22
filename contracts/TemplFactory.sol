@@ -6,8 +6,8 @@ import {TemplErrors} from "./TemplErrors.sol";
 import {CurveConfig, CurveSegment, CurveStyle} from "./TemplCurve.sol";
 import {SSTORE2} from "./libraries/SSTORE2.sol";
 
-/// @title Factory for deploying templ instances
-/// @notice Deploys templ contracts with shared protocol configuration and optional custom splits.
+/// @title Templ Factory
+/// @notice Deploys Templ contracts with shared protocol configuration and optional custom splits.
 contract TemplFactory {
     uint256 internal constant BPS_DENOMINATOR = 10_000;
     // NOTE: The default burn/treasury/member shares deliberately assume a

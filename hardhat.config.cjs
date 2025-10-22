@@ -73,8 +73,8 @@ const config = {
   },
   mocha: {
     timeout: usingCoverage ? 180_000 : 60_000,
-    // Exclude heavy @load suites from coverage runs
-    grep: usingCoverage ? '@load' : undefined,
+    // Exclude heavy @load and randomized @fuzz suites from coverage runs
+    grep: usingCoverage ? '@(load|fuzz)' : undefined,
     invert: usingCoverage ? true : undefined
   }
 };
