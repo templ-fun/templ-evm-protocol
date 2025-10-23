@@ -5,6 +5,7 @@
     "no-inline-assembly": "off",
     "max-states-count": "off",
     "no-complex-fallback": "off",
-    "func-visibility": ["error", { "ignoreConstructors": true }]
+    "func-visibility": ["error", { "ignoreConstructors": true }],
+    "function-max-lines": "off"
   }
 }

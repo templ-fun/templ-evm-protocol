@@ -12,8 +12,11 @@ import { CurveConfig } from "./TemplCurve.sol";
 /// @notice Wires governance, treasury, and membership modules for a single Templ instance.
 /// @author Templ
 contract TEMPL is TemplBase {
+    /// @notice Module contract handling membership-related functions via delegatecall.
     address public immutable MEMBERSHIP_MODULE;
+    /// @notice Module contract handling treasury configuration and DAO-only actions via delegatecall.
     address public immutable TREASURY_MODULE;
+    /// @notice Module contract handling proposals, voting, and execution via delegatecall.
     address public immutable GOVERNANCE_MODULE;
 
     mapping(bytes4 => address) private _moduleForSelector;
@@ -36,10 +39,10 @@ contract TEMPL is TemplBase {
     /// @param _logoLink Canonical logo URL for the templ.
     /// @param _proposalCreationFeeBps Proposal creation fee expressed in basis points of the current entry fee.
     /// @param _referralShareBps Referral share expressed in basis points of the member pool allocation.
-    /// @param _curve Pricing curve configuration applied to future joins.
     /// @param _membershipModule Module contract handling membership functions (delegatecalled).
     /// @param _treasuryModule Module contract handling treasury/governance config (delegatecalled).
     /// @param _governanceModule Module contract handling proposals/voting/execution (delegatecalled).
+    /// @param _curve Pricing curve configuration applied to future joins.
     constructor(
         address _priest,
         address _protocolFeeRecipient,
@@ -204,12 +207,16 @@ contract TEMPL is TemplBase {
         governance[24] = TemplGovernanceModule.createProposalSetBurnAddress.selector;
     }
 
+    /// @notice Fallback routes unknown selectors to the registered module via delegatecall.
     fallback() external payable {
         address module = _moduleForSelector[msg.sig];
         if (module == address(0)) revert TemplErrors.InvalidCallData();
         _delegateTo(module);
     }
 
+    /// @notice Delegate the current call to `module`, returning or bubbling up revert data.
+    /// @dev Performs the delegatecall to a module and bubbles up revert data.
+    /// @param module Target module address to delegate the call to.
     function _delegateTo(address module) internal {
         assembly ("memory-safe") {
             calldatacopy(0, 0, calldatasize())
@@ -225,6 +232,8 @@ contract TEMPL is TemplBase {
         }
     }
 
+    /// @notice Registers membership selectors to be handled by `module`.
+    /// @param module Address of the membership module.
     function _registerMembershipSelectors(address module) internal {
         bytes4[] memory selectors = new bytes4[](18);
         selectors[0] = TemplMembershipModule.join.selector;
@@ -248,6 +257,8 @@ contract TEMPL is TemplBase {
         _registerModule(module, selectors);
     }
 
+    /// @notice Registers treasury selectors to be handled by `module`.
+    /// @param module Address of the treasury module.
     function _registerTreasurySelectors(address module) internal {
         bytes4[] memory selectors = new bytes4[](16);
         selectors[0] = TemplTreasuryModule.withdrawTreasuryDAO.selector;
@@ -269,6 +280,8 @@ contract TEMPL is TemplBase {
         _registerModule(module, selectors);
     }
 
+    /// @notice Registers governance selectors to be handled by `module`.
+    /// @param module Address of the governance module.
     function _registerGovernanceSelectors(address module) internal {
         bytes4[] memory selectors = new bytes4[](25);
         selectors[0] = TemplGovernanceModule.createProposalSetJoinPaused.selector;
@@ -305,54 +318,60 @@ contract TEMPL is TemplBase {
     /// @return action The proposal action enum value.
     /// @return payload ABI-encoded payload corresponding to `action`.
     function getProposalActionData(uint256 _proposalId) external view returns (Action action, bytes memory payload) {
-        if (_proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
-        Proposal storage p = proposals[_proposalId];
-        action = p.action;
-        if (action == Action.SetJoinPaused) {
-            payload = abi.encode(p.joinPaused);
-        } else if (action == Action.UpdateConfig) {
-            payload = abi.encode(
-                p.token,
-                p.newEntryFee,
-                p.updateFeeSplit,
-                p.newBurnBps,
-                p.newTreasuryBps,
-                p.newMemberPoolBps
-            );
-        } else if (action == Action.SetMaxMembers) {
-            payload = abi.encode(p.newMaxMembers);
-        } else if (action == Action.SetMetadata) {
-            payload = abi.encode(p.newTemplName, p.newTemplDescription, p.newLogoLink);
-        } else if (action == Action.SetProposalFee) {
-            payload = abi.encode(p.newProposalCreationFeeBps);
-        } else if (action == Action.SetReferralShare) {
-            payload = abi.encode(p.newReferralShareBps);
-        } else if (action == Action.SetEntryFeeCurve) {
-            CurveConfig memory curve = p.curveConfig;
-            payload = abi.encode(curve, p.curveBaseEntryFee);
-        } else if (action == Action.CallExternal) {
-            payload = abi.encode(p.externalCallTarget, p.externalCallValue, p.externalCallData);
-        } else if (action == Action.WithdrawTreasury) {
-            payload = abi.encode(p.token, p.recipient, p.amount, p.reason);
-        } else if (action == Action.DisbandTreasury) {
-            payload = abi.encode(p.token);
-        } else if (action == Action.CleanupExternalRewardToken) {
-            payload = abi.encode(p.token);
-        } else if (action == Action.ChangePriest) {
-            payload = abi.encode(p.recipient);
-        } else if (action == Action.SetDictatorship) {
-            payload = abi.encode(p.setDictatorship);
-        } else if (action == Action.SetQuorumBps) {
-            payload = abi.encode(p.newQuorumBps);
-        } else if (action == Action.SetExecutionDelay) {
-            payload = abi.encode(p.newExecutionDelay);
-        } else if (action == Action.SetBurnAddress) {
-            payload = abi.encode(p.newBurnAddress);
-        } else {
-            payload = hex"";
+        if (_proposalId < proposalCount) {
+            Proposal storage p = proposals[_proposalId];
+            action = p.action;
+            if (action == Action.SetJoinPaused) {
+                payload = abi.encode(p.joinPaused);
+            } else if (action == Action.UpdateConfig) {
+                payload = abi.encode(
+                    p.token,
+                    p.newEntryFee,
+                    p.updateFeeSplit,
+                    p.newBurnBps,
+                    p.newTreasuryBps,
+                    p.newMemberPoolBps
+                );
+            } else if (action == Action.SetMaxMembers) {
+                payload = abi.encode(p.newMaxMembers);
+            } else if (action == Action.SetMetadata) {
+                payload = abi.encode(p.newTemplName, p.newTemplDescription, p.newLogoLink);
+            } else if (action == Action.SetProposalFee) {
+                payload = abi.encode(p.newProposalCreationFeeBps);
+            } else if (action == Action.SetReferralShare) {
+                payload = abi.encode(p.newReferralShareBps);
+            } else if (action == Action.SetEntryFeeCurve) {
+                CurveConfig memory curve = p.curveConfig;
+                payload = abi.encode(curve, p.curveBaseEntryFee);
+            } else if (action == Action.CallExternal) {
+                payload = abi.encode(p.externalCallTarget, p.externalCallValue, p.externalCallData);
+            } else if (action == Action.WithdrawTreasury) {
+                payload = abi.encode(p.token, p.recipient, p.amount, p.reason);
+            } else if (action == Action.DisbandTreasury) {
+                payload = abi.encode(p.token);
+            } else if (action == Action.CleanupExternalRewardToken) {
+                payload = abi.encode(p.token);
+            } else if (action == Action.ChangePriest) {
+                payload = abi.encode(p.recipient);
+            } else if (action == Action.SetDictatorship) {
+                payload = abi.encode(p.setDictatorship);
+            } else if (action == Action.SetQuorumBps) {
+                payload = abi.encode(p.newQuorumBps);
+            } else if (action == Action.SetExecutionDelay) {
+                payload = abi.encode(p.newExecutionDelay);
+            } else if (action == Action.SetBurnAddress) {
+                payload = abi.encode(p.newBurnAddress);
+            } else {
+                payload = hex"";
+            }
+            return (action, payload);
         }
+        revert TemplErrors.InvalidProposal();
     }
 
+    /// @notice Internal helper that maps function selectors to a module address.
+    /// @param module Destination module to handle the selectors.
+    /// @param selectors List of selectors to route to `module`.
     function _registerModule(address module, bytes4[] memory selectors) internal {
         uint256 len = selectors.length;
         for (uint256 i = 0; i < len; ++i) {

@@ -9,8 +9,10 @@ import { TemplErrors } from "./TemplErrors.sol";
 /// @notice Handles joins, reward accounting, and member-facing views.
 /// @author Templ
 contract TemplMembershipModule is TemplBase {
+    /// @notice Immutable self-address used to enforce delegatecall entry.
     address public immutable SELF;
 
+    /// @notice Constructs the module and locks the `SELF` reference.
     constructor() {
         SELF = address(this);
     }
@@ -24,7 +26,7 @@ contract TemplMembershipModule is TemplBase {
     /// @param referral The referrer wallet that receives the payout.
     /// @param newMember The wallet that just joined.
     /// @param amount Amount of access token paid to `referral`.
-    event ReferralRewardPaid(address indexed referral, address indexed newMember, uint256 amount);
+    event ReferralRewardPaid(address indexed referral, address indexed newMember, uint256 indexed amount);
 
     /// @notice Join the templ by paying the configured entry fee on behalf of the caller.
     function join() external whenNotPaused notSelf nonReentrant onlyDelegatecall {
@@ -53,7 +55,10 @@ contract TemplMembershipModule is TemplBase {
         _join(msg.sender, recipient, referral);
     }
 
-    /// @dev Shared join workflow that handles accounting updates for new members.
+    /// @notice Shared join workflow that handles accounting updates for new members.
+    /// @param payer Wallet paying the entry fee.
+    /// @param recipient Wallet receiving membership.
+    /// @param referral Optional referral credited from the member pool.
     function _join(address payer, address recipient, address referral) internal {
         if (recipient == address(0)) revert TemplErrors.InvalidRecipient();
 
@@ -62,8 +67,10 @@ contract TemplMembershipModule is TemplBase {
 
         uint256 currentMemberCount = memberCount;
 
-        if (maxMembers > 0 && currentMemberCount >= maxMembers) {
-            revert TemplErrors.MemberLimitReached();
+        if (maxMembers > 0) {
+            if (currentMemberCount + 1 > maxMembers) {
+                revert TemplErrors.MemberLimitReached();
+            }
         }
 
         // External reward remainders are rolled forward at disband time; no O(n) join-time flush
@@ -348,15 +355,15 @@ contract TemplMembershipModule is TemplBase {
         uint256 limit
     ) external view returns (address[] memory tokens, bool hasMore) {
         uint256 len = externalRewardTokens.length;
-        if (offset >= len) {
-            return (new address[](0), false);
+        if (offset < len) {
+            uint256 remaining = len - offset;
+            uint256 take = limit < remaining ? limit : remaining;
+            address[] memory out = new address[](take);
+            for (uint256 i = 0; i < take; ++i) {
+                out[i] = externalRewardTokens[offset + i];
+            }
+            return (out, offset + take < len);
         }
-        uint256 remaining = len - offset;
-        uint256 take = limit < remaining ? limit : remaining;
-        address[] memory out = new address[](take);
-        for (uint256 i = 0; i < take; ++i) {
-            out[i] = externalRewardTokens[offset + i];
-        }
-        return (out, offset + take < len);
+        return (new address[](0), false);
     }
 }

@@ -9,8 +9,10 @@ import { CurveConfig } from "./TemplCurve.sol";
 /// @notice Adds treasury controls, fee configuration, and external reward management.
 /// @author Templ
 contract TemplTreasuryModule is TemplBase {
+    /// @notice Immutable self-address used to enforce delegatecall entry.
     address public immutable SELF;
 
+    /// @notice Constructs the module and locks the `SELF` reference.
     constructor() {
         SELF = address(this);
     }
@@ -29,7 +31,7 @@ contract TemplTreasuryModule is TemplBase {
         address token,
         address recipient,
         uint256 amount,
-        string memory reason
+        string calldata reason
     ) external onlyDAO nonReentrant onlyDelegatecall {
         _withdrawTreasury(token, recipient, amount, reason, 0);
     }

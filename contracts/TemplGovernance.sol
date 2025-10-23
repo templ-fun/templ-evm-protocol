@@ -9,12 +9,15 @@ import { CurveConfig } from "./TemplCurve.sol";
 /// @notice Adds proposal creation, voting, and execution flows on top of treasury + membership logic.
 /// @author Templ
 contract TemplGovernanceModule is TemplBase {
+    /// @notice Immutable self-address used to enforce delegatecall entry.
     address public immutable SELF;
 
+    /// @notice Constructs the module and locks the `SELF` reference.
     constructor() {
         SELF = address(this);
     }
 
+    /// @notice Reverts when called directly instead of via delegatecall from TEMPL.
     function _requireDelegatecall() internal view {
         if (address(this) == SELF) revert TemplErrors.DelegatecallOnly();
     }
@@ -313,7 +316,7 @@ contract TemplGovernanceModule is TemplBase {
         address _token,
         address _recipient,
         uint256 _amount,
-        string memory _reason,
+        string calldata _reason,
         uint256 _votingPeriod,
         string calldata _title,
         string calldata _description
@@ -420,14 +423,14 @@ contract TemplGovernanceModule is TemplBase {
     /// @param _support True for YES, false for NO.
     function vote(uint256 _proposalId, bool _support) external onlyMember {
         _requireDelegatecall();
-        if (_proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
+        if (!(_proposalId < proposalCount)) revert TemplErrors.InvalidProposal();
         Proposal storage proposal = proposals[_proposalId];
 
-        if (priestIsDictator && proposal.action != Action.SetDictatorship) {
+        if (priestIsDictator && !(proposal.action == Action.SetDictatorship)) {
             revert TemplErrors.DictatorshipEnabled();
         }
 
-        if (block.timestamp >= proposal.endTime) revert TemplErrors.VotingEnded();
+        if (!(block.timestamp < proposal.endTime)) revert TemplErrors.VotingEnded();
 
         Member storage memberInfo = members[msg.sender];
 
@@ -449,25 +452,23 @@ contract TemplGovernanceModule is TemplBase {
 
         if (!hadVoted) {
             if (_support) {
-                proposal.yesVotes += 1;
+                ++proposal.yesVotes;
             } else {
-                proposal.noVotes += 1;
+                ++proposal.noVotes;
             }
         } else if (previous != _support) {
             if (previous) {
-                proposal.yesVotes -= 1;
-                proposal.noVotes += 1;
+                --proposal.yesVotes;
+                ++proposal.noVotes;
             } else {
-                proposal.noVotes -= 1;
-                proposal.yesVotes += 1;
+                --proposal.noVotes;
+                ++proposal.yesVotes;
             }
         }
 
         if (!proposal.quorumExempt && proposal.quorumReachedAt == 0) {
-            if (
-                proposal.eligibleVoters != 0 &&
-                proposal.yesVotes * BPS_DENOMINATOR >= quorumBps * proposal.eligibleVoters
-            ) {
+            uint256 voters = proposal.eligibleVoters;
+            if (voters != 0 && !(proposal.yesVotes * BPS_DENOMINATOR < quorumBps * voters)) {
                 proposal.quorumReachedAt = block.timestamp;
                 proposal.quorumSnapshotBlock = block.number;
                 proposal.postQuorumEligibleVoters = memberCount;
@@ -484,14 +485,14 @@ contract TemplGovernanceModule is TemplBase {
     /// @param _proposalId Proposal id to execute.
     function executeProposal(uint256 _proposalId) external nonReentrant {
         _requireDelegatecall();
-        if (_proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
+        if (!(_proposalId < proposalCount)) revert TemplErrors.InvalidProposal();
         Proposal storage proposal = proposals[_proposalId];
 
         if (priestIsDictator && proposal.action != Action.SetDictatorship) {
             revert TemplErrors.DictatorshipEnabled();
         }
 
-        if (proposal.quorumExempt && block.timestamp < proposal.endTime) {
+        if (proposal.quorumExempt && (block.timestamp < proposal.endTime)) {
             revert TemplErrors.VotingNotEnded();
         }
         if (!proposal.quorumExempt) {
@@ -510,7 +511,7 @@ contract TemplGovernanceModule is TemplBase {
         }
         if (proposal.executed) revert TemplErrors.AlreadyExecuted();
 
-        if (proposal.yesVotes <= proposal.noVotes) revert TemplErrors.ProposalNotPassed();
+        if (!(proposal.yesVotes > proposal.noVotes)) revert TemplErrors.ProposalNotPassed();
 
         proposal.executed = true;
 
@@ -526,7 +527,10 @@ contract TemplGovernanceModule is TemplBase {
         _removeActiveProposal(_proposalId);
     }
 
-    function _executeActionInternal(uint256 _proposalId) internal returns (bytes memory) {
+    /// @notice Executes the action encoded in the proposal with id `_proposalId`.
+    /// @param _proposalId Proposal id to execute.
+    /// @return returnData ABI-encoded return data for executed external calls (empty for others).
+    function _executeActionInternal(uint256 _proposalId) internal returns (bytes memory returnData) {
         Proposal storage proposal = proposals[_proposalId];
         if (proposal.action == Action.SetJoinPaused) {
             _governanceSetJoinPaused(proposal.joinPaused);
@@ -608,10 +612,19 @@ contract TemplGovernanceModule is TemplBase {
         revert TemplErrors.InvalidCallData();
     }
 
+    /// @notice Governance hook to pause or resume joins.
+    /// @param _paused Desired pause state.
     function _governanceSetJoinPaused(bool _paused) internal {
         _setJoinPaused(_paused);
     }
 
+    /// @notice Governance hook to update fee configuration and/or entry fee.
+    /// @param _token Optional replacement access token (must match current token or zero).
+    /// @param _entryFee Optional new entry fee (0 keeps current).
+    /// @param _updateFeeSplit Whether to apply the provided BPS split values.
+    /// @param _burnBps Burn share (bps).
+    /// @param _treasuryBps Treasury share (bps).
+    /// @param _memberPoolBps Member pool share (bps).
     function _governanceUpdateConfig(
         address _token,
         uint256 _entryFee,
@@ -623,6 +636,12 @@ contract TemplGovernanceModule is TemplBase {
         _updateConfig(_token, _entryFee, _updateFeeSplit, _burnBps, _treasuryBps, _memberPoolBps);
     }
 
+    /// @notice Governance hook to withdraw treasury or external funds to a recipient.
+    /// @param token Asset to withdraw (`address(0)` for ETH).
+    /// @param recipient Destination wallet for the funds.
+    /// @param amount Amount to withdraw.
+    /// @param reason Free-form justification.
+    /// @param proposalId Proposal id authorizing the action.
     function _governanceWithdrawTreasury(
         address token,
         address recipient,
@@ -633,22 +652,35 @@ contract TemplGovernanceModule is TemplBase {
         _withdrawTreasury(token, recipient, amount, reason, proposalId);
     }
 
+    /// @notice Governance hook to disband treasury holdings for `token`.
+    /// @param token Token whose treasury allocation should be disbanded.
+    /// @param proposalId Proposal id authorizing the action.
     function _governanceDisbandTreasury(address token, uint256 proposalId) internal {
         _disbandTreasury(token, proposalId);
     }
 
+    /// @notice Governance hook to appoint a new priest.
+    /// @param newPriest Address of the new priest.
     function _governanceChangePriest(address newPriest) internal {
         _changePriest(newPriest);
     }
 
+    /// @notice Governance hook to enable or disable dictatorship mode.
+    /// @param enabled Target dictatorship state.
     function _governanceSetDictatorship(bool enabled) internal {
         _updateDictatorship(enabled);
     }
 
+    /// @notice Governance hook to set the membership cap.
+    /// @param newMaxMembers New maximum members (0 = uncapped).
     function _governanceSetMaxMembers(uint256 newMaxMembers) internal {
         _setMaxMembers(newMaxMembers);
     }
 
+    /// @notice Governance hook to update templ metadata.
+    /// @param newName New templ name.
+    /// @param newDescription New templ description.
+    /// @param newLogoLink New templ logo URL.
     function _governanceUpdateMetadata(
         string memory newName,
         string memory newDescription,
@@ -657,49 +689,66 @@ contract TemplGovernanceModule is TemplBase {
         _setTemplMetadata(newName, newDescription, newLogoLink);
     }
 
+    /// @notice Governance hook to set the proposal creation fee (bps).
+    /// @param newFeeBps New fee in basis points.
     function _governanceSetProposalCreationFee(uint256 newFeeBps) internal {
         _setProposalCreationFee(newFeeBps);
     }
 
+    /// @notice Governance hook to set the referral share (bps of member pool allocation).
+    /// @param newBps New referral share in basis points.
     function _governanceSetReferralShareBps(uint256 newBps) internal {
         _setReferralShareBps(newBps);
     }
 
+    /// @notice Governance hook to update the entry fee curve configuration.
+    /// @param curve New curve configuration to apply.
+    /// @param baseEntryFee Optional replacement base entry fee (0 keeps current base).
     function _governanceSetEntryFeeCurve(CurveConfig memory curve, uint256 baseEntryFee) internal {
         _applyCurveUpdate(curve, baseEntryFee);
     }
 
+    /// @notice Governance hook to remove a settled external reward token from enumeration.
+    /// @param token Token address to remove.
     function _governanceCleanupExternalRewardToken(address token) internal {
         _cleanupExternalRewardToken(token);
     }
 
+    /// @notice Governance hook to update the quorum threshold (bps).
+    /// @param newQuorumBps New quorum threshold (bps or %).
     function _governanceSetQuorumBps(uint256 newQuorumBps) internal {
         _setQuorumBps(newQuorumBps);
     }
 
+    /// @notice Governance hook to update the post-quorum execution delay (seconds).
+    /// @param newDelay Seconds to wait after quorum before execution.
     function _governanceSetExecutionDelay(uint256 newDelay) internal {
         _setExecutionDelayAfterQuorum(newDelay);
     }
 
+    /// @notice Governance hook to update the burn address.
+    /// @param newBurn Address to receive burn allocations.
     function _governanceSetBurnAddress(address newBurn) internal {
         _setBurnAddress(newBurn);
     }
 
-    /// @dev Executes the arbitrary call attached to `proposal` and bubbles up revert data.
-    function _governanceCallExternal(Proposal storage proposal) internal returns (bytes memory) {
+    /// @notice Executes the arbitrary call attached to `proposal` and bubbles up revert data.
+    /// @param proposal Proposal storage reference.
+    /// @return returndata Raw return bytes from the called target.
+    function _governanceCallExternal(Proposal storage proposal) internal returns (bytes memory returndata) {
         address target = proposal.externalCallTarget;
         if (target == address(0)) revert TemplErrors.InvalidRecipient();
         bytes memory callData = proposal.externalCallData;
         if (callData.length == 0) revert TemplErrors.InvalidCallData();
         uint256 callValue = proposal.externalCallValue;
-        (bool success, bytes memory returndata) = target.call{ value: callValue }(callData);
+        (bool success, bytes memory ret) = target.call{ value: callValue }(callData);
         if (!success) {
             assembly ("memory-safe") {
-                revert(add(returndata, 32), mload(returndata))
+                revert(add(ret, 32), mload(ret))
             }
         }
         delete proposal.externalCallData;
-        return returndata;
+        return ret;
     }
 
     /// @notice Returns core metadata for a proposal including vote totals and status.
@@ -728,7 +777,7 @@ contract TemplGovernanceModule is TemplBase {
             string memory description
         )
     {
-        if (_proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
+        if (!(_proposalId < proposalCount)) revert TemplErrors.InvalidProposal();
         Proposal storage proposal = proposals[_proposalId];
         passed = _proposalPassed(proposal);
 
@@ -744,9 +793,15 @@ contract TemplGovernanceModule is TemplBase {
         );
     }
 
-    function _proposalPassed(Proposal storage proposal) internal view returns (bool) {
+    /// @notice Determines whether a proposal has passed based on quorum and vote counts.
+    /// @param proposal Proposal storage reference to inspect.
+    /// @return passed True when the proposal can be executed.
+    function _proposalPassed(Proposal storage proposal) internal view returns (bool passed) {
         if (proposal.quorumExempt) {
-            return (block.timestamp >= proposal.endTime && proposal.yesVotes > proposal.noVotes);
+            if (block.timestamp < proposal.endTime) {
+                return false;
+            }
+            return (proposal.yesVotes > proposal.noVotes);
         }
         if (proposal.quorumReachedAt == 0) {
             return false;
@@ -785,7 +840,7 @@ contract TemplGovernanceModule is TemplBase {
             uint256 quorumReachedAt
         )
     {
-        if (_proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
+        if (!(_proposalId < proposalCount)) revert TemplErrors.InvalidProposal();
         Proposal storage proposal = proposals[_proposalId];
         return (
             proposal.eligibleVoters,
@@ -804,7 +859,7 @@ contract TemplGovernanceModule is TemplBase {
     function getProposalJoinSequences(
         uint256 _proposalId
     ) external view returns (uint256 preQuorumJoinSequence, uint256 quorumJoinSequence) {
-        if (_proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
+        if (!(_proposalId < proposalCount)) revert TemplErrors.InvalidProposal();
         Proposal storage proposal = proposals[_proposalId];
         return (proposal.preQuorumJoinSequence, proposal.quorumJoinSequence);
     }
@@ -815,7 +870,7 @@ contract TemplGovernanceModule is TemplBase {
     /// @return voted True if the voter has cast a ballot.
     /// @return support Recorded support value (false when `voted` is false).
     function hasVoted(uint256 _proposalId, address _voter) external view returns (bool voted, bool support) {
-        if (_proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
+        if (!(_proposalId < proposalCount)) revert TemplErrors.InvalidProposal();
         Proposal storage proposal = proposals[_proposalId];
 
         return (proposal.hasVoted[_voter], proposal.voteChoice[_voter]);
@@ -831,7 +886,8 @@ contract TemplGovernanceModule is TemplBase {
         for (uint256 i = 0; i < len; ++i) {
             uint256 id = activeProposalIds[i];
             if (_isActiveProposal(proposals[id], currentTime)) {
-                temp[count++] = id;
+                temp[count] = id;
+                ++count;
             }
         }
         uint256[] memory activeIds = new uint256[](count);
@@ -856,10 +912,10 @@ contract TemplGovernanceModule is TemplBase {
         uint256 totalActive = 0;
         for (uint256 i = 0; i < len; ++i) {
             if (_isActiveProposal(proposals[activeProposalIds[i]], currentTime)) {
-                totalActive++;
+                ++totalActive;
             }
         }
-        if (offset >= totalActive) {
+        if (!(offset < totalActive)) {
             return (new uint256[](0), false);
         }
 
@@ -871,10 +927,11 @@ contract TemplGovernanceModule is TemplBase {
             if (!_isActiveProposal(proposals[id], currentTime)) {
                 continue;
             }
-            if (activeSeen++ < offset) {
+            if (!(++activeSeen > offset)) {
                 continue;
             }
-            tempIds[count++] = id;
+            tempIds[count] = id;
+            ++count;
         }
 
         hasMore = (offset + count) < totalActive;
@@ -887,7 +944,12 @@ contract TemplGovernanceModule is TemplBase {
         return (proposalIds, hasMore);
     }
 
-    /// @dev Creates the base proposal structure, including quorum pre-checks and proposer tracking.
+    /// @notice Creates the base proposal structure, including quorum pre-checks and proposer tracking.
+    /// @param _votingPeriod Optional custom voting duration (seconds); 0 uses the default.
+    /// @param _title On-chain title for the proposal.
+    /// @param _description On-chain description for the proposal.
+    /// @return proposalId Newly created proposal id.
+    /// @return proposal Storage reference to the created proposal.
     function _createBaseProposal(
         uint256 _votingPeriod,
         string memory _title,
@@ -916,7 +978,8 @@ contract TemplGovernanceModule is TemplBase {
                 treasuryBalance += proposalFee;
             }
         }
-        proposalId = proposalCount++;
+        proposalId = proposalCount;
+        ++proposalCount;
         proposal = proposals[proposalId];
         proposal.id = proposalId;
         proposal.proposer = msg.sender;
@@ -936,7 +999,7 @@ contract TemplGovernanceModule is TemplBase {
         proposal.quorumReachedAt = 0;
         proposal.quorumExempt = false;
         if (
-            proposal.eligibleVoters != 0 && proposal.yesVotes * BPS_DENOMINATOR >= quorumBps * proposal.eligibleVoters
+            proposal.eligibleVoters != 0 && !(proposal.yesVotes * BPS_DENOMINATOR < quorumBps * proposal.eligibleVoters)
         ) {
             proposal.quorumReachedAt = block.timestamp;
             proposal.quorumSnapshotBlock = block.number;
@@ -950,6 +1013,8 @@ contract TemplGovernanceModule is TemplBase {
         emit ProposalCreated(proposalId, msg.sender, proposal.endTime, _title, _description);
     }
 
+    /// @notice Internal helper to remove inactive proposals from the tail of the active set.
+    /// @param maxRemovals Maximum number of items to remove.
     function _pruneInactiveTail(uint256 maxRemovals) internal {
         if (maxRemovals == 0) return;
         uint256 len = activeProposalIds.length;
@@ -963,7 +1028,7 @@ contract TemplGovernanceModule is TemplBase {
                 break;
             }
             _removeActiveProposal(proposalId);
-            removed++;
+            ++removed;
             len = activeProposalIds.length;
         }
     }
@@ -981,7 +1046,7 @@ contract TemplGovernanceModule is TemplBase {
             uint256 proposalId = activeProposalIds[len - 1];
             if (_isActiveProposal(proposals[proposalId], currentTime)) break;
             _removeActiveProposal(proposalId);
-            removed++;
+            ++removed;
             len = activeProposalIds.length;
         }
     }

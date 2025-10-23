@@ -68,7 +68,9 @@ abstract contract TemplBase is ReentrancyGuard {
     address public burnAddress;
     /// @notice Templ metadata surfaced across UIs and off-chain services.
     string public templName;
+    /// @notice Human-readable description for frontends.
     string public templDescription;
+    /// @notice Canonical logo URL for the templ.
     string public templLogoLink;
     /// @notice Basis points of the entry fee that must be paid to create proposals.
     uint256 public proposalCreationFeeBps;
@@ -88,8 +90,11 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 joinSequence;
     }
 
+    /// @notice Membership records keyed by wallet address.
     mapping(address => Member) public members;
+    /// @notice Total count of active members (includes the auto-enrolled priest).
     uint256 public memberCount;
+    /// @notice Cumulative member pool claims per address.
     mapping(address => uint256) public memberPoolClaims;
     /// @notice Aggregate rewards per member used for on-chain snapshotting.
     uint256 public cumulativeMemberRewards;
@@ -165,14 +170,21 @@ abstract contract TemplBase is ReentrancyGuard {
         bool setDictatorship;
     }
 
+    /// @notice Monotonic proposal id counter.
     uint256 public proposalCount;
+    /// @notice On-chain storage of proposals by id.
     mapping(uint256 => Proposal) public proposals;
+    /// @notice Tracks an address's currently active proposal id (0 when none).
     mapping(address => uint256) public activeProposalId;
+    /// @notice Whether an address has an active proposal not yet executed or expired.
     mapping(address => bool) public hasActiveProposal;
     uint256[] internal activeProposalIds;
     mapping(uint256 => uint256) internal activeProposalIndex;
+    /// @notice Default voting period applied when callers pass zero.
     uint256 public constant DEFAULT_VOTING_PERIOD = 7 days;
+    /// @notice Minimum allowed voting period.
     uint256 public constant MIN_VOTING_PERIOD = 7 days;
+    /// @notice Maximum allowed voting period.
     uint256 public constant MAX_VOTING_PERIOD = 30 days;
 
     enum Action {
@@ -216,23 +228,48 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 protocolAmount,
         uint256 timestamp,
         uint256 blockNumber,
-        uint256 joinId
+        uint256 indexed joinId
     );
 
-    event MemberRewardsClaimed(address indexed member, uint256 amount, uint256 timestamp);
+    /// @notice Emitted when a member claims their internal member rewards.
+    /// @param member Wallet that claimed.
+    /// @param amount Amount transferred to the member.
+    /// @param timestamp Block timestamp when the claim was processed.
+    event MemberRewardsClaimed(address indexed member, uint256 indexed amount, uint256 indexed timestamp);
 
+    /// @notice Emitted when a proposal is created.
+    /// @param proposalId Newly created proposal id.
+    /// @param proposer Wallet that created the proposal.
+    /// @param endTime Timestamp when voting/execution window closes.
+    /// @param title On-chain title for the proposal.
+    /// @param description On-chain description for the proposal.
     event ProposalCreated(
         uint256 indexed proposalId,
         address indexed proposer,
-        uint256 endTime,
+        uint256 indexed endTime,
         string title,
         string description
     );
 
-    event VoteCast(uint256 indexed proposalId, address indexed voter, bool support, uint256 timestamp);
+    /// @notice Emitted when a member casts a vote on a proposal.
+    /// @param proposalId Proposal being voted on.
+    /// @param voter Wallet that cast the vote.
+    /// @param support True for YES, false for NO.
+    /// @param timestamp Block timestamp when the vote was recorded.
+    event VoteCast(uint256 indexed proposalId, address indexed voter, bool indexed support, uint256 timestamp);
 
-    event ProposalExecuted(uint256 indexed proposalId, bool success, bytes32 returnDataHash);
+    /// @notice Emitted when a proposal is executed.
+    /// @param proposalId Proposal being executed.
+    /// @param success True when execution succeeded.
+    /// @param returnDataHash keccak256 hash of returndata for external calls.
+    event ProposalExecuted(uint256 indexed proposalId, bool indexed success, bytes32 returnDataHash);
 
+    /// @notice Emitted when a treasury action is performed (withdrawal).
+    /// @param proposalId Proposal id when triggered by governance (0 for direct DAO action).
+    /// @param token Token address involved in the action.
+    /// @param recipient Destination wallet for the funds.
+    /// @param amount Amount transferred.
+    /// @param reason Free-form justification string.
     event TreasuryAction(
         uint256 indexed proposalId,
         address indexed token,
@@ -241,10 +278,17 @@ abstract contract TemplBase is ReentrancyGuard {
         string reason
     );
 
+    /// @notice Emitted when configuration values are updated via governance.
+    /// @param token Access token address.
+    /// @param entryFee New entry fee value.
+    /// @param burnBps Burn allocation (bps).
+    /// @param treasuryBps Treasury allocation (bps).
+    /// @param memberPoolBps Member pool allocation (bps).
+    /// @param protocolBps Protocol allocation (bps).
     event ConfigUpdated(
         address indexed token,
-        uint256 entryFee,
-        uint256 burnBps,
+        uint256 indexed entryFee,
+        uint256 indexed burnBps,
         uint256 treasuryBps,
         uint256 memberPoolBps,
         uint256 protocolBps
@@ -252,10 +296,10 @@ abstract contract TemplBase is ReentrancyGuard {
 
     /// @notice Emitted when joins are paused or resumed.
     /// @param joinPaused New pause state.
-    event JoinPauseUpdated(bool joinPaused);
+    event JoinPauseUpdated(bool indexed joinPaused);
     /// @notice Emitted when the membership cap is updated.
     /// @param maxMembers New maximum member count (0 = uncapped).
-    event MaxMembersUpdated(uint256 maxMembers);
+    event MaxMembersUpdated(uint256 indexed maxMembers);
     /// @notice Emitted whenever the entry fee curve configuration changes.
     /// @param styles Segment styles in application order (primary first).
     /// @param rateBps Segment rate parameters expressed in basis points.
@@ -265,10 +309,16 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param oldPriest Previous priest address.
     /// @param newPriest New priest address.
     event PriestChanged(address indexed oldPriest, address indexed newPriest);
+    /// @notice Emitted when the treasury is disbanded for a specific token.
+    /// @param proposalId Proposal id that triggered the disband.
+    /// @param token Token whose treasury allocation was disbanded.
+    /// @param amount Total amount moved out of the treasury.
+    /// @param perMember Amount allocated per member.
+    /// @param remainder Remainder carried forward to the next distribution.
     event TreasuryDisbanded(
         uint256 indexed proposalId,
         address indexed token,
-        uint256 amount,
+        uint256 indexed amount,
         uint256 perMember,
         uint256 remainder
     );
@@ -277,17 +327,33 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param token ERC-20 token address or address(0) for ETH.
     /// @param member Recipient wallet.
     /// @param amount Claimed amount.
-    event ExternalRewardClaimed(address indexed token, address indexed member, uint256 amount);
+    event ExternalRewardClaimed(address indexed token, address indexed member, uint256 indexed amount);
 
+    /// @notice Emitted when templ metadata values are updated.
+    /// @param name New name.
+    /// @param description New description.
+    /// @param logoLink New logo URL.
     event TemplMetadataUpdated(string name, string description, string logoLink);
-    event ProposalCreationFeeUpdated(uint256 previousFeeBps, uint256 newFeeBps);
-    event ReferralShareBpsUpdated(uint256 previousBps, uint256 newBps);
+    /// @notice Emitted when the proposal creation fee changes.
+    /// @param previousFeeBps Previous fee (bps).
+    /// @param newFeeBps New fee (bps).
+    event ProposalCreationFeeUpdated(uint256 indexed previousFeeBps, uint256 indexed newFeeBps);
+    /// @notice Emitted when the referral share changes.
+    /// @param previousBps Previous referral share (bps).
+    /// @param newBps New referral share (bps).
+    event ReferralShareBpsUpdated(uint256 indexed previousBps, uint256 indexed newBps);
     /// @notice Emitted when the quorum threshold is updated via governance.
-    event QuorumBpsUpdated(uint256 previousBps, uint256 newBps);
+    /// @param previousBps Previous quorum threshold (bps).
+    /// @param newBps New quorum threshold (bps).
+    event QuorumBpsUpdated(uint256 indexed previousBps, uint256 indexed newBps);
     /// @notice Emitted when the post-quorum execution delay is updated via governance.
-    event ExecutionDelayAfterQuorumUpdated(uint256 previousDelay, uint256 newDelay);
+    /// @param previousDelay Previous post-quorum execution delay (seconds).
+    /// @param newDelay New post-quorum execution delay (seconds).
+    event ExecutionDelayAfterQuorumUpdated(uint256 indexed previousDelay, uint256 indexed newDelay);
     /// @notice Emitted when the burn address is updated via governance.
-    event BurnAddressUpdated(address previousBurn, address newBurn);
+    /// @param previousBurn Previous burn address.
+    /// @param newBurn New burn address.
+    event BurnAddressUpdated(address indexed previousBurn, address indexed newBurn);
 
     struct ExternalRewardState {
         uint256 poolBalance;
@@ -336,9 +402,11 @@ abstract contract TemplBase is ReentrancyGuard {
 
     /// @notice Emitted when dictatorship mode is toggled.
     /// @param enabled True when dictatorship is enabled, false when disabled.
-    event DictatorshipModeChanged(bool enabled);
+    event DictatorshipModeChanged(bool indexed enabled);
 
     /// @dev Persists a new external reward checkpoint so future joins can baseline correctly.
+    /// @notice Persist a new external reward checkpoint so future joins can baseline correctly.
+    /// @param rewards External reward state to record the checkpoint in.
     function _recordExternalCheckpoint(ExternalRewardState storage rewards) internal {
         RewardCheckpoint memory checkpoint = RewardCheckpoint({
             blockNumber: uint64(block.number),
@@ -360,10 +428,14 @@ abstract contract TemplBase is ReentrancyGuard {
     }
 
     /// @dev Determines the cumulative rewards baseline for a member given join-time snapshots.
+    /// @notice Determines the cumulative rewards baseline for a member given join-time snapshots.
+    /// @param rewards External reward state.
+    /// @param memberInfo Member storage record.
+    /// @return baseline Cumulative rewards baseline to use when computing claimable amounts.
     function _externalBaselineForMember(
         ExternalRewardState storage rewards,
         Member storage memberInfo
-    ) internal view returns (uint256) {
+    ) internal view returns (uint256 baseline) {
         RewardCheckpoint[] storage checkpoints = rewards.checkpoints;
         uint256 len = checkpoints.length;
         if (len == 0) {
@@ -397,6 +469,8 @@ abstract contract TemplBase is ReentrancyGuard {
     }
 
     /// @dev Clears an external reward token from enumeration once fully settled.
+    /// @notice Clears an external reward token from enumeration once fully settled.
+    /// @param token Token address to remove (must not equal the access token).
     function _cleanupExternalRewardToken(address token) internal {
         if (token == accessToken) revert TemplErrors.InvalidCallData();
         ExternalRewardState storage rewards = externalRewards[token];
@@ -411,6 +485,7 @@ abstract contract TemplBase is ReentrancyGuard {
     }
 
     /// @dev Distributes any outstanding external reward remainders to existing members before new joins.
+    /// @notice Distribute outstanding external reward remainders to existing members before new joins.
     function _flushExternalRemainders() internal {
         uint256 currentMembers = memberCount;
         if (currentMembers == 0) {
@@ -497,7 +572,7 @@ abstract contract TemplBase is ReentrancyGuard {
             quorumBps = DEFAULT_QUORUM_BPS;
         } else {
             uint256 normalizedQuorum = _quorumBps;
-            if (normalizedQuorum <= 100) {
+            if (normalizedQuorum < 101) {
                 normalizedQuorum = normalizedQuorum * 100;
             }
             if (normalizedQuorum > BPS_DENOMINATOR) revert TemplErrors.InvalidPercentage();
@@ -511,7 +586,10 @@ abstract contract TemplBase is ReentrancyGuard {
         _setReferralShareBps(_referralShareBps);
     }
 
-    /// @dev Updates the split between burn, treasury, and member pool slices.
+    /// @notice Updates the split between burn, treasury, and member pool slices.
+    /// @param _burnBps Burn allocation (bps).
+    /// @param _treasuryBps Treasury allocation (bps).
+    /// @param _memberPoolBps Member pool allocation (bps).
     function _setPercentSplit(uint256 _burnBps, uint256 _treasuryBps, uint256 _memberPoolBps) internal {
         _validatePercentSplit(_burnBps, _treasuryBps, _memberPoolBps, protocolBps);
         burnBps = _burnBps;
@@ -519,7 +597,11 @@ abstract contract TemplBase is ReentrancyGuard {
         memberPoolBps = _memberPoolBps;
     }
 
-    /// @dev Validates that the provided split plus the protocol fee equals 100%.
+    /// @notice Validates that the provided split plus the protocol fee equals 100%.
+    /// @param _burnBps Burn allocation (bps).
+    /// @param _treasuryBps Treasury allocation (bps).
+    /// @param _memberPoolBps Member pool allocation (bps).
+    /// @param _protocolBps Protocol allocation (bps).
     function _validatePercentSplit(
         uint256 _burnBps,
         uint256 _treasuryBps,
@@ -532,6 +614,9 @@ abstract contract TemplBase is ReentrancyGuard {
     }
 
     /// @dev Configures the entry fee curve anchor and growth profile.
+    /// @notice Sets a new base entry fee and curve configuration.
+    /// @param newBaseEntryFee Base entry fee to anchor the curve.
+    /// @param newCurve Curve configuration to apply.
     function _configureEntryFeeCurve(uint256 newBaseEntryFee, CurveConfig memory newCurve) internal {
         _validateEntryFeeAmount(newBaseEntryFee);
         _validateCurveConfig(newCurve);
@@ -542,6 +627,8 @@ abstract contract TemplBase is ReentrancyGuard {
     }
 
     /// @dev Updates the entry fee curve without altering the base anchor.
+    /// @notice Updates the existing curve while preserving the current base entry fee.
+    /// @param newCurve Curve configuration to apply.
     function _updateEntryFeeCurve(CurveConfig memory newCurve) internal {
         _validateCurveConfig(newCurve);
         entryFeeCurve = newCurve;
@@ -549,7 +636,8 @@ abstract contract TemplBase is ReentrancyGuard {
         _emitEntryFeeCurveUpdated();
     }
 
-    /// @dev Sets the current entry fee target while preserving the existing curve shape.
+    /// @notice Sets the current entry fee target while preserving the existing curve shape.
+    /// @param targetEntryFee Entry fee that should apply for the current paid join count.
     function _setCurrentEntryFee(uint256 targetEntryFee) internal {
         _validateEntryFeeAmount(targetEntryFee);
         uint256 paidJoins = _currentPaidJoins();
@@ -566,6 +654,9 @@ abstract contract TemplBase is ReentrancyGuard {
     }
 
     /// @dev Applies a curve update driven by governance or DAO actions.
+    /// @notice Applies a curve update driven by governance or DAO actions.
+    /// @param newCurve Curve configuration to apply.
+    /// @param baseEntryFeeValue Optional new base entry fee (0 keeps the current base).
     function _applyCurveUpdate(CurveConfig memory newCurve, uint256 baseEntryFeeValue) internal {
         if (baseEntryFeeValue == 0) {
             _updateEntryFeeCurve(newCurve);
@@ -575,6 +666,9 @@ abstract contract TemplBase is ReentrancyGuard {
     }
 
     /// @dev Creates a memory copy of a curve stored on-chain.
+    /// @notice Creates a memory copy of a curve stored on-chain.
+    /// @param stored Storage reference to the curve config.
+    /// @return cfg Memory copy of the provided curve config.
     function _copyCurveConfig(CurveConfig storage stored) internal view returns (CurveConfig memory cfg) {
         CurveSegment[] storage extras = stored.additionalSegments;
         uint256 len = extras.length;
@@ -587,11 +681,13 @@ abstract contract TemplBase is ReentrancyGuard {
     }
 
     /// @dev Recomputes the entry fee for the next join in response to membership changes.
+    /// @notice Recomputes the entry fee for the next join in response to membership changes.
     function _advanceEntryFeeAfterJoin() internal {
         _refreshEntryFeeFromState();
     }
 
     /// @dev Recomputes the entry fee based on the current membership count and stored curve.
+    /// @notice Recomputes the entry fee based on the current membership count and stored curve.
     function _refreshEntryFeeFromState() internal {
         if (baseEntryFee == 0) {
             return;
@@ -599,7 +695,7 @@ abstract contract TemplBase is ReentrancyGuard {
         entryFee = _priceForPaidJoinsFromStorage(baseEntryFee, entryFeeCurve, _currentPaidJoins());
     }
 
-    /// @dev Returns the number of paid joins that have occurred (excludes the auto-enrolled priest).
+    /// @notice Returns the number of paid joins that have occurred (excludes the auto-enrolled priest).
     /// @return count Number of completed paid joins.
     function _currentPaidJoins() internal view returns (uint256 count) {
         if (memberCount == 0) {
@@ -608,7 +704,7 @@ abstract contract TemplBase is ReentrancyGuard {
         return memberCount - 1;
     }
 
-    /// @dev Reports whether any curve segment introduces dynamic pricing.
+    /// @notice Reports whether any curve segment introduces dynamic pricing.
     /// @param curve Curve configuration to inspect.
     /// @return hasGrowth True if any segment is non-static.
     function _curveHasGrowth(CurveConfig memory curve) internal pure returns (bool hasGrowth) {
@@ -625,11 +721,16 @@ abstract contract TemplBase is ReentrancyGuard {
     }
 
     /// @dev Computes the entry fee for a given number of completed paid joins (memory curve).
+    /// @notice Computes the entry fee for a given number of completed paid joins using a memory curve.
+    /// @param baseFee Base entry fee to anchor the curve.
+    /// @param curve Curve configuration to apply.
+    /// @param paidJoins Number of completed paid joins.
+    /// @return price Entry fee for the next join after `paidJoins`.
     function _priceForPaidJoins(
         uint256 baseFee,
         CurveConfig memory curve,
         uint256 paidJoins
-    ) internal pure returns (uint256) {
+    ) internal pure returns (uint256 price) {
         if (paidJoins == 0) {
             return baseFee;
         }
@@ -649,11 +750,16 @@ abstract contract TemplBase is ReentrancyGuard {
     }
 
     /// @dev Computes the entry fee for a given number of completed paid joins (storage curve).
+    /// @notice Computes the entry fee for a given number of completed paid joins using a storage curve.
+    /// @param baseFee Base entry fee to anchor the curve.
+    /// @param curve Storage curve configuration to apply.
+    /// @param paidJoins Number of completed paid joins.
+    /// @return price Entry fee for the next join after `paidJoins`.
     function _priceForPaidJoinsFromStorage(
         uint256 baseFee,
         CurveConfig storage curve,
         uint256 paidJoins
-    ) internal view returns (uint256) {
+    ) internal view returns (uint256 price) {
         if (paidJoins == 0) {
             return baseFee;
         }
@@ -673,7 +779,7 @@ abstract contract TemplBase is ReentrancyGuard {
         return amount;
     }
 
-    /// @dev Derives the base entry fee that produces a target price after `paidJoins` joins.
+    /// @notice Derives the base entry fee that produces a target price after `paidJoins` joins.
     /// @param targetPrice Target entry price that should result after `paidJoins` steps.
     /// @param curve Curve configuration to invert.
     /// @param paidJoins Number of completed paid joins to rewind.
@@ -702,12 +808,19 @@ abstract contract TemplBase is ReentrancyGuard {
     }
 
     /// @dev Applies a curve segment for up to `remaining` steps and returns the updated amount + remaining steps.
+    /// @notice Applies a curve segment for up to `remaining` steps and returns the updated amount + remaining steps.
+    /// @param amount Current amount to scale.
+    /// @param segment Curve segment to apply.
+    /// @param remaining How many steps remain to apply across segments.
+    /// @param forward True to scale forward (growth), false to invert.
+    /// @return newAmount Updated amount after applying up to `remaining` steps.
+    /// @return newRemaining Remaining steps after this segment.
     function _consumeSegment(
         uint256 amount,
         CurveSegment memory segment,
         uint256 remaining,
         bool forward
-    ) internal pure returns (uint256, uint256) {
+    ) internal pure returns (uint256 newAmount, uint256 newRemaining) {
         if (remaining == 0) {
             return (amount, remaining);
         }
@@ -724,12 +837,18 @@ abstract contract TemplBase is ReentrancyGuard {
     }
 
     /// @dev Applies a curve segment forward or inverse for the specified number of steps.
+    /// @notice Applies a curve segment forward or inverse for the specified number of steps.
+    /// @param amount Current amount to scale.
+    /// @param segment Curve segment to apply.
+    /// @param steps Number of steps to apply within the segment.
+    /// @param forward True to scale forward (growth), false to invert.
+    /// @return result Scaled amount after applying the segment.
     function _applySegment(
         uint256 amount,
         CurveSegment memory segment,
         uint256 steps,
         bool forward
-    ) internal pure returns (uint256) {
+    ) internal pure returns (uint256 result) {
         if (steps == 0 || segment.style == CurveStyle.Static) {
             return amount;
         }
@@ -773,6 +892,11 @@ abstract contract TemplBase is ReentrancyGuard {
     }
 
     /// @dev Computes a basis-point scaled exponent using exponentiation by squaring.
+    /// @notice Computes a basis-point scaled exponent using exponentiation by squaring.
+    /// @param factorBps Basis-point factor applied per step.
+    /// @param exponent Number of steps to apply.
+    /// @return result Basis-point scaled result (BPS_DENOMINATOR = 1x).
+    /// @return overflow True when an intermediate multiplication would overflow.
     function _powBps(uint256 factorBps, uint256 exponent) internal pure returns (uint256 result, bool overflow) {
         if (exponent == 0) {
             return (BPS_DENOMINATOR, false);
@@ -805,11 +929,16 @@ abstract contract TemplBase is ReentrancyGuard {
         return (result, false);
     }
 
-    function _min(uint256 a, uint256 b) internal pure returns (uint256) {
+    /// @notice Returns the smaller of `a` and `b`.
+    /// @param a First value.
+    /// @param b Second value.
+    /// @return min The smaller of `a` and `b`.
+    function _min(uint256 a, uint256 b) internal pure returns (uint256 min) {
         return a < b ? a : b;
     }
 
-    /// @dev Validates curve configuration input.
+    /// @notice Validates overall curve configuration input.
+    /// @param curve Curve configuration to validate.
     function _validateCurveConfig(CurveConfig memory curve) internal pure {
         _validateCurveSegment(curve.primary);
         CurveSegment[] memory extras = curve.additionalSegments;
@@ -823,7 +952,7 @@ abstract contract TemplBase is ReentrancyGuard {
         if (curve.primary.length == 0) {
             revert TemplErrors.InvalidCurveConfig();
         }
-        for (uint256 i = 0; i < extrasLen; i++) {
+        for (uint256 i = 0; i < extrasLen; ++i) {
             CurveSegment memory segment = extras[i];
             bool isLast = i == extrasLen - 1;
             _validateCurveSegment(segment);
@@ -836,7 +965,8 @@ abstract contract TemplBase is ReentrancyGuard {
         }
     }
 
-    /// @dev Validates a single curve segment.
+    /// @notice Validates a single curve segment.
+    /// @param segment Curve segment to validate.
     function _validateCurveSegment(CurveSegment memory segment) internal pure {
         if (segment.style == CurveStyle.Static) {
             if (segment.rateBps != 0) revert TemplErrors.InvalidCurveConfig();
@@ -852,14 +982,15 @@ abstract contract TemplBase is ReentrancyGuard {
         revert TemplErrors.InvalidCurveConfig();
     }
 
-    /// @dev Ensures entry fee amounts satisfy templ invariants.
+    /// @notice Ensures entry fee amounts satisfy templ invariants.
+    /// @param amount Entry fee amount to validate.
     function _validateEntryFeeAmount(uint256 amount) internal pure {
         if (amount < 10) revert TemplErrors.EntryFeeTooSmall();
         if (amount % 10 != 0) revert TemplErrors.InvalidEntryFee();
         if (amount > MAX_ENTRY_FEE) revert TemplErrors.EntryFeeTooLarge();
     }
 
-    /// @dev Emits the standardized curve update event with the current configuration.
+    /// @notice Emits the standardized curve update event with the current configuration.
     function _emitEntryFeeCurveUpdated() internal {
         CurveConfig storage cfg = entryFeeCurve;
         uint256 additional = cfg.additionalSegments.length;
@@ -870,7 +1001,7 @@ abstract contract TemplBase is ReentrancyGuard {
         styles[0] = uint8(cfg.primary.style);
         rates[0] = cfg.primary.rateBps;
         lengths[0] = cfg.primary.length;
-        for (uint256 i = 0; i < additional; i++) {
+        for (uint256 i = 0; i < additional; ++i) {
             CurveSegment storage seg = cfg.additionalSegments[i];
             styles[i + 1] = uint8(seg.style);
             rates[i + 1] = seg.rateBps;
@@ -879,14 +1010,16 @@ abstract contract TemplBase is ReentrancyGuard {
         emit EntryFeeCurveUpdated(styles, rates, lengths);
     }
 
-    /// @dev Toggles dictatorship governance mode, emitting an event when the state changes.
+    /// @notice Toggles dictatorship governance mode.
+    /// @param _enabled True to enable priest-only DAO actions, false to require proposals.
     function _updateDictatorship(bool _enabled) internal {
         if (priestIsDictator == _enabled) revert TemplErrors.DictatorshipUnchanged();
         priestIsDictator = _enabled;
         emit DictatorshipModeChanged(_enabled);
     }
 
-    /// @dev Sets or clears the membership cap and auto-pauses if the new cap is already met.
+    /// @notice Sets or clears the membership cap and auto-pauses if the new cap is already met.
+    /// @param newMaxMembers New maximum allowed members (0 = uncapped).
     function _setMaxMembers(uint256 newMaxMembers) internal {
         uint256 currentMembers = memberCount;
         if (newMaxMembers > 0 && newMaxMembers < currentMembers) {
@@ -898,7 +1031,10 @@ abstract contract TemplBase is ReentrancyGuard {
         _autoPauseIfLimitReached();
     }
 
-    /// @dev Writes new templ metadata and emits an event when it changes.
+    /// @notice Writes new templ metadata and emits an event when it changes.
+    /// @param newName New templ name.
+    /// @param newDescription New templ description.
+    /// @param newLogoLink New templ logo link.
     function _setTemplMetadata(
         string memory newName,
         string memory newDescription,
@@ -910,7 +1046,8 @@ abstract contract TemplBase is ReentrancyGuard {
         emit TemplMetadataUpdated(newName, newDescription, newLogoLink);
     }
 
-    /// @dev Updates the proposal creation fee and emits an event when it changes.
+    /// @notice Updates the proposal creation fee and emits an event when it changes.
+    /// @param newFeeBps New proposal creation fee (basis points of current entry fee).
     function _setProposalCreationFee(uint256 newFeeBps) internal {
         if (newFeeBps > BPS_DENOMINATOR) revert TemplErrors.InvalidPercentage();
         uint256 previous = proposalCreationFeeBps;
@@ -918,7 +1055,8 @@ abstract contract TemplBase is ReentrancyGuard {
         emit ProposalCreationFeeUpdated(previous, newFeeBps);
     }
 
-    /// @dev Updates the referral share BPS and emits an event when it changes.
+    /// @notice Updates the referral share basis points and emits an event when it changes.
+    /// @param newBps New referral share (basis points of the member pool allocation).
     function _setReferralShareBps(uint256 newBps) internal {
         if (newBps > BPS_DENOMINATOR) revert TemplErrors.InvalidPercentage();
         uint256 previous = referralShareBps;
@@ -931,7 +1069,7 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param newQuorumBps New quorum threshold value.
     function _setQuorumBps(uint256 newQuorumBps) internal {
         uint256 normalized = newQuorumBps;
-        if (normalized <= 100) {
+        if (normalized < 101) {
             normalized = normalized * 100;
         }
         if (normalized > BPS_DENOMINATOR) revert TemplErrors.InvalidPercentage();
@@ -957,7 +1095,12 @@ abstract contract TemplBase is ReentrancyGuard {
         emit BurnAddressUpdated(previous, newBurn);
     }
 
-    /// @dev Internal helper that executes a treasury withdrawal and emits the corresponding event.
+    /// @notice Internal helper that executes a treasury or external token withdrawal.
+    /// @param token Asset to withdraw (`address(0)` for ETH, access token, or arbitrary ERC-20).
+    /// @param recipient Destination wallet for the withdrawal.
+    /// @param amount Amount to transfer.
+    /// @param reason Human-readable justification emitted for off-chain consumers.
+    /// @param proposalId Proposal id associated with the action (0 for direct DAO actions).
     function _withdrawTreasury(
         address token,
         address recipient,
@@ -970,13 +1113,16 @@ abstract contract TemplBase is ReentrancyGuard {
 
         if (token == accessToken) {
             uint256 currentBalance = IERC20(accessToken).balanceOf(address(this));
-            if (currentBalance <= memberPoolBalance) revert TemplErrors.InsufficientTreasuryBalance();
-            uint256 availableBalance = currentBalance - memberPoolBalance;
-            if (amount > availableBalance) revert TemplErrors.InsufficientTreasuryBalance();
-            uint256 debitedFromFees = amount <= treasuryBalance ? amount : treasuryBalance;
-            treasuryBalance -= debitedFromFees;
+            if (currentBalance > memberPoolBalance) {
+                uint256 availableBalance = currentBalance - memberPoolBalance;
+                if (amount > availableBalance) revert TemplErrors.InsufficientTreasuryBalance();
+                uint256 debitedFromFees = amount < treasuryBalance ? amount : treasuryBalance;
+                treasuryBalance -= debitedFromFees;
 
-            _safeTransfer(accessToken, recipient, amount);
+                _safeTransfer(accessToken, recipient, amount);
+            } else {
+                revert TemplErrors.InsufficientTreasuryBalance();
+            }
         } else if (token == address(0)) {
             ExternalRewardState storage rewards = externalRewards[address(0)];
             uint256 currentBalance = address(this).balance;
@@ -996,7 +1142,13 @@ abstract contract TemplBase is ReentrancyGuard {
         emit TreasuryAction(proposalId, token, recipient, amount, reason);
     }
 
-    /// @dev Applies updates to the entry fee and fee split configuration.
+    /// @notice Applies updates to the entry fee and fee split configuration.
+    /// @param _token Optional replacement access token (must match current token or zero).
+    /// @param _entryFee Optional new entry fee (0 = unchanged).
+    /// @param _updateFeeSplit Whether to apply the provided BPS split values.
+    /// @param _burnBps New burn share (bps) when `_updateFeeSplit` is true.
+    /// @param _treasuryBps New treasury share (bps) when `_updateFeeSplit` is true.
+    /// @param _memberPoolBps New member pool share (bps) when `_updateFeeSplit` is true.
     function _updateConfig(
         address _token,
         uint256 _entryFee,
@@ -1015,13 +1167,15 @@ abstract contract TemplBase is ReentrancyGuard {
         emit ConfigUpdated(accessToken, entryFee, burnBps, treasuryBps, memberPoolBps, protocolBps);
     }
 
-    /// @dev Sets the join pause flag without mutating membership limits during manual resumes.
+    /// @notice Sets the join pause flag without mutating membership limits during manual resumes.
+    /// @param _paused Desired pause state.
     function _setJoinPaused(bool _paused) internal {
         joinPaused = _paused;
         emit JoinPauseUpdated(_paused);
     }
 
-    /// @dev Backend listeners consume PriestChanged to persist the new priest and notify off-chain services.
+    /// @notice Updates the priest address.
+    /// @param newPriest Address of the new priest.
     function _changePriest(address newPriest) internal {
         if (newPriest == address(0)) revert TemplErrors.InvalidRecipient();
         address old = priest;
@@ -1030,17 +1184,19 @@ abstract contract TemplBase is ReentrancyGuard {
         emit PriestChanged(old, newPriest);
     }
 
-    /// @dev Routes treasury balances into member or external pools so members can claim them evenly.
+    /// @notice Routes treasury balances into member or external pools so members can claim them evenly.
+    /// @param token Asset to disband (`address(0)` for ETH, access token, or arbitrary ERC-20).
+    /// @param proposalId Proposal id associated with the action (0 for direct DAO actions).
     function _disbandTreasury(address token, uint256 proposalId) internal {
         uint256 activeMembers = memberCount;
         if (activeMembers == 0) revert TemplErrors.NoMembers();
 
         if (token == accessToken) {
             uint256 accessTokenBalance = IERC20(accessToken).balanceOf(address(this));
-            if (accessTokenBalance <= memberPoolBalance) revert TemplErrors.NoTreasuryFunds();
+            if (!(accessTokenBalance > memberPoolBalance)) revert TemplErrors.NoTreasuryFunds();
             uint256 accessTokenAmount = accessTokenBalance - memberPoolBalance;
 
-            uint256 debitedFromFees = accessTokenAmount <= treasuryBalance ? accessTokenAmount : treasuryBalance;
+            uint256 debitedFromFees = accessTokenAmount < treasuryBalance ? accessTokenAmount : treasuryBalance;
             treasuryBalance -= debitedFromFees;
 
             memberPoolBalance += accessTokenAmount;
@@ -1085,11 +1241,15 @@ abstract contract TemplBase is ReentrancyGuard {
         emit TreasuryDisbanded(proposalId, token, totalAmount, perMember, newRemainder);
     }
 
+    /// @notice Adds a proposal id to the active set for enumeration.
+    /// @param proposalId Proposal id to add.
     function _addActiveProposal(uint256 proposalId) internal {
         activeProposalIds.push(proposalId);
         activeProposalIndex[proposalId] = activeProposalIds.length;
     }
 
+    /// @notice Removes a proposal id from the active set.
+    /// @param proposalId Proposal id to remove.
     function _removeActiveProposal(uint256 proposalId) internal {
         uint256 indexPlusOne = activeProposalIndex[proposalId];
         if (indexPlusOne == 0) {
@@ -1106,7 +1266,7 @@ abstract contract TemplBase is ReentrancyGuard {
         activeProposalIndex[proposalId] = 0;
     }
 
-    /// @dev Checks whether a member joined after a particular snapshot point using join sequences.
+    /// @notice Checks whether a member joined after a particular snapshot point using join sequences.
     /// @param memberInfo Stored membership record to inspect.
     /// @param snapshotJoinSequence Join sequence captured in the proposal snapshot (0 when unused).
     /// @return joinedAfter True when the member joined strictly after the snapshot sequence.
@@ -1126,22 +1286,27 @@ abstract contract TemplBase is ReentrancyGuard {
         return memberInfo.joinSequence > snapshotJoinSequence;
     }
 
-    /// @dev Helper that determines if a proposal is still active based on time and execution status.
-    function _isActiveProposal(Proposal storage proposal, uint256 currentTime) internal view returns (bool) {
+    /// @notice Determines if a proposal is still active based on time and execution status.
+    /// @param proposal Proposal storage reference to inspect.
+    /// @param currentTime Timestamp used for the active check.
+    /// @return active True when the proposal is still active.
+    function _isActiveProposal(Proposal storage proposal, uint256 currentTime) internal view returns (bool active) {
         return currentTime < proposal.endTime && !proposal.executed;
     }
 
-    /// @dev Pauses new joins when a membership cap is set and already reached.
+    /// @notice Pauses new joins when a membership cap is set and already reached.
     function _autoPauseIfLimitReached() internal {
         uint256 limit = maxMembers;
-        if (limit > 0 && memberCount >= limit && !joinPaused) {
+        if (limit > 0 && !(memberCount < limit) && !joinPaused) {
             joinPaused = true;
             emit JoinPauseUpdated(true);
         }
     }
 
-    /// @dev Executes an ERC-20 call and verifies optional boolean return values.
-    /// @dev Transfers tokens from the current contract to `to`, reverting on failure.
+    /// @notice Transfers tokens from the current contract to `to`, reverting on failure.
+    /// @param token ERC-20 token to transfer.
+    /// @param to Destination wallet.
+    /// @param amount Amount to transfer.
     function _safeTransfer(address token, address to, uint256 amount) internal {
         if (amount == 0) {
             return;
@@ -1149,7 +1314,11 @@ abstract contract TemplBase is ReentrancyGuard {
         IERC20(token).safeTransfer(to, amount);
     }
 
-    /// @dev Transfers tokens from `from` to `to`, reverting when allowances are insufficient.
+    /// @notice Transfers tokens from `from` to `to`, reverting when allowances are insufficient.
+    /// @param token ERC-20 token to transfer.
+    /// @param from Source wallet.
+    /// @param to Destination wallet.
+    /// @param amount Amount to transfer.
     function _safeTransferFrom(address token, address from, address to, uint256 amount) internal {
         if (amount == 0) {
             return;
@@ -1157,20 +1326,23 @@ abstract contract TemplBase is ReentrancyGuard {
         IERC20(token).safeTransferFrom(from, to, amount);
     }
 
-    /// @dev Registers a token so external rewards can be enumerated by frontends.
+    /// @notice Registers a token so external rewards can be enumerated by frontends.
+    /// @param token ERC-20 or address(0) for ETH to register.
     function _registerExternalToken(address token) internal {
         ExternalRewardState storage rewards = externalRewards[token];
         if (!rewards.exists) {
-            if (externalRewardTokens.length >= MAX_EXTERNAL_REWARD_TOKENS) {
+            if (externalRewardTokens.length < MAX_EXTERNAL_REWARD_TOKENS) {
+                rewards.exists = true;
+                externalRewardTokens.push(token);
+                externalRewardTokenIndex[token] = externalRewardTokens.length;
+            } else {
                 revert TemplErrors.ExternalRewardLimitReached();
             }
-            rewards.exists = true;
-            externalRewardTokens.push(token);
-            externalRewardTokenIndex[token] = externalRewardTokens.length;
         }
     }
 
-    /// @dev Removes a token from the external rewards enumeration list.
+    /// @notice Removes a token from the external rewards enumeration list.
+    /// @param token Token address to remove.
     function _removeExternalToken(address token) internal {
         uint256 indexPlusOne = externalRewardTokenIndex[token];
         if (indexPlusOne == 0) {
@@ -1187,27 +1359,36 @@ abstract contract TemplBase is ReentrancyGuard {
         externalRewardTokenIndex[token] = 0;
     }
 
-    /// @dev Scales `amount` by `multiplier` (basis points) with saturation at MAX_ENTRY_FEE.
-    function _scaleForward(uint256 amount, uint256 multiplier) internal pure returns (uint256) {
+    /// @notice Scales `amount` by `multiplier` (basis points) with saturation at MAX_ENTRY_FEE.
+    /// @param amount Base amount to scale.
+    /// @param multiplier Basis-point multiplier to apply.
+    /// @return result Scaled amount saturated at MAX_ENTRY_FEE.
+    function _scaleForward(uint256 amount, uint256 multiplier) internal pure returns (uint256 result) {
         if (_mulWouldOverflow(amount, multiplier)) {
             return MAX_ENTRY_FEE;
         }
-        uint256 result = Math.mulDiv(amount, multiplier, BPS_DENOMINATOR);
+        result = Math.mulDiv(amount, multiplier, BPS_DENOMINATOR);
         return result > MAX_ENTRY_FEE ? MAX_ENTRY_FEE : result;
     }
 
-    /// @dev Inverts the scaling by dividing `amount` by `divisor` (basis points) while rounding up.
-    function _scaleInverse(uint256 amount, uint256 divisor) internal pure returns (uint256) {
+    /// @notice Inverts the scaling by dividing `amount` by `divisor` (basis points) while rounding up.
+    /// @param amount Amount to downscale.
+    /// @param divisor Basis-point divisor to apply.
+    /// @return result Inverse-scaled amount saturated at MAX_ENTRY_FEE.
+    function _scaleInverse(uint256 amount, uint256 divisor) internal pure returns (uint256 result) {
         if (divisor == 0) revert TemplErrors.InvalidCurveConfig();
         if (_mulWouldOverflow(amount, BPS_DENOMINATOR)) {
             return MAX_ENTRY_FEE;
         }
-        uint256 result = Math.mulDiv(amount, BPS_DENOMINATOR, divisor, Math.Rounding.Ceil);
+        result = Math.mulDiv(amount, BPS_DENOMINATOR, divisor, Math.Rounding.Ceil);
         return result > MAX_ENTRY_FEE ? MAX_ENTRY_FEE : result;
     }
 
-    /// @dev Returns true when multiplying `a` and `b` would overflow uint256.
-    function _mulWouldOverflow(uint256 a, uint256 b) internal pure returns (bool) {
+    /// @notice Returns true when multiplying `a` and `b` would overflow uint256.
+    /// @param a Multiplicand.
+    /// @param b Multiplier.
+    /// @return overflow True when the product would overflow uint256.
+    function _mulWouldOverflow(uint256 a, uint256 b) internal pure returns (bool overflow) {
         if (a == 0 || b == 0) {
             return false;
         }
