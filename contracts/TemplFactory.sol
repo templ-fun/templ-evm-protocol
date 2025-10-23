@@ -66,11 +66,11 @@ contract TemplFactory {
         uint256 referralShareBps;
     }
 
-    address public immutable protocolFeeRecipient;
-    uint256 public immutable protocolBps;
-    address public immutable membershipModule;
-    address public immutable treasuryModule;
-    address public immutable governanceModule;
+    address public immutable PROTOCOL_FEE_RECIPIENT;
+    uint256 public immutable PROTOCOL_BPS;
+    address public immutable MEMBERSHIP_MODULE;
+    address public immutable TREASURY_MODULE;
+    address public immutable GOVERNANCE_MODULE;
     /// @notice Account allowed to create templs while permissionless mode is disabled.
     /// @dev Can be transferred by the current deployer via `transferDeployer`.
     address public factoryDeployer;
@@ -157,11 +157,11 @@ contract TemplFactory {
         if (_membershipModule == address(0) || _treasuryModule == address(0) || _governanceModule == address(0)) {
             revert TemplErrors.InvalidCallData();
         }
-        protocolFeeRecipient = _protocolFeeRecipient;
-        protocolBps = _protocolBps;
-        membershipModule = _membershipModule;
-        treasuryModule = _treasuryModule;
-        governanceModule = _governanceModule;
+        PROTOCOL_FEE_RECIPIENT = _protocolFeeRecipient;
+        PROTOCOL_BPS = _protocolBps;
+        MEMBERSHIP_MODULE = _membershipModule;
+        TREASURY_MODULE = _treasuryModule;
+        GOVERNANCE_MODULE = _governanceModule;
         factoryDeployer = _factoryDeployer;
         permissionless = false;
     }
@@ -295,13 +295,13 @@ contract TemplFactory {
 
         TEMPL deployed = new TEMPL(
             cfg.priest,
-            protocolFeeRecipient,
+            PROTOCOL_FEE_RECIPIENT,
             cfg.token,
             cfg.entryFee,
             burnBps,
             treasuryBps,
             memberPoolBps,
-            protocolBps,
+            PROTOCOL_BPS,
             cfg.quorumBps,
             cfg.executionDelaySeconds,
             cfg.burnAddress,
@@ -312,9 +312,9 @@ contract TemplFactory {
             cfg.logoLink,
             cfg.proposalFeeBps,
             cfg.referralShareBps,
-            membershipModule,
-            treasuryModule,
-            governanceModule,
+            MEMBERSHIP_MODULE,
+            TREASURY_MODULE,
+            GOVERNANCE_MODULE,
             cfg.curve
         );
         templAddress = address(deployed);
@@ -370,7 +370,7 @@ contract TemplFactory {
 
     /// @dev Ensures burn, treasury, member pool, and protocol slices sum to 100%.
     function _validatePercentSplit(uint256 _burnBps, uint256 _treasuryBps, uint256 _memberPoolBps) internal view {
-        if (_burnBps + _treasuryBps + _memberPoolBps + protocolBps != BPS_DENOMINATOR) {
+        if (_burnBps + _treasuryBps + _memberPoolBps + PROTOCOL_BPS != BPS_DENOMINATOR) {
             revert TemplErrors.InvalidPercentageSplit();
         }
     }

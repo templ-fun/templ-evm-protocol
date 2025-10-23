@@ -89,15 +89,15 @@ async function main() {
     console.log("\nReusing existing factory at:", factoryAddress);
     try {
       const existingFactory = await hre.ethers.getContractAt("TemplFactory", factoryAddress);
-      const onChainBps = Number(await existingFactory.protocolBps());
+      const onChainBps = Number(await existingFactory.PROTOCOL_BPS());
       if (!Number.isFinite(onChainBps)) {
         throw new Error("protocolBps is not a finite number");
       }
       protocolPercentBps = onChainBps;
       protocolPercentSource = "factory";
-      membershipModuleAddress = await existingFactory.membershipModule();
-      treasuryModuleAddress = await existingFactory.treasuryModule();
-      governanceModuleAddress = await existingFactory.governanceModule();
+      membershipModuleAddress = await existingFactory.MEMBERSHIP_MODULE();
+      treasuryModuleAddress = await existingFactory.TREASURY_MODULE();
+      governanceModuleAddress = await existingFactory.GOVERNANCE_MODULE();
       console.log("Existing modules:");
       console.log("  - membership:", membershipModuleAddress);
       console.log("  - treasury:", treasuryModuleAddress);

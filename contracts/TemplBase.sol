@@ -480,14 +480,12 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 protocolBpsLocal = _protocolBps;
 
         uint256 rawTotal = _burnBps + _treasuryBps + _memberPoolBps + _protocolBps;
-        if (rawTotal == BPS_DENOMINATOR) {
-            // values already provided in basis points
-        } else if (rawTotal == 100) {
+        if (rawTotal == 100) {
             burnBpsLocal = _burnBps * 100;
             treasuryBpsLocal = _treasuryBps * 100;
             memberBpsLocal = _memberPoolBps * 100;
             protocolBpsLocal = _protocolBps * 100;
-        } else {
+        } else if (rawTotal != BPS_DENOMINATOR) {
             revert TemplErrors.InvalidPercentageSplit();
         }
 

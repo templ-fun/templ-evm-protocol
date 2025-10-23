@@ -2,15 +2,9 @@
   "extends": "solhint:recommended",
   "rules": {
     "compiler-version": ["error", "^0.8.23"],
-    "func-visibility": ["error", { "ignoreConstructors": true }],
     "no-inline-assembly": "off",
-    "avoid-low-level-calls": "off",
-    "not-rely-on-time": "off",
-    "reason-string": "off",
-    "no-empty-blocks": "off",
-    "no-complex-fallback": "off",
     "max-states-count": "off",
-    "max-line-length": ["warn", 120],
-    "immutable-vars-naming": "off"
+    "no-complex-fallback": "off",
+    "func-visibility": ["error", { "ignoreConstructors": true }]
   }
 }
