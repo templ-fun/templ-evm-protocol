@@ -26,7 +26,7 @@
     "deploy:local": "npx hardhat run scripts/deploy-templ.cjs --network localhost",
     "deploy:factory:local": "npx hardhat run scripts/deploy-factory.cjs --network localhost",
     "node": "npx hardhat node",
-    "docs": "npm run docs:clean && npx solidity-docgen --output docs",
+    "docs": "npm run docs:clean && npx -y solidity-docgen@0.5.21 --output docs",
     "docs:clean": "rm -rf docs"
   },
   "keywords": [
@@ -55,8 +55,7 @@
     "solidity-coverage": "^0.8.1",
     "solhint": "^6.0.1",
     "prettier": "^3.6.0",
-    "prettier-plugin-solidity": "^1.4.3",
-    "solidity-docgen": "^0.6.0"
+    "prettier-plugin-solidity": "^1.4.3"
   },
   "dependencies": {
     "dotenv": "^16.3.1"
