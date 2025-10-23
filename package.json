@@ -11,6 +11,7 @@
     "test": "npx hardhat test --grep '^(?!.*@(load)).*'",
     "test:load": "npx hardhat test --grep @load",
     "test:fuzz": "docker run --rm -v \"$PWD\":/src -w /src trailofbits/echidna echidna-test contracts/echidna/EchidnaTemplHarness.sol --contract EchidnaTemplHarness --config ./echidna.yaml",
+    "test:static": "npm run slither && npm run lint",
     "test:allwithload": "npx hardhat test",
     "coverage": "NODE_OPTIONS=--max-old-space-size=16384 npx hardhat coverage",
     "slither": "solc-select install 0.8.23 && solc-select use 0.8.23 && slither . --config-file slither.config.json",
@@ -19,11 +20,11 @@
     "verify:templ": "npx hardhat run scripts/verify-templ.cjs",
     "verify:factory": "npx hardhat run scripts/verify-factory.cjs",
     "deploy": "npx hardhat run scripts/deploy-templ.cjs --network base",
-    "deploy:factory:local": "npx hardhat run scripts/deploy-factory.cjs --network localhost",
-    "deploy:local": "npx hardhat run scripts/deploy-templ.cjs --network localhost",
     "deploy:factory": "npx hardhat run scripts/deploy-factory.cjs --network base",
+    "deploy:local": "npx hardhat run scripts/deploy-templ.cjs --network localhost",
+    "deploy:factory:local": "npx hardhat run scripts/deploy-factory.cjs --network localhost",
     "node": "npx hardhat node",
-    "docs": "npx solidity-docgen --output docs",
+    "docs": "npm run docs:clean && npx solidity-docgen --output docs",
     "docs:clean": "rm -rf docs"
   },
   "keywords": [

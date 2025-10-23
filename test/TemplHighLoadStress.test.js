@@ -449,7 +449,6 @@ describe("@load Templ High-Load Stress", function () {
       const newEntry = 0n; // leave entry fee unchanged
       await ensureProposalFee(templ, token, accessibleMembers[0], context);
       await templ.connect(accessibleMembers[0]).createProposalUpdateConfig(
-        ethers.ZeroAddress,
         newEntry,
         newBurn,
         newTreasury,

@@ -326,7 +326,6 @@ contract TEMPL is TemplBase {
             payload = abi.encode(p.joinPaused);
         } else if (action == Action.UpdateConfig) {
             payload = abi.encode(
-                p.token,
                 p.newEntryFee,
                 p.updateFeeSplit,
                 p.newBurnBps,

@@ -82,7 +82,6 @@ describe("Governance coverage gaps", function () {
     await templ
       .connect(secondMember)
       .createProposalUpdateConfig(
-        ethers.ZeroAddress,
         0,
         0,
         0,
@@ -99,7 +98,6 @@ describe("Governance coverage gaps", function () {
     await templ
       .connect(thirdMember)
       .createProposalUpdateConfig(
-        ethers.ZeroAddress,
         0,
         2000,
         2000,

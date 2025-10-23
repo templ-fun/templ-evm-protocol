@@ -1187,14 +1187,14 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param _treasuryBps New treasury share (bps) when `_updateFeeSplit` is true.
     /// @param _memberPoolBps New member pool share (bps) when `_updateFeeSplit` is true.
     function _updateConfig(
-        address _token,
         uint256 _entryFee,
         bool _updateFeeSplit,
         uint256 _burnBps,
         uint256 _treasuryBps,
         uint256 _memberPoolBps
     ) internal {
-        if (_token != address(0) && _token != accessToken) revert TemplErrors.TokenChangeDisabled();
+        // Note: The access token is immutable post‑deploy. Governance cannot change the
+        // token, the protocol recipient, or the protocol bps relative to total.
         if (_entryFee > 0) {
             _setCurrentEntryFee(_entryFee);
         }

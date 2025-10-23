@@ -44,14 +44,13 @@ contract TemplTreasuryModule is TemplBase {
     /// @param _treasuryBps New treasury allocation in basis points when `_updateFeeSplit` is true.
     /// @param _memberPoolBps New member pool allocation in basis points when `_updateFeeSplit` is true.
     function updateConfigDAO(
-        address _token,
         uint256 _entryFee,
         bool _updateFeeSplit,
         uint256 _burnBps,
         uint256 _treasuryBps,
         uint256 _memberPoolBps
     ) external onlyDAO onlyDelegatecall {
-        _updateConfig(_token, _entryFee, _updateFeeSplit, _burnBps, _treasuryBps, _memberPoolBps);
+        _updateConfig(_entryFee, _updateFeeSplit, _burnBps, _treasuryBps, _memberPoolBps);
     }
 
     /// @notice Governance action that toggles whether new members can join.

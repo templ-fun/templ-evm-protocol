@@ -70,7 +70,7 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
     const { accounts, token, templ } = await deployHarness();
     const [owner, , m1, m2] = accounts;
 
-    await templ.daoUpdate(ethers.ZeroAddress, 0n, false, 0, 0, 0);
+    await templ.daoUpdate(0n, false, 0, 0, 0);
     expect(await templ.entryFee()).to.equal(ENTRY_FEE);
 
     await templ.daoPause(true);
@@ -105,16 +105,16 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
     const other = await Other.deploy("Other", "OTH", 18);
     await other.waitForDeployment();
 
-    await expect(
-      templ.daoUpdate(other.target, 0n, false, 0, 0, 0)
-    ).to.be.revertedWithCustomError(templ, "TokenChangeDisabled");
+    // Token changes are ignored (immutable access token); call proceeds without revert
+    await expect(templ.daoUpdate(0n, false, 0, 0, 0)).to.not.be.reverted;
+    expect(await templ.accessToken()).to.equal(await token.getAddress());
 
     await expect(
-      templ.daoUpdate(ethers.ZeroAddress, 5n, false, 0, 0, 0)
+      templ.daoUpdate(5n, false, 0, 0, 0)
     ).to.be.revertedWithCustomError(templ, "EntryFeeTooSmall");
 
     await expect(
-      templ.daoUpdate(ethers.ZeroAddress, 15n, false, 0, 0, 0)
+      templ.daoUpdate(15n, false, 0, 0, 0)
     ).to.be.revertedWithCustomError(templ, "InvalidEntryFee");
 
     await expect(templ.daoDisband(token.target)).to.be.revertedWithCustomError(

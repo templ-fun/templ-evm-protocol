@@ -645,6 +645,67 @@ describe("TemplFactory", function () {
     expect(await secondTempl.protocolBps()).to.equal(BigInt(protocolBps));
   });
 
+  it("does not allow changing access token via updateConfig (ignored)", async function () {
+    const [, priest, protocolRecipient, member] = await ethers.getSigners();
+    const tokenA = await deployToken("TokenA", "TKA");
+    const tokenB = await deployToken("TokenB", "TKB");
+
+    const Factory = await ethers.getContractFactory("TemplFactory");
+    const protocolBps = pct(10);
+    const factory = await Factory.deploy((await ethers.getSigners())[0].address, protocolRecipient.address, protocolBps, modules.membershipModule, modules.treasuryModule, modules.governanceModule);
+    await factory.waitForDeployment();
+
+    const templAddress = await factory.createTemplFor.staticCall(
+      priest.address,
+      await tokenA.getAddress(),
+      ENTRY_FEE,
+      DEFAULT_METADATA.name,
+      DEFAULT_METADATA.description,
+      DEFAULT_METADATA.logoLink,
+      0,
+      0
+    );
+    await factory.createTemplFor(
+      priest.address,
+      await tokenA.getAddress(),
+      ENTRY_FEE,
+      DEFAULT_METADATA.name,
+      DEFAULT_METADATA.description,
+      DEFAULT_METADATA.logoLink,
+      0,
+      0
+    );
+    const templ = await getTemplAt(templAddress, ethers.provider);
+
+    // Join a member for governance
+    await mintToUsers(tokenA, [member], ENTRY_FEE * 2n);
+    await tokenA.connect(member).approve(templAddress, ENTRY_FEE);
+    await templ.connect(member).join();
+
+    // Propose update config attempting to change token to tokenB (should be ignored)
+    await templ
+      .connect(member)
+      .createProposalUpdateConfig(
+        0,
+        0,
+        0,
+        0,
+        false,
+        36 * 60 * 60,
+        "Ignore token change",
+        "Token immutable"
+      );
+    const pid = (await templ.proposalCount()) - 1n;
+    await templ.connect(member).vote(pid, true);
+    const delay = Number(await templ.postQuorumVotingPeriod());
+    await ethers.provider.send("evm_increaseTime", [delay + 1]);
+    await ethers.provider.send("evm_mine", []);
+    await templ.executeProposal(pid);
+
+    // Access token remains unchanged
+    expect(await templ.accessToken()).to.equal(await tokenA.getAddress());
+  });
+
     it("reverts when deployed with zero protocol recipient", async function () {
         const Factory = await ethers.getContractFactory("TemplFactory");
         await expect(Factory.deploy((await ethers.getSigners())[0].address, ethers.ZeroAddress, pct(10), modules.membershipModule, modules.treasuryModule, modules.governanceModule)).to.be.revertedWithCustomError(

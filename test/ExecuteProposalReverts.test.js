@@ -32,7 +32,6 @@ describe("executeProposal reverts", function () {
       templ
         .connect(owner)
         .createProposalUpdateConfig(
-          ethers.ZeroAddress,
           5,
           0,
           0,

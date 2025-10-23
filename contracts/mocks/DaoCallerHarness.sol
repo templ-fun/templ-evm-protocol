@@ -52,7 +52,6 @@ contract DaoCallerHarness is TEMPL {
 
     /// @notice Wrapper to call updateConfigDAO via contract self-call
     function daoUpdate(
-        address token,
         uint256 fee,
         bool updateSplit,
         uint256 burnBps,
@@ -60,7 +59,6 @@ contract DaoCallerHarness is TEMPL {
         uint256 memberPoolBps
     ) external {
         TemplTreasuryModule(address(this)).updateConfigDAO(
-            token,
             fee,
             updateSplit,
             burnBps,

@@ -244,7 +244,6 @@ describe("Membership coverage extras", function () {
     await templ
       .connect(memberA)
       .createProposalUpdateConfig(
-        tokenAddress,
         0,
         4_000,
         2_000,
@@ -426,7 +425,6 @@ describe("Membership coverage extras", function () {
     await templ
       .connect(memberA)
       .createProposalUpdateConfig(
-        ethers.ZeroAddress,
         newEntryFee,
         3100,
         3100,

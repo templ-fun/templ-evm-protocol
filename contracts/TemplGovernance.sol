@@ -54,7 +54,6 @@ contract TemplGovernanceModule is TemplBase {
     /// @param _description On-chain description for the proposal.
     /// @return proposalId Newly created proposal identifier.
     function createProposalUpdateConfig(
-        address _token,
         uint256 _newEntryFee,
         uint256 _newBurnBps,
         uint256 _newTreasuryBps,
@@ -75,7 +74,6 @@ contract TemplGovernanceModule is TemplBase {
         }
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
         p.action = Action.UpdateConfig;
-        p.token = _token;
         p.newEntryFee = _newEntryFee;
         p.newBurnBps = _newBurnBps;
         p.newTreasuryBps = _newTreasuryBps;
@@ -536,13 +534,11 @@ contract TemplGovernanceModule is TemplBase {
     /// @return returnData ABI-encoded return data for CallExternal actions, empty otherwise.
     function _executeActionInternal(uint256 _proposalId) internal returns (bytes memory returnData) {
         Proposal storage proposal = proposals[_proposalId];
-        if (proposal.action == Action.SetJoinPaused) {
-            _governanceSetJoinPaused(proposal.joinPaused);
-            return hex"";
+        if (proposal.action == Action.CallExternal) {
+            return _governanceCallExternal(proposal);
         }
         if (proposal.action == Action.UpdateConfig) {
             _governanceUpdateConfig(
-                proposal.token,
                 proposal.newEntryFee,
                 proposal.updateFeeSplit,
                 proposal.newBurnBps,
@@ -569,6 +565,14 @@ contract TemplGovernanceModule is TemplBase {
             _governanceChangePriest(proposal.recipient);
             return hex"";
         }
+        if (proposal.action == Action.CleanupExternalRewardToken) {
+            _governanceCleanupExternalRewardToken(proposal.token);
+            return hex"";
+        }
+        if (proposal.action == Action.SetJoinPaused) {
+            _governanceSetJoinPaused(proposal.joinPaused);
+            return hex"";
+        }
         if (proposal.action == Action.SetDictatorship) {
             _governanceSetDictatorship(proposal.setDictatorship);
             return hex"";
@@ -592,13 +596,6 @@ contract TemplGovernanceModule is TemplBase {
         if (proposal.action == Action.SetEntryFeeCurve) {
             CurveConfig memory curve2 = proposal.curveConfig;
             _governanceSetEntryFeeCurve(curve2, proposal.curveBaseEntryFee);
-            return hex"";
-        }
-        if (proposal.action == Action.CallExternal) {
-            return _governanceCallExternal(proposal);
-        }
-        if (proposal.action == Action.CleanupExternalRewardToken) {
-            _governanceCleanupExternalRewardToken(proposal.token);
             return hex"";
         }
         if (proposal.action == Action.SetQuorumBps) {
@@ -630,14 +627,13 @@ contract TemplGovernanceModule is TemplBase {
     /// @param _treasuryBps New treasury share (bps) when applying split updates.
     /// @param _memberPoolBps New member pool share (bps) when applying split updates.
     function _governanceUpdateConfig(
-        address _token,
         uint256 _entryFee,
         bool _updateFeeSplit,
         uint256 _burnBps,
         uint256 _treasuryBps,
         uint256 _memberPoolBps
     ) internal {
-        _updateConfig(_token, _entryFee, _updateFeeSplit, _burnBps, _treasuryBps, _memberPoolBps);
+        _updateConfig(_entryFee, _updateFeeSplit, _burnBps, _treasuryBps, _memberPoolBps);
     }
 
     /// @notice Governance wrapper that withdraws available treasury funds.

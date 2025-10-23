@@ -27,7 +27,6 @@ describe("updateConfigDAO", function () {
     it("reverts when entry fee is less than 10", async function () {
         await expect(
             templ.connect(member).createProposalUpdateConfig(
-                ethers.ZeroAddress,
                 5,
                 0,
                 0,
@@ -41,7 +40,6 @@ describe("updateConfigDAO", function () {
     it("reverts when entry fee is not divisible by 10", async function () {
         await expect(
             templ.connect(member).createProposalUpdateConfig(
-                ethers.ZeroAddress,
                 ENTRY_FEE + 5n,
                 0,
                 0,
@@ -54,7 +52,6 @@ describe("updateConfigDAO", function () {
 
     it("updateConfig proposal executes when token unchanged", async function () {
         await templ.connect(member).createProposalUpdateConfig(
-            ethers.ZeroAddress,
             ENTRY_FEE + 10n,
             0,
             0,
@@ -71,7 +68,6 @@ describe("updateConfigDAO", function () {
     it("reverts when fee split values are invalid", async function () {
         await expect(
             templ.connect(member).createProposalUpdateConfig(
-                ethers.ZeroAddress,
                 0,
                 pct(60),
                 pct(60),
@@ -88,7 +84,6 @@ describe("updateConfigDAO", function () {
         const NEW_MEMBER = pct(25);
 
         await templ.connect(member).createProposalUpdateConfig(
-            ethers.ZeroAddress,
             0,
             NEW_BURN,
             NEW_TREASURY,

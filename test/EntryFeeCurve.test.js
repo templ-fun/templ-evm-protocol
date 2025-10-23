@@ -298,7 +298,7 @@ describe("EntryFeeCurve", function () {
         await expect(
             templ
                 .connect(priest)
-                .updateConfigDAO(ethers.ZeroAddress, MIN_ENTRY_FEE, false, 0, 0, 0)
+                .updateConfigDAO(MIN_ENTRY_FEE, false, 0, 0, 0)
         ).to.be.revertedWithCustomError(templ, "EntryFeeTooSmall");
 
         expect(await templ.baseEntryFee()).to.be.gte(RAW_ENTRY_FEE);
