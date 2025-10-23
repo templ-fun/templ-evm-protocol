@@ -318,55 +318,52 @@ contract TEMPL is TemplBase {
     /// @return action The proposal action enum value.
     /// @return payload ABI-encoded payload corresponding to `action`.
     function getProposalActionData(uint256 _proposalId) external view returns (Action action, bytes memory payload) {
-        if (_proposalId < proposalCount) {
-            Proposal storage p = proposals[_proposalId];
-            action = p.action;
-            if (action == Action.SetJoinPaused) {
-                payload = abi.encode(p.joinPaused);
-            } else if (action == Action.UpdateConfig) {
-                payload = abi.encode(
-                    p.token,
-                    p.newEntryFee,
-                    p.updateFeeSplit,
-                    p.newBurnBps,
-                    p.newTreasuryBps,
-                    p.newMemberPoolBps
-                );
-            } else if (action == Action.SetMaxMembers) {
-                payload = abi.encode(p.newMaxMembers);
-            } else if (action == Action.SetMetadata) {
-                payload = abi.encode(p.newTemplName, p.newTemplDescription, p.newLogoLink);
-            } else if (action == Action.SetProposalFee) {
-                payload = abi.encode(p.newProposalCreationFeeBps);
-            } else if (action == Action.SetReferralShare) {
-                payload = abi.encode(p.newReferralShareBps);
-            } else if (action == Action.SetEntryFeeCurve) {
-                CurveConfig memory curve = p.curveConfig;
-                payload = abi.encode(curve, p.curveBaseEntryFee);
-            } else if (action == Action.CallExternal) {
-                payload = abi.encode(p.externalCallTarget, p.externalCallValue, p.externalCallData);
-            } else if (action == Action.WithdrawTreasury) {
-                payload = abi.encode(p.token, p.recipient, p.amount, p.reason);
-            } else if (action == Action.DisbandTreasury) {
-                payload = abi.encode(p.token);
-            } else if (action == Action.CleanupExternalRewardToken) {
-                payload = abi.encode(p.token);
-            } else if (action == Action.ChangePriest) {
-                payload = abi.encode(p.recipient);
-            } else if (action == Action.SetDictatorship) {
-                payload = abi.encode(p.setDictatorship);
-            } else if (action == Action.SetQuorumBps) {
-                payload = abi.encode(p.newQuorumBps);
-            } else if (action == Action.SetExecutionDelay) {
-                payload = abi.encode(p.newExecutionDelay);
-            } else if (action == Action.SetBurnAddress) {
-                payload = abi.encode(p.newBurnAddress);
-            } else {
-                payload = hex"";
-            }
-            return (action, payload);
+        if (_proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
+        Proposal storage p = proposals[_proposalId];
+        action = p.action;
+        if (action == Action.SetJoinPaused) {
+            payload = abi.encode(p.joinPaused);
+        } else if (action == Action.UpdateConfig) {
+            payload = abi.encode(
+                p.token,
+                p.newEntryFee,
+                p.updateFeeSplit,
+                p.newBurnBps,
+                p.newTreasuryBps,
+                p.newMemberPoolBps
+            );
+        } else if (action == Action.SetMaxMembers) {
+            payload = abi.encode(p.newMaxMembers);
+        } else if (action == Action.SetMetadata) {
+            payload = abi.encode(p.newTemplName, p.newTemplDescription, p.newLogoLink);
+        } else if (action == Action.SetProposalFee) {
+            payload = abi.encode(p.newProposalCreationFeeBps);
+        } else if (action == Action.SetReferralShare) {
+            payload = abi.encode(p.newReferralShareBps);
+        } else if (action == Action.SetEntryFeeCurve) {
+            CurveConfig memory curve = p.curveConfig;
+            payload = abi.encode(curve, p.curveBaseEntryFee);
+        } else if (action == Action.CallExternal) {
+            payload = abi.encode(p.externalCallTarget, p.externalCallValue, p.externalCallData);
+        } else if (action == Action.WithdrawTreasury) {
+            payload = abi.encode(p.token, p.recipient, p.amount, p.reason);
+        } else if (action == Action.DisbandTreasury) {
+            payload = abi.encode(p.token);
+        } else if (action == Action.CleanupExternalRewardToken) {
+            payload = abi.encode(p.token);
+        } else if (action == Action.ChangePriest) {
+            payload = abi.encode(p.recipient);
+        } else if (action == Action.SetDictatorship) {
+            payload = abi.encode(p.setDictatorship);
+        } else if (action == Action.SetQuorumBps) {
+            payload = abi.encode(p.newQuorumBps);
+        } else if (action == Action.SetExecutionDelay) {
+            payload = abi.encode(p.newExecutionDelay);
+        } else if (action == Action.SetBurnAddress) {
+            payload = abi.encode(p.newBurnAddress);
+        } else {
+            payload = hex"";
         }
-        revert TemplErrors.InvalidProposal();
     }
 
     /// @notice Internal helper that maps function selectors to a module address.

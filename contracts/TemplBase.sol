@@ -115,13 +115,23 @@ abstract contract TemplBase is ReentrancyGuard {
     }
 
     struct Proposal {
-        // 32-byte fields
         uint256 id;
+        address proposer;
+        Action action;
+        address token;
+        address recipient;
         uint256 amount;
+        string title;
+        string description;
+        string reason;
+        bool joinPaused;
         uint256 newEntryFee;
         uint256 newBurnBps;
         uint256 newTreasuryBps;
         uint256 newMemberPoolBps;
+        string newTemplName;
+        string newTemplDescription;
+        string newLogoLink;
         uint256 newProposalCreationFeeBps;
         uint256 newReferralShareBps;
         uint256 newMaxMembers;
@@ -129,46 +139,35 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 newQuorumBps;
         /// @notice Execution delay proposed (seconds) after quorum is reached.
         uint256 newExecutionDelay;
+        /// @notice Burn address proposed to receive burn allocations.
+        address newBurnAddress;
+        /// @notice Target contract invoked when executing an external call proposal.
+        address externalCallTarget;
+        /// @notice ETH value forwarded when executing the external call.
         uint256 externalCallValue;
+        /// @notice ABI-encoded calldata executed against the external target.
+        bytes externalCallData;
+        CurveConfig curveConfig;
         uint256 curveBaseEntryFee;
         uint256 yesVotes;
         uint256 noVotes;
         uint256 endTime;
         uint256 createdAt;
+        bool executed;
+        mapping(address => bool) hasVoted;
+        mapping(address => bool) voteChoice;
         uint256 eligibleVoters;
         uint256 postQuorumEligibleVoters;
         uint256 quorumReachedAt;
         uint256 quorumSnapshotBlock;
+        bool quorumExempt;
+        bool updateFeeSplit;
         uint256 preQuorumSnapshotBlock;
         /// @notice Join sequence recorded when the proposal was created.
         uint256 preQuorumJoinSequence;
         /// @notice Join sequence recorded when quorum was reached (0 if quorum never satisfied).
         uint256 quorumJoinSequence;
-        // 20-byte address field + small types (packed together where possible)
-        address proposer;
-        Action action;
-        bool joinPaused;
-        bool executed;
-        bool quorumExempt;
-        bool updateFeeSplit;
         bool setDictatorship;
-        // Remaining address fields (each occupies a slot)
-        address token;
-        address recipient;
-        address newBurnAddress;
-        address externalCallTarget;
-        // Reference types
-        string title;
-        string description;
-        string reason;
-        string newTemplName;
-        string newTemplDescription;
-        string newLogoLink;
-        bytes externalCallData;
-        CurveConfig curveConfig;
-        // Mappings (separate storage areas)
-        mapping(address => bool) hasVoted;
-        mapping(address => bool) voteChoice;
     }
 
     /// @notice Monotonic proposal id counter.
@@ -229,14 +228,14 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 protocolAmount,
         uint256 timestamp,
         uint256 blockNumber,
-        uint256 indexed joinId
+        uint256 joinId
     );
 
     /// @notice Emitted when a member claims their internal member rewards.
     /// @param member Wallet that claimed.
     /// @param amount Amount transferred to the member.
     /// @param timestamp Block timestamp when the claim was processed.
-    event MemberRewardsClaimed(address indexed member, uint256 indexed amount, uint256 indexed timestamp);
+    event MemberRewardsClaimed(address indexed member, uint256 amount, uint256 timestamp);
 
     /// @notice Emitted when a proposal is created.
     /// @param proposalId Newly created proposal id.
@@ -247,7 +246,7 @@ abstract contract TemplBase is ReentrancyGuard {
     event ProposalCreated(
         uint256 indexed proposalId,
         address indexed proposer,
-        uint256 indexed endTime,
+        uint256 endTime,
         string title,
         string description
     );
@@ -257,13 +256,13 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param voter Wallet that cast the vote.
     /// @param support True for YES, false for NO.
     /// @param timestamp Block timestamp when the vote was recorded.
-    event VoteCast(uint256 indexed proposalId, address indexed voter, bool indexed support, uint256 timestamp);
+    event VoteCast(uint256 indexed proposalId, address indexed voter, bool support, uint256 timestamp);
 
     /// @notice Emitted when a proposal is executed.
     /// @param proposalId Proposal being executed.
     /// @param success True when execution succeeded.
     /// @param returnDataHash keccak256 hash of returndata for external calls.
-    event ProposalExecuted(uint256 indexed proposalId, bool indexed success, bytes32 returnDataHash);
+    event ProposalExecuted(uint256 indexed proposalId, bool success, bytes32 returnDataHash);
 
     /// @notice Emitted when a treasury action is performed (withdrawal).
     /// @param proposalId Proposal id when triggered by governance (0 for direct DAO action).
@@ -288,8 +287,8 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param protocolBps Protocol allocation (bps).
     event ConfigUpdated(
         address indexed token,
-        uint256 indexed entryFee,
-        uint256 indexed burnBps,
+        uint256 entryFee,
+        uint256 burnBps,
         uint256 treasuryBps,
         uint256 memberPoolBps,
         uint256 protocolBps
@@ -297,10 +296,10 @@ abstract contract TemplBase is ReentrancyGuard {
 
     /// @notice Emitted when joins are paused or resumed.
     /// @param joinPaused New pause state.
-    event JoinPauseUpdated(bool indexed joinPaused);
+    event JoinPauseUpdated(bool joinPaused);
     /// @notice Emitted when the membership cap is updated.
     /// @param maxMembers New maximum member count (0 = uncapped).
-    event MaxMembersUpdated(uint256 indexed maxMembers);
+    event MaxMembersUpdated(uint256 maxMembers);
     /// @notice Emitted whenever the entry fee curve configuration changes.
     /// @param styles Segment styles in application order (primary first).
     /// @param rateBps Segment rate parameters expressed in basis points.
@@ -319,7 +318,7 @@ abstract contract TemplBase is ReentrancyGuard {
     event TreasuryDisbanded(
         uint256 indexed proposalId,
         address indexed token,
-        uint256 indexed amount,
+        uint256 amount,
         uint256 perMember,
         uint256 remainder
     );
@@ -328,7 +327,7 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param token ERC-20 token address or address(0) for ETH.
     /// @param member Recipient wallet.
     /// @param amount Claimed amount.
-    event ExternalRewardClaimed(address indexed token, address indexed member, uint256 indexed amount);
+    event ExternalRewardClaimed(address indexed token, address indexed member, uint256 amount);
 
     /// @notice Emitted when templ metadata values are updated.
     /// @param name New name.
@@ -338,23 +337,23 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @notice Emitted when the proposal creation fee changes.
     /// @param previousFeeBps Previous fee (bps).
     /// @param newFeeBps New fee (bps).
-    event ProposalCreationFeeUpdated(uint256 indexed previousFeeBps, uint256 indexed newFeeBps);
+    event ProposalCreationFeeUpdated(uint256 previousFeeBps, uint256 newFeeBps);
     /// @notice Emitted when the referral share changes.
     /// @param previousBps Previous referral share (bps).
     /// @param newBps New referral share (bps).
-    event ReferralShareBpsUpdated(uint256 indexed previousBps, uint256 indexed newBps);
+    event ReferralShareBpsUpdated(uint256 previousBps, uint256 newBps);
     /// @notice Emitted when the quorum threshold is updated via governance.
     /// @param previousBps Previous quorum threshold (bps).
     /// @param newBps New quorum threshold (bps).
-    event QuorumBpsUpdated(uint256 indexed previousBps, uint256 indexed newBps);
+    event QuorumBpsUpdated(uint256 previousBps, uint256 newBps);
     /// @notice Emitted when the post-quorum execution delay is updated via governance.
     /// @param previousDelay Previous post-quorum execution delay (seconds).
     /// @param newDelay New post-quorum execution delay (seconds).
-    event ExecutionDelayAfterQuorumUpdated(uint256 indexed previousDelay, uint256 indexed newDelay);
+    event ExecutionDelayAfterQuorumUpdated(uint256 previousDelay, uint256 newDelay);
     /// @notice Emitted when the burn address is updated via governance.
     /// @param previousBurn Previous burn address.
     /// @param newBurn New burn address.
-    event BurnAddressUpdated(address indexed previousBurn, address indexed newBurn);
+    event BurnAddressUpdated(address previousBurn, address newBurn);
 
     struct ExternalRewardState {
         uint256 poolBalance;
@@ -403,7 +402,7 @@ abstract contract TemplBase is ReentrancyGuard {
 
     /// @notice Emitted when dictatorship mode is toggled.
     /// @param enabled True when dictatorship is enabled, false when disabled.
-    event DictatorshipModeChanged(bool indexed enabled);
+    event DictatorshipModeChanged(bool enabled);
 
     /// @dev Persists a new external reward checkpoint so future joins can baseline correctly.
     /// @notice Persist a new external reward checkpoint so future joins can baseline correctly.

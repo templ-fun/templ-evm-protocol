@@ -49,10 +49,10 @@ contract TemplFactory {
         address burnAddress;
         /// @notice Start in dictatorship mode (priest may call onlyDAO actions directly).
         bool priestIsDictator;
-        /// @notice Whether a custom curve is provided (false uses factory default curve).
-        bool curveProvided;
         /// @notice Optional membership cap (0 = uncapped).
         uint256 maxMembers;
+        /// @notice Whether a custom curve is provided (false uses factory default curve).
+        bool curveProvided;
         /// @notice Pricing curve configuration (see TemplCurve).
         CurveConfig curve;
         /// @notice Human-readable templ name.
@@ -131,18 +131,18 @@ contract TemplFactory {
 
     /// @notice Emitted when factory permissionless mode is toggled.
     /// @param enabled True when any address may create templs.
-    event PermissionlessModeUpdated(bool indexed enabled);
+    event PermissionlessModeUpdated(bool enabled);
 
     /// @notice Returns the default exponential curve configuration used by the factory.
     /// @return cfg Default curve config with a single exponential segment.
-    function _defaultCurveConfig() internal pure returns (CurveConfig memory cfg) {
+    function _defaultCurveConfig() internal pure returns (CurveConfig memory) {
         CurveSegment memory primary = CurveSegment({
             style: CurveStyle.Exponential,
             rateBps: DEFAULT_CURVE_EXP_RATE_BPS,
             length: 0
         });
         CurveSegment[] memory extras = new CurveSegment[](0);
-        cfg = CurveConfig({ primary: primary, additionalSegments: extras });
+        return CurveConfig({ primary: primary, additionalSegments: extras });
     }
 
     /// @notice Initializes factory-wide protocol recipient, fee share, modules, and factory deployer.

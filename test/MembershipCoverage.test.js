@@ -14,16 +14,16 @@ async function findMemberPoolSlot(templ, contractAddress, maxSlots = 200) {
   }
   const target = ethers.zeroPadValue(ethers.toBeHex(expected), 32);
   for (let slotIndex = 0; slotIndex < maxSlots; slotIndex += 1) {
-    const slot = ethers.toBeHex(slotIndex, 32);
-    const current = await ethers.provider.send("eth_getStorageAt", [contractAddress, slot, "latest"]);
+    const slotQuantity = ethers.toQuantity(slotIndex); // Proper JSON-RPC QUANTITY
+    const current = await ethers.provider.send("eth_getStorageAt", [contractAddress, slotQuantity, "latest"]);
     if (current !== target) continue;
 
-    await ethers.provider.send("hardhat_setStorageAt", [contractAddress, slot, ethers.ZeroHash]);
+    await ethers.provider.send("hardhat_setStorageAt", [contractAddress, slotQuantity, ethers.ZeroHash]);
     const updated = await templ.memberPoolBalance();
-    await ethers.provider.send("hardhat_setStorageAt", [contractAddress, slot, current]);
+    await ethers.provider.send("hardhat_setStorageAt", [contractAddress, slotQuantity, current]);
 
     if (updated === 0n) {
-      return slot;
+      return slotQuantity;
     }
   }
   throw new Error("Unable to locate memberPoolBalance storage slot");
@@ -38,28 +38,18 @@ async function findExternalRewardPoolSlot(templ, contractAddress, tokenAddress, 
   const encodedKey = ethers.zeroPadValue(tokenAddress, 32);
   const targetValue = ethers.zeroPadValue(ethers.toBeHex(poolBalance), 32);
   for (let slotIndex = 0; slotIndex < maxSlots; slotIndex += 1) {
-    const slot = ethers.toBeHex(slotIndex, 32);
-    const storageSlot = ethers.keccak256(ethers.concat([encodedKey, slot]));
-    const stored = await ethers.provider.send("eth_getStorageAt", [
-      contractAddress,
-      ethers.toBeHex(BigInt(storageSlot), 32),
-      "latest"
-    ]);
+    // Mapping storage slot: keccak256(key . slotIndex)
+    const slotPadded = ethers.toBeHex(slotIndex, 32);
+    const storageSlot = ethers.keccak256(ethers.concat([encodedKey, slotPadded]));
+    const positionQuantity = ethers.toQuantity(storageSlot); // Proper JSON-RPC QUANTITY
+    const stored = await ethers.provider.send("eth_getStorageAt", [contractAddress, positionQuantity, "latest"]);
     if (stored !== targetValue) continue;
 
-    await ethers.provider.send("hardhat_setStorageAt", [
-      contractAddress,
-      ethers.toBeHex(BigInt(storageSlot), 32),
-      ethers.ZeroHash
-    ]);
+    await ethers.provider.send("hardhat_setStorageAt", [contractAddress, positionQuantity, ethers.ZeroHash]);
     const updatedState = await templ.getExternalRewardState(tokenAddress);
-    await ethers.provider.send("hardhat_setStorageAt", [
-      contractAddress,
-      ethers.toBeHex(BigInt(storageSlot), 32),
-      targetValue
-    ]);
+    await ethers.provider.send("hardhat_setStorageAt", [contractAddress, positionQuantity, targetValue]);
     if (updatedState[0] === 0n) {
-      return storageSlot;
+      return positionQuantity;
     }
   }
   throw new Error("Unable to locate external reward pool storage slot");
