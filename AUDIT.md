@@ -8,7 +8,7 @@ Scope
 
 Summary
 - Overall design is modular and conservative: storage-centralized in TemplBase, modules accessed via delegatecall, strict onlyDAO gating, per-proposal join-sequence snapshots and post-quorum timelock, and thorough unit tests plus property fuzzing harness.
-- No critical issues found. One medium-severity issue identified and fixed in this PR. Added one protective enforcement to block non-vanilla ERC-20 access tokens.
+- No critical issues found. One medium-severity issue identified and fixed in this PR.
 
 Key Changes (fixed in this PR)
 1) Anchored post-quorum execution delay to snapshot
@@ -16,12 +16,7 @@ Key Changes (fixed in this PR)
    - Impact: Changing the global delay after quorum could unexpectedly shorten/extend the wait for already-quorate proposals.
    - Fix: Check block.timestamp >= proposal.endTime (which is set at quorum) for gating. File: contracts/TemplGovernance.sol.
 
-2) Enforced vanilla ERC-20 semantics on join
-   - Issue: Accounting assumes exact transfer amounts; fee-on-transfer or rebasing tokens could silently desync balances.
-   - Impact: Incorrect member pool/treasury accounting and potential griefing.
-   - Fix: During join, verify that the contract’s token balance increases by exactly the expected toContract amount; otherwise revert with UnsupportedToken. File: contracts/TemplMembership.sol.
-   - Tests: Added contracts/mocks/FeeOnTransferToken.sol and test/UnsupportedToken.test.js.
-   - Docs: Updated README safety note and join NatSpec.
+2) [Removed] Access-token enforcement was considered but not adopted; the protocol relies on deployers to choose vanilla ERC-20s as documented.
 
 Findings
 
@@ -56,4 +51,3 @@ Tools & Validation
 Recommendations (Non-blocking)
 - Consider explicitly disallowing CallExternal self-target if the governance model prefers strictly typed actions.
 - Keep Echidna in CI with increasing limits over time; add a fuzz target for proposal sequencing/staleness if desired.
-

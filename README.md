@@ -8,7 +8,7 @@
 - Deployers configure pricing curves, fee splits, referral rewards, proposal fees, quorum/delay, membership caps, and an optional dictatorship (priest) override.
 
 ## Safety
-- Vanilla ERC‑20 only for the access token (no fee‑on‑transfer, no rebasing, no hooks). Joins verify exact receipts; non‑vanilla tokens revert with `UnsupportedToken`.
+- Vanilla ERC‑20 only for the access token (no fee‑on‑transfer, no rebasing, no hooks). Protocol accounting assumes exact transfer amounts; using non‑standard tokens will desync balances and can break claims/withdrawals. Choose a vanilla token.
 - External‑call proposals can execute arbitrary logic; treat with the same caution as timelocked admin calls in other protocols.
 - No external audit yet. Treat as experimental and keep treasury exposure conservative until audited.
 

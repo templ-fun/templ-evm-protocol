@@ -26,27 +26,23 @@ contract TemplMembershipModule is TemplBase {
     event ReferralRewardPaid(address indexed referral, address indexed newMember, uint256 amount);
 
     /// @notice Join the templ by paying the configured entry fee on behalf of the caller.
-    /// @dev Reverts UnsupportedToken when the access token is non‑vanilla (fee‑on‑transfer/rebasing).
     function join() external whenNotPaused notSelf nonReentrant onlyDelegatecall {
         _join(msg.sender, msg.sender, address(0));
     }
 
     /// @notice Join the templ by paying the entry fee on behalf of the caller with a referral.
-    /// @dev Reverts UnsupportedToken when the access token is non‑vanilla (fee‑on‑transfer/rebasing).
     /// @param referral Member credited with the referral reward.
     function joinWithReferral(address referral) external whenNotPaused notSelf nonReentrant onlyDelegatecall {
         _join(msg.sender, msg.sender, referral);
     }
 
     /// @notice Join the templ on behalf of another wallet by covering their entry fee.
-    /// @dev Reverts UnsupportedToken when the access token is non‑vanilla (fee‑on‑transfer/rebasing).
     /// @param recipient Wallet receiving membership. Must not already be a member.
     function joinFor(address recipient) external whenNotPaused notSelf nonReentrant onlyDelegatecall {
         _join(msg.sender, recipient, address(0));
     }
 
     /// @notice Join the templ for another wallet while crediting a referral.
-    /// @dev Reverts UnsupportedToken when the access token is non‑vanilla (fee‑on‑transfer/rebasing).
     /// @param recipient Wallet receiving membership. Must not already be a member.
     /// @param referral Member credited with the referral reward.
     function joinForWithReferral(address recipient, address referral)
@@ -119,16 +115,7 @@ contract TemplMembershipModule is TemplBase {
             totalBurned += burnAmount;
         }
         _safeTransferFrom(accessToken, payer, burnAddress, burnAmount);
-        // Enforce vanilla ERC-20 semantics for the access token by verifying
-        // that the exact expected amount is received by the contract. This
-        // rejects fee-on-transfer and rebasing tokens which would desync
-        // accounting.
-        uint256 balBefore = IERC20(accessToken).balanceOf(address(this));
         _safeTransferFrom(accessToken, payer, address(this), toContract);
-        uint256 balAfter = IERC20(accessToken).balanceOf(address(this));
-        if (balAfter < balBefore || balAfter - balBefore != toContract) {
-            revert TemplErrors.UnsupportedToken();
-        }
         _safeTransferFrom(accessToken, payer, protocolFeeRecipient, protocolAmount);
 
         if (referralAmount > 0) {
