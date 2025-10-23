@@ -228,14 +228,14 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 protocolAmount,
         uint256 timestamp,
         uint256 blockNumber,
-        uint256 joinId
+        uint256 indexed joinId
     );
 
     /// @notice Emitted when a member claims rewards from the member pool.
     /// @param member Wallet that claimed rewards.
     /// @param amount Amount of access token paid out.
     /// @param timestamp Block timestamp when the claim was processed.
-    event MemberRewardsClaimed(address indexed member, uint256 amount, uint256 timestamp);
+    event MemberRewardsClaimed(address indexed member, uint256 indexed amount, uint256 indexed timestamp);
 
     /// @notice Emitted when a proposal is created.
     /// @param proposalId Newly created proposal id.
@@ -246,7 +246,7 @@ abstract contract TemplBase is ReentrancyGuard {
     event ProposalCreated(
         uint256 indexed proposalId,
         address indexed proposer,
-        uint256 endTime,
+        uint256 indexed endTime,
         string title,
         string description
     );
@@ -256,13 +256,13 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param voter Wallet that cast the vote.
     /// @param support True for YES, false for NO.
     /// @param timestamp Block timestamp when the vote was recorded.
-    event VoteCast(uint256 indexed proposalId, address indexed voter, bool support, uint256 timestamp);
+    event VoteCast(uint256 indexed proposalId, address indexed voter, bool indexed support, uint256 timestamp);
 
     /// @notice Emitted after a proposal execution attempt.
     /// @param proposalId Proposal id that was executed.
     /// @param success True when the execution succeeded.
     /// @param returnDataHash Keccak256 hash of returned bytes (or empty).
-    event ProposalExecuted(uint256 indexed proposalId, bool success, bytes32 returnDataHash);
+    event ProposalExecuted(uint256 indexed proposalId, bool indexed success, bytes32 returnDataHash);
 
     /// @notice Emitted when a treasury withdrawal is executed.
     /// @param proposalId Proposal id that authorized the withdrawal (0 for direct DAO call).
@@ -287,8 +287,8 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param protocolBps Protocol share (bps).
     event ConfigUpdated(
         address indexed token,
-        uint256 entryFee,
-        uint256 burnBps,
+        uint256 indexed entryFee,
+        uint256 indexed burnBps,
         uint256 treasuryBps,
         uint256 memberPoolBps,
         uint256 protocolBps
@@ -296,10 +296,10 @@ abstract contract TemplBase is ReentrancyGuard {
 
     /// @notice Emitted when joins are paused or resumed.
     /// @param joinPaused New pause state.
-    event JoinPauseUpdated(bool joinPaused);
+    event JoinPauseUpdated(bool indexed joinPaused);
     /// @notice Emitted when the membership cap is updated.
     /// @param maxMembers New maximum member count (0 = uncapped).
-    event MaxMembersUpdated(uint256 maxMembers);
+    event MaxMembersUpdated(uint256 indexed maxMembers);
     /// @notice Emitted whenever the entry fee curve configuration changes.
     /// @param styles Segment styles in application order (primary first).
     /// @param rateBps Segment rate parameters expressed in basis points.
@@ -318,7 +318,7 @@ abstract contract TemplBase is ReentrancyGuard {
     event TreasuryDisbanded(
         uint256 indexed proposalId,
         address indexed token,
-        uint256 amount,
+        uint256 indexed amount,
         uint256 perMember,
         uint256 remainder
     );
@@ -327,7 +327,7 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param token ERC-20 token address or address(0) for ETH.
     /// @param member Recipient wallet.
     /// @param amount Claimed amount.
-    event ExternalRewardClaimed(address indexed token, address indexed member, uint256 amount);
+    event ExternalRewardClaimed(address indexed token, address indexed member, uint256 indexed amount);
 
     /// @notice Emitted when templ metadata is updated.
     /// @param name New templ name.
@@ -337,23 +337,23 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @notice Emitted when the proposal creation fee is updated.
     /// @param previousFeeBps Previous fee (bps of entry fee).
     /// @param newFeeBps New fee (bps of entry fee).
-    event ProposalCreationFeeUpdated(uint256 previousFeeBps, uint256 newFeeBps);
+    event ProposalCreationFeeUpdated(uint256 indexed previousFeeBps, uint256 indexed newFeeBps);
     /// @notice Emitted when referral share bps is updated.
     /// @param previousBps Previous referral share bps.
     /// @param newBps New referral share bps.
-    event ReferralShareBpsUpdated(uint256 previousBps, uint256 newBps);
+    event ReferralShareBpsUpdated(uint256 indexed previousBps, uint256 indexed newBps);
     /// @notice Emitted when the quorum threshold is updated via governance.
     /// @param previousBps Previous quorum threshold (bps).
     /// @param newBps New quorum threshold (bps).
-    event QuorumBpsUpdated(uint256 previousBps, uint256 newBps);
+    event QuorumBpsUpdated(uint256 indexed previousBps, uint256 indexed newBps);
     /// @notice Emitted when the post-quorum execution delay is updated via governance.
     /// @param previousDelay Previous delay (seconds).
     /// @param newDelay New delay (seconds).
-    event ExecutionDelayAfterQuorumUpdated(uint256 previousDelay, uint256 newDelay);
+    event ExecutionDelayAfterQuorumUpdated(uint256 indexed previousDelay, uint256 indexed newDelay);
     /// @notice Emitted when the burn address is updated via governance.
     /// @param previousBurn Previous burn sink address.
     /// @param newBurn New burn sink address.
-    event BurnAddressUpdated(address previousBurn, address newBurn);
+    event BurnAddressUpdated(address indexed previousBurn, address indexed newBurn);
 
     struct ExternalRewardState {
         uint256 poolBalance;
@@ -402,7 +402,7 @@ abstract contract TemplBase is ReentrancyGuard {
 
     /// @notice Emitted when dictatorship mode is toggled.
     /// @param enabled True when dictatorship is enabled, false when disabled.
-    event DictatorshipModeChanged(bool enabled);
+    event DictatorshipModeChanged(bool indexed enabled);
 
     /// @notice Persists a new external reward checkpoint so future joins can baseline correctly.
     /// @param rewards External reward state to record a checkpoint for.
@@ -488,7 +488,7 @@ abstract contract TemplBase is ReentrancyGuard {
             return;
         }
         uint256 tokenCount = externalRewardTokens.length;
-        for (uint256 i = 0; i < tokenCount; i++) {
+        for (uint256 i = 0; i < tokenCount; ++i) {
             address token = externalRewardTokens[i];
             ExternalRewardState storage rewards = externalRewards[token];
             uint256 remainder = rewards.rewardRemainder;
@@ -568,7 +568,7 @@ abstract contract TemplBase is ReentrancyGuard {
             quorumBps = DEFAULT_QUORUM_BPS;
         } else {
             uint256 normalizedQuorum = _quorumBps;
-            if (normalizedQuorum <= 100) {
+            if (!(normalizedQuorum > 100)) {
                 normalizedQuorum = normalizedQuorum * 100;
             }
             if (normalizedQuorum > BPS_DENOMINATOR) revert TemplErrors.InvalidPercentage();
@@ -665,7 +665,7 @@ abstract contract TemplBase is ReentrancyGuard {
         CurveSegment[] storage extras = stored.additionalSegments;
         uint256 len = extras.length;
         CurveSegment[] memory extraCopy = new CurveSegment[](len);
-        for (uint256 i = 0; i < len; i++) {
+        for (uint256 i = 0; i < len; ++i) {
             extraCopy[i] = extras[i];
         }
         cfg.primary = stored.primary;
@@ -702,7 +702,7 @@ abstract contract TemplBase is ReentrancyGuard {
             return true;
         }
         uint256 len = curve.additionalSegments.length;
-        for (uint256 i = 0; i < len; i++) {
+        for (uint256 i = 0; i < len; ++i) {
             if (curve.additionalSegments[i].style != CurveStyle.Static) {
                 return true;
             }
@@ -731,7 +731,7 @@ abstract contract TemplBase is ReentrancyGuard {
         }
         CurveSegment[] memory extras = curve.additionalSegments;
         uint256 len = extras.length;
-        for (uint256 i = 0; i < len && remaining > 0; i++) {
+        for (uint256 i = 0; i < len && remaining > 0; ++i) {
             (amount, remaining) = _consumeSegment(amount, extras[i], remaining, true);
         }
         if (remaining > 0) revert TemplErrors.InvalidCurveConfig();
@@ -759,7 +759,7 @@ abstract contract TemplBase is ReentrancyGuard {
         }
         CurveSegment[] storage extras = curve.additionalSegments;
         uint256 len = extras.length;
-        for (uint256 i = 0; i < len && remaining > 0; i++) {
+        for (uint256 i = 0; i < len && remaining > 0; ++i) {
             CurveSegment memory seg = extras[i];
             (amount, remaining) = _consumeSegment(amount, seg, remaining, true);
         }
@@ -788,7 +788,7 @@ abstract contract TemplBase is ReentrancyGuard {
         }
         CurveSegment[] memory extras = curve.additionalSegments;
         uint256 len = extras.length;
-        for (uint256 i = 0; i < len && remaining > 0; i++) {
+        for (uint256 i = 0; i < len && remaining > 0; ++i) {
             (amount, remaining) = _consumeSegment(amount, extras[i], remaining, false);
         }
         if (remaining > 0) revert TemplErrors.InvalidCurveConfig();
@@ -937,7 +937,7 @@ abstract contract TemplBase is ReentrancyGuard {
         if (curve.primary.length == 0) {
             revert TemplErrors.InvalidCurveConfig();
         }
-        for (uint256 i = 0; i < extrasLen; i++) {
+        for (uint256 i = 0; i < extrasLen; ++i) {
             CurveSegment memory segment = extras[i];
             bool isLast = i == extrasLen - 1;
             _validateCurveSegment(segment);
@@ -986,7 +986,7 @@ abstract contract TemplBase is ReentrancyGuard {
         styles[0] = uint8(cfg.primary.style);
         rates[0] = cfg.primary.rateBps;
         lengths[0] = cfg.primary.length;
-        for (uint256 i = 0; i < additional; i++) {
+        for (uint256 i = 0; i < additional; ++i) {
             CurveSegment storage seg = cfg.additionalSegments[i];
             styles[i + 1] = uint8(seg.style);
             rates[i + 1] = seg.rateBps;
@@ -1054,7 +1054,7 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param newQuorumBps New quorum threshold value.
     function _setQuorumBps(uint256 newQuorumBps) internal {
         uint256 normalized = newQuorumBps;
-        if (normalized <= 100) {
+        if (!(normalized > 100)) {
             normalized = normalized * 100;
         }
         if (normalized > BPS_DENOMINATOR) revert TemplErrors.InvalidPercentage();
@@ -1098,10 +1098,10 @@ abstract contract TemplBase is ReentrancyGuard {
 
         if (token == accessToken) {
             uint256 currentBalance = IERC20(accessToken).balanceOf(address(this));
-            if (currentBalance <= memberPoolBalance) revert TemplErrors.InsufficientTreasuryBalance();
+            if (!(currentBalance > memberPoolBalance)) revert TemplErrors.InsufficientTreasuryBalance();
             uint256 availableBalance = currentBalance - memberPoolBalance;
             if (amount > availableBalance) revert TemplErrors.InsufficientTreasuryBalance();
-            uint256 debitedFromFees = amount <= treasuryBalance ? amount : treasuryBalance;
+            uint256 debitedFromFees = amount < treasuryBalance ? amount : treasuryBalance;
             treasuryBalance -= debitedFromFees;
 
             _safeTransfer(accessToken, recipient, amount);
@@ -1175,10 +1175,9 @@ abstract contract TemplBase is ReentrancyGuard {
 
         if (token == accessToken) {
             uint256 accessTokenBalance = IERC20(accessToken).balanceOf(address(this));
-            if (accessTokenBalance <= memberPoolBalance) revert TemplErrors.NoTreasuryFunds();
+            if (!(accessTokenBalance > memberPoolBalance)) revert TemplErrors.NoTreasuryFunds();
             uint256 accessTokenAmount = accessTokenBalance - memberPoolBalance;
-
-            uint256 debitedFromFees = accessTokenAmount <= treasuryBalance ? accessTokenAmount : treasuryBalance;
+            uint256 debitedFromFees = accessTokenAmount < treasuryBalance ? accessTokenAmount : treasuryBalance;
             treasuryBalance -= debitedFromFees;
 
             memberPoolBalance += accessTokenAmount;
@@ -1279,7 +1278,7 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @notice Auto-pauses new joins when a non-zero membership cap has been reached.
     function _autoPauseIfLimitReached() internal {
         uint256 limit = maxMembers;
-        if (limit > 0 && memberCount >= limit && !joinPaused) {
+        if (limit > 0 && memberCount == limit && !joinPaused) {
             joinPaused = true;
             emit JoinPauseUpdated(true);
         }
@@ -1313,7 +1312,7 @@ abstract contract TemplBase is ReentrancyGuard {
     function _registerExternalToken(address token) internal {
         ExternalRewardState storage rewards = externalRewards[token];
         if (!rewards.exists) {
-            if (externalRewardTokens.length >= MAX_EXTERNAL_REWARD_TOKENS) {
+            if (externalRewardTokens.length > MAX_EXTERNAL_REWARD_TOKENS - 1) {
                 revert TemplErrors.ExternalRewardLimitReached();
             }
             rewards.exists = true;

@@ -12,7 +12,7 @@ contract BatchExecutor {
         uint256 len = targets.length;
         if (len == 0 || len != values.length || len != calldatas.length) revert();
         results = new bytes[](len);
-        for (uint256 i = 0; i < len; i++) {
+        for (uint256 i = 0; i < len; ++i) {
             address target = targets[i];
             if (target == address(0)) revert();
             (bool success, bytes memory ret) = target.call{ value: values[i] }(calldatas[i]);

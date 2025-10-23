@@ -26,7 +26,7 @@ contract TemplMembershipModule is TemplBase {
     /// @param referral The referrer wallet that receives the payout.
     /// @param newMember The wallet that just joined.
     /// @param amount Amount of access token paid to `referral`.
-    event ReferralRewardPaid(address indexed referral, address indexed newMember, uint256 amount);
+    event ReferralRewardPaid(address indexed referral, address indexed newMember, uint256 indexed amount);
 
     /// @notice Join the templ by paying the configured entry fee on behalf of the caller.
     function join() external whenNotPaused notSelf nonReentrant onlyDelegatecall {
@@ -67,7 +67,7 @@ contract TemplMembershipModule is TemplBase {
 
         uint256 currentMemberCount = memberCount;
 
-        if (maxMembers > 0 && currentMemberCount >= maxMembers) {
+        if (maxMembers > 0 && currentMemberCount == maxMembers) {
             revert TemplErrors.MemberLimitReached();
         }
 
@@ -353,13 +353,13 @@ contract TemplMembershipModule is TemplBase {
         uint256 limit
     ) external view returns (address[] memory tokens, bool hasMore) {
         uint256 len = externalRewardTokens.length;
-        if (offset >= len) {
+        if (!(offset < len)) {
             return (new address[](0), false);
         }
         uint256 remaining = len - offset;
         uint256 take = limit < remaining ? limit : remaining;
         address[] memory out = new address[](take);
-        for (uint256 i = 0; i < take; i++) {
+        for (uint256 i = 0; i < take; ++i) {
             out[i] = externalRewardTokens[offset + i];
         }
         return (out, offset + take < len);

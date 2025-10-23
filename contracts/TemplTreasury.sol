@@ -154,7 +154,7 @@ contract TemplTreasuryModule is TemplBase {
         uint256 len = targets.length;
         if (len == 0 || len != values.length || len != calldatas.length) revert TemplErrors.InvalidCallData();
         results = new bytes[](len);
-        for (uint256 i = 0; i < len; i++) {
+        for (uint256 i = 0; i < len; ++i) {
             address target = targets[i];
             if (target == address(0)) revert TemplErrors.InvalidRecipient();
             (bool success, bytes memory ret) = target.call{ value: values[i] }(calldatas[i]);

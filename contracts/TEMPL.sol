@@ -317,7 +317,7 @@ contract TEMPL is TemplBase {
     /// @return action The proposal action enum value.
     /// @return payload ABI-encoded payload corresponding to `action`.
     function getProposalActionData(uint256 _proposalId) external view returns (Action action, bytes memory payload) {
-        if (_proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
+        if (!(_proposalId < proposalCount)) revert TemplErrors.InvalidProposal();
         Proposal storage p = proposals[_proposalId];
         action = p.action;
         if (action == Action.SetJoinPaused) {
@@ -370,7 +370,7 @@ contract TEMPL is TemplBase {
     /// @param selectors Function selectors implemented by `module`.
     function _registerModule(address module, bytes4[] memory selectors) internal {
         uint256 len = selectors.length;
-        for (uint256 i = 0; i < len; i++) {
+        for (uint256 i = 0; i < len; ++i) {
             _moduleForSelector[selectors[i]] = module;
         }
     }

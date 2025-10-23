@@ -424,14 +424,14 @@ contract TemplGovernanceModule is TemplBase {
     /// @param _support True for YES, false for NO.
     function vote(uint256 _proposalId, bool _support) external onlyMember {
         _requireDelegatecall();
-        if (_proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
+        if (!(_proposalId < proposalCount)) revert TemplErrors.InvalidProposal();
         Proposal storage proposal = proposals[_proposalId];
 
         if (priestIsDictator && proposal.action != Action.SetDictatorship) {
             revert TemplErrors.DictatorshipEnabled();
         }
 
-        if (block.timestamp >= proposal.endTime) revert TemplErrors.VotingEnded();
+        if (!(block.timestamp < proposal.endTime)) revert TemplErrors.VotingEnded();
 
         Member storage memberInfo = members[msg.sender];
 
@@ -453,24 +453,24 @@ contract TemplGovernanceModule is TemplBase {
 
         if (!hadVoted) {
             if (_support) {
-                proposal.yesVotes += 1;
+                ++proposal.yesVotes;
             } else {
-                proposal.noVotes += 1;
+                ++proposal.noVotes;
             }
         } else if (previous != _support) {
             if (previous) {
-                proposal.yesVotes -= 1;
-                proposal.noVotes += 1;
+                --proposal.yesVotes;
+                ++proposal.noVotes;
             } else {
-                proposal.noVotes -= 1;
-                proposal.yesVotes += 1;
+                --proposal.noVotes;
+                ++proposal.yesVotes;
             }
         }
 
         if (!proposal.quorumExempt && proposal.quorumReachedAt == 0) {
             if (
                 proposal.eligibleVoters != 0 &&
-                proposal.yesVotes * BPS_DENOMINATOR >= quorumBps * proposal.eligibleVoters
+                !(proposal.yesVotes * BPS_DENOMINATOR < quorumBps * proposal.eligibleVoters)
             ) {
                 proposal.quorumReachedAt = block.timestamp;
                 proposal.quorumSnapshotBlock = block.number;
@@ -488,7 +488,7 @@ contract TemplGovernanceModule is TemplBase {
     /// @param _proposalId Proposal id to execute.
     function executeProposal(uint256 _proposalId) external nonReentrant {
         _requireDelegatecall();
-        if (_proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
+        if (!(_proposalId < proposalCount)) revert TemplErrors.InvalidProposal();
         Proposal storage proposal = proposals[_proposalId];
 
         if (priestIsDictator && proposal.action != Action.SetDictatorship) {
@@ -514,7 +514,7 @@ contract TemplGovernanceModule is TemplBase {
         }
         if (proposal.executed) revert TemplErrors.AlreadyExecuted();
 
-        if (proposal.yesVotes <= proposal.noVotes) revert TemplErrors.ProposalNotPassed();
+        if (!(proposal.yesVotes > proposal.noVotes)) revert TemplErrors.ProposalNotPassed();
 
         proposal.executed = true;
 
@@ -780,7 +780,7 @@ contract TemplGovernanceModule is TemplBase {
             string memory description
         )
     {
-        if (_proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
+        if (!(_proposalId < proposalCount)) revert TemplErrors.InvalidProposal();
         Proposal storage proposal = proposals[_proposalId];
         passed = _proposalPassed(proposal);
 
@@ -801,7 +801,7 @@ contract TemplGovernanceModule is TemplBase {
     /// @return passed True when the proposal can be executed.
     function _proposalPassed(Proposal storage proposal) internal view returns (bool passed) {
         if (proposal.quorumExempt) {
-            return (block.timestamp >= proposal.endTime && proposal.yesVotes > proposal.noVotes);
+        return (!(block.timestamp < proposal.endTime) && proposal.yesVotes > proposal.noVotes);
         }
         if (proposal.quorumReachedAt == 0) {
             return false;
@@ -840,7 +840,7 @@ contract TemplGovernanceModule is TemplBase {
             uint256 quorumReachedAt
         )
     {
-        if (_proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
+        if (!(_proposalId < proposalCount)) revert TemplErrors.InvalidProposal();
         Proposal storage proposal = proposals[_proposalId];
         return (
             proposal.eligibleVoters,
@@ -859,7 +859,7 @@ contract TemplGovernanceModule is TemplBase {
     function getProposalJoinSequences(
         uint256 _proposalId
     ) external view returns (uint256 preQuorumJoinSequence, uint256 quorumJoinSequence) {
-        if (_proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
+        if (!(_proposalId < proposalCount)) revert TemplErrors.InvalidProposal();
         Proposal storage proposal = proposals[_proposalId];
         return (proposal.preQuorumJoinSequence, proposal.quorumJoinSequence);
     }
@@ -870,7 +870,7 @@ contract TemplGovernanceModule is TemplBase {
     /// @return voted True if the voter has cast a ballot.
     /// @return support Recorded support value (false when `voted` is false).
     function hasVoted(uint256 _proposalId, address _voter) external view returns (bool voted, bool support) {
-        if (_proposalId >= proposalCount) revert TemplErrors.InvalidProposal();
+        if (!(_proposalId < proposalCount)) revert TemplErrors.InvalidProposal();
         Proposal storage proposal = proposals[_proposalId];
 
         return (proposal.hasVoted[_voter], proposal.voteChoice[_voter]);
@@ -883,14 +883,15 @@ contract TemplGovernanceModule is TemplBase {
         uint256 currentTime = block.timestamp;
         uint256[] memory temp = new uint256[](len);
         uint256 count = 0;
-        for (uint256 i = 0; i < len; i++) {
+        for (uint256 i = 0; i < len; ++i) {
             uint256 id = activeProposalIds[i];
             if (_isActiveProposal(proposals[id], currentTime)) {
-                temp[count++] = id;
+                temp[count] = id;
+                ++count;
             }
         }
         uint256[] memory activeIds = new uint256[](count);
-        for (uint256 i = 0; i < count; i++) {
+        for (uint256 i = 0; i < count; ++i) {
             activeIds[i] = temp[i];
         }
         return activeIds;
@@ -909,33 +910,35 @@ contract TemplGovernanceModule is TemplBase {
         uint256 currentTime = block.timestamp;
         uint256 len = activeProposalIds.length;
         uint256 totalActive = 0;
-        for (uint256 i = 0; i < len; i++) {
+        for (uint256 i = 0; i < len; ++i) {
             if (_isActiveProposal(proposals[activeProposalIds[i]], currentTime)) {
-                totalActive++;
+                ++totalActive;
             }
         }
-        if (offset >= totalActive) {
+        if (!(offset < totalActive)) {
             return (new uint256[](0), false);
         }
 
         uint256[] memory tempIds = new uint256[](limit);
         uint256 count = 0;
         uint256 activeSeen = 0;
-        for (uint256 i = 0; i < len && count < limit; i++) {
+        for (uint256 i = 0; i < len && count < limit; ++i) {
             uint256 id = activeProposalIds[i];
             if (!_isActiveProposal(proposals[id], currentTime)) {
                 continue;
             }
-            if (activeSeen++ < offset) {
+            if (activeSeen < offset) {
+                ++activeSeen;
                 continue;
             }
-            tempIds[count++] = id;
+            tempIds[count] = id;
+            ++count;
         }
 
         hasMore = (offset + count) < totalActive;
 
         proposalIds = new uint256[](count);
-        for (uint256 i = 0; i < count; i++) {
+        for (uint256 i = 0; i < count; ++i) {
             proposalIds[i] = tempIds[i];
         }
 
@@ -976,7 +979,8 @@ contract TemplGovernanceModule is TemplBase {
                 treasuryBalance += proposalFee;
             }
         }
-        proposalId = proposalCount++;
+        proposalId = proposalCount;
+        ++proposalCount;
         proposal = proposals[proposalId];
         proposal.id = proposalId;
         proposal.proposer = msg.sender;
@@ -996,7 +1000,8 @@ contract TemplGovernanceModule is TemplBase {
         proposal.quorumReachedAt = 0;
         proposal.quorumExempt = false;
         if (
-            proposal.eligibleVoters != 0 && proposal.yesVotes * BPS_DENOMINATOR >= quorumBps * proposal.eligibleVoters
+            proposal.eligibleVoters != 0 &&
+            !(proposal.yesVotes * BPS_DENOMINATOR < quorumBps * proposal.eligibleVoters)
         ) {
             proposal.quorumReachedAt = block.timestamp;
             proposal.quorumSnapshotBlock = block.number;
@@ -1025,7 +1030,7 @@ contract TemplGovernanceModule is TemplBase {
                 break;
             }
             _removeActiveProposal(proposalId);
-            removed++;
+            ++removed;
             len = activeProposalIds.length;
         }
     }
@@ -1043,7 +1048,7 @@ contract TemplGovernanceModule is TemplBase {
             uint256 proposalId = activeProposalIds[len - 1];
             if (_isActiveProposal(proposals[proposalId], currentTime)) break;
             _removeActiveProposal(proposalId);
-            removed++;
+            ++removed;
             len = activeProposalIds.length;
         }
     }
