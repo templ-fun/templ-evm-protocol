@@ -2,13 +2,14 @@
   "extends": "solhint:recommended",
   "rules": {
     "compiler-version": ["error", "^0.8.23"],
-    "func-visibility": ["error", { "ignoreConstructors": false }],
+    "func-visibility": ["error", { "ignoreConstructors": true }],
     "no-inline-assembly": "off",
     "avoid-low-level-calls": "off",
     "not-rely-on-time": "off",
     "reason-string": "off",
-    "no-empty-blocks": "error",
+    "no-empty-blocks": "off",
+    "no-complex-fallback": "off",
+    "max-states-count": "off",
     "max-line-length": ["warn", 120]
   }
 }
-

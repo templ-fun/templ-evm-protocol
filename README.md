@@ -18,7 +18,7 @@
 - Test: `npm test` (Hardhat). Coverage: `npm run coverage`.
 - Fuzzing (Echidna): `npm run test:fuzz` (via Docker; harness in `contracts/echidna/EchidnaTemplHarness.sol`).
 - Static analysis: `npm run slither` (requires Slither in PATH).
-- Linting: `npm run lint` (Solhint + Prettier). Auto-fix formatting: `npm run lint:fix`.
+- Linting: `npm run lint` (Solhint + Prettier). Format: `npm run lint:fix` (Prettier write).
 
 ## How It Works
 
