@@ -45,7 +45,7 @@ async function deployTemplContracts({
   memberPoolBps = 3000,
   protocolBps = 1000,
   quorumBps = 3300,
-  executionDelay = 7 * 24 * 60 * 60,
+  executionDelay = 36 * 60 * 60,
   burnAddress = "0x000000000000000000000000000000000000dEaD",
   protocolFeeRecipient,
   priestIsDictator = false,

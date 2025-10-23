@@ -213,7 +213,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             templZero = await attachTemplInterface(templZero);
 
             expect(await templZero.quorumBps()).to.equal(QUORUM_BPS);
-            expect(await templZero.executionDelayAfterQuorum()).to.equal(7 * 24 * 60 * 60);
+            expect(await templZero.executionDelayAfterQuorum()).to.equal(36 * 60 * 60);
             expect(await templZero.burnAddress()).to.equal("0x000000000000000000000000000000000000dEaD");
         });
 
@@ -451,7 +451,7 @@ describe("TEMPL Contract with DAO Governance", function () {
         it("Should enforce minimum voting period", async function () {
             await expect(templ.connect(user1).createProposalSetJoinPaused(
                 false,
-                6 * 24 * 60 * 60
+                35 * 60 * 60
             )).to.be.revertedWithCustomError(templ, "VotingPeriodTooShort");
         });
 

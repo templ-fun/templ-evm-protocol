@@ -113,7 +113,7 @@ const templ = await ethers.getContractAt("TEMPL", "0xYourTempl");
 const token = await ethers.getContractAt("IERC20", (await templ.getConfig())[0]);
 await token.approve(templ.target, (await templ.getConfig())[1]);
 await templ.join();
-const id = await templ.createProposalSetJoinPaused(true, 7*24*60*60, "Pause joins", "Cooldown");
+const id = await templ.createProposalSetJoinPaused(true, 36*60*60, "Pause joins", "Cooldown");
 await templ.vote(id, true);
 // ...advance time...
 await templ.executeProposal(id);
@@ -160,7 +160,7 @@ const execParams = ethers.AbiCoder.defaultAbiCoder().encode(
 );
 
 // 3) Propose the external call (templ -> BatchExecutor)
-const votingPeriod = 7 * 24 * 60 * 60;
+const votingPeriod = 36 * 60 * 60;
 const pid = await templ.createProposalCallExternal(
   await executor.getAddress(),
   0, // forward 0 ETH to the executor
@@ -243,12 +243,12 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
 - Defaults via [`TemplDefaults`](contracts/TemplDefaults.sol): quorum bps, execution delay, burn address.
 - `MAX_EXTERNAL_REWARD_TOKENS = 256` (UI enumeration bound).
 - `MAX_ENTRY_FEE = type(uint128).max` (entry fee safety guard).
-- Voting period: default 7 days (min 7, max 30).
+- Voting window: default 36 hours (min 36h, max 30 days).
 - Factory defaults (when not explicitly provided):
   - Fee split: burn 3_000 bps, treasury 3_000 bps, member pool 3_000 bps (plus protocol bps from factory).
   - Membership cap: 249.
-  - Curve: exponential primary segment at 11_000 bps with infinite tail.
-  - Proposal fee: 0 bps; Referral share: 0 bps.
+  - Curve: exponential primary segment at 10_094 bps for 248 paid joins, then static tail (price holds if cap expands).
+  - Proposal fee: 2_500 bps (25% of current entry fee); Referral share: 2_500 bps (25% of member‑pool slice).
 
 ## Indexing Notes
 - Track `ProposalCreated` then hydrate with `getProposal` + `getProposalSnapshots`.
@@ -301,4 +301,4 @@ CI runs on PRs only when Solidity contracts or tests change (`contracts/**`, `te
 - Only one active proposal per proposer.
 - `TemplFactory` can be set permissionless to let anyone create templs.
 - Direct calls to module addresses revert; always go via `TEMPL`.
-- Default voting period is 7 days; quorum and delay are configurable.
+- Default voting window is 36 hours; quorum and post‑quorum delay are configurable.

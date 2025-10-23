@@ -6,6 +6,6 @@ pragma solidity ^0.8.23;
 /// @author templ.fun
 library TemplDefaults {
     uint256 internal constant DEFAULT_QUORUM_BPS = 3_300;
-    uint256 internal constant DEFAULT_EXECUTION_DELAY = 7 days;
+    uint256 internal constant DEFAULT_EXECUTION_DELAY = 36 hours;
     address internal constant DEFAULT_BURN_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 }

@@ -267,13 +267,13 @@ async function main() {
     label: 'PROPOSAL_FEE',
     percentSource: undefined,
     bpsSource: process.env.PROPOSAL_FEE_BPS,
-    defaultBps: 0
+    defaultBps: 2_500
   });
   const REFERRAL_SHARE_BPS = resolvePercentToBps({
     label: 'REFERRAL_SHARE',
     percentSource: undefined,
     bpsSource: process.env.REFERRAL_SHARE_BPS,
-    defaultBps: 0
+    defaultBps: 2_500
   });
   const BACKEND_URL = (process.env.BACKEND_URL || process.env.TEMPL_BACKEND_URL || '').trim();
   const TELEGRAM_CHAT_ID = (process.env.TELEGRAM_CHAT_ID || process.env.CHAT_ID || '').trim();
@@ -384,7 +384,7 @@ async function main() {
   const chainIdNumber = Number(network.chainId);
   console.log("Network Chain ID:", network.chainId.toString());
   console.log("Quorum Bps:", quorumPercentBps || 3300);
-  console.log("Execution Delay (seconds):", EXECUTION_DELAY_SECONDS ?? 7 * 24 * 60 * 60);
+  console.log("Execution Delay (seconds):", EXECUTION_DELAY_SECONDS ?? 36 * 60 * 60);
   console.log("Burn Address:", effectiveBurnAddress);
   console.log("Priest Dictatorship:", PRIEST_IS_DICTATOR ? 'enabled' : 'disabled');
   console.log('Curve configuration:', curveConfigEnv.description);
@@ -608,7 +608,7 @@ async function main() {
     memberPoolBps: memberPoolSplit.resolvedBps,
     protocolBps: protocolPercentBps,
     quorumBps: quorumPercentBps,
-    executionDelaySeconds: EXECUTION_DELAY_SECONDS ?? 7 * 24 * 60 * 60,
+    executionDelaySeconds: EXECUTION_DELAY_SECONDS ?? 36 * 60 * 60,
     burnAddress: effectiveBurnAddress,
     priestIsDictator: PRIEST_IS_DICTATOR,
     tokenAddress: TOKEN_ADDRESS,
@@ -656,7 +656,7 @@ async function main() {
   console.log("\n🗳️ DAO Governance:");
   console.log("- Treasury controlled by member voting");
   console.log("- Proposals pass when YES > NO and quorum/time checks are met");
-  console.log("- Voting period: 7-30 days");
+  console.log("- Voting period: ≥36h (max 30 days)");
   console.log("- One member = one vote (proposer auto‑YES; votes changeable until deadline)");
   console.log("\n🔒 Security Features:");
   console.log("- No backdoor functions");

@@ -219,9 +219,9 @@ abstract contract TemplBase is ReentrancyGuard {
     uint256[] internal activeProposalIds;
     mapping(uint256 => uint256) internal activeProposalIndex;
     /// @notice Default voting period applied when not specified by callers.
-    uint256 public constant DEFAULT_VOTING_PERIOD = 7 days;
+    uint256 public constant DEFAULT_VOTING_PERIOD = 36 hours;
     /// @notice Minimum allowed voting period.
-    uint256 public constant MIN_VOTING_PERIOD = 7 days;
+    uint256 public constant MIN_VOTING_PERIOD = 36 hours;
     /// @notice Maximum allowed voting period.
     uint256 public constant MAX_VOTING_PERIOD = 30 days;
 
