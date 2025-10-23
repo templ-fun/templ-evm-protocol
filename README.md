@@ -73,7 +73,7 @@ flowchart LR
 - Test: `npm test` (Hardhat). Coverage: `npm run coverage`.
 - Fuzzing (Echidna): `npm run test:fuzz` (via Docker; harness in `contracts/echidna/EchidnaTemplHarness.sol`).
 - Static analysis: `npm run slither` (requires Slither in PATH).
-- Lint: `npm run lint` (Solhint + Prettier). Format: `npm run lint:fix`.
+- Lint: `npm run lint` (Solhint; CI fails on any warning). Auto-fix: `npm run lint:fix`.
 
 ## Deploy Locally
 
