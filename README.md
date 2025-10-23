@@ -1,212 +1,25 @@
-# templ.fun Protocol Overview
+# templ.fun Protocol
 
-<img width="100%"  alt="Screenshot 2025-10-22 at 00 44 48" src="https://github.com/user-attachments/assets/287b7300-2314-4b88-b4be-1cf0190f4989" />
+<img width="100%" alt="templ.fun" src="https://github.com/user-attachments/assets/287b7300-2314-4b88-b4be-1cf0190f4989" />
 
 ## What It Does
-- templ.fun lets communities spin up private “templ” groups that collect an access-token treasury, stream rewards to existing members, and govern configuration or payouts on-chain.
-- Each templ is composed from three delegatecall modules – membership, treasury, and governance – orchestrated by the root [`TEMPL`](contracts/TEMPL.sol) contract. All persistent state lives in [`TemplBase`](contracts/TemplBase.sol), so modules share storage and act like facets of a single contract.
-- Deployers can apply join-fee curves, referral rewards, proposal fees, and an optional dictatorship (priest) override. By default, governance controls all DAO actions and the priest is a regular member.
+- Spin up on-chain, token-gated groups (“templs”) that collect an access‑token treasury, stream rewards to existing members, and govern changes and payouts on-chain.
+- A templ is three delegatecall modules — membership, treasury, governance — orchestrated by the root [`TEMPL`](contracts/TEMPL.sol) with shared storage in [`TemplBase`](contracts/TemplBase.sol). It behaves like one contract with clean separation of concerns.
+- Deployers configure pricing curves, fee splits, referral rewards, proposal fees, quorum/delay, membership caps, and an optional dictatorship (priest) override.
+
+## Safety
+- Vanilla ERC‑20 only for the access token (no fee‑on‑transfer, no rebasing, no hooks). Protocol accounting assumes exact transfer amounts; using non‑standard tokens will desync balances and can break claims/withdrawals. Choose a vanilla token.
+- External‑call proposals can execute arbitrary logic; treat with the same caution as timelocked admin calls in other protocols.
+- No external audit yet. Treat as experimental and keep treasury exposure conservative until audited.
 
 ## Quickstart
-
-- Prereqs: Node >=22, `npm`, Foundry optional.
-- Setup: `npm install`
+- Prereqs: Node >=22, `npm`. Docker recommended for fuzzing.
+- Install: `npm install`
 - Test: `npm test` (Hardhat). Coverage: `npx hardhat coverage`.
-- Property fuzzing: `npm run test:fuzz` (Echidna via Docker; see below)
-- Static analysis: `npm run slither` (requires Slither in PATH)
-- Property fuzzing: Echidna via Docker (optional; see below)
+- Fuzzing (Echidna): `npm run test:fuzz` (via Docker; harness in `contracts/echidna/EchidnaTemplHarness.sol`).
+- Static analysis: `npm run slither` (requires Slither in PATH).
 
-## Safety & Disclaimers
-- Vanilla ERC‑20 access token only: the access token must be a standard, non‑rebasing ERC‑20 with no transfer‑fees or hooks. Protocol accounting assumes exact transfer amounts; using non‑standard tokens will desync balances and can break claims/withdrawals. The contracts do not enforce this; deploy scripts and the factory print warnings. Choose a vanilla token.
-- No external audit yet: these contracts have not undergone an independent, third‑party audit. Treat deployments as experimental and keep join fees/treasury exposure low until at least one serious audit is completed.
-
-### High‑Load Stress Test
-- Run only the heavy suite: `npm run test:load`
-- Configure joiner count with `TEMPL_LOAD`. Examples:
-  - Moderate: `TEMPL_LOAD=10000 npm run test:load`
-  - Extreme: `TEMPL_LOAD=1000000 npm run test:load`
-
-What it exercises under load (1% quorum to keep voting tractable):
-- 1:1 join flow scaled to `TEMPL_LOAD` joiners (using `joinFor`) with exponential fee curve saturation checks
-- Governance: withdraw treasury, disband treasury, member claims; metadata update; proposal fee set + charged; referral share set + referral join; external call execution
-- Config: fee split update, curve update, member cap toggle (auto‑pause) and uncap
-
-Notes:
-- 1M joiners implies ~1M transactions and will take a long time; progress logs are printed periodically. Ensure ample CPU/RAM, and consider running on a local Hardhat node.
-
-### Fuzzing
-- The repo uses property-based fuzzing with Echidna. Run: `npm run test:fuzz` (Docker required), which executes the harness in `contracts/echidna/EchidnaTemplHarness.sol` using `echidna.yaml`.
-- Tune limits/seeds in `echidna.yaml`. The `TEMPL_FUZZ_*` env vars referenced in older docs are not used.
-- Default `npm test` excludes the heavy `@load` suite to keep CI fast.
-
-### Echidna (Property-Based)
-- Requirements: Docker (or native Echidna install). Node deps are used only for OZ remappings.
-- Run locally with Docker:
-  - `docker run --rm -v "$PWD":/src -w /src trailofbits/echidna \
-     echidna-test contracts/echidna/EchidnaTemplHarness.sol --contract EchidnaTemplHarness --config ./echidna.yaml`
-- What it checks by default:
-  - Fee split sum invariant: burn + treasury + member + protocol = 10_000 bps
-  - Entry fee bounded by uint128 saturation limit
-  - Member count never exceeds cap
-- Targets exposed to fuzzer:
-  - `fuzzJoinFor(address)` and `fuzzJoinForWithReferral(address,address)` — mint/approve/pay to join on behalf of arbitrary recipients
-- CI: GitHub Actions job `echidna` runs a smoke fuzz with conservative limits; increase `testLimit` in `echidna.yaml` for deeper runs.
-
-Local deploy (scripts mirror production flow):
-
-```bash
-# Deploy shared modules + factory
-PROTOCOL_FEE_RECIPIENT=0xYourRecipient \
-PROTOCOL_BPS=1000 \
-npx hardhat run --network localhost scripts/deploy-factory.cjs
-
-# Deploy a templ via the factory
-FACTORY_ADDRESS=0xFactoryFromPreviousStep \
-TOKEN_ADDRESS=0xAccessToken \
-ENTRY_FEE=100000000000000000000 \
-TEMPL_NAME="templ.fun OG" \
-TEMPL_DESCRIPTION="Genesis collective" \
-npx hardhat run --network localhost scripts/deploy-templ.cjs
-```
-
-Hardhat console example (ethers v6):
-
-```js
-// npx hardhat console --network localhost
-const templ = await ethers.getContractAt("TEMPL", "0xYourTempl");
-// Approve and join
-const token = await ethers.getContractAt("IERC20", (await templ.getConfig())[0]);
-await token.approve(templ.target, (await templ.getConfig())[1]);
-await templ.join();
-// Create + pass a pause proposal
-const id = await templ.createProposalSetJoinPaused(true, 7*24*60*60, "Pause joins", "Cooldown");
-await templ.vote(id, true);
-// Wait delay, then execute
-// ...advance time on local chain...
-await templ.executeProposal(id);
-```
-
-## Conventions
-
-- Units
-  - Percentages use basis points out of 10,000 (`BPS_DENOMINATOR = 10_000`).
-  - Durations are seconds (e.g., `7*24*60*60` for 7 days).
-  - Token amounts are in the token’s smallest units (no decimals on-chain).
-- ETH sentinel
-  - Use `address(0)` to represent ETH in withdraw/disband/claim flows and external reward APIs.
-- Ethers v6
-  - Contract address is available at `contract.target` (examples here use this pattern).
-- Call routing
-  - All public calls go to the deployed `TEMPL` and are delegated to modules by selector; unknown selectors revert with `InvalidCallData`.
-
-## Five-Minute Tour
-
-1) Start a local chain and deploy factory + modules
-```bash
-npx hardhat node &
-PROTOCOL_FEE_RECIPIENT=0x000000000000000000000000000000000000dEaD \
-npx hardhat run --network localhost scripts/deploy-factory.cjs
-```
-
-2) Create a templ
-```bash
-FACTORY_ADDRESS=0xFactoryFromPreviousStep \
-TOKEN_ADDRESS=0xYourLocalERC20 \
-ENTRY_FEE=100000000000000000000 \
-TEMPL_NAME="My Templ" \
-TEMPL_DESCRIPTION="Docs demo" \
-npx hardhat run --network localhost scripts/deploy-templ.cjs
-```
-
-3) Join and propose (from Hardhat console)
-```js
-const templ = await ethers.getContractAt('TEMPL', '0xTempl');
-const token = await ethers.getContractAt('IERC20', (await templ.getConfig())[0]);
-await token.approve(templ.target, (await templ.getConfig())[1]);
-await templ.join();
-const id = await templ.createProposalSetJoinPaused(true, 7*24*60*60, 'Pause', 'Cooldown');
-await templ.vote(id, true);
-// fast-forward time on localhost, then
-await templ.executeProposal(id);
-```
-
-## Protocol At A Glance
-
-- Components: [`TEMPL`](contracts/TEMPL.sol) entrypoint delegating to [`TemplMembershipModule`](contracts/TemplMembership.sol), [`TemplTreasuryModule`](contracts/TemplTreasury.sol), and [`TemplGovernanceModule`](contracts/TemplGovernance.sol) with shared storage in [`TemplBase`](contracts/TemplBase.sol).
-- Token & Join: ERC‑20 `accessToken`; `entryFee` ≥ 10 and divisible by 10; each join updates the next fee via the pricing curve from [`TemplCurve.sol`](contracts/TemplCurve.sol).
-- Fee Splits: burn/treasury/member plus protocol must sum to 10_000 bps; defaults (with `protocolBps`=1_000) are 3_000/3_000/3_000/1_000.
-- Fees: `proposalCreationFeeBps` and `referralShareBps` configurable via governance.
-- Governance: `quorumBps` and `executionDelayAfterQuorum` are governable (defaults: 3_300 bps and 7 days). One vote per member; proposer auto‑casts an initial YES; join‑sequence snapshots enforce eligibility; immediate quorum detection can shorten windows to the post‑quorum delay; dictatorship toggle via priest.
-  - Quorum setter accepts either 0–100 (interpreted as %) or 0–10_000 (basis points).
-- Limits/Pauses: optional `maxMembers` (factory default 249); auto‑pauses at cap; `joinPaused` toggleable.
-- Treasury Ops: withdraw/disband (disband disperses the treasury equally across members), config/split/entry fee/curve updates, metadata, priest changes.
-- Factory: [`TemplFactory`](contracts/TemplFactory.sol) with `setPermissionless`, `createTempl`, `createTemplFor`, `createTemplWithConfig`.
-
-### Token Requirements
-- Access token must be a vanilla ERC‑20 (no fee‑on‑transfer, no rebasing). Accounting assumes exact transfer amounts. Non‑standard tokens will desync balances and break claims; the contracts do not block them.
-- Deploy scripts and the factory print warnings: choose standard tokens only.
-- If you need to support non‑standard tokens, consider an adapter token or gateway outside this core protocol.
-
-### Build Settings
-- Solidity 0.8.23, via‑IR enabled by default. For production, consider increasing optimizer runs (e.g., 200–500) for lower runtime gas; keep runs=1 for coverage.
-
-### Proposal Views
-- `getProposal(id)`: essential metadata + derived pass status
-- `getProposalSnapshots(id)`: quorum timing + blocks + eligible counts
-- `getProposalJoinSequences(id)`: pre‑quorum and quorum join‑sequence snapshots
-- `getActiveProposals()` / `getActiveProposalsPaginated(offset,limit)` → returns `(uint256[] proposalIds, bool hasMore)`
-- `getProposalActionData(id)`: returns `(Action action, bytes payload)` where `payload` is ABI‑encoded per action:
-  - SetJoinPaused → (bool paused)
-  - UpdateConfig → (address token, uint256 newEntryFee, bool updateFeeSplit, uint256 newBurnBps, uint256 newTreasuryBps, uint256 newMemberPoolBps)
-  - SetMaxMembers → (uint256 newMaxMembers)
-  - SetMetadata → (string name, string description, string logoLink)
-  - SetProposalFee → (uint256 newFeeBps)
-  - SetReferralShare → (uint256 newReferralShareBps)
-  - SetEntryFeeCurve → (CurveConfig curve, uint256 baseEntryFee)
-  - CallExternal → (address target, uint256 value, bytes data)
-  - WithdrawTreasury → (address token, address recipient, uint256 amount, string reason)
-  - DisbandTreasury → (address token)
-  - CleanupExternalRewardToken → (address token)
-  - ChangePriest → (address newPriest)
-  - SetDictatorship → (bool enable)
-  - SetQuorumBps → (uint256 newQuorumBps)
-  - SetExecutionDelay → (uint256 newDelaySeconds)
-  - SetBurnAddress → (address newBurn)
-
-Learn-by-reading map (each claim backed by code/tests):
-- Entry fee constraints: enforced in constructors and updates: see [`contracts/TemplFactory.sol`](contracts/TemplFactory.sol), [`contracts/TEMPL.sol`](contracts/TEMPL.sol), [`contracts/TemplGovernance.sol`](contracts/TemplGovernance.sol); tests in `test/TemplFactory.test.js`, `test/UpdateConfigDAO.test.js`.
-- Fee split totals: validated in [`contracts/TemplFactory.sol`](contracts/TemplFactory.sol); invariant tests in `test/FeeDistributionInvariant.test.js`.
-- Curves: curve math and guards in [`contracts/TemplCurve.sol`](contracts/TemplCurve.sol); tests in `test/EntryFeeCurve.test.js`, `test/TemplHighLoadStress.test.js`.
-- Dictatorship and gating: `onlyDAO` gate in [`contracts/TemplBase.sol`](contracts/TemplBase.sol); tests in `test/PriestDictatorship.test.js`.
-- Snapshot voting: lifecycle in [`contracts/TemplGovernance.sol`](contracts/TemplGovernance.sol); tests in `test/VotingEligibility.test.js`, `test/SingleProposal.test.js`.
-- Governable quorum/delay/burn address: setters + proposals in contracts; tests in `test/GovernanceAdjustParams.test.js`.
-
-### Governance Controls (quick list)
-- Pausing joins, membership cap, fee config and curve, metadata, proposal fee, referral share, treasury withdraw/disband/cleanup, priest changes, dictatorship mode, quorum threshold, post‑quorum execution delay, and burn address. All are adjustable via proposals or `onlyDAO` calls.
-
-
-### Proposal Execution Rules
-- Eligibility snapshots:
-  - On creation: store `eligibleVoters` (member count) and `preQuorumJoinSequence`.
-  - On quorum: record `quorumReachedAt`, `quorumSnapshotBlock`, and freeze `quorumJoinSequence`. Members who joined after the relevant snapshot cannot vote on that proposal.
-- Pre‑quorum window:
-  - Voting is open until `endTime = createdAt + votingPeriod`.
-  - Quorum is reached when `YES * 10_000 >= quorumBps * eligibleVoters` (eligibleVoters is the baseline captured at creation).
-- Post‑quorum delay (timelock):
-  - When quorum is reached, `endTime` is reset to `block.timestamp + executionDelayAfterQuorum`.
-  - Voting remains allowed during this delay window; join eligibility stays frozen by `quorumJoinSequence`.
-- Execution checks:
-  - Quorum‑exempt proposals (priest‑initiated Disband only): require `(block.timestamp >= endTime)` and `YES > NO`.
-  - All other proposals: require quorum was reached, `block.timestamp >= quorumReachedAt + executionDelayAfterQuorum`, `YES > NO`, and quorum still maintained vs. the post‑quorum eligible baseline: `YES * 10_000 >= quorumBps * eligibleVotersPostQuorum`.
-  - On success, the proposal executes once and is marked `executed`.
-- External rewards: accounting in [`contracts/TemplBase.sol`](contracts/TemplBase.sol); tests in `test/RewardWithdrawals.test.js`, `test/MembershipCoverage.test.js`.
-
-### Governance Behaviors
-- Proposal creation auto‑casts a YES vote for the proposer.
-- If the immediate YES satisfies quorum relative to the snapshot baseline, the proposal jumps straight into the execution‑delay window and `endTime` is updated accordingly.
-- While dictatorship is enabled, only SetDictatorship proposals can be created and voted; other governance interactions revert and `onlyDAO` actions may be called directly by the priest.
-
-### Architecture Overview
+## How It Works
 
 ```mermaid
 flowchart LR
@@ -229,229 +42,63 @@ flowchart LR
   M --> Burn[Burn Address]
   M -.-> B
   Tr -.-> B
-
   G --> Tr
 ```
 
-Architecture map (see more at [Module Responsibilities](#module-responsibilities))
-- `TEMPL` (router): Entry point that routes calls to modules via delegatecall and exposes selector→module lookup.
-- Membership: Joins, fee split accounting, member rewards accrual/claims, join snapshots.
-- Treasury: DAO/priest actions for withdrawals, disbands, config/split/fee/curve/metadata/priest updates.
-- Governance: Proposal create/vote/execute, quorum and delay tracking, dictatorship toggle, external calls.
-- TemplBase (shared storage): Single storage layout and helpers used by all modules through delegatecall.
-- Priest role: Stored in shared storage and used by onlyDAO gating; see Dictatorship Gate for behavior (#dictatorship-gate-onlydao).
+- `TEMPL` routes calls to modules via delegatecall and exposes selector→module lookup.
+- Membership: joins, fee‑split accounting, member reward accrual and claims, eligibility snapshots.
+- Treasury: governance/priests withdraw, disband, update config/splits/curve/metadata/referral/proposal fee.
+- Governance: create/vote/execute proposals, quorum + delay, dictatorship toggle, safe external calls.
+- Shared storage: all persistent state lives in [`TemplBase`](contracts/TemplBase.sol), so modules act as facets of one contract.
 
-Key terms
-- Priest: address set at deploy; auto‑enrolled as a member at `joinSequence=1`. Not privileged unless dictatorship mode is enabled.
-- Member pool: portion of each join streamed to existing members pro‑rata.
-- Treasury: funds held by the templ and controlled by governance (or by the priest only when dictatorship is enabled).
-- Quorum: YES threshold in bps relative to eligible voters before execution delay starts.
+## Key Concepts
+- Fee split: burn / treasury / member pool / protocol; must sum to 10_000 bps.
+- Member pool: portion of each join streamed to existing members pro‑rata; optional referral share is paid from this slice.
+- Curves: entry fee evolves by static/linear/exponential segments; see [`TemplCurve`](contracts/TemplCurve.sol).
+- Dictatorship: when enabled, the priest may call `onlyDAO` actions directly; otherwise all `onlyDAO` actions execute via governance.
+- Snapshots: eligibility is frozen by join sequence at proposal creation, then again at quorum.
+- Caps/pauses: optional `maxMembers` (auto‑pauses at cap) plus `joinPaused` toggle.
 
-What “TemplBase Shared Storage” means
-- All persistent state is declared in [`TemplBase`](contracts/TemplBase.sol). Because modules execute via `delegatecall`, they read/write the same storage as `TEMPL`.
-- This pattern keeps module code small and composable while behaving like one contract from a state perspective.
-- It centralizes helpers (entry‑fee curves, safe token transfers, reward math) and ensures storage layout consistency across modules.
-- Standards note: This is a diamond‑style modular architecture (EIP‑2535–inspired) using `delegatecall` and shared storage. It is not a full EIP‑2535 implementation (no `diamondCut`/loupe and modules are wired once in the constructor), and it is not an ERC; it’s a common Solidity composition pattern.
-
-## Deployment Flow & Public Interfaces
-The canonical workflow deploys shared modules once, followed by a factory and any number of templ instances. The snippets below assume a Hardhat project (`npx hardhat console` or scripts that import `hardhat`) using ethers v6.
-
-### Deployment Sequence
-
-```mermaid
-sequenceDiagram
-  participant Dev
-  participant Membership as MembershipModule
-  participant Treasury as TreasuryModule
-  participant Governance as GovernanceModule
-  participant Factory
-  participant T as TEMPL
-
-  Dev->>Membership: deploy()
-  Dev->>Treasury: deploy()
-  Dev->>Governance: deploy()
-  Dev->>Factory: deploy(protocolRecipient, protocolBps, modules)
-  Dev->>Factory: createTemplWithConfig(cfg)
-  Factory->>T: deploy TEMPL(initCode, cfg)
-  Factory-->>Dev: emit TemplCreated(templ)
-```
-
-1. **Deploy the shared modules**
-   ```js
-   const Membership = await ethers.getContractFactory("TemplMembershipModule");
-   const membershipModule = await Membership.deploy();
-   await membershipModule.waitForDeployment();
-
-   const Treasury = await ethers.getContractFactory("TemplTreasuryModule");
-   const treasuryModule = await Treasury.deploy();
-   await treasuryModule.waitForDeployment();
-
-   const Governance = await ethers.getContractFactory("TemplGovernanceModule");
-   const governanceModule = await Governance.deploy();
-   await governanceModule.waitForDeployment();
-   ```
-   These modules map directly to [`contracts/TemplMembership.sol`](contracts/TemplMembership.sol), [`contracts/TemplTreasury.sol`](contracts/TemplTreasury.sol), and [`contracts/TemplGovernance.sol`](contracts/TemplGovernance.sol). They are pure logic contracts; all storage lives in [`contracts/TemplBase.sol`](contracts/TemplBase.sol).
-
-2. **Deploy the factory**
-   ```js
-   const protocolFeeRecipient = "0x..."; // collects protocol share of each join
-   const protocolBps = 1_000;            // 10% (expressed in basis points)
-
-   const Factory = await ethers.getContractFactory("TemplFactory");
-   const factory = await Factory.deploy(
-     protocolFeeRecipient,
-     protocolBps,
-     await membershipModule.getAddress(),
-     await treasuryModule.getAddress(),
-     await governanceModule.getAddress()
-   );
-   await factory.waitForDeployment();
-   ```
-   Constructor parameters (see [`contracts/TemplFactory.sol`](contracts/TemplFactory.sol)):
-   - `protocolFeeRecipient`: receives the protocol’s share of every join.
-   - `protocolBps`: splitter share (basis points) kept by the protocol. All templ splits must sum to 10_000, so templ-level burn/treasury/member shares must account for this.
-   - Module addresses: delegatecall targets for every templ the factory deploys.
-
-3. **Create a templ instance**
-   ```js
-   const templTx = await factory.createTemplWithConfig({
-     priest: "0xPriest...",                 // auto-enrolled 'priest' address
-     token: "0xAccessToken...",             // ERC-20 used for joins / treasury accounting
-     entryFee: ethers.parseUnits("100", 18),// base entry fee (must be ≥10 and divisible by 10)
-     burnBps: -1,                           // burn share (bps), -1 keeps factory default
-     treasuryBps: -1,                       // treasury share (bps), -1 keeps factory default
-     memberPoolBps: -1,                     // member pool share (bps), -1 keeps factory default
-     quorumBps: 3_300,                      // YES votes required for quorum (basis points)
-     executionDelaySeconds: 7 * 24 * 60 * 60,// execution delay after quorum (seconds)
-     burnAddress: ethers.ZeroAddress,       // burn destination (defaults to 0x...dEaD)
-     priestIsDictator: false,               // true lets the priest bypass governance
-     maxMembers: 250,                       // optional membership cap (0 = uncapped)
-     curveProvided: true,                   // provide custom curve instead of factory default
-     curve: {
-       primary: { style: 2, rateBps: 11_000, length: 0 }, // exponential tail (infinite length)
-       additionalSegments: []              // optional extra segments (empty keeps single segment)
-     },
-     name: "MOG MOGGERS",                   // templ metadata surfaced to UIs
-     description: "mog or get mogged",      // metadata short description (can be empty)
-     logoLink: "https://example.com/logo.png",// metadata image (can be empty)
-     proposalFeeBps: 500,                   // 5% of the current entry fee charged per proposal
-     referralShareBps: 500                  // 5% of the member-pool allocation paid to referrals
-   });
-   const receipt = await templTx.wait();
-   const templAddress = receipt.logs.find(log => log.eventName === "TemplCreated").args.templ;
-   ```
-
-   Key configuration knobs (resolved inside [`TemplFactory`](contracts/TemplFactory.sol) and [`TEMPL`](contracts/TEMPL.sol)):
-   - `priest`: auto-enrolled member. When `priestIsDictator` is true, the priest can call `onlyDAO` functions directly until dictatorship is disabled.
-   - `token`: ERC-20 used for joins, rewards, and treasury balances.
-   - `entryFee`: initial fee (must be ≥10 and divisible by 10). The pricing curve adjusts the next `entryFee` after each successful join.
-   - `burnBps/treasuryBps/memberPoolBps`: fee split (basis points) between burn address, templ treasury, and member rewards pool. Must sum with `protocolBps` to 10_000.
-   - `quorumBps`: minimum YES threshold (basis points) to satisfy quorum.
-   - `executionDelaySeconds`: waiting period after quorum before execution can occur.
-   - `burnAddress`: recipient of the burned allocation (default: `0x...dEaD`).
-   - `priestIsDictator`: if true, governance functions are priest-only until the dictator disables it.
-   - `maxMembers`: optional membership cap that auto-pauses joins when reached.
-   - `curveProvided`: set to `true` when supplying a custom `CurveConfig`; otherwise the factory default is applied.
-   - `curve`: `CurveConfig` describing how the entry fee evolves. The factory ships an exponential default; additional segments can model piecewise-linear or static phases. See [`contracts/TemplCurve.sol`](contracts/TemplCurve.sol) for enum definitions.
-   - `proposalFeeBps`: optional fee (basis points) deducted from the proposer’s wallet and credited to the templ treasury when a proposal is created.
-   - `referralShareBps`: portion of the member pool allocation paid to a referrer on each join.
-
-Once the templ is live, all user interactions flow through the deployed [`TEMPL`](contracts/TEMPL.sol) address, which delegates to the module responsible for the invoked selector. The [`TemplFactory`](contracts/TemplFactory.sol) can be toggled to permissionless mode via `setPermissionless` to allow anyone to deploy new templs.
-
-## Additional Notes
-
-- Fee-on-transfer/rebasing ERC-20s are unsupported for membership. Joins verify exact token receipts and revert with `UnsupportedToken` if amounts do not match.
-- `ProposalExecuted` emits `keccak256(returndata)` instead of raw bytes to keep events small. Off-chain, hash the return data for correlation.
-- For large sets, use paginated queries: `getExternalRewardTokensPaginated(offset, limit)` and `getActiveProposalsPaginated(offset, limit)`.
-- Introspection: Use `getModuleForSelector(bytes4)` on `TEMPL` to see which module handles a function.
-- Introspection: `getRegisteredSelectors()` returns `(bytes4[] membership, bytes4[] treasury, bytes4[] governance)` for static per‑module selector sets.
-
-### Hardhat Deployment Scripts
-The repository ships end-to-end scripts at the repository root that mirror the sequence above:
-
-- [`scripts/deploy-factory.cjs`](scripts/deploy-factory.cjs) – Deploys the shared modules (if addresses aren’t supplied via env vars) and produces a wired `TemplFactory`.
-- [`scripts/deploy-templ.cjs`](scripts/deploy-templ.cjs) – Uses an existing factory (or deploys one with modules) to instantiate a templ and dumps a deployment artifact under `deployments/`.
-- [`scripts/verify-templ.cjs`](scripts/verify-templ.cjs) – Utility for reconstructing constructor arguments and verifying a templ instance on chain.
-
-Example commands (environment variables follow the same names used inside each script):
+## Deploy Locally
 
 ```bash
-# Deploy shared modules + factory (examples use Base mainnet; adjust --network as needed)
+# Deploy shared modules + factory
 PROTOCOL_FEE_RECIPIENT=0xYourRecipient \
 PROTOCOL_BPS=1000 \
-npx hardhat run --network base scripts/deploy-factory.cjs
+npx hardhat run --network localhost scripts/deploy-factory.cjs
 
-# Deploy a templ via factory (token, priest, fee splits, etc. come from env)
+# Deploy a templ via the factory
 FACTORY_ADDRESS=0xFactoryFromPreviousStep \
 TOKEN_ADDRESS=0xAccessToken \
 ENTRY_FEE=100000000000000000000 \
 TEMPL_NAME="templ.fun OG" \
 TEMPL_DESCRIPTION="Genesis collective" \
-npx hardhat run --network base scripts/deploy-templ.cjs
-
-# Verify the factory (on Basescan for chain 8453)
-npx hardhat verify --network base 0xFactoryFromPreviousStep 0xYourRecipient 1000 0xMembershipModule 0xTreasuryModule 0xGovernanceModule
-
-# Verify a templ (script auto-reconstructs constructor args)
-npx hardhat run --network base scripts/verify-templ.cjs --templ 0xYourTempl --factory 0xFactoryFromPreviousStep
+npx hardhat run --network localhost scripts/deploy-templ.cjs
 ```
 
-Refer to the inline env-variable docs in `scripts/deploy-factory.cjs` and `scripts/deploy-templ.cjs` for the latest configuration options and verification helpers.
+Hardhat console (ethers v6) quick taste:
 
-Factory permissionless mode
 ```js
-// Only the factory deployer can toggle this
-const factory = await ethers.getContractAt("TemplFactory", "0xFactory");
-await factory.setPermissionless(true); // anyone can create templs now
+// npx hardhat console --network localhost
+const templ = await ethers.getContractAt("TEMPL", "0xYourTempl");
+const token = await ethers.getContractAt("IERC20", (await templ.getConfig())[0]);
+await token.approve(templ.target, (await templ.getConfig())[1]);
+await templ.join();
+const id = await templ.createProposalSetJoinPaused(true, 7*24*60*60, "Pause joins", "Cooldown");
+await templ.vote(id, true);
+// ...advance time...
+await templ.executeProposal(id);
 ```
 
-## Script Env Vars
-- scripts/deploy-factory.cjs
-  - `PROTOCOL_FEE_RECIPIENT` (required)
-  - `PROTOCOL_BPS` (optional; default 1000)
-  - `MEMBERSHIP_MODULE_ADDRESS`, `TREASURY_MODULE_ADDRESS`, `GOVERNANCE_MODULE_ADDRESS` (optional; reuse existing)
-  - `FACTORY_ADDRESS` (optional; reuse existing factory; script introspects protocol bps and modules)
-- scripts/deploy-templ.cjs
-  - `FACTORY_ADDRESS`, `TOKEN_ADDRESS`, `ENTRY_FEE`, `TEMPL_NAME`, `TEMPL_DESCRIPTION`, `TEMPL_LOGO_LINK`
-  - Optional: `PRIEST_ADDRESS`, `QUORUM_BPS`, `EXECUTION_DELAY_SECONDS`, `BURN_ADDRESS`, `PRIEST_IS_DICTATOR`, `MAX_MEMBERS`, `PROPOSAL_FEE_BPS`, `REFERRAL_SHARE_BPS`, and curve config (see script for shapes)
+## Governance Model
+- Creation auto‑casts one YES for the proposer; if that alone satisfies quorum vs. the snapshot baseline, the proposal jumps straight into the execution‑delay window.
+- Eligibility: voters must have joined before the relevant snapshot (at creation pre‑quorum, or at `quorumJoinSequence` post‑quorum).
+- Execution:
+  - Priest‑initiated Disband is quorum‑exempt: requires endTime elapsed and YES > NO.
+  - All others: require quorum reached, delay elapsed, YES > NO, and quorum still satisfied vs. post‑quorum eligible voters.
+- Dictatorship: while enabled, only SetDictatorship proposals are allowed; otherwise priest may call `onlyDAO` actions directly.
 
-## Module Responsibilities
-
-### Delegatecall Routing
-
-```mermaid
-sequenceDiagram
-  participant User
-  participant T as TEMPL
-  participant Module as Module by selector
-  participant S as TemplBase Storage
-
-  User->>T: call selector(args)
-  T->>Module: delegatecall(selector, args)
-  Module->>S: read/write persistent state
-  Module-->>User: return / emit events
-```
-- **[TemplMembershipModule](contracts/TemplMembership.sol)**
-  - Handles joins (with optional referrals), distributes entry-fee splits, accrues member rewards, and exposes read APIs for membership state and treasury summaries.
-  - Maintains join sequencing to enforce governance eligibility snapshots and reports cumulative burns (`getTreasuryInfo` → `burned`).
-
-- **[TemplTreasuryModule](contracts/TemplTreasury.sol)**
-  - Provides governance-controlled treasury actions: withdrawals, disbands to member/external pools, priest changes, metadata updates, referral/proposal-fee adjustments, and entry-fee curve updates.
-  - Surfaces helper actions such as cleaning empty external reward tokens.
-
-- **[TemplGovernanceModule](contracts/TemplGovernance.sol)**
-  - Manages proposal lifecycle (creation, voting, execution), quorum/eligibility tracking, dictatorship toggles, and external call execution with optional ETH value.
-  - Exposes proposal metadata, snapshot data, join sequence snapshots, voter state, and active proposal pagination.
-
-- **[TemplFactory](contracts/TemplFactory.sol)**
-  - Normalizes deployment config, validates split sums (bps), enforces permissionless toggles, and emits creation metadata (including curve details).
-  - Stores `TEMPL` init code across chunks to avoid large constructor bytecode.
-
-These components share [`TemplBase`](contracts/TemplBase.sol), which contains storage, shared helpers (entry-fee curves from [`TemplCurve.sol`](contracts/TemplCurve.sol), reward accounting), and cross-module events.
-
-### Economics & Flows
-
-Joins and fee distribution with optional referral:
+## Economics & Flows
 
 ```mermaid
 sequenceDiagram
@@ -471,298 +118,60 @@ sequenceDiagram
   M->>Token: transferFrom(User, Burn, burnAmount)
   M->>Token: transferFrom(User, T, treasuryAmount + memberPoolAmount)
   M->>Token: transferFrom(User, Prot, protocolAmount)
-  M->>Treas: credit treasury share (accounting)
-  M->>Pool: credit member pool share (accounting)
+  M->>Treas: credit treasury (accounting)
+  M->>Pool: credit member pool (accounting)
   alt with referral
-    M->>Ref: pay referral share (from member pool allocation)
+    M->>Ref: pay referral share (from member pool)
   end
   M->>M: update next entryFee via curve
   M-->>User: emit Joined(...)
 ```
 
-Entry fee curve mechanics (see [`contracts/TemplCurve.sol`](contracts/TemplCurve.sol)):
+Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, and exponential segments. A final segment with `length=0` creates an infinite tail.
 
-```mermaid
-flowchart LR
-  A[After each successful join] --> B{Active curve segment}
-  B -->|Static| S[entryFee stays constant]
-  B -->|Linear| L[entryFee += rateBps * step]
-  B -->|Exponential| E[entryFee *= rateBps/10000]
-  S --> C[advance join count]
-  L --> C
-  E --> C
-  C --> D[next entryFee stored]
-```
+## Scripts & Env Vars
+- `scripts/deploy-factory.cjs`: `PROTOCOL_FEE_RECIPIENT` (required), `PROTOCOL_BPS` (default 1000). Optionally pass existing module addresses or `FACTORY_ADDRESS` to reuse.
+- `scripts/deploy-templ.cjs`: `FACTORY_ADDRESS`, `TOKEN_ADDRESS`, `ENTRY_FEE`, `TEMPL_NAME`, `TEMPL_DESCRIPTION`, `TEMPL_LOGO_LINK`. Optional knobs: `PRIEST_ADDRESS`, `QUORUM_BPS`, `EXECUTION_DELAY_SECONDS`, `BURN_ADDRESS`, `PRIEST_IS_DICTATOR`, `MAX_MEMBERS`, `PROPOSAL_FEE_BPS`, `REFERRAL_SHARE_BPS`, and curve config (see script for shapes).
+- Permissionless mode: `TemplFactory.setPermissionless(true)` to allow anyone to create templs.
 
-### Quick Reference
-- **Testing:** `npx hardhat test` (default), `npx hardhat coverage` for coverage, `npm run slither` for static analysis.
-- **Treasury Insights:** `getTreasuryInfo()` returns `(treasuryAvailable, memberPool, protocolFeeRecipient, totalBurned)`.
-- **Entry Fee Curves:** configure piecewise segments (`CurveConfig`) in [`TemplCurve.sol`](contracts/TemplCurve.sol) to unlock linear or exponential pricing after a given number of joins.
-- **Proposal Fees:** governance updates them via `setProposalCreationFeeBpsDAO` (see [`TemplTreasury.sol`](contracts/TemplTreasury.sol)); the templ contract auto-collects the fee (in the access token) before recording a proposal.
-- **Config View:** `getConfig()` returns `(token, fee, joinPaused, joins, treasury, pool, burnBps, treasuryBps, memberPoolBps, protocolBps)` in that order.
-- **Membership API:** `join()`, `joinWithReferral(address)`, `joinFor(address)`, `joinForWithReferral(address,address)`; claims via `claimMemberRewards()` and `claimExternalReward(address token)`.
-- **Governance Entrypoints:** all proposal creators are `createProposal*` (see Proposal Views for payloads), voting via `vote(id, support)`, execution via `executeProposal(id)`.
-- **DAO Actions:** `*DAO` functions in [`TemplTreasury.sol`](contracts/TemplTreasury.sol) are invoked by governance (or directly by the priest only when dictatorship is enabled).
+## Reference
+- Contract APIs: read NATSpec in:
+  - Membership: [`contracts/TemplMembership.sol`](contracts/TemplMembership.sol)
+  - Treasury: [`contracts/TemplTreasury.sol`](contracts/TemplTreasury.sol)
+  - Governance: [`contracts/TemplGovernance.sol`](contracts/TemplGovernance.sol)
+  - Root router: [`contracts/TEMPL.sol`](contracts/TEMPL.sol) — `getRegisteredSelectors()` enumerates the canonical ABI surface.
+- Proposal views: see `getProposal`, `getProposalSnapshots`, `getProposalJoinSequences`, `getActiveProposals*`, and `getProposalActionData` in [`contracts/TEMPL.sol`](contracts/TEMPL.sol).
+- Events: see definitions in [`contracts/TemplBase.sol`](contracts/TemplBase.sol).
+- Learn by tests: browse `test/*.test.js` for end‑to‑end flows with ethers v6.
 
-## Typical Flows (Ethers v6)
+## Limits & Defaults
+- `BPS_DENOMINATOR = 10_000`.
+- Defaults via [`TemplDefaults`](contracts/TemplDefaults.sol): quorum bps, execution delay, burn address.
+- `MAX_EXTERNAL_REWARD_TOKENS = 256` (UI enumeration bound).
+- `MAX_ENTRY_FEE = type(uint128).max` (entry fee safety guard).
+- Voting period: default 7 days (min 7, max 30).
 
-Join and claim rewards
-```js
-const [,, alice] = await ethers.getSigners();
-const templ = await ethers.getContractAt("TEMPL", "0xTempl");
-const token = await ethers.getContractAt("IERC20", (await templ.getConfig())[0]);
-const entryFee = (await templ.getConfig())[1];
-await token.connect(alice).approve(templ.target, entryFee);
-await templ.connect(alice).join();
-// Later, claim member rewards
-await templ.connect(alice).claimMemberRewards();
-```
+## Indexing Notes
+- Track `ProposalCreated` then hydrate with `getProposal` + `getProposalSnapshots`.
+- Use `getActiveProposals()` for lists; `getActiveProposalsPaginated(offset,limit)` for pagination.
+- Treasury views: `getTreasuryInfo()` and/or `TreasuryAction`/`TreasuryDisbanded` deltas.
+- Curves: consume `EntryFeeCurveUpdated` for UI refresh.
 
-Create, vote, and execute a proposal
-```js
-const id = await templ.createProposalWithdrawTreasury(
-  token.target, "0xRecipient", ethers.parseUnits("100", 18), "Grants Payout",
-  7*24*60*60, "Pay grants", "Transfer funds to grants wallet"
-);
-await templ.vote(id, true);
-// Advance time by the execution delay, then execute
-await templ.executeProposal(id);
-```
-
-Set referral share and use it
-```js
-// Enable referrals via governance
-const id = await templ.createProposalSetReferralShareBps(1500, 7*24*60*60, "Enable referrals", "15% of member pool");
-await templ.vote(id, true);
-// ...advance time...
-await templ.executeProposal(id);
-// New member joins with referral
-await token.approve(templ.target, (await templ.getConfig())[1]);
-await templ.joinWithReferral("0xReferrer");
-```
-
-Distribute external rewards (ERC‑20 or ETH)
-```js
-// DAO disbands external token to members
-const id = await templ.createProposalDisbandTreasury(otherErc20.target, 7*24*60*60, "Distribute rewards", "Airdrop");
-await templ.vote(id, true);
-// ...advance time...
-await templ.executeProposal(id);
-// Members claim
-await templ.connect(alice).claimExternalReward(otherErc20.target);
-```
-
-### Core Interfaces
-- Membership (from [`TemplMembershipModule`](contracts/TemplMembership.sol)):
-  - Actions: `join()`, `joinWithReferral(address)`, `joinFor(address)`, `joinForWithReferral(address,address)`, `claimMemberRewards()`, `claimExternalReward(address)`.
-  - Views: `getClaimableMemberRewards(address)`, `getExternalRewardTokens()`, `getExternalRewardState(address)`, `getClaimableExternalReward(address,address)`, `isMember(address)`, `getJoinDetails(address)`, `getTreasuryInfo()`, `getConfig()`, `getMemberCount()`, `totalJoins()`, `getVoteWeight(address)`.
-  - `getConfig()` returns `(accessToken, entryFee, joinPaused, totalJoins, treasuryAvailable, memberPoolBalance, burnBps, treasuryBps, memberPoolBps, protocolBps)`.
-- Treasury (from [`TemplTreasuryModule`](contracts/TemplTreasury.sol), callable by DAO via governance or priest during dictatorship):
-  - `withdrawTreasuryDAO(address token, address recipient, uint256 amount, string reason)`
-  - `disbandTreasuryDAO(address token)`
-  - `updateConfigDAO(address tokenOrZero, uint256 newEntryFeeOrZero, bool applySplit, uint256 burnBps, uint256 treasuryBps, uint256 memberPoolBps)`
-  - `setMaxMembersDAO(uint256)`, `setJoinPausedDAO(bool)`, `changePriestDAO(address)`, `setDictatorshipDAO(bool)`, `setTemplMetadataDAO(string,string,string)`, `setProposalCreationFeeBpsDAO(uint256)`, `setReferralShareBpsDAO(uint256)`, `setEntryFeeCurveDAO(CurveConfig,uint256)`, `setQuorumBpsDAO(uint256)`, `setExecutionDelayAfterQuorumDAO(uint256)`, `setBurnAddressDAO(address)`
-  - DAO-only helper: `cleanupExternalRewardToken(address)` — removes an exhausted external reward token slot once balances are fully settled.
-- Governance (from [`TemplGovernanceModule`](contracts/TemplGovernance.sol)):
-  - Create proposals: `createProposalSetJoinPaused`, `createProposalUpdateConfig`, `createProposalWithdrawTreasury`, `createProposalDisbandTreasury`, `createProposalCleanupExternalRewardToken`, `createProposalChangePriest`, `createProposalSetDictatorship`, `createProposalSetMaxMembers`, `createProposalUpdateMetadata`, `createProposalSetProposalFeeBps`, `createProposalSetReferralShareBps`, `createProposalSetEntryFeeCurve`, `createProposalCallExternal`, `createProposalSetQuorumBps`, `createProposalSetExecutionDelay`, `createProposalSetBurnAddress`.
-  - Vote/execute: `vote(uint256,bool)`, `executeProposal(uint256)`, `pruneInactiveProposals(uint256)`.
-  - Views: `getProposal(uint256)`, `getProposalSnapshots(uint256)`, `getProposalJoinSequences(uint256)`, `getActiveProposals()`, `getActiveProposalsPaginated(uint256,uint256)`, `hasVoted(uint256,address)`.
-
-### Root Contract Introspection (from [`TEMPL`](contracts/TEMPL.sol))
-- `getModuleForSelector(bytes4)` — returns the module address responsible for a given function selector.
-- `getRegisteredSelectors()` — returns `(bytes4[] membership, bytes4[] treasury, bytes4[] governance)`.
-  - Notes: the `fallback` routes only registered selectors; unknown selectors revert (`InvalidCallData`).
-
-## Access Control & Modifiers
-
-- onlyMember
-  - Caller must have joined; otherwise `NotMember`.
-- onlyDAO
-  - When `priestIsDictator == false`, only the contract (via governance execution) may call; otherwise `NotDAO`.
-  - When `priestIsDictator == true`, the priest or the contract may call; others revert `PriestOnly`.
-- whenNotPaused
-  - Protects join flows; reverts with `JoinIntakePaused`.
-- notSelf
-  - Blocks direct calls from the contract in join flows; reverts `InvalidSender`.
-- Proposal creation limits
-  - One active proposal per proposer at a time (`ActiveProposalExists` if another is still active). Proposer auto‑casts an initial YES.
-
-### Factory API (from [`TemplFactory`](contracts/TemplFactory.sol))
-- `setPermissionless(bool)` — toggles who may call create functions (deployer-only vs anyone).
-- `createTempl(address token, uint256 entryFee, string name, string description, string logoLink)` → `address`
-- `createTemplFor(address priest, address token, uint256 entryFee, string name, string description, string logoLink, uint256 proposalFeeBps, uint256 referralShareBps)` → `address`
-- `createTemplWithConfig(CreateConfig)` → `address`
-
-### Behavior Notes
-- Dictatorship mode (`priestIsDictator`) allows the priest to call `onlyDAO` functions directly. Otherwise, all `onlyDAO` actions are executed by governance via `executeProposal`.
-- `maxMembers` caps membership. When the cap is reached, `joinPaused` auto-enables; unpausing doesn’t remove the cap.
-- External-call proposals can execute arbitrary calls with optional ETH; they should be used cautiously.
-- Only priest-initiated disband proposals are quorum‑exempt; this exists to safely unwind inactive templs without bricking governance. Disband distributes the treasury evenly across members (still requires YES greater than NO).
-
-## Events
-- Member lifecycle: `MemberJoined`, `MemberRewardsClaimed`, `ReferralRewardPaid`
-- Governance: `ProposalCreated`, `VoteCast`, `ProposalExecuted`
-- Treasury/config/params: `TreasuryAction`, `TreasuryDisbanded`, `ConfigUpdated`, `JoinPauseUpdated`, `MaxMembersUpdated`, `EntryFeeCurveUpdated`, `PriestChanged`, `TemplMetadataUpdated`, `ProposalCreationFeeUpdated`, `ReferralShareBpsUpdated`, `QuorumBpsUpdated`, `ExecutionDelayAfterQuorumUpdated`, `BurnAddressUpdated`, `DictatorshipModeChanged`
-- Rewards: `ExternalRewardClaimed`
-- Factory: `TemplCreated`, `PermissionlessModeUpdated`
-
-Notes
-- `MemberJoined.joinId` starts at 0 for the first non‑priest joiner and increments per successful join.
-- Event field highlights
-  - `MemberJoined(payer, member, totalAmount, burnedAmount, treasuryAmount, memberPoolAmount, protocolAmount, timestamp, blockNumber, joinId)`
-  - `TreasuryAction(proposalId, token /* address(0) for ETH */, recipient, amount, reason)`
-  - `TemplCreated(templ, creator, priest, token, entryFee, burnBps, treasuryBps, memberPoolBps, quorumBps, executionDelaySeconds, burnAddress, priestIsDictator, maxMembers, curveStyles, curveRateBps, curveLengths, name, description, logoLink, proposalFeeBps, referralShareBps)`
-
-## Limits & Constants
-- `BPS_DENOMINATOR = 10_000`
-- `DEFAULT_QUORUM_BPS = 3_300`, `DEFAULT_EXECUTION_DELAY = 7 days`, `DEFAULT_BURN_ADDRESS = 0x…dEaD`
-- `MAX_EXTERNAL_REWARD_TOKENS = 256` — cap on concurrently tracked external reward tokens
-- `MAX_ENTRY_FEE = type(uint128).max` — upper safety bound on entry fee
-- Reward rounding: per‑member splits use integer division; remainders are carried forward and periodically flushed into cumulative rewards to avoid dust loss (applies to member pool and external rewards).
-- Proposal voting window: `DEFAULT_VOTING_PERIOD = 7 days` (`MIN=7 days`, `MAX=30 days`)
-- Default factory splits assume `protocolBps = 1_000`: 3_000/3_000/3_000/1_000; customize via `createTemplWithConfig`
- - Factory defaults: `DEFAULT_MAX_MEMBERS = 249`, `DEFAULT_CURVE_EXP_RATE_BPS = 11_000`
-
-Formulas
-- Member pool per join: `memberPoolAmount = entryFee * memberPoolBps / 10_000`
-- Referral payout: `referralAmount = memberPoolAmount * referralShareBps / 10_000`
-- Proposal fee: `proposalFee = entryFee * proposalCreationFeeBps / 10_000` (credited to treasury)
-- Treasury split per join: `treasuryAmount = entryFee - burn - memberPool - protocol`
-
-## Curve Math Details
-- Segments: `Static`, `Linear(rateBps)`, `Exponential(rateBps)`; `length` is number of paid joins in the segment (`0 = infinite tail`).
-- Linear segment across `n` joins scales linearly from the segment’s start amount: `price = base * (1 + rateBps * n / 10_000)`.
-- Exponential segment across `n` joins scales multiplicatively: `price = base * (rateBps/10_000)^n`.
-- Segment rules: if there are extras, primary must have `length > 0`; all middle extras must have `length > 0`; the final segment must have `length = 0` (unbounded tail).
-- The contract keeps `baseEntryFee` and recomputes current `entryFee` from the stored curve and completed paid joins after each join.
-
-Multi‑segment example
-```js
-// Static for first 100 members, then linear for next 900, then exponential for next 1000,
-// then freeze price (static tail as required by the final length=0 rule)
-const curve = {
-  primary: { style: 0, rateBps: 0,    length: 100 },   // Static
-  additionalSegments: [
-    { style: 1, rateBps: 10,   length: 900 },          // Linear: +0.10% per join
-    { style: 2, rateBps: 10050, length: 1000 },        // Exponential: ~+0.50% per join
-    { style: 0, rateBps: 0,    length: 0 }             // Final static tail (required)
-  ]
-};
-// Segment activation points (paid joins = non‑priest joins):
-// - Linear starts at join #101, exponential at #1,001, final tail at #2,001
-```
-
-Notes
-- Exponential segments can model price decreases when `rateBps < 10_000` (e.g., 9_500 = −5% per join). Linear segments are non‑decreasing in this design.
-
-## Core Invariants
-- Entry fee must be ≥ 10 and divisible by 10 (constructor and updates enforce).
-- Fee splits must sum to 10_000 with protocol share included.
-- Token changes are disabled via governance (create a new templ to migrate tokens).
-- Dictatorship gate allows priest to call `onlyDAO` actions directly while enabled.
-- Membership cap: joins revert upon reaching the cap; unpausing does not lift the cap.
-- External rewards capacity capped by `MAX_EXTERNAL_REWARD_TOKENS`.
-- Fallback routes only registered selectors; unknown selectors revert.
-
-## Indexing Guide (UIs)
-- Persist `ProposalCreated`, then fetch metadata with `getProposal(id)` and `getProposalSnapshots(id)` to drive state.
-- Use `getActiveProposals()` for quick lists; `getActiveProposalsPaginated(offset,limit)` for pagination.
-- Track `VoteCast` and `ProposalExecuted` for live updates.
-- For treasury views, either derive from `getTreasuryInfo()` or track `TreasuryAction`/`TreasuryDisbanded` with access-token balance deltas.
-- Use `EntryFeeCurveUpdated` to reflect curve changes without recomputing from storage.
-
-See event definitions in [`contracts/TemplBase.sol`](contracts/TemplBase.sol) and usage across modules; tests assert on these logs throughout `test/*.test.js` (e.g. `test/MembershipCoverage.test.js`, `test/GovernanceCoverage.test.js`).
-
-### Proposal Lifecycle
-
-```mermaid
-stateDiagram-v2
-  [*] --> Voting
-  Voting: Proposal open (pre-quorum snapshot)
-  Voting --> WaitingDelay: Quorum reached
-  WaitingDelay --> Executable: Delay elapsed & quorum maintained
-  Voting --> QE: Quorum-exempt path
-  QE --> Executable: endTime elapsed & YES greater than NO
-  Voting --> NotPassed: endTime elapsed & (no quorum or YES not greater than NO)
-  Executable --> Executed: executeProposal()
-```
-
-### Dictatorship Gate (onlyDAO)
-
-```mermaid
-flowchart TD
-  A[onlyDAO action requested] --> B{priestIsDictator}
-  B -- Yes --> C[require msg.sender == priest]
-  B -- No --> D[require path via Governance executeProposal]
-  C --> E[perform action]
-  D --> E
-```
-
-### Snapshot-Based Voting Eligibility (example)
-
-```mermaid
-sequenceDiagram
-  participant A as Member A
-  participant B as New Joiner B
-  participant T as TEMPL
-  participant G as Governance
-
-  A->>T: createProposal(...)
-  T->>G: create proposal and record preQuorumJoinSequence
-  B->>T: join()
-  B->>G: vote(id)
-  G-->>B: rejected (joined after snapshot)
-  A->>G: vote(id, YES)
-  G->>G: on quorum: set quorumJoinSequence
-  B->>G: vote(id)
-  G-->>B: still ineligible for this proposal
-```
-
-## Learn by Example (tests)
-- Membership basics: `test/MembershipCoverage.test.js`, `test/MemberPool.test.js`
-- Referral rewards: `test/MembershipCoverage.test.js` ("pays referral rewards…" and update via governance)
-- Governance flows: `test/SingleProposal.test.js`, `test/GovernanceCoverage.test.js`, `test/ProposalPagination.test.js`
-- Dictatorship mode: `test/PriestDictatorship.test.js`
-- Treasury actions: `test/TreasuryWithdrawAssets.test.js`, `test/DisbandTreasury.test.js`
-- Entry fee curves: `test/EntryFeeCurve.test.js`, `test/TemplHighLoadStress.test.js`
-- Security: `test/Reentrancy.test.js`, `test/ProposalFeeReentrancy.test.js`, `test/ExecuteProposalReverts.test.js`
-- Invariants and edge cases: `test/FeeDistributionInvariant.test.js`, `test/TEMPL.test.js`
-
-Each section of this README links to the exact contracts that implement the described behavior. The tests above are the fastest way to confirm semantics and see end‑to‑end usage with ethers v6.
-
-## Caveats & Security
-- External calls: `createProposalCallExternal` can execute arbitrary calls; frontends should communicate that this can drain funds. Tests cover revert bubbling and failure modes.
-- Fee-on-transfer tokens: unsupported. Accounting assumes vanilla ERC‑20 semantics (see comment in [`contracts/TemplMembership.sol`](contracts/TemplMembership.sol)).
-- Quorum math: quorum is computed against eligible voters at snapshot; losing quorum post‑snapshot prevents execution.
-- Dictatorship: when enabled, `onlyDAO` gates accept calls from the priest or the contract itself. Disabling restores governance‑only.
+## Troubleshooting
+- `InvalidEntryFee` / `EntryFeeTooSmall`: fee must be ≥10 and divisible by 10.
+- `InvalidPercentageSplit`: burn + treasury + member + protocol must sum to 10_000 bps.
+- `ActiveProposalExists`: one active proposal per proposer.
+- `QuorumNotReached` / `ExecutionDelayActive`: execution preconditions not satisfied.
+- `UnsupportedToken`: non‑vanilla ERC‑20 detected during join.
 
 ## FAQ
-- Can the access token be changed later?
-  - No. Governance rejects token changes (`TokenChangeDisabled`). Deploy a new templ if you need a different token.
-- Why must the entry fee be divisible by 10?
-  - To avoid rounding issues in fee distributions and keep math predictable on-chain.
-- What happens if quorum is never reached?
-  - The proposal cannot be executed. Consider priest-initiated disband proposals which are quorum-exempt to safely unwind inactive templs.
-- How do referrals work?
-  - The referral is paid from the member pool slice of each join, as `memberPoolAmount * referralShareBps / 10_000`, only if the referral is a member and distinct from the new joiner.
-- Can I enumerate external reward tokens?
-  - Yes: `getExternalRewardTokens()` and `getExternalRewardState(token)`; remove exhausted tokens via `cleanupExternalRewardToken` (DAO-only).
+- Can the access token change later? No — deploy a new templ.
+- Why divisible by 10? Prevents rounding drift in fee math.
+- How do referrals work? Paid from the member‑pool slice when the referrer is a member and not the joiner.
+- Can I enumerate external reward tokens? Yes: `getExternalRewardTokens()` (or paginated) and `getExternalRewardState(token)`; cleanup via DAO‑only `cleanupExternalRewardToken`.
 
-## Troubleshooting (Common Errors)
-- `InvalidEntryFee` / `EntryFeeTooSmall`: entry fee must be ≥10 and divisible by 10.
-- `InvalidPercentageSplit`: burn/treasury/member plus protocol must sum to 10_000 bps.
-- `ActiveProposalExists`: one active proposal per proposer at a time.
-- `QuorumNotReached` / `ExecutionDelayActive`: quorum never reached or delay not elapsed.
-- `ExternalRewardsNotSettled`: cannot cleanup an external reward token while balances remain.
-
-Error definitions live in [`contracts/TemplErrors.sol`](contracts/TemplErrors.sol) and are exercised across `test/*`.
-
-## Deployments & Verification
-- Deployments recorded under `deployments/` by the scripts in `scripts/`.
-- Verify via `scripts/verify-templ.cjs` which reconstructs constructor args.
-
-## Contributing & Dev
-- Lint/format: follow existing style.
-- Tests: `npx hardhat test`; focused files under `test/` mirror module boundaries.
-- Coverage: `npx hardhat coverage`
-- Static analysis: `npm run slither`
+## Test Suites
+- Default: `npm test` (heavy `@load` suite is excluded).
+- High‑load stress: `npm run test:load` with `TEMPL_LOAD=...` to scale joiners.
+- Coverage: `npx hardhat coverage`. Static: `npm run slither`.
+- Property fuzzing: `npm run test:fuzz` (via Docker) using `echidna.yaml` and `contracts/echidna/EchidnaTemplHarness.sol`.

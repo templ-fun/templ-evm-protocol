@@ -498,7 +498,9 @@ contract TemplGovernanceModule is TemplBase {
             if (proposal.quorumReachedAt == 0) {
                 revert TemplErrors.QuorumNotReached();
             }
-            if (block.timestamp < proposal.quorumReachedAt + executionDelayAfterQuorum) {
+            // Use the endTime captured at quorum to anchor the delay for this proposal,
+            // preventing mid-flight changes to executionDelayAfterQuorum from affecting it.
+            if (block.timestamp < proposal.endTime) {
                 revert TemplErrors.ExecutionDelayActive();
             }
             uint256 denom = proposal.postQuorumEligibleVoters;
