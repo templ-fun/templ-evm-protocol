@@ -71,8 +71,6 @@ contract TemplMembershipModule is TemplBase {
             revert TemplErrors.MemberLimitReached();
         }
 
-        // External reward remainders are rolled forward at disband time; no O(n) join-time flush
-
         uint256 price = entryFee;
 
         uint256 burnAmount = (price * burnBps) / BPS_DENOMINATOR;

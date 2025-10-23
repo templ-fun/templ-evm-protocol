@@ -114,26 +114,47 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 cumulative;
     }
 
+    /// @notice Governance proposal payload and lifecycle state.
     struct Proposal {
+        /// @notice Unique, monotonic proposal id.
         uint256 id;
+        /// @notice Creator wallet that opened the proposal.
         address proposer;
+        /// @notice Action type that will be executed if the proposal passes.
         Action action;
+        /// @notice Token parameter for actions that require one (address(0) for ETH where applicable).
         address token;
+        /// @notice Recipient wallet used by actions such as withdrawals or priest changes.
         address recipient;
+        /// @notice Amount parameter used by treasury withdrawals.
         uint256 amount;
+        /// @notice On-chain title string for the proposal.
         string title;
+        /// @notice On-chain description string for the proposal.
         string description;
+        /// @notice Free-form reason string used by withdrawal actions.
         string reason;
+        /// @notice Desired join pause state when the action is SetJoinPaused.
         bool joinPaused;
+        /// @notice Replacement entry fee when updating config (0 keeps existing value).
         uint256 newEntryFee;
+        /// @notice Replacement burn split (bps) when updating config.
         uint256 newBurnBps;
+        /// @notice Replacement treasury split (bps) when updating config.
         uint256 newTreasuryBps;
+        /// @notice Replacement member pool split (bps) when updating config.
         uint256 newMemberPoolBps;
+        /// @notice Replacement templ name when action is SetMetadata.
         string newTemplName;
+        /// @notice Replacement templ description when action is SetMetadata.
         string newTemplDescription;
+        /// @notice Replacement templ logo link when action is SetMetadata.
         string newLogoLink;
+        /// @notice Proposed proposal-creation fee (bps of entry fee).
         uint256 newProposalCreationFeeBps;
+        /// @notice Proposed referral share (bps of the member-pool slice).
         uint256 newReferralShareBps;
+        /// @notice Proposed membership cap (0 uncaps).
         uint256 newMaxMembers;
         /// @notice Quorum threshold proposed (bps). Accepts 0-100 or 0-10_000 format.
         uint256 newQuorumBps;
@@ -147,26 +168,43 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 externalCallValue;
         /// @notice ABI-encoded calldata executed against the external target.
         bytes externalCallData;
+        /// @notice Entry fee curve configuration proposed when action is SetEntryFeeCurve.
         CurveConfig curveConfig;
+        /// @notice Optional replacement base entry fee anchor for the curve (0 keeps current base).
         uint256 curveBaseEntryFee;
+        /// @notice Count of YES votes recorded.
         uint256 yesVotes;
+        /// @notice Count of NO votes recorded.
         uint256 noVotes;
+        /// @notice Voting/execution deadline captured when created or when quorum is reached.
         uint256 endTime;
+        /// @notice Timestamp when the proposal was created.
         uint256 createdAt;
+        /// @notice True once the proposal has been executed.
         bool executed;
+        /// @notice Tracks whether each voter has cast a ballot.
         mapping(address => bool) hasVoted;
+        /// @notice Voter's recorded choice (true = YES, false = NO).
         mapping(address => bool) voteChoice;
+        /// @notice Number of eligible voters at proposal creation.
         uint256 eligibleVoters;
+        /// @notice Number of eligible voters when quorum was reached.
         uint256 postQuorumEligibleVoters;
+        /// @notice Timestamp when quorum was reached (0 when never reached).
         uint256 quorumReachedAt;
+        /// @notice Block number snapshot taken when quorum was reached.
         uint256 quorumSnapshotBlock;
+        /// @notice When true, quorum rules do not apply (voting period only).
         bool quorumExempt;
+        /// @notice When true, apply split updates alongside entry fee during UpdateConfig.
         bool updateFeeSplit;
+        /// @notice Block number recorded when the proposal was created.
         uint256 preQuorumSnapshotBlock;
         /// @notice Join sequence recorded when the proposal was created.
         uint256 preQuorumJoinSequence;
         /// @notice Join sequence recorded when quorum was reached (0 if quorum never satisfied).
         uint256 quorumJoinSequence;
+        /// @notice Desired dictatorship state when the action is SetDictatorship.
         bool setDictatorship;
     }
 

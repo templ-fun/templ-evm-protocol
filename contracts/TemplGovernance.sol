@@ -3,7 +3,6 @@ pragma solidity ^0.8.23;
 import { TemplBase } from "./TemplBase.sol";
 import { TemplErrors } from "./TemplErrors.sol";
 import { CurveConfig } from "./TemplCurve.sol";
-// import removed: TemplTreasuryModule
 
 /// @title Templ Governance Module
 /// @notice Adds proposal creation, voting, and execution flows on top of treasury + membership logic.
