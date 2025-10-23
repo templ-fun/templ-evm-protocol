@@ -37,7 +37,6 @@ contract TemplTreasuryModule is TemplBase {
     }
 
     /// @notice Governance action that updates the entry fee and/or fee split configuration.
-    /// @param _token Optional replacement access token (must equal the existing token or zero to leave unchanged).
     /// @param _entryFee Optional new entry fee (0 keeps the current value).
     /// @param _updateFeeSplit Whether to apply the provided fee-split overrides (bps).
     /// @param _burnBps New burn allocation in basis points when `_updateFeeSplit` is true.

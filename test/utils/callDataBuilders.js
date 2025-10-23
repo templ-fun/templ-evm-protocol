@@ -14,12 +14,11 @@ function encodeWithdrawTreasuryDAO(token, recipient, amount, reason) {
 
 //
 
-function encodeUpdateConfigDAO(token, entryFee, updateSplit, burnBps, treasuryBps, memberPoolBps) {
+function encodeUpdateConfigDAO(entryFee, updateSplit, burnBps, treasuryBps, memberPoolBps) {
   const iface = new ethers.Interface([
   "function updateConfigDAO(uint256,bool,uint256,uint256,uint256)"
   ]);
   return iface.encodeFunctionData("updateConfigDAO", [
-    token,
     entryFee,
     updateSplit,
     burnBps,

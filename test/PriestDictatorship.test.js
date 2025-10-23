@@ -134,7 +134,6 @@ describe("Priest dictatorship governance toggle", function () {
       templ
         .connect(member)
         .createProposalUpdateConfig(
-          ethers.ZeroAddress,
           0,
           0,
           0,

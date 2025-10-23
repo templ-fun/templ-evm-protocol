@@ -14,7 +14,6 @@ describe("updateConfigDAO entry fee too large", function () {
     const TOO_LARGE = ((1n << 128n) - 1n) + (10n - (((1n << 128n) - 1n) % 10n));
 
     await templ.connect(proposer).createProposalUpdateConfig(
-      ethers.ZeroAddress,
       TOO_LARGE,
       0,
       0,
@@ -28,4 +27,3 @@ describe("updateConfigDAO entry fee too large", function () {
     await expect(templ.executeProposal(0)).to.be.revertedWithCustomError(templ, "EntryFeeTooLarge");
   });
 });
-

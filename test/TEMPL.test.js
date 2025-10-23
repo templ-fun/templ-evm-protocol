@@ -684,7 +684,6 @@ describe("TEMPL Contract with DAO Governance", function () {
         it("Should execute config update proposal", async function () {
             const newFee = ethers.parseUnits("200", 18);
             const callData = encodeUpdateConfigDAO(
-                ethers.ZeroAddress, // Don't change token
                 newFee,
                 false,
                 0,
@@ -827,7 +826,6 @@ describe("TEMPL Contract with DAO Governance", function () {
 
         it("Should prevent config changes without DAO approval", async function () {
             await expect(templ.connect(priest).updateConfigDAO(
-                await token.getAddress(),
                 ethers.parseUnits("500", 18),
                 false,
                 0,

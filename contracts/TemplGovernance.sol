@@ -43,7 +43,6 @@ contract TemplGovernanceModule is TemplBase {
     }
 
     /// @notice Opens a proposal to update entry fee and/or fee split configuration.
-    /// @param _token Optional replacement access token (must match current token or zero address).
     /// @param _newEntryFee Optional new entry fee (0 to keep current).
     /// @param _newBurnBps New burn share (bps) when `_updateFeeSplit` is true.
     /// @param _newTreasuryBps New treasury share (bps) when `_updateFeeSplit` is true.
@@ -620,7 +619,6 @@ contract TemplGovernanceModule is TemplBase {
     }
 
     /// @notice Governance wrapper that updates entry fee and/or fee splits.
-    /// @param _token Optional replacement access token.
     /// @param _entryFee Optional new entry fee.
     /// @param _updateFeeSplit Whether to apply the provided split values.
     /// @param _burnBps New burn share (bps) when applying split updates.

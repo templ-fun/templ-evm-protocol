@@ -1180,7 +1180,6 @@ abstract contract TemplBase is ReentrancyGuard {
     }
 
     /// @notice Applies updates to the entry fee and/or fee split configuration.
-    /// @param _token New access token (must equal current token or be zero to keep unchanged).
     /// @param _entryFee Optional new entry fee (0 keeps current).
     /// @param _updateFeeSplit Whether to apply the new split values.
     /// @param _burnBps New burn share (bps) when `_updateFeeSplit` is true.

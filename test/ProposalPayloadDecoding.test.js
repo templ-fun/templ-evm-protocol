@@ -29,13 +29,11 @@ describe("Proposal payload decode coverage (getProposalActionData)", function ()
   });
 
   it("decodes UpdateConfig", async function () {
-    const tokenAddr = ethers.ZeroAddress; // unchanged
     const newEntryFee = ethers.parseUnits("200", 18);
     // update split to 4000/3000/2000 (protocol is 1000) => total 10_000
     const burnBps = 4000, treasuryBps = 3000, memberPoolBps = 2000;
     const updateSplit = true;
     await templ.connect(m1).createProposalUpdateConfig(
-      tokenAddr,
       newEntryFee,
       burnBps,
       treasuryBps,
@@ -47,16 +45,8 @@ describe("Proposal payload decode coverage (getProposalActionData)", function ()
     );
     const id = (await templ.proposalCount()) - 1n;
     const [, payload] = await templ.getProposalActionData(id);
-    const types = [
-      "address",
-      "uint256",
-      "bool",
-      "uint256",
-      "uint256",
-      "uint256"
-    ];
-    const [rToken, rFee, rUpdate, rBurn, rTreasury, rMember] = ethers.AbiCoder.defaultAbiCoder().decode(types, payload);
-    expect(rToken).to.equal(tokenAddr);
+    const types = ["uint256","bool","uint256","uint256","uint256"];
+    const [rFee, rUpdate, rBurn, rTreasury, rMember] = ethers.AbiCoder.defaultAbiCoder().decode(types, payload);
     expect(rFee).to.equal(newEntryFee);
     expect(rUpdate).to.equal(true);
     expect(rBurn).to.equal(burnBps);
