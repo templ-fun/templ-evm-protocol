@@ -15,7 +15,7 @@
 ## Quickstart
 - Prereqs: Node >=22, `npm`. Docker recommended for fuzzing.
 - Install: `npm install`
-- Test: `npm test` (Hardhat). Coverage: `npx hardhat coverage`.
+- Test: `npm test` (Hardhat). Coverage: `npm run coverage`.
 - Fuzzing (Echidna): `npm run test:fuzz` (via Docker; harness in `contracts/echidna/EchidnaTemplHarness.sol`).
 - Static analysis: `npm run slither` (requires Slither in PATH).
 
@@ -62,18 +62,18 @@ flowchart LR
 ## Deploy Locally
 
 ```bash
-# Deploy shared modules + factory
+# Deploy shared modules + factory (prefer npm script)
 PROTOCOL_FEE_RECIPIENT=0xYourRecipient \
 PROTOCOL_BPS=1000 \
-npx hardhat run --network localhost scripts/deploy-factory.cjs
+npm run deploy:factory:local
 
-# Deploy a templ via the factory
+# Deploy a templ via the factory (uses npm script)
 FACTORY_ADDRESS=0xFactoryFromPreviousStep \
 TOKEN_ADDRESS=0xAccessToken \
 ENTRY_FEE=100000000000000000000 \
 TEMPL_NAME="templ.fun OG" \
 TEMPL_DESCRIPTION="Genesis collective" \
-npx hardhat run --network localhost scripts/deploy-templ.cjs
+npm run deploy:local
 ```
 
 Hardhat console (ethers v6) quick taste:
@@ -130,8 +130,9 @@ sequenceDiagram
 Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, and exponential segments. A final segment with `length=0` creates an infinite tail.
 
 ## Scripts & Env Vars
-- `scripts/deploy-factory.cjs`: `PROTOCOL_FEE_RECIPIENT` (required), `PROTOCOL_BPS` (default 1000). Optionally pass existing module addresses or `FACTORY_ADDRESS` to reuse.
-- `scripts/deploy-templ.cjs`: `FACTORY_ADDRESS`, `TOKEN_ADDRESS`, `ENTRY_FEE`, `TEMPL_NAME`, `TEMPL_DESCRIPTION`, `TEMPL_LOGO_LINK`. Optional knobs: `PRIEST_ADDRESS`, `QUORUM_BPS`, `EXECUTION_DELAY_SECONDS`, `BURN_ADDRESS`, `PRIEST_IS_DICTATOR`, `MAX_MEMBERS`, `PROPOSAL_FEE_BPS`, `REFERRAL_SHARE_BPS`, and curve config (see script for shapes).
+- Prefer npm scripts: `deploy:factory`, `deploy:factory:local`, `deploy:local`, `coverage`, `slither`.
+- `scripts/deploy-factory.cjs`: requires `PROTOCOL_FEE_RECIPIENT`; optional `PROTOCOL_BPS`. You can reuse an existing factory by setting `FACTORY_ADDRESS`. See the script for module overrides and verification notes.
+- `scripts/deploy-templ.cjs`: key envs are `FACTORY_ADDRESS` (or omit to auto‑deploy modules + factory locally), `TOKEN_ADDRESS`, `ENTRY_FEE`, plus optional metadata (`TEMPL_NAME`, `TEMPL_DESCRIPTION`, `TEMPL_LOGO_LINK`). The script supports many toggles (priest, quorum/delay, caps, fee splits, referral share, curve). See the script for the complete list and validation rules.
 - Permissionless mode: `TemplFactory.setPermissionless(true)` to allow anyone to create templs.
 
 ## Reference
@@ -140,7 +141,7 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
   - Treasury: [`contracts/TemplTreasury.sol`](contracts/TemplTreasury.sol)
   - Governance: [`contracts/TemplGovernance.sol`](contracts/TemplGovernance.sol)
   - Root router: [`contracts/TEMPL.sol`](contracts/TEMPL.sol) — `getRegisteredSelectors()` enumerates the canonical ABI surface.
-- Proposal views: see `getProposal`, `getProposalSnapshots`, `getProposalJoinSequences`, `getActiveProposals*`, and `getProposalActionData` in [`contracts/TEMPL.sol`](contracts/TEMPL.sol).
+- Proposal views: `getProposal`, `getProposalSnapshots`, `getProposalJoinSequences`, and `getActiveProposals*` are defined in [`contracts/TemplGovernance.sol`](contracts/TemplGovernance.sol). Payload helper `getProposalActionData` is provided in [`contracts/TEMPL.sol`](contracts/TEMPL.sol).
 - Events: see definitions in [`contracts/TemplBase.sol`](contracts/TemplBase.sol).
 - Learn by tests: browse `test/*.test.js` for end‑to‑end flows with ethers v6.
 
@@ -162,7 +163,7 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
 - `InvalidPercentageSplit`: burn + treasury + member + protocol must sum to 10_000 bps.
 - `ActiveProposalExists`: one active proposal per proposer.
 - `QuorumNotReached` / `ExecutionDelayActive`: execution preconditions not satisfied.
-- `UnsupportedToken`: non‑vanilla ERC‑20 detected during join.
+
 
 ## FAQ
 - Can the access token change later? No — deploy a new templ.
@@ -173,5 +174,5 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
 ## Test Suites
 - Default: `npm test` (heavy `@load` suite is excluded).
 - High‑load stress: `npm run test:load` with `TEMPL_LOAD=...` to scale joiners.
-- Coverage: `npx hardhat coverage`. Static: `npm run slither`.
+- Coverage: `npm run coverage`. Static: `npm run slither`.
 - Property fuzzing: `npm run test:fuzz` (via Docker) using `echidna.yaml` and `contracts/echidna/EchidnaTemplHarness.sol`.
