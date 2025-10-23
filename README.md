@@ -105,7 +105,65 @@ await templ.vote(id, true);
 // ...advance time...
 await templ.executeProposal(id);
 
-// Optional: see contracts/tools/BatchExecutor.sol for simple batched external calls
+```
+
+### Batched External Calls (approve → stake)
+Use the included [`BatchExecutor`](contracts/tools/BatchExecutor.sol) to sequence multiple downstream calls atomically via a single governance proposal.
+
+```js
+// npx hardhat console --network localhost
+const templ = await ethers.getContractAt("TEMPL", "0xYourTempl");
+const token = await ethers.getContractAt("IERC20", (await templ.getConfig())[0]);
+
+// 1) Prepare inner calls: approve -> stake
+const staking = await ethers.getContractAt("MockStaking", "0xStaking");
+const approveSel = token.interface.getFunction("approve").selector;
+const approveArgs = ethers.AbiCoder.defaultAbiCoder().encode(
+  ["address","uint256"],
+  [await staking.getAddress(), ethers.parseUnits("100", 18)]
+);
+const approveData = ethers.concat([approveSel, approveArgs]);
+
+const stakeSel = staking.interface.getFunction("stake").selector;
+const stakeArgs = ethers.AbiCoder.defaultAbiCoder().encode(
+  ["address","uint256"],
+  [await token.getAddress(), ethers.parseUnits("100", 18)]
+);
+const stakeData = ethers.concat([stakeSel, stakeArgs]);
+
+// 2) Encode BatchExecutor.execute(targets, values, calldatas)
+const executor = await ethers.getContractAt("BatchExecutor", "0xExecutor");
+const targets = [await token.getAddress(), await staking.getAddress()];
+const values = [0, 0]; // no ETH in this example
+const calldatas = [approveData, stakeData];
+
+const execSel = executor.interface.getFunction("execute").selector;
+const execParams = ethers.AbiCoder.defaultAbiCoder().encode(
+  ["address[]","uint256[]","bytes[]"],
+  [targets, values, calldatas]
+);
+
+// 3) Propose the external call (templ -> BatchExecutor)
+const votingPeriod = 7 * 24 * 60 * 60;
+const pid = await templ.createProposalCallExternal(
+  await executor.getAddress(),
+  0,                // forward 0 ETH to the executor
+  execSel,
+  execParams,
+  votingPeriod,
+  "Approve and stake",
+  "Approve token then stake in a single atomic batch"
+);
+
+// 4) Vote and execute after quorum + delay
+await templ.vote(pid, true);
+// ...advance time to satisfy execution delay...
+await templ.executeProposal(pid);
+```
+
+Notes
+- To forward ETH in the batch, set `values` for the specific inner call(s) and pass the top-level `value` argument in `createProposalCallExternal` to `sum(values)`.
+- If any inner call reverts, the entire batch reverts; no partial effects.
 ```
 
 ```mermaid
