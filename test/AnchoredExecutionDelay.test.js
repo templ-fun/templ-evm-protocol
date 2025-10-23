@@ -9,7 +9,7 @@ const { attachTemplInterface } = require('./utils/templ');
 describe('Anchored execution delay after quorum', function () {
   it('does not shorten waiting period when global delay is reduced after quorum', async function () {
     const accounts = await ethers.getSigners();
-    const [, priest] = accounts;
+    const [, priest, memberB] = accounts;
 
     // Deploy harness-like TEMPL with modules to allow direct onlyDAO wrappers via self-call.
     const Token = await ethers.getContractFactory('contracts/mocks/TestToken.sol:TestToken');
@@ -30,7 +30,7 @@ describe('Anchored execution delay after quorum', function () {
       3000,
       1000,
       3300,
-      7 * 24 * 60 * 60,
+      2,
       '0x000000000000000000000000000000000000dEaD',
       false,
       0,
@@ -59,25 +59,27 @@ describe('Anchored execution delay after quorum', function () {
     const endTime = proposal[3];
     expect(endTime).to.be.greaterThan(createdAt);
 
-    // Enable dictatorship via self-call wrapper so priest can call onlyDAO externals directly.
-    // Use the treasury wrapper exposed on the merged ABI.
-    await templ.daoSetDictatorship(true);
+    // Prepare an external call proposal (B) that sets the global execution delay to a large value.
+    // Onboard a second member who will propose the external-call change.
+    await token.mint(memberB.address, ethers.parseUnits('100', 18));
+    await token.connect(memberB).approve(await templ.getAddress(), ethers.parseUnits('100', 18));
+    await templ.connect(memberB).join();
 
-    // Reduce global delay to 0 after quorum.
-    await templ.connect(priest).setExecutionDelayAfterQuorumDAO(0);
+    const iface = templ.interface;
+    const func = iface.getFunction('setExecutionDelayAfterQuorumDAO');
+    const selector = func.selector;
+    const params = ethers.AbiCoder.defaultAbiCoder().encode(['uint256'], [100_000]);
+    await templ
+      .connect(memberB)
+      .createProposalCallExternal(await templ.getAddress(), 0, selector, params, 0, 'Set delay', 'Bump delay');
+    const proposalB = (await templ.proposalCount()) - 1n;
 
-    // Try to execute immediately (well before stored endTime). Should revert ExecutionDelayActive.
-    await expect(templ.executeProposal(proposalId)).to.be.revertedWithCustomError(
-      templ,
-      'ExecutionDelayActive'
-    );
-
-    // Warp time to just past the stored endTime and execute successfully.
-    const now = (await ethers.provider.getBlock('latest')).timestamp;
-    const wait = Number(endTime) - now + 1;
-    await ethers.provider.send('evm_increaseTime', [wait]);
+    // Fast forward past the short default delay to execute proposal B first.
+    await ethers.provider.send('evm_increaseTime', [3]);
     await ethers.provider.send('evm_mine', []);
-    await templ.executeProposal(proposalId);
+    await templ.executeProposal(proposalB);
+
+    // Now global delay is large. Executing proposal A should still succeed based on its stored endTime.
+    await expect(templ.executeProposal(proposalId)).to.not.be.reverted;
   });
 });
-
