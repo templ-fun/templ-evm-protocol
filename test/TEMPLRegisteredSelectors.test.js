@@ -88,9 +88,9 @@ describe("TEMPL.getRegisteredSelectors()", function () {
     expect(governance).to.deep.equal(expectedGovernance);
 
     // Additionally, verify that each returned selector maps back to the correct module
-    const membershipModuleAddr = await templ.membershipModule();
-    const treasuryModuleAddr = await templ.treasuryModule();
-    const governanceModuleAddr = await templ.governanceModule();
+    const membershipModuleAddr = await templ.MEMBERSHIP_MODULE();
+    const treasuryModuleAddr = await templ.TREASURY_MODULE();
+    const governanceModuleAddr = await templ.GOVERNANCE_MODULE();
 
     for (const s of membership) {
       expect(await templ.getModuleForSelector(s)).to.equal(membershipModuleAddr);

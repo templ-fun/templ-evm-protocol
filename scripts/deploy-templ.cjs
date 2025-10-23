@@ -292,7 +292,7 @@ async function main() {
   if (FACTORY_ADDRESS_ENV) {
     try {
       const existingFactory = await hre.ethers.getContractAt('TemplFactory', FACTORY_ADDRESS_ENV);
-      const onChainPercentBps = Number(await existingFactory.protocolBps());
+      const onChainPercentBps = Number(await existingFactory.PROTOCOL_BPS());
       if (!Number.isFinite(onChainPercentBps)) {
         throw new Error('Factory protocol bps is not a finite number');
       }
@@ -304,13 +304,13 @@ async function main() {
       protocolPercentBps = onChainPercentBps;
       protocolPercentSource = 'factory';
       try {
-        const onChainRecipient = await existingFactory.protocolFeeRecipient();
+        const onChainRecipient = await existingFactory.PROTOCOL_FEE_RECIPIENT();
         PROTOCOL_FEE_RECIPIENT = onChainRecipient;
         console.log('Factory protocol fee recipient:', onChainRecipient);
       } catch {}
-      membershipModuleAddress = await existingFactory.membershipModule();
-      treasuryModuleAddress = await existingFactory.treasuryModule();
-      governanceModuleAddress = await existingFactory.governanceModule();
+      membershipModuleAddress = await existingFactory.MEMBERSHIP_MODULE();
+      treasuryModuleAddress = await existingFactory.TREASURY_MODULE();
+      governanceModuleAddress = await existingFactory.GOVERNANCE_MODULE();
     } catch (err) {
       throw new Error(`Failed to read protocol bps from factory ${FACTORY_ADDRESS_ENV}: ${err?.message || err}`);
     }
@@ -423,7 +423,12 @@ async function main() {
 
     console.log("\nDeploying TemplFactory...");
     const Factory = await hre.ethers.getContractFactory("TemplFactory");
+    const FACTORY_DEPLOYER = (process.env.FACTORY_DEPLOYER || deployer.address).trim();
+    if (!hre.ethers.isAddress(FACTORY_DEPLOYER)) {
+      throw new Error('FACTORY_DEPLOYER must be a valid address (or omit to default to signer)');
+    }
     const factory = await Factory.deploy(
+      FACTORY_DEPLOYER,
       PROTOCOL_FEE_RECIPIENT,
       protocolPercentBps,
       membershipModuleAddress,
@@ -441,13 +446,13 @@ async function main() {
   } else {
     factoryContract = await hre.ethers.getContractAt("TemplFactory", factoryAddress);
     if (!membershipModuleAddress) {
-      membershipModuleAddress = await factoryContract.membershipModule();
+      membershipModuleAddress = await factoryContract.MEMBERSHIP_MODULE();
     }
     if (!treasuryModuleAddress) {
-      treasuryModuleAddress = await factoryContract.treasuryModule();
+      treasuryModuleAddress = await factoryContract.TREASURY_MODULE();
     }
     if (!governanceModuleAddress) {
-      governanceModuleAddress = await factoryContract.governanceModule();
+      governanceModuleAddress = await factoryContract.GOVERNANCE_MODULE();
     }
   }
 

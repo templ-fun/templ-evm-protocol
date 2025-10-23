@@ -23,6 +23,12 @@ const METADATA = {
 const LOAD_ENV = process.env.TEMPL_LOAD;
 const TOTAL_JOINS = Number.isFinite(Number(LOAD_ENV)) && Number(LOAD_ENV) > 0 ? Number(LOAD_ENV) : 500;
 
+// Optional knobs for proposal volume and external token fanout under load
+const LOAD_PROPOSALS_ENV = process.env.TEMPL_LOAD_PROPOSALS;
+const LOAD_TOKENS_ENV = process.env.TEMPL_LOAD_TOKENS;
+const MAX_PROPOSAL_TARGET = 200; // safety guard for CI runtime
+const DEFAULT_TOKEN_FANOUT = 12; // reasonable default to exercise pagination/iteration
+
 function progressEvery(total) {
   const step = Math.max(1, Math.ceil(total / 10));
   return { step };
@@ -400,6 +406,38 @@ describe("@load Templ High-Load Stress", function () {
       await ethers.provider.send("evm_mine");
       await templ.executeProposal(id);
       expect(await target.storedValue()).to.equal(123n);
+    });
+
+    it("executes payable external calls with ETH value under load", async function () {
+      const { templ, accessibleMembers, token, priest } = context;
+
+      // Seed ETH so the templ can forward value in the external call
+      await priest.sendTransaction({ to: await templ.getAddress(), value: ethers.parseEther("2") });
+
+      const Target = await ethers.getContractFactory("contracts/mocks/ExternalCallTarget.sol:ExternalCallTarget");
+      const target = await Target.deploy();
+      await target.waitForDeployment();
+      const sel = target.interface.getFunction("setNumberPayable").selector;
+      const params = ethers.AbiCoder.defaultAbiCoder().encode(["uint256"], [777n]);
+
+      const templAddr = await templ.getAddress();
+      const ethBefore = await ethers.provider.getBalance(templAddr);
+
+      await ensureProposalFee(templ, token, accessibleMembers[0], context);
+      await templ
+        .connect(accessibleMembers[0])
+        .createProposalCallExternal(await target.getAddress(), ethers.parseEther("1"), sel, params, 0, "Payable", "");
+
+      let id = (await templ.proposalCount()) - 1n;
+      await templ.connect(accessibleMembers[1]).vote(id, true);
+      await ensureQuorum(templ, id);
+      await ethers.provider.send("evm_increaseTime", [2]);
+      await ethers.provider.send("evm_mine");
+      await templ.executeProposal(id);
+
+      expect(await target.storedValue()).to.equal(777n);
+      const ethAfter = await ethers.provider.getBalance(templAddr);
+      expect(ethBefore - ethAfter).to.be.gte(ethers.parseEther("1"));
     });
 
     it("updates fee split and entry fee curve; handles member cap toggles", async function () {
@@ -801,8 +839,10 @@ describe("@load Templ High-Load Stress", function () {
     it("creates many concurrent proposals across distinct proposers and paginates reliably", async function () {
       const { templ, token, priest, accessibleMembers, randomWallets } = context;
 
-      // Decide a target based on load: scales gently up to 200
-      const TARGET = Math.max(10, Math.min(200, Math.ceil(Math.sqrt(TOTAL_JOINS) / 10)));
+      // Decide a target based on load: scales gently up to MAX_PROPOSAL_TARGET, or use override
+      const override = Number.isFinite(Number(LOAD_PROPOSALS_ENV)) && Number(LOAD_PROPOSALS_ENV) > 0 ? Number(LOAD_PROPOSALS_ENV) : undefined;
+      const DEFAULT_TARGET = Math.max(10, Math.min(MAX_PROPOSAL_TARGET, Math.ceil(Math.sqrt(TOTAL_JOINS) / 10)));
+      const TARGET = Math.min(override || DEFAULT_TARGET, MAX_PROPOSAL_TARGET);
 
       // Compose proposers from existing wallets only to avoid new joins under saturated fees
       const proposersBase = [...randomWallets, ...accessibleMembers];
@@ -864,6 +904,62 @@ describe("@load Templ High-Load Stress", function () {
 
       const activeAll = await templ.getActiveProposals();
       expect(activeAll.length).to.be.gte(created.length);
+    });
+
+    it("disbands many distinct external tokens and enumerates claims under dictatorship", async function () {
+      const { templ, priest, accessibleMembers } = context;
+
+      // Enable dictatorship to call onlyDAO paths directly for throughput
+      await ensureProposalFee(templ, context.token, accessibleMembers[0], context);
+      await templ.connect(accessibleMembers[0]).createProposalSetDictatorship(true, 0, "DictOn", "");
+      let id = (await templ.proposalCount()) - 1n;
+      await templ.connect(accessibleMembers[1]).vote(id, true);
+      await ensureQuorum(templ, id);
+      await ethers.provider.send("evm_increaseTime", [2]);
+      await ethers.provider.send("evm_mine");
+      await templ.executeProposal(id);
+
+      const members = await templ.memberCount();
+      const tokenFanout = Number.isFinite(Number(LOAD_TOKENS_ENV)) && Number(LOAD_TOKENS_ENV) > 0 ? Math.min(Number(LOAD_TOKENS_ENV), 64) : DEFAULT_TOKEN_FANOUT;
+
+      const TestToken = await ethers.getContractFactory("TestToken");
+      const created = [];
+      const perMember = ethers.parseUnits("1", 18);
+      const totalPerToken = perMember * members;
+
+      // Create N tokens, fund templ, and disband via onlyDAO
+      for (let i = 0; i < tokenFanout; i += 1) {
+        const t = await TestToken.connect(priest).deploy(`R${i}`, `R${i}`, 18);
+        await t.waitForDeployment();
+        const addr = await t.getAddress();
+        await t.connect(priest).mint(priest.address, totalPerToken);
+        await t.connect(priest).transfer(await templ.getAddress(), totalPerToken);
+        await templ.connect(accessibleMembers[0]).disbandTreasuryDAO(addr);
+        created.push({ token: t, address: addr });
+      }
+
+      // Verify enumeration via pagination and claim from a couple of tokens
+      const [page, hasMore] = await templ.getExternalRewardTokensPaginated(0, 10);
+      expect(page.length).to.be.lte(10);
+      expect(hasMore).to.equal(tokenFanout > 10);
+
+      // Claim from first and last token
+      const before0 = await created[0].token.balanceOf(accessibleMembers[0].address);
+      const claimable0 = await templ.getClaimableExternalReward(accessibleMembers[0].address, created[0].address);
+      expect(claimable0).to.equal(perMember);
+      await templ.connect(accessibleMembers[0]).claimExternalReward(created[0].address);
+      const after0 = await created[0].token.balanceOf(accessibleMembers[0].address);
+      expect(after0 - before0).to.equal(perMember);
+
+      const last = created[created.length - 1];
+      const beforeLast = await last.token.balanceOf(accessibleMembers[0].address);
+      await templ.connect(accessibleMembers[0]).claimExternalReward(last.address);
+      const afterLast = await last.token.balanceOf(accessibleMembers[0].address);
+      expect(afterLast - beforeLast).to.equal(perMember);
+
+      // Turn dictatorship back off to avoid leaking state across tests
+      await templ.connect(accessibleMembers[0]).setDictatorshipDAO(false);
+      expect(await templ.priestIsDictator()).to.equal(false);
     });
   });
 });

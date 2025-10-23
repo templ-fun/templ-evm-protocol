@@ -2,23 +2,20 @@
 
 <img width="100%" alt="templ.fun" src="https://github.com/user-attachments/assets/287b7300-2314-4b88-b4be-1cf0190f4989" />
 
-## What It Does
-- Spin up on-chain, token-gated groups (“templs”) that collect an access‑token treasury, stream rewards to existing members, and govern changes and payouts on-chain.
-- A templ is three delegatecall modules — membership, treasury, governance — orchestrated by the root [`TEMPL`](contracts/TEMPL.sol) with shared storage in [`TemplBase`](contracts/TemplBase.sol). It behaves like one contract with clean separation of concerns.
-- Deployers configure pricing curves, fee splits, referral rewards, proposal fees, quorum/delay, membership caps, and an optional dictatorship (priest) override.
+Templ lets anyone create on-chain, token-gated groups (“templs”) that accrue an access‑token treasury, stream rewards to existing members, and govern changes and payouts entirely on-chain.
 
-## Safety
-- Vanilla ERC‑20 only for the access token (no fee‑on‑transfer, no rebasing, no hooks). Protocol accounting assumes exact transfer amounts; using non‑standard tokens will desync balances and can break claims/withdrawals. Choose a vanilla token.
-- External‑call proposals can execute arbitrary logic; treat with the same caution as timelocked admin calls in other protocols.
-- No external audit yet. Treat as experimental and keep treasury exposure conservative until audited.
+Quick links: [Architecture](#architecture) · [Repo Map](#repo-map) · [Quickstart](#quickstart) · [Deploy](#deploy-locally) · [Security](#security) · [Reference](#reference) · [Limits](#limits--defaults) · [Indexing](#indexing-notes) · [Tests](#tests) · [FAQ](#faq) · [Troubleshooting](#troubleshooting) · [Gotchas](#gotchas)
 
-## Quickstart
-- Prereqs: Node >=22, `npm`. Docker recommended for fuzzing.
-- Install: `npm install`
-- Test: `npm test` (Hardhat). Coverage: `npm run coverage`.
-- Fuzzing (Echidna): `npm run test:fuzz` (via Docker; harness in `contracts/echidna/EchidnaTemplHarness.sol`).
-- Static analysis: `npm run slither` (requires Slither in PATH).
-- Linting: `npm run lint` (Solhint + Prettier). Format: `npm run lint:fix` (Prettier write).
+## Architecture
+At runtime a templ behaves like one contract with clean separation of concerns via delegatecall modules sharing a single storage layout:
+
+- Root router: [`TEMPL`](contracts/TEMPL.sol) (selector → module dispatch, common views)
+- Membership: [`TemplMembershipModule`](contracts/TemplMembership.sol)
+- Treasury: [`TemplTreasuryModule`](contracts/TemplTreasury.sol)
+- Governance: [`TemplGovernanceModule`](contracts/TemplGovernance.sol)
+- Shared storage: [`TemplBase`](contracts/TemplBase.sol)
+
+Deployers configure pricing curves, fee splits, referral rewards, proposal fees, quorum/delay, membership caps, and an optional dictatorship (priest) override. The access token is any vanilla ERC‑20 you choose.
 
 ## How It Works
 
@@ -50,7 +47,7 @@ flowchart LR
 - Membership: joins, fee‑split accounting, member reward accrual and claims, eligibility snapshots.
 - Treasury: governance/priests withdraw, disband, update config/splits/curve/metadata/referral/proposal fee.
 - Governance: create/vote/execute proposals, quorum + delay, dictatorship toggle, safe external calls (single or batched).
-- Shared storage: all persistent state lives in [`TemplBase`](contracts/TemplBase.sol), so modules act as facets of one contract.
+- Shared storage: all persistent state lives in [`TemplBase`](contracts/TemplBase.sol).
 
 ## Key Concepts
 - Fee split: burn / treasury / member pool / protocol; must sum to 10_000 bps.
@@ -59,6 +56,24 @@ flowchart LR
 - Dictatorship: when enabled, the priest may call `onlyDAO` actions directly; otherwise all `onlyDAO` actions execute via governance.
 - Snapshots: eligibility is frozen by join sequence at proposal creation, then again at quorum.
 - Caps/pauses: optional `maxMembers` (auto‑pauses at cap) plus `joinPaused` toggle.
+
+## Repo Map
+- Contracts: `contracts/`
+  - Core: `TEMPL.sol`, `TemplBase.sol`, `TemplMembership.sol`, `TemplTreasury.sol`, `TemplGovernance.sol`
+  - Factory + config: `TemplFactory.sol`, `TemplCurve.sol`, `TemplDefaults.sol`, `TemplErrors.sol`
+  - Utilities: `tools/BatchExecutor.sol`, `libraries/*`, `mocks/*`, `echidna/*`
+- Tests: `test/*.test.js` (ethers v6, hardhat). Helpers in `test/utils`.
+- Scripts: `scripts/deploy-factory.cjs`, `scripts/deploy-templ.cjs`
+- Config: `hardhat.config.cjs`, `echidna.yaml`, `slither.config.json`, `.solhint.json`
+
+## Quickstart
+- Prereqs: Node >=22, `npm`. Docker recommended for fuzzing.
+- Install: `npm install`
+- Compile: `npm run compile`
+- Test: `npm test` (Hardhat). Coverage: `npm run coverage`.
+- Fuzzing (Echidna): `npm run test:fuzz` (via Docker; harness in `contracts/echidna/EchidnaTemplHarness.sol`).
+- Static analysis: `npm run slither` (requires Slither in PATH).
+- Lint: `npm run lint` (Solhint + Prettier). Format: `npm run lint:fix`.
 
 ## Deploy Locally
 
@@ -90,42 +105,70 @@ await templ.vote(id, true);
 // ...advance time...
 await templ.executeProposal(id);
 
-// Example: batched external actions via BatchExecutor (approve then stake)
+```
+
+### Batched External Calls (approve → stake)
+Use the included [`BatchExecutor`](contracts/tools/BatchExecutor.sol) to sequence multiple downstream calls atomically via a single governance proposal.
+
+```js
+// npx hardhat console --network localhost
+const templ = await ethers.getContractAt("TEMPL", "0xYourTempl");
+const token = await ethers.getContractAt("IERC20", (await templ.getConfig())[0]);
+
+// 1) Prepare inner calls: approve -> stake
 const staking = await ethers.getContractAt("MockStaking", "0xStaking");
-const executor = await ethers.getContractAt("BatchExecutor", "0xExecutor");
-const amount = (await templ.getConfig())[1];
 const approveSel = token.interface.getFunction("approve").selector;
-const approveParams = ethers.AbiCoder.defaultAbiCoder().encode(["address","uint256"],[await staking.getAddress(), amount]);
+const approveArgs = ethers.AbiCoder.defaultAbiCoder().encode(
+  ["address","uint256"],
+  [await staking.getAddress(), ethers.parseUnits("100", 18)]
+);
+const approveData = ethers.concat([approveSel, approveArgs]);
+
 const stakeSel = staking.interface.getFunction("stake").selector;
-const stakeParams = ethers.AbiCoder.defaultAbiCoder().encode(["address","uint256"],[await token.getAddress(), amount]);
+const stakeArgs = ethers.AbiCoder.defaultAbiCoder().encode(
+  ["address","uint256"],
+  [await token.getAddress(), ethers.parseUnits("100", 18)]
+);
+const stakeData = ethers.concat([stakeSel, stakeArgs]);
+
+// 2) Encode BatchExecutor.execute(targets, values, calldatas)
+// Deploy a fresh BatchExecutor (or use an existing address)
+const Executor = await ethers.getContractFactory("BatchExecutor");
+const executor = await Executor.deploy();
+await executor.waitForDeployment();
 const targets = [await token.getAddress(), await staking.getAddress()];
-const values = [0, 0];
-const datas = [ethers.concat([approveSel, approveParams]), ethers.concat([stakeSel, stakeParams])];
+const values = [0, 0]; // no ETH in this example
+const calldatas = [approveData, stakeData];
+
 const execSel = executor.interface.getFunction("execute").selector;
-const execParams = ethers.AbiCoder.defaultAbiCoder().encode(["address[]","uint256[]","bytes[]"], [targets, values, datas]);
+const execParams = ethers.AbiCoder.defaultAbiCoder().encode(
+  ["address[]","uint256[]","bytes[]"],
+  [targets, values, calldatas]
+);
+
+// 3) Propose the external call (templ -> BatchExecutor)
+const votingPeriod = 7 * 24 * 60 * 60;
 const pid = await templ.createProposalCallExternal(
   await executor.getAddress(),
-  0,
+  0, // forward 0 ETH to the executor
   execSel,
   execParams,
-  0,
-  "Approve + Stake",
-  "Stake treasury tokens"
+  votingPeriod,
+  "Approve and stake",
+  "Approve token then stake in a single atomic batch"
 );
+
+// 4) Vote and execute after quorum + delay
 await templ.vote(pid, true);
-// ...advance time...
+// ...advance time to satisfy execution delay...
 await templ.executeProposal(pid);
 ```
 
-## Governance Model
-- Creation auto‑casts one YES for the proposer; if that alone satisfies quorum vs. the snapshot baseline, the proposal jumps straight into the execution‑delay window.
-- Eligibility: voters must have joined before the relevant snapshot (at creation pre‑quorum, or at `quorumJoinSequence` post‑quorum).
-- Execution:
-  - Priest‑initiated Disband is quorum‑exempt: requires endTime elapsed and YES > NO.
-  - All others: require quorum reached, delay elapsed, YES > NO, and quorum still satisfied vs. post‑quorum eligible voters.
-- Dictatorship: while enabled, only SetDictatorship proposals are allowed; otherwise priest may call `onlyDAO` actions directly.
-
-## Economics & Flows
+Notes
+- To forward ETH in the batch, set `values` for the specific inner call(s) and pass the top-level `value` argument in `createProposalCallExternal` to `sum(values)`.
+- If any inner call reverts, the entire batch reverts; no partial effects.
+- Proposing and voting require membership; ensure the caller has joined.
+```
 
 ```mermaid
 sequenceDiagram
@@ -158,20 +201,26 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
 
 ## Scripts & Env Vars
 - Scripts: `deploy:factory`, `deploy:factory:local`, `deploy:local`, `coverage`, `slither`.
-- `scripts/deploy-factory.cjs`: requires `PROTOCOL_FEE_RECIPIENT`; optional `PROTOCOL_BPS`. You can reuse an existing factory by setting `FACTORY_ADDRESS`. See the script for module overrides and verification notes.
-- `scripts/deploy-templ.cjs`: key envs are `FACTORY_ADDRESS` (or omit to auto‑deploy modules + factory locally), `TOKEN_ADDRESS`, `ENTRY_FEE`, plus optional metadata (`TEMPL_NAME`, `TEMPL_DESCRIPTION`, `TEMPL_LOGO_LINK`). The script supports many toggles (priest, quorum/delay, caps, fee splits, referral share, curve). See the script for the complete list and validation rules.
-- Permissionless mode: `TemplFactory.setPermissionless(true)` to allow anyone to create templs.
+- `scripts/deploy-factory.cjs`:
+  - Required: `PROTOCOL_FEE_RECIPIENT`
+  - Optional: `PROTOCOL_BPS`, `FACTORY_ADDRESS` (reuse), `FACTORY_DEPLOYER` (defaults to signer address)
+  - Deploys modules if not provided via env and wires them into the factory constructor.
+- `scripts/deploy-templ.cjs`: key envs are `FACTORY_ADDRESS` (or omit to auto‑deploy modules + factory locally), `TOKEN_ADDRESS`, `ENTRY_FEE`, plus optional metadata (`TEMPL_NAME`, `TEMPL_DESCRIPTION`, `TEMPL_LOGO_LINK`). Many toggles are supported (priest, quorum/delay, caps, fee splits, referral share, curve).
+- Permissioning:
+  - `TemplFactory.setPermissionless(true)` allows anyone to create templs.
+  - `TemplFactory.transferDeployer(newAddr)` hands off deployer rights when permissionless is disabled.
 
 ## Reference
-- Contract APIs: read NATSpec in:
+- Contract APIs (NATSpec):
   - Membership: [`contracts/TemplMembership.sol`](contracts/TemplMembership.sol)
   - Treasury: [`contracts/TemplTreasury.sol`](contracts/TemplTreasury.sol)
   - Governance: [`contracts/TemplGovernance.sol`](contracts/TemplGovernance.sol)
-  - Root router: [`contracts/TEMPL.sol`](contracts/TEMPL.sol) — `getRegisteredSelectors()` enumerates the canonical ABI surface.
-- Proposal views: `getProposal`, `getProposalSnapshots`, `getProposalJoinSequences`, and `getActiveProposals*` are defined in [`contracts/TemplGovernance.sol`](contracts/TemplGovernance.sol). Payload helper `getProposalActionData` is provided in [`contracts/TEMPL.sol`](contracts/TEMPL.sol).
-  - CallExternal payload: `(address target, uint256 value, bytes data)`
-- Events: see definitions in [`contracts/TemplBase.sol`](contracts/TemplBase.sol).
-- Learn by tests: browse `test/*.test.js` for end‑to‑end flows with ethers v6.
+  - Root router: [`contracts/TEMPL.sol`](contracts/TEMPL.sol) — `getRegisteredSelectors()` lists the canonical ABI surface.
+  - Factory: [`contracts/TemplFactory.sol`](contracts/TemplFactory.sol) — constructor accepts explicit `factoryDeployer`; use `transferDeployer` to rotate.
+- Proposal views: `getProposal`, `getProposalSnapshots`, `getProposalJoinSequences`, `getActiveProposals*` in [`contracts/TemplGovernance.sol`](contracts/TemplGovernance.sol). Payload helper `getProposalActionData` in [`contracts/TEMPL.sol`](contracts/TEMPL.sol).
+  - CallExternal payload shape: `(address target, uint256 value, bytes data)`
+- Events: see [`contracts/TemplBase.sol`](contracts/TemplBase.sol).
+- Learn by tests: see [Tests](#tests) for direct links by topic.
 
 ## Limits & Defaults
 - `BPS_DENOMINATOR = 10_000`.
@@ -186,12 +235,18 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
 - Treasury views: `getTreasuryInfo()` and/or `TreasuryAction`/`TreasuryDisbanded` deltas.
 - Curves: consume `EntryFeeCurveUpdated` for UI refresh.
 
+## Security
+- Access token must be vanilla ERC‑20 (no fee‑on‑transfer, no rebasing, no hooks). Accounting assumes exact transfer amounts.
+- External‑call proposals can execute arbitrary logic; treat with the same caution as timelocked admin calls.
+- Reentrancy is guarded; modules are only reachable via the `TEMPL` router (direct module calls revert).
+- No external audit yet. Treat as experimental and keep treasury exposure conservative until audited.
+
 ## Troubleshooting
 - `InvalidEntryFee` / `EntryFeeTooSmall`: fee must be ≥10 and divisible by 10.
 - `InvalidPercentageSplit`: burn + treasury + member + protocol must sum to 10_000 bps.
 - `ActiveProposalExists`: one active proposal per proposer.
 - `QuorumNotReached` / `ExecutionDelayActive`: execution preconditions not satisfied.
-
+- Direct module call guard: only call through `TEMPL` (see tests below).
 
 ## FAQ
 - Can the access token change later? No — deploy a new templ.
@@ -199,9 +254,30 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
 - How do referrals work? Paid from the member‑pool slice when the referrer is a member and not the joiner.
 - Can I enumerate external reward tokens? Yes: `getExternalRewardTokens()` (or paginated) and `getExternalRewardState(token)`; cleanup via DAO‑only `cleanupExternalRewardToken`.
 
-## Test Suites
+## Tests
 - Default: `npm test` (heavy `@load` suite is excluded).
 - High‑load stress: `npm run test:load` with `TEMPL_LOAD=...` to scale joiners.
+  - Optional: `TEMPL_LOAD_PROPOSALS=...` caps concurrent proposals in the load suite (default scales with members).
+  - Optional: `TEMPL_LOAD_TOKENS=...` fans out distinct external reward tokens to disband/claim under load (default 12).
 - Coverage: `npm run coverage`. Static: `npm run slither`.
 - Property fuzzing: `npm run test:fuzz` (via Docker) using `echidna.yaml` and `contracts/echidna/EchidnaTemplHarness.sol`.
-- CI runs on PRs only when Solidity contracts or tests change (`contracts/**`, `test/**`), keeping checks focused on relevant changes.
+
+Learn by topic (a non‑exhaustive map):
+- Membership: `test/MembershipCoverage.test.js`, `test/MemberPool.test.js`, `test/ClaimMemberPool.test.js`
+- Governance: `test/GovernanceCoverage.test.js`, `test/SingleProposal.test.js`, `test/GovernanceExternalCall*.test.js`
+- Treasury: `test/TreasuryCoverage.test.js`, `test/TreasuryWithdrawAssets.test.js`, `test/DisbandTreasury.test.js`
+- Curves: `test/EntryFeeCurve.test.js`, `test/FeeExtremes.test.js`, `test/FeeValidationReverts.test.js`
+- Dictatorship/Priest: `test/PriestDictatorship.test.js`, `test/DictatorshipPriestOnlyReverts.test.js`
+- Indexing helpers: `test/ActiveProposalsIndex.test.js`, `test/ProposalPagination.test.js`, `test/GetProposalStatus.test.js`
+- Defenses/guards: `test/Reentrancy.test.js`, `test/ProposalFeeReentrancy.test.js`, `test/DirectModuleCallGuard.test.js`
+- Selectors/ABI surface: `test/TEMPLRegisteredSelectors.test.js`, `test/TEMPLSelectors.test.js`
+
+CI runs on PRs only when Solidity contracts or tests change (`contracts/**`, `test/**`), keeping checks focused on relevant changes.
+
+## Gotchas
+- Use a vanilla ERC‑20 for access token (no transfer fees/rebases/hooks).
+- Entry fee must be ≥10 and divisible by 10; there’s a `MAX_ENTRY_FEE` guard.
+- Only one active proposal per proposer.
+- `TemplFactory` can be set permissionless to let anyone create templs.
+- Direct calls to module addresses revert; always go via `TEMPL`.
+- Default voting period is 7 days; quorum and delay are configurable.

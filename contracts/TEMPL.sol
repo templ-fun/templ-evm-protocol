@@ -11,9 +11,9 @@ import { CurveConfig } from "./TemplCurve.sol";
 /// @title Templ Core
 /// @notice Wires governance, treasury, and membership modules for a single Templ instance.
 contract TEMPL is TemplBase {
-    address public immutable membershipModule;
-    address public immutable treasuryModule;
-    address public immutable governanceModule;
+    address public immutable MEMBERSHIP_MODULE;
+    address public immutable TREASURY_MODULE;
+    address public immutable GOVERNANCE_MODULE;
 
     mapping(bytes4 => address) private _moduleForSelector;
     /// @notice Initializes a new templ with the provided configuration and priest.
@@ -88,9 +88,9 @@ contract TEMPL is TemplBase {
             revert TemplErrors.InvalidCallData();
         }
 
-        membershipModule = _membershipModule;
-        treasuryModule = _treasuryModule;
-        governanceModule = _governanceModule;
+        MEMBERSHIP_MODULE = _membershipModule;
+        TREASURY_MODULE = _treasuryModule;
+        GOVERNANCE_MODULE = _governanceModule;
 
         _registerMembershipSelectors(_membershipModule);
         _registerTreasurySelectors(_treasuryModule);
@@ -115,6 +115,7 @@ contract TEMPL is TemplBase {
 
     /// @notice Accepts ETH so proposals can later disburse it as external rewards.
     receive() external payable {}
+
     /// @notice Exposes the module registered for a given function selector.
     /// @param selector The 4-byte function selector.
     /// @return module Address of the module that will handle calls for `selector` (zero address if none).

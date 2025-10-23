@@ -26,6 +26,7 @@ maybeDescribe("Bytecode size limits", function () {
     const modules = await deployTemplModules();
     const TemplFactory = await ethers.getContractFactory("TemplFactory");
     const factory = await TemplFactory.connect(deployer).deploy(
+      deployer.address,
       protocolFeeRecipient.address,
       1_000,
       modules.membershipModule,

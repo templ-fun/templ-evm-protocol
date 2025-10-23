@@ -5,7 +5,7 @@ const { deployTempl } = require("./utils/deploy");
 describe("TEMPL selector → module introspection", function () {
   it("maps membership selectors to the membership module", async function () {
     const { templ } = await deployTempl();
-    const membership = await templ.membershipModule();
+    const membership = await templ.MEMBERSHIP_MODULE();
     const joinSel = templ.interface.getFunction("join").selector;
     const claimSel = templ.interface.getFunction("claimMemberRewards").selector;
     expect(await templ.getModuleForSelector(joinSel)).to.equal(membership);
@@ -14,7 +14,7 @@ describe("TEMPL selector → module introspection", function () {
 
   it("maps treasury selectors to the treasury module", async function () {
     const { templ } = await deployTempl();
-    const treasury = await templ.treasuryModule();
+    const treasury = await templ.TREASURY_MODULE();
     const pauseSel = templ.interface.getFunction("setJoinPausedDAO").selector;
     const withdrawSel = templ.interface.getFunction("withdrawTreasuryDAO").selector;
     expect(await templ.getModuleForSelector(pauseSel)).to.equal(treasury);
@@ -23,7 +23,7 @@ describe("TEMPL selector → module introspection", function () {
 
   it("maps governance selectors to the governance module", async function () {
     const { templ } = await deployTempl();
-    const governance = await templ.governanceModule();
+    const governance = await templ.GOVERNANCE_MODULE();
     const createSel = templ.interface.getFunction("createProposalSetJoinPaused").selector;
     const voteSel = templ.interface.getFunction("vote").selector;
     const execSel = templ.interface.getFunction("executeProposal").selector;
@@ -41,8 +41,8 @@ describe("TEMPL selector → module introspection", function () {
 
   it("maps new treasury/governance selectors and TEMPL-owned generic payload getter", async function () {
     const { templ } = await deployTempl();
-    const treasury = await templ.treasuryModule();
-    const governance = await templ.governanceModule();
+    const treasury = await templ.TREASURY_MODULE();
+    const governance = await templ.GOVERNANCE_MODULE();
 
     const sel = (name) => templ.interface.getFunction(name).selector;
 
