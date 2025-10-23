@@ -1,0 +1,16 @@
+## `IProposalFeeReentrancyHook`
+
+
+
+
+
+
+### `onProposalFeeCharged()` (external)
+
+
+
+
+
+
+
+

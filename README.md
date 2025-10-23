@@ -4,7 +4,7 @@
 
 Templ lets anyone create on-chain, token-gated groups (“templs”) that accrue an access‑token treasury, stream rewards to existing members, and govern changes and payouts entirely on-chain.
 
-Quick links: [Architecture](#architecture) · [Repo Map](#repo-map) · [Quickstart](#quickstart) · [Deploy](#deploy-locally) · [Security](#security) · [Reference](#reference) · [Limits](#limits--defaults) · [Indexing](#indexing-notes) · [Tests](#tests) · [FAQ](#faq) · [Troubleshooting](#troubleshooting) · [Gotchas](#gotchas)
+Quick links: [Architecture](#architecture) · [Repo Map](#repo-map) · [Quickstart](#quickstart) · [Deploy](#deploy-locally) · [Security](#security) · [Reference](#reference) · [Constraints](#constraints) · [Limits](#limits--defaults) · [Indexing](#indexing-notes) · [Tests](#tests) · [FAQ](#faq) · [Troubleshooting](#troubleshooting) · [Gotchas](#gotchas)
 
 ## Architecture
 At runtime a templ behaves like one contract with clean separation of concerns via delegatecall modules sharing a single storage layout:
@@ -67,12 +67,23 @@ flowchart LR
 - Scripts: `scripts/deploy-factory.cjs`, `scripts/deploy-templ.cjs`
 - Config: `hardhat.config.cjs`, `echidna.yaml`, `slither.config.json`, `.solhint.json`
 
+### Contract Organization
+All contracts follow a consistent declaration order to keep code easy to scan and reason about:
+- Constants
+- Types (enums, structs)
+- Events
+- Storage (immutables, state variables)
+- Modifiers
+- Functions in order: constructor, fallback/receive, external, public, internal, private
+
+Events are declared contiguously, and selector routing in `TEMPL.sol` keeps external views (e.g. `getProposalActionData`) listed with other external functions before internal helpers.
+
 ## Quickstart
 - Prereqs: Node >=22, `npm`. Docker recommended for fuzzing.
 - Install: `npm install`
 - Compile: `npm run compile`
 - Test: `npm test` (Hardhat). Coverage: `npm run coverage`.
-- Docs (NatSpec): `npm run docs` (generates Markdown in `docs/`).
+- Docs (NatSpec): `npm run docs` (generates Markdown in `docs/`). Uses `solidity-docgen@0.5.16` with `solc@0.8.23`.
 - Fuzzing (Echidna): `npm run test:fuzz` (via Docker; harness in `contracts/echidna/EchidnaTemplHarness.sol`).
 - Static analysis: `npm run slither` (requires Slither in PATH).
 - Lint: `npm run lint` (Prettier + Solhint; CI fails on formatting drift or any Solhint warning). Auto-fix: `npm run lint:fix`.
@@ -239,7 +250,12 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
   - CallExternal payload shape: `(address target, uint256 value, bytes data)`
 - Events: see [`contracts/TemplBase.sol`](contracts/TemplBase.sol).
 - Learn by tests: see [Tests](#tests) for direct links by topic.
- - DAO setters of interest: `setPreQuorumVotingPeriodDAO`, `setPostQuorumVotingPeriodDAO`, `setQuorumBpsDAO`, `setBurnAddressDAO`, `setEntryFeeCurveDAO`, `setProposalCreationFeeBpsDAO`, `setReferralShareBpsDAO`, `setMaxMembersDAO`, `setJoinPausedDAO`, `updateConfigDAO`.
+- DAO setters of interest: `setPreQuorumVotingPeriodDAO`, `setPostQuorumVotingPeriodDAO`, `setQuorumBpsDAO`, `setBurnAddressDAO`, `setEntryFeeCurveDAO`, `setProposalCreationFeeBpsDAO`, `setReferralShareBpsDAO`, `setMaxMembersDAO`, `setJoinPausedDAO`, `updateConfigDAO`.
+
+## Constraints
+- Entry fee: must be ≥10 and divisible by 10.
+- Fee split: burn + treasury + member pool + protocol must sum to 10_000 bps.
+- Pre‑quorum voting window: bounded to [36 hours, 30 days].
 
 ## Limits & Defaults
 - `BPS_DENOMINATOR = 10_000`.

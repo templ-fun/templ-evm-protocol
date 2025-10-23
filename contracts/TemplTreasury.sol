@@ -77,6 +77,7 @@ contract TemplTreasuryModule is TemplBase {
     }
 
     /// @notice Governance action that enables or disables dictatorship mode.
+    /// @dev Reverts when the requested state equals the current `priestIsDictator` value.
     /// @param enabled Target dictatorship state.
     function setDictatorshipDAO(bool enabled) external onlyDAO onlyDelegatecall {
         _updateDictatorship(enabled);
@@ -121,6 +122,7 @@ contract TemplTreasuryModule is TemplBase {
     }
 
     /// @notice Governance action that updates the quorum threshold (bps).
+    /// @dev Accepts either 0-100 (interpreted as %) or 0-10_000 (basis points).
     /// @param newQuorumBps New quorum threshold (accepts 0-100 or 0-10_000 bps values).
     function setQuorumBpsDAO(uint256 newQuorumBps) external onlyDAO onlyDelegatecall {
         _setQuorumBps(newQuorumBps);
@@ -133,6 +135,7 @@ contract TemplTreasuryModule is TemplBase {
     }
 
     /// @notice Governance action that updates the burn sink address.
+    /// @dev Reverts when `newBurn` is the zero address.
     /// @param newBurn Address to receive burn allocations.
     function setBurnAddressDAO(address newBurn) external onlyDAO onlyDelegatecall {
         _setBurnAddress(newBurn);
@@ -141,6 +144,7 @@ contract TemplTreasuryModule is TemplBase {
     /// @notice Governance action that updates the default pre‑quorum voting period (seconds).
     /// @dev Governance can reach this setter by proposing a `CallExternal` targeting the TEMPL
     ///      router with the `setPreQuorumVotingPeriodDAO` selector and encoded params.
+    ///      The allowed range is [36 hours, 30 days].
     /// @param newPeriod New default pre‑quorum voting period (seconds).
     function setPreQuorumVotingPeriodDAO(uint256 newPeriod) external onlyDAO onlyDelegatecall {
         _setPreQuorumVotingPeriod(newPeriod);

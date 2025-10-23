@@ -1,0 +1,16 @@
+## `ITemplMembership`
+
+
+
+
+
+
+### `join()` (external)
+
+
+
+
+
+
+
+

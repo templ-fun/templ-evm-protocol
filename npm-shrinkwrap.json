@@ -25,6 +25,9 @@
         "ethers": "^6.15.0",
         "hardhat": "^2.19.2",
         "hardhat-gas-reporter": "^1.0.8",
+        "prettier": "^3.6.0",
+        "prettier-plugin-solidity": "^1.4.3",
+        "solc": "^0.8.23",
         "solhint": "^6.0.1",
         "solidity-coverage": "^0.8.1"
       },
@@ -4676,6 +4679,38 @@
         "graceful-fs": "^4.1.6"
       }
     },
+    "node_modules/hardhat/node_modules/solc": {
+      "version": "0.8.26",
+      "resolved": "https://registry.npmjs.org/solc/-/solc-0.8.26.tgz",
+      "integrity": "sha512-yiPQNVf5rBFHwN6SIf3TUUvVAFKcQqmSUFeq+fb6pNRCo0ZCgpYOZDi3BVoezCPIAcKrVYd/qXlBLUP9wVrZ9g==",
+      "dev": true,
+      "license": "MIT",
+      "dependencies": {
+        "command-exists": "^1.2.8",
+        "commander": "^8.1.0",
+        "follow-redirects": "^1.12.1",
+        "js-sha3": "0.8.0",
+        "memorystream": "^0.3.1",
+        "semver": "^5.5.0",
+        "tmp": "0.0.33"
+      },
+      "bin": {
+        "solcjs": "solc.js"
+      },
+      "engines": {
+        "node": ">=10.0.0"
+      }
+    },
+    "node_modules/hardhat/node_modules/solc/node_modules/semver": {
+      "version": "5.7.2",
+      "resolved": "https://registry.npmjs.org/semver/-/semver-5.7.2.tgz",
+      "integrity": "sha512-cBznnQ9KjJqU67B52RMC65CMarK2600WFnbkcaiwWq3xy/5haFJlshgnpjovMVJ+Hff49d8GEn0b87C5pDQ10g==",
+      "dev": true,
+      "license": "ISC",
+      "bin": {
+        "semver": "bin/semver"
+      }
+    },
     "node_modules/hardhat/node_modules/universalify": {
       "version": "0.1.2",
       "resolved": "https://registry.npmjs.org/universalify/-/universalify-0.1.2.tgz",
@@ -5882,6 +5917,22 @@
       "dev": true,
       "license": "MIT"
     },
+    "node_modules/n": {
+      "version": "9.2.3",
+      "resolved": "https://registry.npmjs.org/n/-/n-9.2.3.tgz",
+      "integrity": "sha512-iKU/fMITB+bJe0wQ6Q6THSWBpfF/f/g4elhr23Mp4TywSY0rJvaHVdkMhL9uWEdwdipAPidmTIqafI0BTJj/lQ==",
+      "dev": true,
+      "license": "MIT",
+      "os": [
+        "!win32"
+      ],
+      "bin": {
+        "n": "bin/n"
+      },
+      "engines": {
+        "node": "*"
+      }
+    },
     "node_modules/neo-async": {
       "version": "2.6.2",
       "resolved": "https://registry.npmjs.org/neo-async/-/neo-async-2.6.2.tgz",
@@ -6338,7 +6389,7 @@
       "version": "3.6.2",
       "resolved": "https://registry.npmjs.org/prettier/-/prettier-3.6.2.tgz",
       "integrity": "sha512-I7AIg5boAr5R0FFtJ6rCfD+LFsWHp81dolrFD8S79U9tb8Az2nGrJncnMSnys+bpQJfRUzqs9hnA81OAA3hCuQ==",
-      "extraneous": true,
+      "dev": true,
       "license": "MIT",
       "bin": {
         "prettier": "bin/prettier.cjs"
@@ -6354,7 +6405,7 @@
       "version": "1.4.3",
       "resolved": "https://registry.npmjs.org/prettier-plugin-solidity/-/prettier-plugin-solidity-1.4.3.tgz",
       "integrity": "sha512-Mrr/iiR9f9IaeGRMZY2ApumXcn/C5Gs3S7B7hWB3gigBFML06C0yEyW86oLp0eqiA0qg+46FaChgLPJCj/pIlg==",
-      "extraneous": true,
+      "dev": true,
       "license": "MIT",
       "dependencies": {
         "@solidity-parser/parser": "^0.20.1",
@@ -6371,14 +6422,14 @@
       "version": "0.20.2",
       "resolved": "https://registry.npmjs.org/@solidity-parser/parser/-/parser-0.20.2.tgz",
       "integrity": "sha512-rbu0bzwNvMcwAjH86hiEAcOeRI2EeK8zCkHDrFykh/Al8mvJeFmjy3UrE7GYQjNwOgbGUUtCn5/k8CB8zIu7QA==",
-      "extraneous": true,
+      "dev": true,
       "license": "MIT"
     },
     "node_modules/prettier-plugin-solidity/node_modules/semver": {
       "version": "7.7.3",
       "resolved": "https://registry.npmjs.org/semver/-/semver-7.7.3.tgz",
       "integrity": "sha512-SdsKMrI9TdgjdweUSR9MweHA4EJ8YxHn8DFaDisvhVlUOe4BF1tLD7GAj0lIqWVl+dPb/rExr0Btby5loQm20Q==",
-      "extraneous": true,
+      "dev": true,
       "license": "ISC",
       "bin": {
         "semver": "bin/semver.js"
@@ -7156,9 +7207,9 @@
       }
     },
     "node_modules/solc": {
-      "version": "0.8.26",
-      "resolved": "https://registry.npmjs.org/solc/-/solc-0.8.26.tgz",
-      "integrity": "sha512-yiPQNVf5rBFHwN6SIf3TUUvVAFKcQqmSUFeq+fb6pNRCo0ZCgpYOZDi3BVoezCPIAcKrVYd/qXlBLUP9wVrZ9g==",
+      "version": "0.8.23",
+      "resolved": "https://registry.npmjs.org/solc/-/solc-0.8.23.tgz",
+      "integrity": "sha512-uqe69kFWfJc3cKdxj+Eg9CdW1CP3PLZDPeyJStQVWL8Q9jjjKD0VuRAKBFR8mrWiq5A7gJqERxJFYJsklrVsfA==",
       "dev": true,
       "license": "MIT",
       "dependencies": {
@@ -7167,6 +7218,7 @@
         "follow-redirects": "^1.12.1",
         "js-sha3": "0.8.0",
         "memorystream": "^0.3.1",
+        "n": "^9.2.0",
         "semver": "^5.5.0",
         "tmp": "0.0.33"
       },

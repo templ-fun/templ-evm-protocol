@@ -131,6 +131,10 @@ contract TemplFactory {
     /// @notice Emitted when factory permissionless mode is toggled.
     /// @param enabled True when any address may create templs.
     event PermissionlessModeUpdated(bool indexed enabled);
+    /// @notice Emitted when the factory deployer is changed.
+    /// @param previousDeployer The previous deployer address.
+    /// @param newDeployer The new deployer address.
+    event DeployerTransferred(address indexed previousDeployer, address indexed newDeployer);
 
     /// @notice Returns the default curve configuration applied by the factory.
     /// @return cfg Exponential until the 249th member, then static tail.
@@ -174,11 +178,6 @@ contract TemplFactory {
         factoryDeployer = _factoryDeployer;
         permissionless = false;
     }
-
-    /// @notice Emitted when the factory deployer is changed.
-    /// @param previousDeployer The previous deployer address.
-    /// @param newDeployer The new deployer address.
-    event DeployerTransferred(address indexed previousDeployer, address indexed newDeployer);
 
     /// @notice Transfers the factory deployer role to a new address.
     /// @param newDeployer Address of the new deployer.

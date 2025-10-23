@@ -17,16 +17,16 @@ contract TemplMembershipModule is TemplBase {
         SELF = address(this);
     }
 
-    modifier onlyDelegatecall() {
-        if (address(this) == SELF) revert TemplErrors.DelegatecallOnly();
-        _;
-    }
-
     /// @notice Emitted when a valid referral is credited during a join.
     /// @param referral The referrer wallet that receives the payout.
     /// @param newMember The wallet that just joined.
     /// @param amount Amount of access token paid to `referral`.
     event ReferralRewardPaid(address indexed referral, address indexed newMember, uint256 indexed amount);
+
+    modifier onlyDelegatecall() {
+        if (address(this) == SELF) revert TemplErrors.DelegatecallOnly();
+        _;
+    }
 
     /// @notice Join the templ by paying the configured entry fee on behalf of the caller.
     function join() external whenNotPaused notSelf nonReentrant onlyDelegatecall {

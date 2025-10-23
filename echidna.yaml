@@ -1,9 +1,8 @@
 testMode: property
-# Keep CI-friendly bounds; bump locally for deeper fuzzing
-testLimit: 200000
-seqLen: 500
-shrinkLimit: 10000
-workers: 1
+testLimit: 1000000
+seqLen: 50000
+shrinkLimit: 100000
+workers: 10
 
 cryticArgs:
   # remapping for OpenZeppelin imports used in contracts
