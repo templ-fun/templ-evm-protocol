@@ -22,7 +22,9 @@
     "deploy:factory:local": "npx hardhat run scripts/deploy-factory.cjs --network localhost",
     "deploy:local": "npx hardhat run scripts/deploy-templ.cjs --network localhost",
     "deploy:factory": "npx hardhat run scripts/deploy-factory.cjs --network base",
-    "node": "npx hardhat node"
+    "node": "npx hardhat node",
+    "docs": "npx solidity-docgen --output docs",
+    "docs:clean": "rm -rf docs"
   },
   "keywords": [
     "solidity",
@@ -48,7 +50,8 @@
     "hardhat": "^2.19.2",
     "hardhat-gas-reporter": "^1.0.8",
     "solidity-coverage": "^0.8.1",
-    "solhint": "^6.0.1"
+    "solhint": "^6.0.1",
+    "solidity-docgen": "^0.6.0"
   },
   "dependencies": {
     "dotenv": "^16.3.1"

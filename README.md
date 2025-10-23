@@ -72,6 +72,7 @@ flowchart LR
 - Install: `npm install`
 - Compile: `npm run compile`
 - Test: `npm test` (Hardhat). Coverage: `npm run coverage`.
+- Docs (NatSpec): `npm run docs` (generates Markdown in `docs/`).
 - Fuzzing (Echidna): `npm run test:fuzz` (via Docker; harness in `contracts/echidna/EchidnaTemplHarness.sol`).
 - Static analysis: `npm run slither` (requires Slither in PATH).
 - Lint: `npm run lint` (Solhint; CI fails on any warning). Auto-fix: `npm run lint:fix`.
