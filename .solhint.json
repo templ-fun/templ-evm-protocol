@@ -10,6 +10,7 @@
     "no-empty-blocks": "off",
     "no-complex-fallback": "off",
     "max-states-count": "off",
-    "max-line-length": ["warn", 120]
+    "max-line-length": ["warn", 120],
+    "immutable-vars-naming": "off"
   }
 }
