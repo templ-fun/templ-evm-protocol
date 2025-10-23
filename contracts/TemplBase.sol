@@ -115,23 +115,13 @@ abstract contract TemplBase is ReentrancyGuard {
     }
 
     struct Proposal {
+        // 32-byte fields
         uint256 id;
-        address proposer;
-        Action action;
-        address token;
-        address recipient;
         uint256 amount;
-        string title;
-        string description;
-        string reason;
-        bool joinPaused;
         uint256 newEntryFee;
         uint256 newBurnBps;
         uint256 newTreasuryBps;
         uint256 newMemberPoolBps;
-        string newTemplName;
-        string newTemplDescription;
-        string newLogoLink;
         uint256 newProposalCreationFeeBps;
         uint256 newReferralShareBps;
         uint256 newMaxMembers;
@@ -139,35 +129,46 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 newQuorumBps;
         /// @notice Execution delay proposed (seconds) after quorum is reached.
         uint256 newExecutionDelay;
-        /// @notice Burn address proposed to receive burn allocations.
-        address newBurnAddress;
-        /// @notice Target contract invoked when executing an external call proposal.
-        address externalCallTarget;
-        /// @notice ETH value forwarded when executing the external call.
         uint256 externalCallValue;
-        /// @notice ABI-encoded calldata executed against the external target.
-        bytes externalCallData;
-        CurveConfig curveConfig;
         uint256 curveBaseEntryFee;
         uint256 yesVotes;
         uint256 noVotes;
         uint256 endTime;
         uint256 createdAt;
-        bool executed;
-        mapping(address => bool) hasVoted;
-        mapping(address => bool) voteChoice;
         uint256 eligibleVoters;
         uint256 postQuorumEligibleVoters;
         uint256 quorumReachedAt;
         uint256 quorumSnapshotBlock;
-        bool quorumExempt;
-        bool updateFeeSplit;
         uint256 preQuorumSnapshotBlock;
         /// @notice Join sequence recorded when the proposal was created.
         uint256 preQuorumJoinSequence;
         /// @notice Join sequence recorded when quorum was reached (0 if quorum never satisfied).
         uint256 quorumJoinSequence;
+        // 20-byte address field + small types (packed together where possible)
+        address proposer;
+        Action action;
+        bool joinPaused;
+        bool executed;
+        bool quorumExempt;
+        bool updateFeeSplit;
         bool setDictatorship;
+        // Remaining address fields (each occupies a slot)
+        address token;
+        address recipient;
+        address newBurnAddress;
+        address externalCallTarget;
+        // Reference types
+        string title;
+        string description;
+        string reason;
+        string newTemplName;
+        string newTemplDescription;
+        string newLogoLink;
+        bytes externalCallData;
+        CurveConfig curveConfig;
+        // Mappings (separate storage areas)
+        mapping(address => bool) hasVoted;
+        mapping(address => bool) voteChoice;
     }
 
     /// @notice Monotonic proposal id counter.

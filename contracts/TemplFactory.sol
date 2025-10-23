@@ -49,10 +49,10 @@ contract TemplFactory {
         address burnAddress;
         /// @notice Start in dictatorship mode (priest may call onlyDAO actions directly).
         bool priestIsDictator;
-        /// @notice Optional membership cap (0 = uncapped).
-        uint256 maxMembers;
         /// @notice Whether a custom curve is provided (false uses factory default curve).
         bool curveProvided;
+        /// @notice Optional membership cap (0 = uncapped).
+        uint256 maxMembers;
         /// @notice Pricing curve configuration (see TemplCurve).
         CurveConfig curve;
         /// @notice Human-readable templ name.
