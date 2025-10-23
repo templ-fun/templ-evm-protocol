@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {TemplBase} from "./TemplBase.sol";
-import {TemplErrors} from "./TemplErrors.sol";
-import {CurveConfig} from "./TemplCurve.sol";
+import { TemplBase } from "./TemplBase.sol";
+import { TemplErrors } from "./TemplErrors.sol";
+import { CurveConfig } from "./TemplCurve.sol";
 
 /// @title Templ Treasury Module
 /// @notice Adds treasury controls, fee configuration, and external reward management.
@@ -136,5 +135,32 @@ contract TemplTreasuryModule is TemplBase {
     /// @param newBurn Address to receive burn allocations.
     function setBurnAddressDAO(address newBurn) external onlyDAO onlyDelegatecall {
         _setBurnAddress(newBurn);
+    }
+
+    /// @notice Governance action that performs multiple external calls atomically from the templ.
+    /// @dev Executes each call in-order. If any call reverts, bubbles up revert data and reverts the whole batch.
+    /// @param targets Destination contracts for each call.
+    /// @param values ETH values to forward for each call.
+    /// @param calldatas ABI-encoded call data for each call (selector + params).
+    /// @return results Return data for each call in order.
+    function batchDAO(
+        address[] calldata targets,
+        uint256[] calldata values,
+        bytes[] calldata calldatas
+    ) external onlyDAO onlyDelegatecall returns (bytes[] memory results) {
+        uint256 len = targets.length;
+        if (len == 0 || len != values.length || len != calldatas.length) revert TemplErrors.InvalidCallData();
+        results = new bytes[](len);
+        for (uint256 i = 0; i < len; i++) {
+            address target = targets[i];
+            if (target == address(0)) revert TemplErrors.InvalidRecipient();
+            (bool success, bytes memory ret) = target.call{ value: values[i] }(calldatas[i]);
+            if (!success) {
+                assembly ("memory-safe") {
+                    revert(add(ret, 32), mload(ret))
+                }
+            }
+            results[i] = ret;
+        }
     }
 }

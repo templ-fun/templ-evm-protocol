@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import {TEMPL} from "../TEMPL.sol";
-import {CurveConfig, CurveSegment, CurveStyle} from "../TemplCurve.sol";
-import {TemplTreasuryModule} from "../TemplTreasury.sol";
+import { TEMPL } from "../TEMPL.sol";
+import { CurveConfig, CurveSegment, CurveStyle } from "../TemplCurve.sol";
+import { TemplTreasuryModule } from "../TemplTreasury.sol";
 
 /// @dev Harness that triggers onlyDAO externals via self-calls to cover wrapper paths
 contract DaoCallerHarness is TEMPL {
@@ -40,7 +40,7 @@ contract DaoCallerHarness is TEMPL {
             treasuryModule,
             governanceModule,
             CurveConfig({
-                primary: CurveSegment({style: CurveStyle.Static, rateBps: 0, length: 0}),
+                primary: CurveSegment({ style: CurveStyle.Static, rateBps: 0, length: 0 }),
                 additionalSegments: new CurveSegment[](0)
             })
         )
@@ -49,7 +49,7 @@ contract DaoCallerHarness is TEMPL {
     function daoWithdraw(address token, address recipient, uint256 amount, string calldata reason) external {
         TemplTreasuryModule(address(this)).withdrawTreasuryDAO(token, recipient, amount, reason);
     }
-    
+
     /// @notice Wrapper to call updateConfigDAO via contract self-call
     function daoUpdate(
         address token,

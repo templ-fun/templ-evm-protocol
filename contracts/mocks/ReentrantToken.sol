@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 interface ITempl {
     function join() external;
@@ -25,9 +25,7 @@ contract ReentrantToken is ERC20 {
     address public callbackToken;
 
     /// @dev Construct reentrant test token
-    constructor(string memory name_, string memory symbol_)
-        ERC20(name_, symbol_)
-    {}
+    constructor(string memory name_, string memory symbol_) ERC20(name_, symbol_) {}
     /// @notice Set the target TEMPL contract address
     function setTempl(address _templ) external {
         templ = _templ;

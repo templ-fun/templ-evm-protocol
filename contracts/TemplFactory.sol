@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import {TEMPL} from "./TEMPL.sol";
-import {TemplErrors} from "./TemplErrors.sol";
-import {CurveConfig, CurveSegment, CurveStyle} from "./TemplCurve.sol";
-import {TemplDefaults} from "./TemplDefaults.sol";
+import { TEMPL } from "./TEMPL.sol";
+import { TemplErrors } from "./TemplErrors.sol";
+import { CurveConfig, CurveSegment, CurveStyle } from "./TemplCurve.sol";
+import { TemplDefaults } from "./TemplDefaults.sol";
 
 /// @title Templ Factory
 /// @notice Deploys Templ contracts with shared protocol configuration and optional custom splits.
@@ -25,7 +25,6 @@ contract TemplFactory {
     uint256 internal constant DEFAULT_MAX_MEMBERS = 249;
     uint32 internal constant DEFAULT_CURVE_EXP_RATE_BPS = 11_000;
     uint256 internal constant DEFAULT_PROPOSAL_FEE_BPS = 0;
-    
 
     /// @notice Full templ creation configuration. Use `createTemplWithConfig` to apply.
     struct CreateConfig {
@@ -74,7 +73,6 @@ contract TemplFactory {
     address public immutable governanceModule;
     address public immutable factoryDeployer;
     bool public permissionless;
-    
 
     /// @notice Emitted after deploying a new templ instance.
     /// @param templ Address of the deployed templ.
@@ -133,7 +131,7 @@ contract TemplFactory {
             length: 0
         });
         CurveSegment[] memory extras = new CurveSegment[](0);
-        return CurveConfig({primary: primary, additionalSegments: extras});
+        return CurveConfig({ primary: primary, additionalSegments: extras });
     }
 
     /// @notice Initializes factory-wide protocol recipient and fee share (bps).
@@ -186,16 +184,8 @@ contract TemplFactory {
         string calldata _description,
         string calldata _logoLink
     ) external returns (address templAddress) {
-        return createTemplFor(
-            msg.sender,
-            _token,
-            _entryFee,
-            _name,
-            _description,
-            _logoLink,
-            DEFAULT_PROPOSAL_FEE_BPS,
-            0
-        );
+        return
+            createTemplFor(msg.sender, _token, _entryFee, _name, _description, _logoLink, DEFAULT_PROPOSAL_FEE_BPS, 0);
     }
 
     /// @notice Deploys a templ on behalf of an explicit priest using default configuration.
@@ -217,10 +207,7 @@ contract TemplFactory {
         string calldata _logoLink,
         uint256 _proposalFeeBps,
         uint256 _referralShareBps
-    )
-        public
-        returns (address templAddress)
-    {
+    ) public returns (address templAddress) {
         _enforceCreationAccess();
         if (_priest == address(0)) revert TemplErrors.InvalidRecipient();
         CreateConfig memory cfg = CreateConfig({
@@ -348,8 +335,6 @@ contract TemplFactory {
         );
     }
 
-    
-
     /// @dev Resolves a potentially sentinel-encoded bps value to its final value.
     /// @param rawBps Raw basis points supplied by callers (-1 requests the default value).
     /// @param defaultBps Default bps used when `rawBps` is the sentinel.
@@ -363,11 +348,7 @@ contract TemplFactory {
     }
 
     /// @dev Ensures burn, treasury, member pool, and protocol slices sum to 100%.
-    function _validatePercentSplit(
-        uint256 _burnBps,
-        uint256 _treasuryBps,
-        uint256 _memberPoolBps
-    ) internal view {
+    function _validatePercentSplit(uint256 _burnBps, uint256 _treasuryBps, uint256 _memberPoolBps) internal view {
         if (_burnBps + _treasuryBps + _memberPoolBps + protocolBps != BPS_DENOMINATOR) {
             revert TemplErrors.InvalidPercentageSplit();
         }

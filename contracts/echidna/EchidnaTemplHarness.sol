@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import {TEMPL} from "../TEMPL.sol";
-import {TemplMembershipModule} from "../TemplMembership.sol";
-import {TemplTreasuryModule} from "../TemplTreasury.sol";
-import {TemplGovernanceModule} from "../TemplGovernance.sol";
-import {CurveConfig, CurveSegment, CurveStyle} from "../TemplCurve.sol";
-import {TestToken} from "../mocks/TestToken.sol";
+import { TEMPL } from "../TEMPL.sol";
+import { TemplMembershipModule } from "../TemplMembership.sol";
+import { TemplTreasuryModule } from "../TemplTreasury.sol";
+import { TemplGovernanceModule } from "../TemplGovernance.sol";
+import { CurveConfig, CurveSegment, CurveStyle } from "../TemplCurve.sol";
+import { TestToken } from "../mocks/TestToken.sol";
 
 /// @title EchidnaTemplHarness
 /// @notice Echidna property-based fuzzing harness for TEMPL.
@@ -44,24 +44,24 @@ contract EchidnaTemplHarness {
 
         // Deploy TEMPL root contract
         templ = new TEMPL(
-            priest,                     // priest
-            protocolFeeRecipient,       // protocol fee recipient
-            address(token),             // access token
-            10 ether,                   // entry fee (arbitrary >= 10 units)
-            3000,                       // burn bps
-            3000,                       // treasury bps
-            3000,                       // member pool bps
-            1000,                       // protocol bps
-            3300,                       // quorum bps
-            1,                          // execution delay (short so Echidna can pass time if needed)
+            priest, // priest
+            protocolFeeRecipient, // protocol fee recipient
+            address(token), // access token
+            10 ether, // entry fee (arbitrary >= 10 units)
+            3000, // burn bps
+            3000, // treasury bps
+            3000, // member pool bps
+            1000, // protocol bps
+            3300, // quorum bps
+            1, // execution delay (short so Echidna can pass time if needed)
             0x000000000000000000000000000000000000dEaD, // burn sink
-            false,                      // dictatorship off
-            0,                          // no member cap
-            "Echidna Templ",            // name
-            "",                         // description
-            "",                         // logo
-            0,                          // proposal fee bps
-            0,                          // referral share bps
+            false, // dictatorship off
+            0, // no member cap
+            "Echidna Templ", // name
+            "", // description
+            "", // logo
+            0, // proposal fee bps
+            0, // referral share bps
             address(membership),
             address(treasury),
             address(governance),

@@ -48,6 +48,7 @@ describe("TEMPL.getRegisteredSelectors()", function () {
       "setQuorumBpsDAO",
       "setExecutionDelayAfterQuorumDAO",
       "setBurnAddressDAO",
+      "batchDAO",
     ].map(sel);
 
     const expectedGovernance = [
@@ -102,4 +103,3 @@ describe("TEMPL.getRegisteredSelectors()", function () {
     }
   });
 });
-

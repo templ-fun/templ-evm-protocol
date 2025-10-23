@@ -18,6 +18,7 @@
 - Test: `npm test` (Hardhat). Coverage: `npm run coverage`.
 - Fuzzing (Echidna): `npm run test:fuzz` (via Docker; harness in `contracts/echidna/EchidnaTemplHarness.sol`).
 - Static analysis: `npm run slither` (requires Slither in PATH).
+- Linting: `npm run lint` (Solhint + Prettier). Format: `npm run lint:fix` (Prettier write).
 
 ## How It Works
 
@@ -48,7 +49,7 @@ flowchart LR
 - `TEMPL` routes calls to modules via delegatecall and exposes selector→module lookup.
 - Membership: joins, fee‑split accounting, member reward accrual and claims, eligibility snapshots.
 - Treasury: governance/priests withdraw, disband, update config/splits/curve/metadata/referral/proposal fee.
-- Governance: create/vote/execute proposals, quorum + delay, dictatorship toggle, safe external calls.
+- Governance: create/vote/execute proposals, quorum + delay, dictatorship toggle, safe external calls (single or batched).
 - Shared storage: all persistent state lives in [`TemplBase`](contracts/TemplBase.sol), so modules act as facets of one contract.
 
 ## Key Concepts
@@ -88,6 +89,32 @@ const id = await templ.createProposalSetJoinPaused(true, 7*24*60*60, "Pause join
 await templ.vote(id, true);
 // ...advance time...
 await templ.executeProposal(id);
+
+// Example: batched external actions via BatchExecutor (approve then stake)
+const staking = await ethers.getContractAt("MockStaking", "0xStaking");
+const executor = await ethers.getContractAt("BatchExecutor", "0xExecutor");
+const amount = (await templ.getConfig())[1];
+const approveSel = token.interface.getFunction("approve").selector;
+const approveParams = ethers.AbiCoder.defaultAbiCoder().encode(["address","uint256"],[await staking.getAddress(), amount]);
+const stakeSel = staking.interface.getFunction("stake").selector;
+const stakeParams = ethers.AbiCoder.defaultAbiCoder().encode(["address","uint256"],[await token.getAddress(), amount]);
+const targets = [await token.getAddress(), await staking.getAddress()];
+const values = [0, 0];
+const datas = [ethers.concat([approveSel, approveParams]), ethers.concat([stakeSel, stakeParams])];
+const execSel = executor.interface.getFunction("execute").selector;
+const execParams = ethers.AbiCoder.defaultAbiCoder().encode(["address[]","uint256[]","bytes[]"], [targets, values, datas]);
+const pid = await templ.createProposalCallExternal(
+  await executor.getAddress(),
+  0,
+  execSel,
+  execParams,
+  0,
+  "Approve + Stake",
+  "Stake treasury tokens"
+);
+await templ.vote(pid, true);
+// ...advance time...
+await templ.executeProposal(pid);
 ```
 
 ## Governance Model
@@ -142,6 +169,7 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
   - Governance: [`contracts/TemplGovernance.sol`](contracts/TemplGovernance.sol)
   - Root router: [`contracts/TEMPL.sol`](contracts/TEMPL.sol) — `getRegisteredSelectors()` enumerates the canonical ABI surface.
 - Proposal views: `getProposal`, `getProposalSnapshots`, `getProposalJoinSequences`, and `getActiveProposals*` are defined in [`contracts/TemplGovernance.sol`](contracts/TemplGovernance.sol). Payload helper `getProposalActionData` is provided in [`contracts/TEMPL.sol`](contracts/TEMPL.sol).
+  - CallExternal payload: `(address target, uint256 value, bytes data)`
 - Events: see definitions in [`contracts/TemplBase.sol`](contracts/TemplBase.sol).
 - Learn by tests: browse `test/*.test.js` for end‑to‑end flows with ethers v6.
 

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {TemplBase} from "./TemplBase.sol";
-import {TemplErrors} from "./TemplErrors.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { TemplBase } from "./TemplBase.sol";
+import { TemplErrors } from "./TemplErrors.sol";
 
 /// @title Templ Membership Module
 /// @notice Handles joins, reward accounting, and member-facing views.
@@ -45,13 +45,10 @@ contract TemplMembershipModule is TemplBase {
     /// @notice Join the templ for another wallet while crediting a referral.
     /// @param recipient Wallet receiving membership. Must not already be a member.
     /// @param referral Member credited with the referral reward.
-    function joinForWithReferral(address recipient, address referral)
-        external
-        whenNotPaused
-        notSelf
-        nonReentrant
-        onlyDelegatecall
-    {
+    function joinForWithReferral(
+        address recipient,
+        address referral
+    ) external whenNotPaused notSelf nonReentrant onlyDelegatecall {
         _join(msg.sender, recipient, referral);
     }
 
@@ -166,11 +163,9 @@ contract TemplMembershipModule is TemplBase {
     /// @return poolBalance Amount reserved for members but not yet claimed.
     /// @return cumulativeRewards Cumulative reward per member used for snapshots.
     /// @return remainder Remainder carried forward for the next distribution.
-    function getExternalRewardState(address token) external view returns (
-        uint256 poolBalance,
-        uint256 cumulativeRewards,
-        uint256 remainder
-    ) {
+    function getExternalRewardState(
+        address token
+    ) external view returns (uint256 poolBalance, uint256 cumulativeRewards, uint256 remainder) {
         ExternalRewardState storage rewards = externalRewards[token];
         return (rewards.poolBalance, rewards.cumulativeRewards, rewards.rewardRemainder);
     }
@@ -233,7 +228,7 @@ contract TemplMembershipModule is TemplBase {
         rewards.poolBalance = remaining - claimable;
 
         if (token == address(0)) {
-            (bool success, ) = payable(msg.sender).call{value: claimable}("");
+            (bool success, ) = payable(msg.sender).call{ value: claimable }("");
             if (!success) revert TemplErrors.ProposalExecutionFailed();
         } else {
             _safeTransfer(token, msg.sender, claimable);
@@ -254,11 +249,7 @@ contract TemplMembershipModule is TemplBase {
     /// @return joined True if the wallet has joined.
     /// @return timestamp Block timestamp when the join completed.
     /// @return blockNumber Block number when the join completed.
-    function getJoinDetails(address user) external view returns (
-        bool joined,
-        uint256 timestamp,
-        uint256 blockNumber
-    ) {
+    function getJoinDetails(address user) external view returns (bool joined, uint256 timestamp, uint256 blockNumber) {
         Member storage m = members[user];
         return (m.joined, m.timestamp, m.blockNumber);
     }
@@ -271,12 +262,7 @@ contract TemplMembershipModule is TemplBase {
     function getTreasuryInfo()
         external
         view
-        returns (
-            uint256 treasury,
-            uint256 memberPool,
-            address protocolAddress,
-            uint256 burned
-        )
+        returns (uint256 treasury, uint256 memberPool, address protocolAddress, uint256 burned)
     {
         uint256 current = IERC20(accessToken).balanceOf(address(this));
         uint256 available = current > memberPoolBalance ? current - memberPoolBalance : 0;
@@ -294,18 +280,22 @@ contract TemplMembershipModule is TemplBase {
     /// @return treasuryBpsOut Treasury allocation expressed in basis points.
     /// @return memberPoolBpsOut Member pool allocation expressed in basis points.
     /// @return protocolBpsOut Protocol allocation expressed in basis points.
-    function getConfig() external view returns (
-        address token,
-        uint256 fee,
-        bool joinPaused,
-        uint256 joins,
-        uint256 treasury,
-        uint256 pool,
-        uint256 burnBpsOut,
-        uint256 treasuryBpsOut,
-        uint256 memberPoolBpsOut,
-        uint256 protocolBpsOut
-    ) {
+    function getConfig()
+        external
+        view
+        returns (
+            address token,
+            uint256 fee,
+            bool joinPaused,
+            uint256 joins,
+            uint256 treasury,
+            uint256 pool,
+            uint256 burnBpsOut,
+            uint256 treasuryBpsOut,
+            uint256 memberPoolBpsOut,
+            uint256 protocolBpsOut
+        )
+    {
         uint256 current = IERC20(accessToken).balanceOf(address(this));
         uint256 available = current > memberPoolBalance ? current - memberPoolBalance : 0;
         return (
@@ -352,11 +342,10 @@ contract TemplMembershipModule is TemplBase {
     /// @param limit Maximum number of tokens to return.
     /// @return tokens Slice of token addresses.
     /// @return hasMore True when there are additional tokens past the slice.
-    function getExternalRewardTokensPaginated(uint256 offset, uint256 limit)
-        external
-        view
-        returns (address[] memory tokens, bool hasMore)
-    {
+    function getExternalRewardTokensPaginated(
+        uint256 offset,
+        uint256 limit
+    ) external view returns (address[] memory tokens, bool hasMore) {
         uint256 len = externalRewardTokens.length;
         if (offset >= len) {
             return (new address[](0), false);
@@ -369,5 +358,4 @@ contract TemplMembershipModule is TemplBase {
         }
         return (out, offset + take < len);
     }
-
 }

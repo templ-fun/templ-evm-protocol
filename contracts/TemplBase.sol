@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
-import {TemplErrors} from "./TemplErrors.sol";
-import {CurveConfig, CurveSegment, CurveStyle} from "./TemplCurve.sol";
-import {TemplDefaults} from "./TemplDefaults.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
+import { TemplErrors } from "./TemplErrors.sol";
+import { CurveConfig, CurveSegment, CurveStyle } from "./TemplCurve.sol";
+import { TemplDefaults } from "./TemplDefaults.sol";
 
 /// @title Base Templ Storage and Helpers
 /// @notice Hosts shared state, events, and internal helpers used by membership, treasury, and governance modules.
@@ -218,11 +218,7 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 joinId
     );
 
-    event MemberRewardsClaimed(
-        address indexed member,
-        uint256 amount,
-        uint256 timestamp
-    );
+    event MemberRewardsClaimed(address indexed member, uint256 amount, uint256 timestamp);
 
     event ProposalCreated(
         uint256 indexed proposalId,
@@ -232,12 +228,7 @@ abstract contract TemplBase is ReentrancyGuard {
         string description
     );
 
-    event VoteCast(
-        uint256 indexed proposalId,
-        address indexed voter,
-        bool support,
-        uint256 timestamp
-    );
+    event VoteCast(uint256 indexed proposalId, address indexed voter, bool support, uint256 timestamp);
 
     event ProposalExecuted(uint256 indexed proposalId, bool success, bytes32 returnDataHash);
 
@@ -268,11 +259,7 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param styles Segment styles in application order (primary first).
     /// @param rateBps Segment rate parameters expressed in basis points.
     /// @param lengths Segment lengths expressed as paid joins (0 = infinite tail).
-    event EntryFeeCurveUpdated(
-        uint8[] styles,
-        uint32[] rateBps,
-        uint32[] lengths
-    );
+    event EntryFeeCurveUpdated(uint8[] styles, uint32[] rateBps, uint32[] lengths);
     /// @notice Emitted when the priest address is changed.
     /// @param oldPriest Previous priest address.
     /// @param newPriest New priest address.
@@ -289,11 +276,7 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param token ERC-20 token address or address(0) for ETH.
     /// @param member Recipient wallet.
     /// @param amount Claimed amount.
-    event ExternalRewardClaimed(
-        address indexed token,
-        address indexed member,
-        uint256 amount
-    );
+    event ExternalRewardClaimed(address indexed token, address indexed member, uint256 amount);
 
     event TemplMetadataUpdated(string name, string description, string logoLink);
     event ProposalCreationFeeUpdated(uint256 previousFeeBps, uint256 newFeeBps);
@@ -530,11 +513,7 @@ abstract contract TemplBase is ReentrancyGuard {
     }
 
     /// @dev Updates the split between burn, treasury, and member pool slices.
-    function _setPercentSplit(
-        uint256 _burnBps,
-        uint256 _treasuryBps,
-        uint256 _memberPoolBps
-    ) internal {
+    function _setPercentSplit(uint256 _burnBps, uint256 _treasuryBps, uint256 _memberPoolBps) internal {
         _validatePercentSplit(_burnBps, _treasuryBps, _memberPoolBps, protocolBps);
         burnBps = _burnBps;
         treasuryBps = _treasuryBps;
@@ -998,15 +977,13 @@ abstract contract TemplBase is ReentrancyGuard {
             uint256 reservedForMembers = rewards.poolBalance;
             uint256 availableBalance = currentBalance > reservedForMembers ? currentBalance - reservedForMembers : 0;
             if (amount > availableBalance) revert TemplErrors.InsufficientTreasuryBalance();
-            (bool success, ) = payable(recipient).call{value: amount}("");
+            (bool success, ) = payable(recipient).call{ value: amount }("");
             if (!success) revert TemplErrors.ProposalExecutionFailed();
         } else {
             ExternalRewardState storage rewards = externalRewards[token];
             uint256 currentBalance = IERC20(token).balanceOf(address(this));
             uint256 reservedForMembers = rewards.poolBalance;
-            uint256 availableBalance = currentBalance > reservedForMembers
-                ? currentBalance - reservedForMembers
-                : 0;
+            uint256 availableBalance = currentBalance > reservedForMembers ? currentBalance - reservedForMembers : 0;
             if (amount > availableBalance) revert TemplErrors.InsufficientTreasuryBalance();
             _safeTransfer(token, recipient, amount);
         }
@@ -1127,11 +1104,10 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param memberInfo Stored membership record to inspect.
     /// @param snapshotJoinSequence Join sequence captured in the proposal snapshot (0 when unused).
     /// @return joinedAfter True when the member joined strictly after the snapshot sequence.
-    function _joinedAfterSnapshot(Member storage memberInfo, uint256 snapshotJoinSequence)
-        internal
-        view
-        returns (bool joinedAfter)
-    {
+    function _joinedAfterSnapshot(
+        Member storage memberInfo,
+        uint256 snapshotJoinSequence
+    ) internal view returns (bool joinedAfter) {
         if (snapshotJoinSequence == 0) {
             return false;
         }
@@ -1231,5 +1207,4 @@ abstract contract TemplBase is ReentrancyGuard {
         }
         return a > type(uint256).max / b;
     }
-
 }

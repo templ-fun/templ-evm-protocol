@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import {TemplBase} from "./TemplBase.sol";
-import {TemplMembershipModule} from "./TemplMembership.sol";
-import {TemplTreasuryModule} from "./TemplTreasury.sol";
-import {TemplGovernanceModule} from "./TemplGovernance.sol";
-import {TemplErrors} from "./TemplErrors.sol";
-import {CurveConfig} from "./TemplCurve.sol";
+import { TemplBase } from "./TemplBase.sol";
+import { TemplMembershipModule } from "./TemplMembership.sol";
+import { TemplTreasuryModule } from "./TemplTreasury.sol";
+import { TemplGovernanceModule } from "./TemplGovernance.sol";
+import { TemplErrors } from "./TemplErrors.sol";
+import { CurveConfig } from "./TemplCurve.sol";
 
 /// @title Templ Core
 /// @notice Wires governance, treasury, and membership modules for a single Templ instance.
@@ -131,11 +131,7 @@ contract TEMPL is TemplBase {
     function getRegisteredSelectors()
         external
         pure
-        returns (
-            bytes4[] memory membership,
-            bytes4[] memory treasury,
-            bytes4[] memory governance
-        )
+        returns (bytes4[] memory membership, bytes4[] memory treasury, bytes4[] memory governance)
     {
         membership = new bytes4[](18);
         membership[0] = TemplMembershipModule.join.selector;
@@ -157,7 +153,7 @@ contract TEMPL is TemplBase {
         membership[16] = TemplMembershipModule.totalJoins.selector;
         membership[17] = TemplMembershipModule.getExternalRewardTokensPaginated.selector;
 
-        treasury = new bytes4[](15);
+        treasury = new bytes4[](16);
         treasury[0] = TemplTreasuryModule.withdrawTreasuryDAO.selector;
         treasury[1] = TemplTreasuryModule.updateConfigDAO.selector;
         treasury[2] = TemplTreasuryModule.setJoinPausedDAO.selector;
@@ -173,6 +169,7 @@ contract TEMPL is TemplBase {
         treasury[12] = TemplTreasuryModule.setQuorumBpsDAO.selector;
         treasury[13] = TemplTreasuryModule.setExecutionDelayAfterQuorumDAO.selector;
         treasury[14] = TemplTreasuryModule.setBurnAddressDAO.selector;
+        treasury[15] = TemplTreasuryModule.batchDAO.selector;
 
         governance = new bytes4[](25);
         governance[0] = TemplGovernanceModule.createProposalSetJoinPaused.selector;
@@ -214,8 +211,12 @@ contract TEMPL is TemplBase {
             let result := delegatecall(gas(), module, 0, calldatasize(), 0, 0)
             returndatacopy(0, 0, returndatasize())
             switch result
-            case 0 { revert(0, returndatasize()) }
-            default { return(0, returndatasize()) }
+            case 0 {
+                revert(0, returndatasize())
+            }
+            default {
+                return(0, returndatasize())
+            }
         }
     }
 
@@ -243,7 +244,7 @@ contract TEMPL is TemplBase {
     }
 
     function _registerTreasurySelectors(address module) internal {
-        bytes4[] memory selectors = new bytes4[](15);
+        bytes4[] memory selectors = new bytes4[](16);
         selectors[0] = TemplTreasuryModule.withdrawTreasuryDAO.selector;
         selectors[1] = TemplTreasuryModule.updateConfigDAO.selector;
         selectors[2] = TemplTreasuryModule.setJoinPausedDAO.selector;
@@ -259,6 +260,7 @@ contract TEMPL is TemplBase {
         selectors[12] = TemplTreasuryModule.setQuorumBpsDAO.selector;
         selectors[13] = TemplTreasuryModule.setExecutionDelayAfterQuorumDAO.selector;
         selectors[14] = TemplTreasuryModule.setBurnAddressDAO.selector;
+        selectors[15] = TemplTreasuryModule.batchDAO.selector;
         _registerModule(module, selectors);
     }
 
@@ -292,8 +294,6 @@ contract TEMPL is TemplBase {
         _registerModule(module, selectors);
     }
 
-    
-
     /// @notice Returns the action and ABI-encoded payload for a proposal.
     /// @dev See README Proposal Views for payload types per action.
     /// @param _proposalId Proposal id to inspect.
@@ -306,7 +306,14 @@ contract TEMPL is TemplBase {
         if (action == Action.SetJoinPaused) {
             payload = abi.encode(p.joinPaused);
         } else if (action == Action.UpdateConfig) {
-            payload = abi.encode(p.token, p.newEntryFee, p.updateFeeSplit, p.newBurnBps, p.newTreasuryBps, p.newMemberPoolBps);
+            payload = abi.encode(
+                p.token,
+                p.newEntryFee,
+                p.updateFeeSplit,
+                p.newBurnBps,
+                p.newTreasuryBps,
+                p.newMemberPoolBps
+            );
         } else if (action == Action.SetMaxMembers) {
             payload = abi.encode(p.newMaxMembers);
         } else if (action == Action.SetMetadata) {
