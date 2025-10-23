@@ -6,5 +6,9 @@
   "detectors_to_exclude": [
     "arbitrary-send-eth"
   ],
-  "solc_args": "--via-ir --optimize --optimize-runs 500"
+  "solc_args": "--via-ir --optimize --optimize-runs 500",
+  "exclude": [
+    "contracts/mocks/**",
+    "contracts/echidna/**"
+  ]
 }

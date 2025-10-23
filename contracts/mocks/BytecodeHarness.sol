@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import { SSTORE2 } from "../libraries/SSTORE2.sol";
-import { Bytecode } from "../libraries/utils/Bytecode.sol";
+import { SSTORE2 } from "./SSTORE2.sol";
+import { Bytecode } from "./Bytecode.sol";
 
 /// @title BytecodeHarness
 /// @dev Testing harness that exercises SSTORE2 and Bytecode helper branches

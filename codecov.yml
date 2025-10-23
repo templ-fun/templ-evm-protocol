@@ -12,3 +12,5 @@ flags:
       - coverage/contracts
 ignore:
   - "contracts/mocks/**"
+  - "contracts/echidna/**"
+  - "contracts/tools/**"
