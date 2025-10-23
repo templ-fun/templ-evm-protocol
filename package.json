@@ -15,7 +15,6 @@
     "coverage": "NODE_OPTIONS=--max-old-space-size=16384 npx hardhat coverage",
     "slither": "solc-select install 0.8.23 && solc-select use 0.8.23 && slither . --config-file slither.config.json",
     "lint": "npx solhint --max-warnings 0 -f stylish 'contracts/**/*.sol' && npx prettier --plugin=prettier-plugin-solidity --check 'contracts/**/*.sol'",
-    "lint:fix": "npx solhint --fix 'contracts/**/*.sol'",
     "deploy": "npx hardhat run scripts/deploy-templ.cjs --network base",
     "deploy:factory:local": "npx hardhat run scripts/deploy-factory.cjs --network localhost",
     "deploy:local": "npx hardhat run scripts/deploy-templ.cjs --network localhost",
