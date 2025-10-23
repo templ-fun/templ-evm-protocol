@@ -176,3 +176,4 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
 - High‑load stress: `npm run test:load` with `TEMPL_LOAD=...` to scale joiners.
 - Coverage: `npm run coverage`. Static: `npm run slither`.
 - Property fuzzing: `npm run test:fuzz` (via Docker) using `echidna.yaml` and `contracts/echidna/EchidnaTemplHarness.sol`.
+- CI runs on PRs only when Solidity contracts or tests change (`contracts/**`, `test/**`), keeping checks focused on relevant changes.
