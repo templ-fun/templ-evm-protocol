@@ -71,7 +71,9 @@ contract TemplFactory {
     address public immutable membershipModule;
     address public immutable treasuryModule;
     address public immutable governanceModule;
-    address public immutable factoryDeployer;
+    /// @notice Account allowed to create templs while permissionless mode is disabled.
+    /// @dev Can be transferred by the current deployer via `transferDeployer`.
+    address public factoryDeployer;
     bool public permissionless;
 
     /// @notice Emitted after deploying a new templ instance.
@@ -134,19 +136,22 @@ contract TemplFactory {
         return CurveConfig({ primary: primary, additionalSegments: extras });
     }
 
-    /// @notice Initializes factory-wide protocol recipient and fee share (bps).
+    /// @notice Initializes factory-wide protocol recipient, fee share, modules, and factory deployer.
+    /// @param _factoryDeployer EOA or contract allowed to create templs until permissionless is enabled.
     /// @param _protocolFeeRecipient Address receiving the protocol share from every templ deployed.
     /// @param _protocolBps Fee share, in basis points, reserved for the protocol across all templs.
     /// @param _membershipModule Address of the deployed membership module implementation.
     /// @param _treasuryModule Address of the deployed treasury module implementation.
     /// @param _governanceModule Address of the deployed governance module implementation.
     constructor(
+        address _factoryDeployer,
         address _protocolFeeRecipient,
         uint256 _protocolBps,
         address _membershipModule,
         address _treasuryModule,
         address _governanceModule
     ) {
+        if (_factoryDeployer == address(0)) revert TemplErrors.InvalidRecipient();
         if (_protocolFeeRecipient == address(0)) revert TemplErrors.InvalidRecipient();
         if (_protocolBps > BPS_DENOMINATOR) revert TemplErrors.InvalidPercentageSplit();
         if (_membershipModule == address(0) || _treasuryModule == address(0) || _governanceModule == address(0)) {
@@ -157,8 +162,24 @@ contract TemplFactory {
         membershipModule = _membershipModule;
         treasuryModule = _treasuryModule;
         governanceModule = _governanceModule;
-        factoryDeployer = msg.sender;
+        factoryDeployer = _factoryDeployer;
         permissionless = false;
+    }
+
+    /// @notice Emitted when the factory deployer is changed.
+    /// @param previousDeployer The previous deployer address.
+    /// @param newDeployer The new deployer address.
+    event DeployerTransferred(address indexed previousDeployer, address indexed newDeployer);
+
+    /// @notice Transfers the factory deployer role to a new address.
+    /// @param newDeployer Address of the new deployer.
+    function transferDeployer(address newDeployer) external {
+        if (msg.sender != factoryDeployer) revert TemplErrors.NotFactoryDeployer();
+        if (newDeployer == address(0)) revert TemplErrors.InvalidRecipient();
+        if (newDeployer == factoryDeployer) revert TemplErrors.PermissionlessUnchanged();
+        address prev = factoryDeployer;
+        factoryDeployer = newDeployer;
+        emit DeployerTransferred(prev, newDeployer);
     }
 
     /// @notice Toggles permissionless mode for templ creation.

@@ -423,7 +423,12 @@ async function main() {
 
     console.log("\nDeploying TemplFactory...");
     const Factory = await hre.ethers.getContractFactory("TemplFactory");
+    const FACTORY_DEPLOYER = (process.env.FACTORY_DEPLOYER || deployer.address).trim();
+    if (!hre.ethers.isAddress(FACTORY_DEPLOYER)) {
+      throw new Error('FACTORY_DEPLOYER must be a valid address (or omit to default to signer)');
+    }
     const factory = await Factory.deploy(
+      FACTORY_DEPLOYER,
       PROTOCOL_FEE_RECIPIENT,
       protocolPercentBps,
       membershipModuleAddress,

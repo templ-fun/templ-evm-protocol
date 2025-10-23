@@ -132,7 +132,10 @@ const stakeArgs = ethers.AbiCoder.defaultAbiCoder().encode(
 const stakeData = ethers.concat([stakeSel, stakeArgs]);
 
 // 2) Encode BatchExecutor.execute(targets, values, calldatas)
-const executor = await ethers.getContractAt("BatchExecutor", "0xExecutor");
+// Deploy a fresh BatchExecutor (or use an existing address)
+const Executor = await ethers.getContractFactory("BatchExecutor");
+const executor = await Executor.deploy();
+await executor.waitForDeployment();
 const targets = [await token.getAddress(), await staking.getAddress()];
 const values = [0, 0]; // no ETH in this example
 const calldatas = [approveData, stakeData];
@@ -147,7 +150,7 @@ const execParams = ethers.AbiCoder.defaultAbiCoder().encode(
 const votingPeriod = 7 * 24 * 60 * 60;
 const pid = await templ.createProposalCallExternal(
   await executor.getAddress(),
-  0,                // forward 0 ETH to the executor
+  0, // forward 0 ETH to the executor
   execSel,
   execParams,
   votingPeriod,
@@ -164,6 +167,7 @@ await templ.executeProposal(pid);
 Notes
 - To forward ETH in the batch, set `values` for the specific inner call(s) and pass the top-level `value` argument in `createProposalCallExternal` to `sum(values)`.
 - If any inner call reverts, the entire batch reverts; no partial effects.
+- Proposing and voting require membership; ensure the caller has joined.
 ```
 
 ```mermaid
@@ -197,9 +201,14 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
 
 ## Scripts & Env Vars
 - Scripts: `deploy:factory`, `deploy:factory:local`, `deploy:local`, `coverage`, `slither`.
-- `scripts/deploy-factory.cjs`: requires `PROTOCOL_FEE_RECIPIENT`; optional `PROTOCOL_BPS`. You can reuse an existing factory by setting `FACTORY_ADDRESS`.
+- `scripts/deploy-factory.cjs`:
+  - Required: `PROTOCOL_FEE_RECIPIENT`
+  - Optional: `PROTOCOL_BPS`, `FACTORY_ADDRESS` (reuse), `FACTORY_DEPLOYER` (defaults to signer address)
+  - Deploys modules if not provided via env and wires them into the factory constructor.
 - `scripts/deploy-templ.cjs`: key envs are `FACTORY_ADDRESS` (or omit to auto‑deploy modules + factory locally), `TOKEN_ADDRESS`, `ENTRY_FEE`, plus optional metadata (`TEMPL_NAME`, `TEMPL_DESCRIPTION`, `TEMPL_LOGO_LINK`). Many toggles are supported (priest, quorum/delay, caps, fee splits, referral share, curve).
-- Permissionless mode: `TemplFactory.setPermissionless(true)` allows anyone to create templs.
+- Permissioning:
+  - `TemplFactory.setPermissionless(true)` allows anyone to create templs.
+  - `TemplFactory.transferDeployer(newAddr)` hands off deployer rights when permissionless is disabled.
 
 ## Reference
 - Contract APIs (NATSpec):
@@ -207,6 +216,7 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
   - Treasury: [`contracts/TemplTreasury.sol`](contracts/TemplTreasury.sol)
   - Governance: [`contracts/TemplGovernance.sol`](contracts/TemplGovernance.sol)
   - Root router: [`contracts/TEMPL.sol`](contracts/TEMPL.sol) — `getRegisteredSelectors()` lists the canonical ABI surface.
+  - Factory: [`contracts/TemplFactory.sol`](contracts/TemplFactory.sol) — constructor accepts explicit `factoryDeployer`; use `transferDeployer` to rotate.
 - Proposal views: `getProposal`, `getProposalSnapshots`, `getProposalJoinSequences`, `getActiveProposals*` in [`contracts/TemplGovernance.sol`](contracts/TemplGovernance.sol). Payload helper `getProposalActionData` in [`contracts/TEMPL.sol`](contracts/TEMPL.sol).
   - CallExternal payload shape: `(address target, uint256 value, bytes data)`
 - Events: see [`contracts/TemplBase.sol`](contracts/TemplBase.sol).
