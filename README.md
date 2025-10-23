@@ -56,6 +56,7 @@ flowchart LR
 - Dictatorship: when enabled, the priest may call `onlyDAO` actions directly; otherwise all `onlyDAO` actions execute via governance.
 - Snapshots: eligibility is frozen by join sequence at proposal creation, then again at quorum.
 - Caps/pauses: optional `maxMembers` (auto‑pauses at cap) plus `joinPaused` toggle.
+- Governance access: proposing and voting require membership; the proposer’s vote is counted YES at creation.
 
 ## Repo Map
 - Contracts: `contracts/`
@@ -228,6 +229,11 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
 - `MAX_EXTERNAL_REWARD_TOKENS = 256` (UI enumeration bound).
 - `MAX_ENTRY_FEE = type(uint128).max` (entry fee safety guard).
 - Voting period: default 7 days (min 7, max 30).
+- Factory defaults (when not explicitly provided):
+  - Fee split: burn 3_000 bps, treasury 3_000 bps, member pool 3_000 bps (plus protocol bps from factory).
+  - Membership cap: 249.
+  - Curve: exponential primary segment at 11_000 bps with infinite tail.
+  - Proposal fee: 0 bps; Referral share: 0 bps.
 
 ## Indexing Notes
 - Track `ProposalCreated` then hydrate with `getProposal` + `getProposalSnapshots`.
