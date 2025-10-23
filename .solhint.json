@@ -7,6 +7,7 @@
     "no-complex-fallback": "off",
     "func-visibility": ["error", { "ignoreConstructors": true }],
     "function-max-lines": "off",
-    "gas-struct-packing": "off"
+    "gas-struct-packing": "off",
+    "use-natspec": "error"
   }
 }

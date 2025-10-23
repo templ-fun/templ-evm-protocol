@@ -197,7 +197,7 @@ contract TemplGovernanceModule is TemplBase {
         return id;
     }
 
-    // createProposalSetPreQuorumVotingPeriod intentionally omitted to keep governance bytecode under limit.
+    
 
     /// @notice Opens a proposal to update the proposal creation fee basis points.
     /// @param _newFeeBps New proposal creation fee (bps of current entry fee).

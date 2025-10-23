@@ -216,7 +216,7 @@ async function fetchContractSnapshot(contract) {
     memberPoolBps: await safeCall(contract, 'memberPoolBps'),
     protocolBps: await safeCall(contract, 'protocolBps'),
     quorumBps: await safeCall(contract, 'quorumBps'),
-    executionDelayAfterQuorum: await safeCall(contract, 'executionDelayAfterQuorum'),
+    postQuorumVotingPeriod: await safeCall(contract, 'postQuorumVotingPeriod'),
     burnAddress: await safeCall(contract, 'burnAddress'),
     priestIsDictator: await safeCall(contract, 'priestIsDictator', (value) => Boolean(value)),
     maxMembers: await safeCall(contract, 'maxMembers'),
@@ -320,7 +320,7 @@ async function fetchEventSnapshot({ provider, factoryAddress, templAddress, from
           treasuryBps: toSerializable(args.treasuryBps),
           memberPoolBps: toSerializable(args.memberPoolBps),
           quorumBps: toSerializable(args.quorumBps),
-          executionDelayAfterQuorum: toSerializable(args.executionDelaySeconds),
+          postQuorumVotingPeriod: toSerializable(args.executionDelaySeconds),
           burnAddress: args.burnAddress,
           priestIsDictator: Boolean(args.priestIsDictator),
           maxMembers: toSerializable(args.maxMembers),
@@ -416,7 +416,7 @@ async function main() {
     treasuryBps: resolveBpsLike({ bpsValues: [cliOverrides.treasuryBps, process.env.TREASURY_BPS] }),
     memberPoolBps: resolveBpsLike({ bpsValues: [cliOverrides.memberBps, process.env.MEMBER_POOL_BPS] }),
     quorumBps: resolveBpsLike({ bpsValues: [cliOverrides.quorumBps, process.env.QUORUM_BPS] }),
-    executionDelayAfterQuorum: firstDefined([cliOverrides.executionDelay, process.env.EXECUTION_DELAY_SECONDS]),
+    postQuorumVotingPeriod: firstDefined([cliOverrides.executionDelay, process.env.EXECUTION_DELAY_SECONDS]),
     burnAddress: firstDefined([cliOverrides.burnAddress, process.env.BURN_ADDRESS]),
     priestIsDictator: firstDefined([
       resolveBoolean(cliOverrides.priestIsDictator),
@@ -497,11 +497,11 @@ async function main() {
       overrideValue: envOverrides.quorumBps,
       normalizer: (value) => toSerializable(value)
     }),
-    executionDelayAfterQuorum: resolveField({
-      label: 'executionDelayAfterQuorum',
-      contractValue: contractSnapshot.executionDelayAfterQuorum,
-      eventValue: eventSnapshot?.executionDelayAfterQuorum,
-      overrideValue: envOverrides.executionDelayAfterQuorum,
+    postQuorumVotingPeriod: resolveField({
+      label: 'postQuorumVotingPeriod',
+      contractValue: contractSnapshot.postQuorumVotingPeriod,
+      eventValue: eventSnapshot?.postQuorumVotingPeriod,
+      overrideValue: envOverrides.postQuorumVotingPeriod,
       normalizer: (value) => toSerializable(value)
     }),
     burnAddress: resolveField({
@@ -654,7 +654,7 @@ async function main() {
     constructorArgs.memberPoolBps,
     constructorArgs.protocolBps,
     constructorArgs.quorumBps,
-    constructorArgs.executionDelayAfterQuorum,
+    constructorArgs.postQuorumVotingPeriod,
     constructorArgs.burnAddress,
     constructorArgs.priestIsDictator,
     constructorArgs.maxMembers,
