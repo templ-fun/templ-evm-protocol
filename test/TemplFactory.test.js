@@ -123,7 +123,7 @@ describe("TemplFactory", function () {
         expect(await templ.treasuryBps()).to.equal(BigInt(treasuryBps));
         expect(await templ.memberPoolBps()).to.equal(BigInt(memberPoolBps));
         expect(await templ.quorumBps()).to.equal(BigInt(quorumBps));
-        expect(await templ.executionDelayAfterQuorum()).to.equal(executionDelaySeconds);
+        expect(await templ.postQuorumVotingPeriod()).to.equal(executionDelaySeconds);
         expect(await templ.burnAddress()).to.equal(customBurnAddress);
         expect(await templ.maxMembers()).to.equal(0n);
         expect(await templ.templName()).to.equal(DEFAULT_METADATA.name);
@@ -358,7 +358,7 @@ describe("TemplFactory", function () {
     expect(await templ.memberPoolBps()).to.equal(1_500n);
     expect(await templ.protocolBps()).to.equal(BigInt(protocolBps));
     expect(await templ.quorumBps()).to.equal(3_300n);
-    expect(await templ.executionDelayAfterQuorum()).to.equal(36n * 60n * 60n);
+    expect(await templ.postQuorumVotingPeriod()).to.equal(36n * 60n * 60n);
     expect(await templ.burnAddress()).to.equal("0x000000000000000000000000000000000000dEaD");
   });
 
@@ -496,7 +496,7 @@ describe("TemplFactory", function () {
         expect(await templ.protocolFeeRecipient()).to.equal(protocolRecipient.address);
         expect(await templ.protocolBps()).to.equal(BigInt(pct(10)));
         expect(await templ.quorumBps()).to.equal(BigInt(pct(33)));
-        expect(await templ.executionDelayAfterQuorum()).to.equal(36 * 60 * 60);
+        expect(await templ.postQuorumVotingPeriod()).to.equal(36 * 60 * 60);
         expect(await templ.burnAddress()).to.equal("0x000000000000000000000000000000000000dEaD");
         expect(await templ.maxMembers()).to.equal(249n);
 
@@ -803,7 +803,7 @@ describe("TemplFactory", function () {
 
         expect(await templ.priest()).to.equal(deployer.address);
         expect(await templ.quorumBps()).to.equal(BigInt(pct(33)));
-        expect(await templ.executionDelayAfterQuorum()).to.equal(36 * 60 * 60);
+        expect(await templ.postQuorumVotingPeriod()).to.equal(36 * 60 * 60);
         expect(await templ.burnAddress()).to.equal("0x000000000000000000000000000000000000dEaD");
         expect(await templ.burnBps()).to.equal(BigInt(pct(30)));
         expect(await templ.treasuryBps()).to.equal(BigInt(pct(30)));
@@ -843,7 +843,7 @@ describe("TemplFactory", function () {
         const templ = await getTemplAt(templAddress, ethers.provider);
 
         expect(await templ.quorumBps()).to.equal(BigInt(pct(33)));
-        expect(await templ.executionDelayAfterQuorum()).to.equal(36n * 60n * 60n);
+        expect(await templ.postQuorumVotingPeriod()).to.equal(36n * 60n * 60n);
         expect(await templ.burnAddress()).to.equal("0x000000000000000000000000000000000000dEaD");
     });
 

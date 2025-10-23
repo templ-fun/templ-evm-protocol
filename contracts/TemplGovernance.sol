@@ -156,14 +156,14 @@ contract TemplGovernanceModule is TemplBase {
         return id;
     }
 
-    /// @notice Opens a proposal to update the post-quorum execution delay in seconds.
-    /// @param _newDelaySeconds New delay (seconds) applied after quorum before execution.
+    /// @notice Opens a proposal to update the post‑quorum voting period in seconds.
+    /// @param _newPeriodSeconds New period (seconds) applied after quorum before execution.
     /// @param _votingPeriod Optional custom voting duration (seconds).
     /// @param _title On-chain title for the proposal.
     /// @param _description On-chain description for the proposal.
     /// @return proposalId Newly created proposal identifier.
-    function createProposalSetExecutionDelay(
-        uint256 _newDelaySeconds,
+    function createProposalSetPostQuorumVotingPeriod(
+        uint256 _newPeriodSeconds,
         uint256 _votingPeriod,
         string calldata _title,
         string calldata _description
@@ -171,8 +171,8 @@ contract TemplGovernanceModule is TemplBase {
         _requireDelegatecall();
         if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
-        p.action = Action.SetExecutionDelay;
-        p.newExecutionDelay = _newDelaySeconds;
+        p.action = Action.SetPostQuorumVotingPeriod;
+        p.newPostQuorumVotingPeriod = _newPeriodSeconds;
         return id;
     }
 
@@ -478,7 +478,7 @@ contract TemplGovernanceModule is TemplBase {
                 proposal.postQuorumEligibleVoters = memberCount;
                 // Lock the join sequence to the current value so later joins cannot swing the vote.
                 proposal.quorumJoinSequence = joinSequence;
-                proposal.endTime = block.timestamp + executionDelayAfterQuorum;
+                proposal.endTime = block.timestamp + postQuorumVotingPeriod;
             }
         }
 
@@ -503,8 +503,8 @@ contract TemplGovernanceModule is TemplBase {
             if (proposal.quorumReachedAt == 0) {
                 revert TemplErrors.QuorumNotReached();
             }
-            // Use the endTime captured at quorum to anchor the delay for this proposal,
-            // preventing mid-flight changes to executionDelayAfterQuorum from affecting it.
+            // Use the endTime captured at quorum to anchor the post‑quorum voting period for this proposal,
+            // preventing mid-flight changes from affecting it.
             if (block.timestamp < proposal.endTime) {
                 revert TemplErrors.ExecutionDelayActive();
             }
@@ -605,8 +605,8 @@ contract TemplGovernanceModule is TemplBase {
             _governanceSetQuorumBps(proposal.newQuorumBps);
             return hex"";
         }
-        if (proposal.action == Action.SetExecutionDelay) {
-            _governanceSetExecutionDelay(proposal.newExecutionDelay);
+        if (proposal.action == Action.SetPostQuorumVotingPeriod) {
+            _governanceSetPostQuorumVotingPeriod(proposal.newPostQuorumVotingPeriod);
             return hex"";
         }
         if (proposal.action == Action.SetBurnAddress) {
@@ -724,10 +724,10 @@ contract TemplGovernanceModule is TemplBase {
         _setQuorumBps(newQuorumBps);
     }
 
-    /// @notice Governance wrapper that updates post-quorum execution delay.
-    /// @param newDelay New delay in seconds.
-    function _governanceSetExecutionDelay(uint256 newDelay) internal {
-        _setExecutionDelayAfterQuorum(newDelay);
+    /// @notice Governance wrapper that updates the post‑quorum voting period.
+    /// @param newPeriod New period in seconds.
+    function _governanceSetPostQuorumVotingPeriod(uint256 newPeriod) internal {
+        _setPostQuorumVotingPeriod(newPeriod);
     }
 
     /// @notice Governance wrapper that updates the burn sink address.
@@ -815,7 +815,7 @@ contract TemplGovernanceModule is TemplBase {
                 return false;
             }
         }
-        if (block.timestamp < proposal.quorumReachedAt + executionDelayAfterQuorum) {
+        if (block.timestamp < proposal.quorumReachedAt + postQuorumVotingPeriod) {
             return false;
         }
         return proposal.yesVotes > proposal.noVotes;
@@ -1009,7 +1009,7 @@ contract TemplGovernanceModule is TemplBase {
             proposal.quorumSnapshotBlock = block.number;
             proposal.postQuorumEligibleVoters = proposal.eligibleVoters;
             proposal.quorumJoinSequence = proposal.preQuorumJoinSequence;
-            proposal.endTime = block.timestamp + executionDelayAfterQuorum;
+            proposal.endTime = block.timestamp + postQuorumVotingPeriod;
         }
         _addActiveProposal(proposalId);
         hasActiveProposal[msg.sender] = true;

@@ -46,7 +46,7 @@ describe("TEMPL.getRegisteredSelectors()", function () {
       "setEntryFeeCurveDAO",
       "cleanupExternalRewardToken",
       "setQuorumBpsDAO",
-      "setExecutionDelayAfterQuorumDAO",
+      "setPostQuorumVotingPeriodDAO",
       "setBurnAddressDAO",
       "batchDAO",
       "setPreQuorumVotingPeriodDAO",
@@ -76,7 +76,7 @@ describe("TEMPL.getRegisteredSelectors()", function () {
       "getProposalJoinSequences",
       "createProposalCleanupExternalRewardToken",
       "createProposalSetQuorumBps",
-      "createProposalSetExecutionDelay",
+      "createProposalSetPostQuorumVotingPeriod",
       "createProposalSetBurnAddress",
     ].map(sel);
 

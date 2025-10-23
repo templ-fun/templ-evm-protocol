@@ -49,7 +49,7 @@ describe("getProposal passed status coverage", function () {
       .createProposalSetJoinPaused(false, VOTING_PERIOD);
     await templ.connect(m2).vote(0, true);
 
-    const delay = Number(await templ.executionDelayAfterQuorum());
+  const delay = Number(await templ.postQuorumVotingPeriod());
     await ethers.provider.send("evm_increaseTime", [delay + 1]);
     await ethers.provider.send("evm_mine", []);
 

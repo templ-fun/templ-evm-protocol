@@ -128,10 +128,10 @@ contract TemplTreasuryModule is TemplBase {
         _setQuorumBps(newQuorumBps);
     }
 
-    /// @notice Governance action that updates the post-quorum execution delay in seconds.
-    /// @param newDelay Seconds to wait after quorum before execution.
-    function setExecutionDelayAfterQuorumDAO(uint256 newDelay) external onlyDAO onlyDelegatecall {
-        _setExecutionDelayAfterQuorum(newDelay);
+    /// @notice Governance action that updates the post‑quorum voting period in seconds.
+    /// @param newPeriod Seconds to wait after quorum before execution.
+    function setPostQuorumVotingPeriodDAO(uint256 newPeriod) external onlyDAO onlyDelegatecall {
+        _setPostQuorumVotingPeriod(newPeriod);
     }
 
     /// @notice Governance action that updates the burn sink address.

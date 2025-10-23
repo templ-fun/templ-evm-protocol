@@ -79,7 +79,7 @@ describe("executeProposal reverts", function () {
     await highQuorumTempl.connect(members[3]).vote(0, true);
     await highQuorumTempl.connect(members[4]).vote(0, true);
 
-    const delay = Number(await highQuorumTempl.executionDelayAfterQuorum());
+  const delay = Number(await highQuorumTempl.postQuorumVotingPeriod());
 
     await highQuorumTempl.connect(members[3]).vote(0, false);
     await highQuorumTempl.connect(members[2]).vote(0, false);
@@ -129,7 +129,7 @@ describe("executeProposal reverts", function () {
       .createProposalSetJoinPaused(true, 7 * 24 * 60 * 60, 'Pause harness', 'Testing invalid call data');
     await harness.setUndefinedAction(0);
 
-    const delay = Number(await harness.executionDelayAfterQuorum());
+  const delay = Number(await harness.postQuorumVotingPeriod());
     await ethers.provider.send("evm_increaseTime", [delay + 1]);
     await ethers.provider.send("evm_mine", []);
 

@@ -66,7 +66,7 @@ describe('Anchored execution delay after quorum', function () {
     await templ.connect(memberB).join();
 
     const iface = templ.interface;
-    const func = iface.getFunction('setExecutionDelayAfterQuorumDAO');
+    const func = iface.getFunction('setPostQuorumVotingPeriodDAO');
     const selector = func.selector;
     const params = ethers.AbiCoder.defaultAbiCoder().encode(['uint256'], [100_000]);
     await templ

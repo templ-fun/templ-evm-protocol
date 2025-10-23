@@ -26,9 +26,9 @@ describe("Governance adjustable params (quorum, delay, burn)", function () {
     expect(await templ.quorumBps()).to.equal(4000n);
 
     // Delay
-    await expect(templ.connect(priest).setExecutionDelayAfterQuorumDAO(3 * 24 * 60 * 60))
-      .to.emit(templ, "ExecutionDelayAfterQuorumUpdated");
-    expect(await templ.executionDelayAfterQuorum()).to.equal(3n * 24n * 60n * 60n);
+    await expect(templ.connect(priest).setPostQuorumVotingPeriodDAO(3 * 24 * 60 * 60))
+      .to.emit(templ, "PostQuorumVotingPeriodUpdated");
+    expect(await templ.postQuorumVotingPeriod()).to.equal(3n * 24n * 60n * 60n);
 
     // Burn address
     const newBurn = "0x0000000000000000000000000000000000000001";
@@ -59,7 +59,7 @@ describe("Governance adjustable params (quorum, delay, burn)", function () {
     expect(await templ.quorumBps()).to.equal(4500n);
 
     // Set delay proposal
-    await templ.connect(member1).createProposalSetExecutionDelay(2 * 24 * 60 * 60, 7 * 24 * 60 * 60, "Set delay", "");
+    await templ.connect(member1).createProposalSetPostQuorumVotingPeriod(2 * 24 * 60 * 60, 7 * 24 * 60 * 60, "Set delay", "");
     let id2 = (await templ.proposalCount()) - 1n;
     const [, delayPayload] = await templ.getProposalActionData(id2);
     const decodedDelay = ethers.AbiCoder.defaultAbiCoder().decode(["uint256"], delayPayload)[0];
@@ -68,7 +68,7 @@ describe("Governance adjustable params (quorum, delay, burn)", function () {
     await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
     await ethers.provider.send("evm_mine");
     await templ.executeProposal(id2);
-    expect(await templ.executionDelayAfterQuorum()).to.equal(2n * 24n * 60n * 60n);
+    expect(await templ.postQuorumVotingPeriod()).to.equal(2n * 24n * 60n * 60n);
 
     // Set burn address proposal
     const newBurn = "0x0000000000000000000000000000000000000010";

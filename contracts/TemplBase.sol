@@ -20,7 +20,7 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @dev Default quorum threshold (basis points) applied when callers pass zero into constructors.
     uint256 internal constant DEFAULT_QUORUM_BPS = TemplDefaults.DEFAULT_QUORUM_BPS;
     /// @dev Default post-quorum execution delay used when deployers do not override it.
-    uint256 internal constant DEFAULT_EXECUTION_DELAY = TemplDefaults.DEFAULT_EXECUTION_DELAY;
+    uint256 internal constant DEFAULT_POST_QUORUM_VOTING_PERIOD = TemplDefaults.DEFAULT_EXECUTION_DELAY;
     /// @dev Default burn address used when deployers do not provide a custom sink.
     address internal constant DEFAULT_BURN_ADDRESS = TemplDefaults.DEFAULT_BURN_ADDRESS;
     /// @dev Caps the number of external reward tokens tracked to keep join gas bounded.
@@ -63,7 +63,7 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @notice YES vote threshold required to satisfy quorum (basis points).
     uint256 public quorumBps;
     /// @notice Seconds governance must wait after quorum before executing a proposal.
-    uint256 public executionDelayAfterQuorum;
+    uint256 public postQuorumVotingPeriod;
     /// @notice Address that receives burn allocations.
     address public burnAddress;
     /// @notice Templ metadata surfaced across UIs and off-chain services.
@@ -158,8 +158,8 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 newMaxMembers;
         /// @notice Quorum threshold proposed (bps). Accepts 0-100 or 0-10_000 format.
         uint256 newQuorumBps;
-        /// @notice Execution delay proposed (seconds) after quorum is reached.
-        uint256 newExecutionDelay;
+        /// @notice Post‑quorum voting period proposed (seconds) after quorum is reached.
+        uint256 newPostQuorumVotingPeriod;
         /// @notice Burn address proposed to receive burn allocations.
         address newBurnAddress;
         /// @notice Target contract invoked when executing an external call proposal.
@@ -240,7 +240,7 @@ abstract contract TemplBase is ReentrancyGuard {
         SetEntryFeeCurve,
         CleanupExternalRewardToken,
         SetQuorumBps,
-        SetExecutionDelay,
+        SetPostQuorumVotingPeriod,
         SetBurnAddress,
         Undefined
     }
@@ -384,10 +384,10 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param previousBps Previous quorum threshold (bps).
     /// @param newBps New quorum threshold (bps).
     event QuorumBpsUpdated(uint256 indexed previousBps, uint256 indexed newBps);
-    /// @notice Emitted when the post-quorum execution delay is updated via governance.
-    /// @param previousDelay Previous delay (seconds).
-    /// @param newDelay New delay (seconds).
-    event ExecutionDelayAfterQuorumUpdated(uint256 indexed previousDelay, uint256 indexed newDelay);
+    /// @notice Emitted when the post‑quorum voting period is updated via governance.
+    /// @param previousPeriod Previous period (seconds).
+    /// @param newPeriod New period (seconds).
+    event PostQuorumVotingPeriodUpdated(uint256 indexed previousPeriod, uint256 indexed newPeriod);
     /// @notice Emitted when the burn address is updated via governance.
     /// @param previousBurn Previous burn sink address.
     /// @param newBurn New burn sink address.
@@ -617,7 +617,7 @@ abstract contract TemplBase is ReentrancyGuard {
             quorumBps = normalizedQuorum;
         }
 
-        executionDelayAfterQuorum = _executionDelay == 0 ? DEFAULT_EXECUTION_DELAY : _executionDelay;
+        postQuorumVotingPeriod = _executionDelay == 0 ? DEFAULT_POST_QUORUM_VOTING_PERIOD : _executionDelay;
         burnAddress = _burnAddress == address(0) ? DEFAULT_BURN_ADDRESS : _burnAddress;
         _setTemplMetadata(_name, _description, _logoLink);
         _setProposalCreationFee(_proposalCreationFeeBps);
@@ -1107,12 +1107,12 @@ abstract contract TemplBase is ReentrancyGuard {
         emit QuorumBpsUpdated(previous, normalized);
     }
 
-    /// @notice Updates the post-quorum execution delay in seconds.
-    /// @param newDelay New delay (seconds) applied after quorum before execution.
-    function _setExecutionDelayAfterQuorum(uint256 newDelay) internal {
-        uint256 previous = executionDelayAfterQuorum;
-        executionDelayAfterQuorum = newDelay;
-        emit ExecutionDelayAfterQuorumUpdated(previous, newDelay);
+    /// @notice Updates the post‑quorum voting period in seconds.
+    /// @param newPeriod New period (seconds) applied after quorum before execution.
+    function _setPostQuorumVotingPeriod(uint256 newPeriod) internal {
+        uint256 previous = postQuorumVotingPeriod;
+        postQuorumVotingPeriod = newPeriod;
+        emit PostQuorumVotingPeriodUpdated(previous, newPeriod);
     }
 
     /// @notice Updates the burn sink address.

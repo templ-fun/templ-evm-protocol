@@ -49,7 +49,7 @@ describe("TEMPL selector → module introspection", function () {
     // Treasury DAO setters
     for (const fn of [
       "setQuorumBpsDAO",
-      "setExecutionDelayAfterQuorumDAO",
+      "setPostQuorumVotingPeriodDAO",
       "setBurnAddressDAO",
     ]) {
       expect(await templ.getModuleForSelector(sel(fn))).to.equal(treasury);
@@ -58,7 +58,7 @@ describe("TEMPL selector → module introspection", function () {
     // Governance proposal creators
     for (const fn of [
       "createProposalSetQuorumBps",
-      "createProposalSetExecutionDelay",
+      "createProposalSetPostQuorumVotingPeriod",
       "createProposalSetBurnAddress",
     ]) {
       expect(await templ.getModuleForSelector(sel(fn))).to.equal(governance);

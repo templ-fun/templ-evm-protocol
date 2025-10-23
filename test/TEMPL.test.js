@@ -84,7 +84,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             expect(await templDirect.memberPoolBps()).to.equal(2_000n);
             expect(await templDirect.protocolBps()).to.equal(1_000n);
             expect(await templDirect.quorumBps()).to.equal(3_500n);
-            expect(await templDirect.executionDelayAfterQuorum()).to.equal(12_345);
+            expect(await templDirect.postQuorumVotingPeriod()).to.equal(12_345);
             expect(await templDirect.burnAddress()).to.equal(customBurnAddress.toLowerCase());
         });
 
@@ -213,7 +213,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             templZero = await attachTemplInterface(templZero);
 
             expect(await templZero.quorumBps()).to.equal(QUORUM_BPS);
-            expect(await templZero.executionDelayAfterQuorum()).to.equal(36 * 60 * 60);
+            expect(await templZero.postQuorumVotingPeriod()).to.equal(36 * 60 * 60);
             expect(await templZero.burnAddress()).to.equal("0x000000000000000000000000000000000000dEaD");
         });
 
