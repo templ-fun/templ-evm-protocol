@@ -21,6 +21,12 @@ Allowances and approvals
 - External reward claims: no approvals are required; the templ transfers out ERC‑20s and sends ETH directly.
 - Donations: no approvals are needed. Donors send ETH directly to the templ address, or call token `transfer(templ.target, amount)`.
 
+Deposit address and custody
+- Deposit address: Always use the templ (router) address (`templ.target`) for deposits. There is no separate treasury address on-chain; “treasury” is an internal accounting bucket within the templ contract.
+- ETH: Send ETH directly to `templ.target` (receive() accepts ETH). Later governance can withdraw or disband it.
+- ERC‑20: Transfer tokens to `templ.target` (no prior approval needed by the recipient). Later governance can withdraw or disband them.
+- NFTs (ERC‑721): The templ can custody NFTs, but it does not implement `IERC721Receiver`. `safeTransferFrom(..., templ.target, ...)` will revert. Use `transferFrom` to the templ, or have governance “pull” via `transferFrom(owner, templ.target, tokenId)` after the owner grants approval. Move NFTs later via external‑call proposals (e.g., `createProposalCallExternal` calling the NFT’s `safeTransferFrom`).
+
 Allowance checklist (TL;DR)
 - join / joinWithReferral / joinFor / joinForWithReferral → approve access token to `templ.target` (payer = `msg.sender`).
 - createProposal* (if fee > 0) → approve access token to `templ.target` for `proposalFee`.
