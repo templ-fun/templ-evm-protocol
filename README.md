@@ -330,6 +330,9 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
 - Defaults via [`TemplDefaults`](contracts/TemplDefaults.sol): quorum bps, post‑quorum voting period, burn address.
 - `MAX_EXTERNAL_REWARD_TOKENS = 256` (UI enumeration bound).
 - `MAX_ENTRY_FEE = type(uint128).max` (entry fee safety guard).
+- `MAX_CURVE_SEGMENTS = 8` (primary + additional; prevents curve OOG griefing).
+- Proposal metadata caps: title ≤256 bytes; description ≤2048 bytes.
+- Templ metadata caps: name ≤256 bytes; description ≤2048 bytes; logo URI ≤2048 bytes.
 - Pre‑quorum voting window: default 36 hours (min 36h, max 30 days); view `preQuorumVotingPeriod`; adjust via `setPreQuorumVotingPeriodDAO`.
 - Factory defaults (when not explicitly provided):
   - Fee split: burn 3_000 bps, treasury 3_000 bps, member pool 3_000 bps (plus protocol bps from factory).
@@ -387,6 +390,8 @@ Proof points in tests:
 - High‑load stress: `npm run test:load` with `TEMPL_LOAD=...` to scale joiners.
   - Optional: `TEMPL_LOAD_PROPOSALS=...` caps concurrent proposals in the load suite (default scales with members).
   - Optional: `TEMPL_LOAD_TOKENS=...` fans out distinct external reward tokens to disband/claim under load (default 12).
+  - End‑to‑end readiness: see `test/UltimateProdReadiness.test.js` for a full happy‑path across all core TEMPL APIs (membership, governance creation/voting/execution, and direct DAO actions under dictatorship), including external call proposals and external reward distribution/cleanup.
+  - Exercises all core pathways under saturation: joins (join/joinFor/joinWithReferral/joinForWithReferral), proposal fee collection, DAO setters (pre/post‑quorum windows, quorum, burn address, fee split, entry‑fee base + curve, max members, join pause, dictatorship toggle), external calls (single + batched via `batchDAO`, with and without ETH), treasury withdrawals (ETH + ERC‑20), treasury disband to member/external pools, reward claims + pagination, active proposal pagination + pruning, and core views (`getConfig`, `getTreasuryInfo`, `getJoinDetails`, `getVoteWeight`).
 - Coverage: `npm run coverage`. Static: `npm run slither`.
 - Property fuzzing: `npm run test:fuzz` (via Docker) using `echidna.yaml` and `contracts/echidna/EchidnaTemplHarness.sol`.
 
@@ -399,6 +404,7 @@ Learn by topic (a non‑exhaustive map):
 - Indexing helpers: `test/ActiveProposalsIndex.test.js`, `test/ProposalPagination.test.js`, `test/GetProposalStatus.test.js`
 - Defenses/guards: `test/Reentrancy.test.js`, `test/ProposalFeeReentrancy.test.js`, `test/DirectModuleCallGuard.test.js`
 - Selectors/ABI surface: `test/TEMPLRegisteredSelectors.test.js`, `test/TEMPLSelectors.test.js`
+- Stress/oversized inputs (expected fail): `test/OversizedInputsExplode.test.js`
 
 CI runs on PRs when source, tests, scripts, or docs change (contracts, tests, scripts, docs, and key configs), keeping checks focused on relevant changes.
 

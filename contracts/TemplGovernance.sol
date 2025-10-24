@@ -955,6 +955,8 @@ contract TemplGovernanceModule is TemplBase {
         string memory _description
     ) internal returns (uint256 proposalId, Proposal storage proposal) {
         _requireDelegatecall();
+        if (bytes(_title).length > MAX_PROPOSAL_TITLE_LENGTH) revert TemplErrors.InvalidCallData();
+        if (bytes(_description).length > MAX_PROPOSAL_DESCRIPTION_LENGTH) revert TemplErrors.InvalidCallData();
         if (!members[msg.sender].joined) revert TemplErrors.NotMember();
         if (hasActiveProposal[msg.sender]) {
             uint256 existingId = activeProposalId[msg.sender];

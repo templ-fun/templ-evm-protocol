@@ -109,8 +109,8 @@ async function deployTemplContracts({
   await templ.waitForDeployment();
   templ = await attachTemplInterface(templ);
   try {
-    const { attachCreateProposalCompat, attachProposalMetadataShim } = require("./proposal");
-    attachCreateProposalCompat(templ);
+    const { attachCreateProposal, attachProposalMetadataShim } = require("./proposal");
+    attachCreateProposal(templ);
     attachProposalMetadataShim(templ);
   } catch {}
 

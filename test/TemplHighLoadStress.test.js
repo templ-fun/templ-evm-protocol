@@ -203,6 +203,34 @@ describe("@load Templ High-Load Stress", function () {
       expect(entryFee).to.be.lte(MAX_ENTRY_FEE);
     });
 
+    it("exposes core views under load (config/treasury/join details/vote weight)", async function () {
+      const { templ, token, accessibleMembers, protocolFeeRecipient } = context;
+      const tokenAddress = await token.getAddress();
+
+      // getConfig
+      const cfg = await templ.getConfig();
+      expect(cfg[0]).to.equal(tokenAddress);
+      expect(cfg[1]).to.be.gt(0n);
+      expect(cfg[3]).to.equal(await templ.totalJoins());
+
+      // getTreasuryInfo mirrors tracked treasury and protocol recipient
+      const t = await templ.getTreasuryInfo();
+      expect(t[2]).to.equal(protocolFeeRecipient.address);
+      expect(t[0]).to.equal(await templ.treasuryBalance());
+
+      // getJoinDetails for an accessible member
+      const details = await templ.getJoinDetails(accessibleMembers[0].address);
+      expect(details[0]).to.equal(true);
+      expect(details[1]).to.be.gt(0n);
+      expect(details[2]).to.be.gt(0n);
+
+      // getVoteWeight: 1 for member, 0 for non-member
+      const weightMember = await templ.getVoteWeight(accessibleMembers[0].address);
+      expect(weightMember).to.equal(1n);
+      const outsider = ethers.Wallet.createRandom().connect(ethers.provider);
+      expect(await templ.getVoteWeight(outsider.address)).to.equal(0n);
+    });
+
     it("supports core governance actions (withdraw, execute, disband, claim)", async function () {
       const { templ, token, priest, accessibleMembers, randomWallets } = context;
       const tokenAddress = await token.getAddress();
@@ -440,6 +468,35 @@ describe("@load Templ High-Load Stress", function () {
       expect(ethBefore - ethAfter).to.be.gte(ethers.parseEther("1"));
     });
 
+    it("updates pre-quorum default via router callExternal and applies to defaulted proposals", async function () {
+      const { templ, accessibleMembers, token } = context;
+      // Propose: templ.batch call to setPreQuorumVotingPeriodDAO via CallExternal to router
+      const sel = templ.interface.getFunction("setPreQuorumVotingPeriodDAO").selector;
+      const newDefault = 48 * 60 * 60; // 48h within allowed range
+      const params = ethers.AbiCoder.defaultAbiCoder().encode(["uint256"], [newDefault]);
+
+      await ensureProposalFee(templ, token, accessibleMembers[0], context);
+      await templ
+        .connect(accessibleMembers[0])
+        .createProposalCallExternal(await templ.getAddress(), 0, sel, params, 0, "PreQuorum", "");
+      const id = (await templ.proposalCount()) - 1n;
+      await templ.connect(accessibleMembers[1]).vote(id, true);
+      await ensureQuorum(templ, id);
+      await ethers.provider.send("evm_increaseTime", [2]);
+      await ethers.provider.send("evm_mine");
+      await templ.executeProposal(id);
+      expect(await templ.preQuorumVotingPeriod()).to.equal(BigInt(newDefault));
+
+      // Next proposal with _votingPeriod=0 should pick up the new default window
+      await ensureProposalFee(templ, token, accessibleMembers[0], context);
+      await templ.connect(accessibleMembers[0]).createProposalUpdateMetadata("PQ", "", "", 0, "pq", "");
+      const id2 = (await templ.proposalCount()) - 1n;
+      const prop = await templ.getProposal(id2);
+      const snaps = await templ.getProposalSnapshots(id2);
+      const actual = BigInt(prop[3]) - BigInt(snaps[4]); // endTime - createdAt
+      expect(actual).to.equal(BigInt(newDefault));
+    });
+
     it("updates fee split and entry fee curve; handles member cap toggles", async function () {
       const { templ, accessibleMembers, token } = context;
 
@@ -502,6 +559,30 @@ describe("@load Templ High-Load Stress", function () {
       await ethers.provider.send("evm_mine");
       await templ.executeProposal(id);
       expect(await templ.maxMembers()).to.equal(0n);
+    });
+
+    it("joins for another wallet with referral under load", async function () {
+      const { templ, token, priest, accessibleMembers } = context;
+      // Ensure referral share is on
+      const share = await templ.referralShareBps();
+      if (share === 0n) {
+        await ensureProposalFee(templ, token, accessibleMembers[0], context);
+        await templ.connect(accessibleMembers[0]).createProposalSetReferralShareBps(500, 0, "RefOn", "");
+        const id = (await templ.proposalCount()) - 1n;
+        await templ.connect(accessibleMembers[1]).vote(id, true);
+        await ensureQuorum(templ, id);
+        await ethers.provider.send("evm_increaseTime", [2]);
+        await ethers.provider.send("evm_mine");
+        await templ.executeProposal(id);
+      }
+
+      const newcomer = ethers.Wallet.createRandom().connect(ethers.provider);
+      const entry = await templ.entryFee();
+      const before = await token.balanceOf(accessibleMembers[0].address);
+      await templ.connect(priest).joinForWithReferral(newcomer.address, accessibleMembers[0].address);
+      expect(await templ.isMember(newcomer.address)).to.equal(true);
+      const after = await token.balanceOf(accessibleMembers[0].address);
+      expect(after).to.be.gt(before);
     });
 
     it("explicitly pauses and resumes joins via governance under load", async function () {
@@ -902,6 +983,74 @@ describe("@load Templ High-Load Stress", function () {
 
       const activeAll = await templ.getActiveProposals();
       expect(activeAll.length).to.be.gte(created.length);
+    });
+
+    it("executes a batched external call (approve + stake) via router batchDAO under load", async function () {
+      const { templ, token, accessibleMembers } = context;
+
+      // Deploy a staking target
+      const Staking = await ethers.getContractFactory("contracts/mocks/MockStaking.sol:MockStaking");
+      const staking = await Staking.deploy();
+      await staking.waitForDeployment();
+
+      const amount = (await templ.entryFee());
+      const tokenAddr = await token.getAddress();
+      const templAddr = await templ.getAddress();
+      const stakingAddr = await staking.getAddress();
+
+      // Build batched calls: approve(spender, amount), stake(token, amount)
+      const approveSel = token.interface.getFunction("approve").selector;
+      const approveParams = ethers.AbiCoder.defaultAbiCoder().encode(["address","uint256"], [stakingAddr, amount]);
+      const stakeSel = staking.interface.getFunction("stake").selector;
+      const stakeParams = ethers.AbiCoder.defaultAbiCoder().encode(["address","uint256"], [tokenAddr, amount]);
+
+      const targets = [tokenAddr, stakingAddr];
+      const values = [0n, 0n];
+      const datas = [ethers.concat([approveSel, approveParams]), ethers.concat([stakeSel, stakeParams])];
+      const execSel = templ.interface.getFunction("batchDAO").selector;
+      const execParams = ethers.AbiCoder.defaultAbiCoder().encode(["address[]","uint256[]","bytes[]"], [targets, values, datas]);
+
+      await ensureProposalFee(templ, token, accessibleMembers[0], context);
+      await templ
+        .connect(accessibleMembers[0])
+        .createProposalCallExternal(templAddr, 0, execSel, execParams, 0, "BatchApproveStake", "");
+      const id = (await templ.proposalCount()) - 1n;
+      await templ.connect(accessibleMembers[1]).vote(id, true);
+      await ensureQuorum(templ, id);
+      await ethers.provider.send("evm_increaseTime", [2]);
+      await ethers.provider.send("evm_mine");
+
+      const balBefore = await token.balanceOf(templAddr);
+      const stakedBefore = await staking.staked(templAddr);
+      await templ.executeProposal(id);
+      const balAfter = await token.balanceOf(templAddr);
+      const stakedAfter = await staking.staked(templAddr);
+      expect(stakedAfter - stakedBefore).to.equal(amount);
+      expect(balBefore - balAfter).to.equal(amount);
+    });
+
+    it("updates entry fee base and split together via governance under load", async function () {
+      const { templ, token, accessibleMembers } = context;
+      const currentFee = await templ.entryFee();
+      const delta = 10n;
+      const newFee = currentFee + delta <= MAX_ENTRY_FEE ? currentFee + delta : currentFee; // keep divisibility by 10
+      const newBurn = 3_300, newTreasury = 3_500, newMember = 2_200; // totals 9000 (with protocol 1000)
+
+      await ensureProposalFee(templ, token, accessibleMembers[0], context);
+      await templ
+        .connect(accessibleMembers[0])
+        .createProposalUpdateConfig(newFee, newBurn, newTreasury, newMember, true, 0, "CfgBoth", "");
+      const id = (await templ.proposalCount()) - 1n;
+      await templ.connect(accessibleMembers[1]).vote(id, true);
+      await ensureQuorum(templ, id);
+      await ethers.provider.send("evm_increaseTime", [2]);
+      await ethers.provider.send("evm_mine");
+      await templ.executeProposal(id);
+
+      expect(await templ.entryFee()).to.equal(newFee);
+      expect(await templ.burnBps()).to.equal(BigInt(newBurn));
+      expect(await templ.treasuryBps()).to.equal(BigInt(newTreasury));
+      expect(await templ.memberPoolBps()).to.equal(BigInt(newMember));
     });
 
     it("disbands many distinct external tokens and enumerates claims under dictatorship", async function () {

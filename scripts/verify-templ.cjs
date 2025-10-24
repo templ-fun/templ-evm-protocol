@@ -263,53 +263,23 @@ async function fetchEventSnapshot({ provider, factoryAddress, templAddress, from
         const parsed = variant.iface.parseLog(log);
         const args = parsed?.args;
         if (!args) continue;
-        const stylesArray = mapNumberArray(args.curveStyles ?? []);
-        const ratesArray = mapNumberArray(args.curveRateBps ?? []);
-        const lengthsArray = mapNumberArray(args.curveLengths ?? []);
-        const legacyPrimaryStyle = toNumberLike(
-          args.curveStyle ??
-          args.curvePrimaryStyle ??
-          (Array.isArray(args.curve) ? args.curve[0] : undefined)
-        );
-        const legacyPrimaryRate = toNumberLike(
-          args.curveRateBps ??
-          args.curvePrimaryRateBps ??
-          (Array.isArray(args.curve) ? args.curve[1] : undefined)
-        );
-        const legacySecondaryStyle = toNumberLike(args.curveSecondaryStyle);
-        const legacySecondaryRate = toNumberLike(args.curveSecondaryRateBps);
-        const legacyPivotLength = toNumberLike(args.curvePivotPercentOfMax);
-
-        let curveStyles = stylesArray;
-        let curveRates = ratesArray;
-        let curveLengths = lengthsArray;
-        if (curveStyles.length === 0 && legacyPrimaryStyle !== undefined) {
-          curveStyles = [legacyPrimaryStyle];
-          curveRates = [legacyPrimaryRate ?? 0];
-          if (legacySecondaryStyle !== undefined) {
-            curveStyles.push(legacySecondaryStyle);
-            curveRates.push(legacySecondaryRate ?? 0);
-          }
-          if (legacyPivotLength !== undefined) {
-            curveLengths = [legacyPivotLength, 0];
-          } else {
-            curveLengths = new Array(curveStyles.length).fill(0);
-          }
-        } else {
-          if (curveRates.length < curveStyles.length) {
-            const padded = new Array(curveStyles.length).fill(0);
-            for (let i = 0; i < curveRates.length; i++) {
-              padded[i] = curveRates[i];
-            }
-            curveRates = padded;
-          }
-          if (curveLengths.length < curveStyles.length) {
-            const padded = new Array(curveStyles.length).fill(0);
-            for (let i = 0; i < curveLengths.length; i++) {
-              padded[i] = curveLengths[i];
-            }
-            curveLengths = padded;
-          }
+        const curveStyles = mapNumberArray(args.curveStyles ?? []);
+        const curveRatesRaw = mapNumberArray(args.curveRateBps ?? []);
+        const curveLengthsRaw = mapNumberArray(args.curveLengths ?? []);
+        if (curveStyles.length === 0) {
+          throw new Error('Factory logs did not include curveStyles; expected current TemplCreated signature');
+        }
+        let curveRates = curveRatesRaw;
+        let curveLengths = curveLengthsRaw;
+        if (curveRates.length < curveStyles.length) {
+          const padded = new Array(curveStyles.length).fill(0);
+          for (let i = 0; i < curveRates.length; i++) padded[i] = curveRates[i];
+          curveRates = padded;
+        }
+        if (curveLengths.length < curveStyles.length) {
+          const padded = new Array(curveStyles.length).fill(0);
+          for (let i = 0; i < curveLengths.length; i++) padded[i] = curveLengths[i];
+          curveLengths = padded;
         }
 
         return {
@@ -605,21 +575,14 @@ async function main() {
     const styles = eventSnapshot.curveStyles || [];
     const rates = eventSnapshot.curveRates || [];
     const lengths = eventSnapshot.curveLengths || [];
-    if (styles.length > 0) {
-      const segments = styles.map((style, index) => ({
-        style,
-        rateBps: rates[index] ?? 0,
-        length: lengths[index] ?? 0
-      }));
-      const [primary, ...rest] = segments;
-      normalizedCurve = { primary, additionalSegments: rest };
-    } else {
-      const legacyStyle = toNumberLike(eventSnapshot.curveStyle);
-      const legacyRate = toNumberLike(eventSnapshot.curveRateBps);
-      if (legacyStyle !== undefined && legacyRate !== undefined) {
-        normalizedCurve = { primary: { style: legacyStyle, rateBps: legacyRate, length: 0 }, additionalSegments: [] };
-      }
-    }
+    if (styles.length === 0) throw new Error('Factory logs missing curve arrays');
+    const segments = styles.map((style, index) => ({
+      style,
+      rateBps: rates[index] ?? 0,
+      length: lengths[index] ?? 0
+    }));
+    const [primary, ...rest] = segments;
+    normalizedCurve = { primary, additionalSegments: rest };
   }
   if (!normalizedCurve) {
     throw new Error('Unable to determine curve configuration; provide deployment details or update verify script overrides.');

@@ -13,3 +13,5 @@ HOW TO ACHIEVE SUCCESS AS AN LLM WORKING IN TEMPL CODEBASE
 6) if you are going to run commands read package.json to make sure you run the correct scripts if they exist before invoking external npx calls for things we already have
 
 7) protocol security is #1 priority, whenever developing anything always think in extremely adversarial use-cases of that feature, templs should never be open to griefing outside its own governance rules, if any change may create a security hole stop and be explicit about it so we can think together
+
+8) Solidity style: never leave inline `//` or `/* */` comments in contract code. Use NatSpec (`///` and `/** ... */`) for all documentation. Remove stray inline comments during reviews/patches.
