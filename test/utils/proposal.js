@@ -6,7 +6,6 @@ const IF_UC = new ethers.Interface([
   "function updateConfigDAO(uint256,bool,uint256,uint256,uint256)"
 ]);
 const IF_DISBAND = new ethers.Interface(["function disbandTreasuryDAO(address)"]);
-const IF_DISBAND_LEGACY = new ethers.Interface(["function disbandTreasuryDAO()"]);
 const IF_SET_METADATA = new ethers.Interface(["function setTemplMetadataDAO(string,string,string)"]);
 const IF_SET_PROPOSAL_FEE = new ethers.Interface(["function setProposalCreationFeeBpsDAO(uint256)"]);
 const IF_SET_REFERRAL_SHARE = new ethers.Interface(["function setReferralShareBpsDAO(uint256)"]);
@@ -53,12 +52,6 @@ async function createProposal({ templ, signer, title, description: proposalDescr
     return await tx.wait();
   } catch {}
   try {
-    IF_DISBAND_LEGACY.decodeFunctionData("disbandTreasuryDAO", callData);
-    const accessToken = await templ.accessToken();
-    const tx = await conn.createProposalDisbandTreasury(accessToken, votingPeriod, title, proposalDescription);
-    return await tx.wait();
-  } catch {}
-  try {
     const [name, metadataDescription, logoLink] = IF_SET_METADATA.decodeFunctionData(
       "setTemplMetadataDAO",
       callData
@@ -92,7 +85,7 @@ async function createProposal({ templ, signer, title, description: proposalDescr
 }
 
 module.exports = { createProposal };
-module.exports.attachCreateProposalCompat = function(templ) {
+module.exports.attachCreateProposal = function(templ) {
   const origConnect = templ.connect.bind(templ);
   templ.connect = (signer) => {
     const instance = origConnect(signer);
