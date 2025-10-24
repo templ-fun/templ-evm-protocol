@@ -5,8 +5,6 @@ on:
     paths:
       - 'contracts/**'
       - 'test/**'
-      - 'scripts/**'
-      - 'docs/**'
       - 'package.json'
       - 'package-lock.json'
       - 'npm-shrinkwrap.json'
@@ -17,8 +15,6 @@ on:
     paths:
       - 'contracts/**'
       - 'test/**'
-      - 'scripts/**'
-      - 'docs/**'
       - 'package.json'
       - 'package-lock.json'
       - 'npm-shrinkwrap.json'
