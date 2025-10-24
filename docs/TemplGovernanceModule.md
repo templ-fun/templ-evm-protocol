@@ -149,7 +149,9 @@ ice Executes a passed proposal after quorum (or voting) requirements are satisfi
 
 
 For quorum‑gated proposals, the `endTime` captured at quorum anchors the post‑quorum voting window
-     to prevent mid‑flight changes from affecting execution timing.
+     to prevent mid‑flight changes from affecting execution timing. After execution, the
+     active proposals index opportunistically prunes up to `EXECUTION_TAIL_PRUNE` inactive
+     entries from its tail to keep the set compact.
     function
 
 ### `_executeActionInternal(uint256 _proposalId) → bytes returnData` (internal)

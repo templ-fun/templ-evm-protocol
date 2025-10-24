@@ -51,6 +51,17 @@ Default burn/treasury/member shares assume a factory protocol share of 1,000 bps
 
 
 
+### `safeDeployFor(address _priest, address _token, uint256 _entryFee, string _name, string _description, string _logoLink, uint256 _proposalFeeBps, uint256 _referralShareBps) → address templAddress` (external)
+
+/ @notice Safely deploys a templ by first probing the access token for vanilla ERC-20 semantics.
+
+
+Requires the caller to approve this factory for `SAFE_DEPLOY_PROBE_AMOUNT` of `_token`.
+     The probe pulls tokens from the caller and returns them, asserting exact deltas both ways.
+     Any fee-on-transfer, rebasing, or hook-based deviation from exact transfer semantics
+     causes the deploy to revert with NonVanillaToken.
+
+
 ### `createTemplWithConfig(struct TemplFactory.CreateConfig config) → address templAddress` (external)
 
 / @notice Deploys a templ using a custom configuration struct.
@@ -83,6 +94,15 @@ Default burn/treasury/member shares assume a factory protocol share of 1,000 bps
 
 / @notice Ensures templ creation calls respect the permissionless flag.
 
+
+
+### `_probeVanillaToken(address token, address from, uint256 amount)` (internal)
+
+/ @notice Probes that `token` behaves as a vanilla ERC-20 by pulling and returning `amount`.
+
+
+Reverts if the factory doesn't receive exactly `amount` on pull or the caller
+     doesn't receive exactly `amount` back on return.
 
 
 
