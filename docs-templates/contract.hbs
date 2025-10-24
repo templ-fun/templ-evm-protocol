@@ -1,0 +1,125 @@
+## `{{name}}`
+
+{{#if natspec.title}}{{natspec.title}}{{/if}}
+{{#if natspec.notice}}
+
+{{natspec.notice}}
+{{/if}}
+{{#if natspec.details}}
+
+{{natspec.details}}
+{{/if}}
+
+{{!-- Enums --}}
+{{#if enums}}
+### Enums
+{{#each enums}}
+- `enum {{name}}`: {{#if natspec.notice}}{{natspec.notice}}{{/if}}{{#if natspec.details}} {{natspec.details}}{{/if}}
+  {{#if members}}
+  {{#each members}}
+  - `{{this}}`
+  {{/each}}
+  {{/if}}
+{{/each}}
+{{/if}}
+
+{{!-- Structs --}}
+{{#if structs}}
+### Structs
+{{#each structs}}
+- `struct {{name}}`: {{#if natspec.notice}}{{natspec.notice}}{{/if}}{{#if natspec.details}} {{natspec.details}}{{/if}}
+  {{#if members}}
+  {{#each members}}
+  - `{{type}} {{name}}`{{#if natspec.notice}} — {{natspec.notice}}{{/if}}{{#if natspec.details}} {{natspec.details}}{{/if}}
+  {{/each}}
+  {{/if}}
+{{/each}}
+{{/if}}
+
+{{!-- Variables (state + constants) --}}
+{{#if variables}}
+### Variables
+{{#each variables}}
+- `{{type}} {{name}}`{{#if visibility}} ({{visibility}}){{/if}}{{#if constant}} (constant){{/if}}{{#if immutable}} (immutable){{/if}}
+  {{#if natspec.notice}}{{natspec.notice}}{{/if}}{{#if natspec.details}} {{natspec.details}}{{/if}}
+{{/each}}
+{{/if}}
+
+{{!-- Events --}}
+{{#if events}}
+### Events
+{{#each events}}
+{{#if signature}}
+#### `{{signature}}`
+{{else}}
+#### `event {{name}}`
+{{/if}}
+{{#if natspec.notice}}{{natspec.notice}}{{/if}}{{#if natspec.details}} {{natspec.details}}{{/if}}
+{{#if params}}
+{{#each params}}
+- `{{type}} {{name}}`{{#if description}} — {{description}}{{/if}}
+{{/each}}
+{{/if}}
+{{/each}}
+{{/if}}
+
+{{!-- Errors --}}
+{{#if errors}}
+### Errors
+{{#each errors}}
+{{#if signature}}
+#### `{{signature}}`
+{{else}}
+#### `error {{name}}`
+{{/if}}
+{{#if natspec.notice}}{{natspec.notice}}{{/if}}{{#if natspec.details}} {{natspec.details}}{{/if}}
+{{#if params}}
+{{#each params}}
+- `{{type}} {{name}}`{{#if description}} — {{description}}{{/if}}
+{{/each}}
+{{/if}}
+{{/each}}
+{{/if}}
+
+{{!-- Modifiers --}}
+{{#if modifiers}}
+### Modifiers
+{{#each modifiers}}
+{{#if signature}}
+#### `{{signature}}`
+{{else}}
+#### `modifier {{name}}`
+{{/if}}
+{{#if natspec.notice}}{{natspec.notice}}{{/if}}{{#if natspec.details}} {{natspec.details}}{{/if}}
+{{/each}}
+{{/if}}
+
+{{!-- Functions --}}
+{{#if functions}}
+### Functions
+{{#each functions}}
+{{#if signature}}
+#### `{{signature}}`
+{{else}}
+#### `function {{name}}()`
+{{/if}}
+{{#if natspec.notice}}{{natspec.notice}}{{/if}}{{#if natspec.details}} {{natspec.details}}{{/if}}
+{{#if params}}
+{{#each params}}
+- `{{type}} {{name}}`{{#if description}} — {{description}}{{/if}}
+{{/each}}
+{{/if}}
+{{#if returns}}
+Returns:
+{{#each returns}}
+- `{{type}} {{name}}`{{#if description}} — {{description}}{{/if}}
+{{/each}}
+{{/if}}
+{{#if natspec.custom}}
+Custom:
+{{#each natspec.custom}}
+- `{{@key}}`: {{this}}
+{{/each}}
+{{/if}}
+{{/each}}
+{{/if}}

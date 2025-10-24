@@ -27,6 +27,18 @@ abstract contract TemplBase is ReentrancyGuard {
     uint256 internal constant MAX_EXTERNAL_REWARD_TOKENS = 256;
     /// @dev Maximum entry fee supported before arithmetic would overflow downstream accounting.
     uint256 internal constant MAX_ENTRY_FEE = type(uint128).max;
+    /// @dev Maximum total number of curve segments (primary + additional) allowed.
+    uint256 internal constant MAX_CURVE_SEGMENTS = 8;
+    /// @dev Maximum allowed proposal title length in bytes.
+    uint256 internal constant MAX_PROPOSAL_TITLE_LENGTH = 256;
+    /// @dev Maximum allowed proposal description length in bytes.
+    uint256 internal constant MAX_PROPOSAL_DESCRIPTION_LENGTH = 2048;
+    /// @dev Maximum allowed templ name length in bytes.
+    uint256 internal constant MAX_TEMPL_NAME_LENGTH = 64;
+    /// @dev Maximum allowed templ description length in bytes.
+    uint256 internal constant MAX_TEMPL_DESCRIPTION_LENGTH = 512;
+    /// @dev Maximum allowed templ logo URI length in bytes.
+    uint256 internal constant MAX_TEMPL_LOGO_URI_LENGTH = 512;
 
     /// @notice Basis points of the entry fee that are burned on every join.
     uint256 public burnBps;
@@ -965,6 +977,9 @@ abstract contract TemplBase is ReentrancyGuard {
         _validateCurveSegment(curve.primary);
         CurveSegment[] memory extras = curve.additionalSegments;
         uint256 extrasLen = extras.length;
+        if (extrasLen + 1 > MAX_CURVE_SEGMENTS) {
+            revert TemplErrors.InvalidCurveConfig();
+        }
         if (extrasLen == 0) {
             if (curve.primary.length != 0) {
                 revert TemplErrors.InvalidCurveConfig();
@@ -1062,6 +1077,9 @@ abstract contract TemplBase is ReentrancyGuard {
         string memory newDescription,
         string memory newLogoLink
     ) internal {
+        if (bytes(newName).length > MAX_TEMPL_NAME_LENGTH) revert TemplErrors.InvalidCallData();
+        if (bytes(newDescription).length > MAX_TEMPL_DESCRIPTION_LENGTH) revert TemplErrors.InvalidCallData();
+        if (bytes(newLogoLink).length > MAX_TEMPL_LOGO_URI_LENGTH) revert TemplErrors.InvalidCallData();
         templName = newName;
         templDescription = newDescription;
         templLogoLink = newLogoLink;
