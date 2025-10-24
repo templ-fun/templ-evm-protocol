@@ -390,6 +390,8 @@ Proof points in tests:
 - High‑load stress: `npm run test:load` with `TEMPL_LOAD=...` to scale joiners.
   - Optional: `TEMPL_LOAD_PROPOSALS=...` caps concurrent proposals in the load suite (default scales with members).
   - Optional: `TEMPL_LOAD_TOKENS=...` fans out distinct external reward tokens to disband/claim under load (default 12).
+  - End‑to‑end readiness: see `test/UltimateProdReadiness.test.js` for a full happy‑path across all core TEMPL APIs (membership, governance creation/voting/execution, and direct DAO actions under dictatorship), including external call proposals and external reward distribution/cleanup.
+  - Exercises all core pathways under saturation: joins (join/joinFor/joinWithReferral/joinForWithReferral), proposal fee collection, DAO setters (pre/post‑quorum windows, quorum, burn address, fee split, entry‑fee base + curve, max members, join pause, dictatorship toggle), external calls (single + batched via `batchDAO`, with and without ETH), treasury withdrawals (ETH + ERC‑20), treasury disband to member/external pools, reward claims + pagination, active proposal pagination + pruning, and core views (`getConfig`, `getTreasuryInfo`, `getJoinDetails`, `getVoteWeight`).
 - Coverage: `npm run coverage`. Static: `npm run slither`.
 - Property fuzzing: `npm run test:fuzz` (via Docker) using `echidna.yaml` and `contracts/echidna/EchidnaTemplHarness.sol`.
 
