@@ -165,13 +165,19 @@ await factory.safeDeployFor(
 Verify on Base (optional):
 
 ```bash
-# Factory (reads constructor args from chain)
-BASESCAN_API_KEY=your_key \
-npm run verify:factory -- --network base --factory 0xYourFactory
+# Factory + Modules (reads constructor args and module addresses from chain)
+BASESCAN_API_KEY=your_key FACTORY_ADDRESS=0xYourFactory \
+npm run verify:factory -- --network base
 
-# TEMPL (reconstructs constructor args from chain + factory logs)
-BASESCAN_API_KEY=your_key \
-npm run verify:templ -- --network base --templ 0xYourTempl
+# TEMPL + Modules (reconstructs constructor args from chain + factory logs)
+BASESCAN_API_KEY=your_key TEMPL_ADDRESS=0xYourTempl \
+npm run verify:templ -- --network base
+
+# Manual (explicit verify commands)
+npx hardhat verify --contract contracts/TemplMembership.sol:TemplMembershipModule --network base 0xMembership
+npx hardhat verify --contract contracts/TemplTreasury.sol:TemplTreasuryModule --network base 0xTreasury
+npx hardhat verify --contract contracts/TemplGovernance.sol:TemplGovernanceModule --network base 0xGovernance
+npx hardhat verify --contract contracts/TemplFactory.sol:TemplFactory --network base 0xFactory 0xFactoryDeployer 0xProtocolRecipient 1000 0xMembership 0xTreasury 0xGovernance
 ```
 
 Hardhat console (ethers v6) quick taste:
