@@ -21,7 +21,6 @@
         "@types/chai": "^4.2.0",
         "@types/mocha": ">=9.1.0",
         "chai": "^4.2.0",
-        "codecov": "^3.8.3",
         "ethers": "^6.15.0",
         "hardhat": "^2.19.2",
         "hardhat-gas-reporter": "^1.0.8",
@@ -2742,27 +2741,6 @@
         "string-width": "^4.2.0",
         "strip-ansi": "^6.0.0",
         "wrap-ansi": "^7.0.0"
-      }
-    },
-    "node_modules/codecov": {
-      "version": "3.8.3",
-      "resolved": "https://registry.npmjs.org/codecov/-/codecov-3.8.3.tgz",
-      "integrity": "sha512-Y8Hw+V3HgR7V71xWH2vQ9lyS358CbGCldWlJFR0JirqoGtOoas3R3/OclRTvgUYFK29mmJICDPauVKmpqbwhOA==",
-      "deprecated": "https://about.codecov.io/blog/codecov-uploader-deprecation-plan/",
-      "dev": true,
-      "license": "MIT",
-      "dependencies": {
-        "argv": "0.0.2",
-        "ignore-walk": "3.0.4",
-        "js-yaml": "3.14.1",
-        "teeny-request": "7.1.1",
-        "urlgrey": "1.0.0"
-      },
-      "bin": {
-        "codecov": "bin/codecov"
-      },
-      "engines": {
-        "node": ">=4.0"
       }
     },
     "node_modules/color-convert": {

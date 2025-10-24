@@ -72,7 +72,7 @@ async function setupHighLoadTempl() {
     4_000,
     4_000,
     1_000, // 1% protocol share
-    1, // 1% quorum (percent mode) to keep voting cheap under load
+    100, // 100 bps quorum to keep voting cheap under load
     1, // 1 second execution delay
     ethers.ZeroAddress,
     false,
@@ -636,16 +636,15 @@ describe("@load Templ High-Load Stress", function () {
     it("updates quorum and execution delay; updates burn address then verifies burn on next join", async function () {
       const { templ, accessibleMembers, priest, token } = context;
 
-      // Set quorum to 1% (percent mode) and set 2s execution delay
+      // Set quorum to 100 bps and set 2s execution delay
       await ensureProposalFee(templ, token, accessibleMembers[0], context);
-      await templ.connect(accessibleMembers[0]).createProposalSetQuorumBps(1, 0, "Quorum", "");
+      await templ.connect(accessibleMembers[0]).createProposalSetQuorumBps(100, 0, "Quorum", "");
       let id = (await templ.proposalCount()) - 1n;
       await templ.connect(accessibleMembers[1]).vote(id, true);
       await ensureQuorum(templ, id);
       await ethers.provider.send("evm_increaseTime", [2]);
       await ethers.provider.send("evm_mine");
       await templ.executeProposal(id);
-      // Using percent mode: 1 → multiplied by 100 inside, becomes 100 bps
       expect(await templ.quorumBps()).to.equal(100n);
 
       await ensureProposalFee(templ, token, accessibleMembers[0], context);
@@ -868,7 +867,7 @@ describe("@load Templ High-Load Stress", function () {
             await templ.connect(p).createProposalSetReferralShareBps(1_000, 0, `Ref-${i}`, "");
           } else {
             await ensureProposalFee(templ, token, p, context);
-            await templ.connect(p).createProposalSetQuorumBps(1, 0, `Q-${i}`, "");
+            await templ.connect(p).createProposalSetQuorumBps(100, 0, `Q-${i}`, "");
           }
           const id = (await templ.proposalCount()) - 1n;
           created.push(id);

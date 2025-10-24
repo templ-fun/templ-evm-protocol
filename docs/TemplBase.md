@@ -261,10 +261,7 @@ the referral share basis points (slice of member pool).
 
 ### `_setQuorumBps(uint256 newQuorumBps)` (internal)
 
-the quorum threshold (bps).
-
-
-Accepts either 0-100 (interpreted as %) or 0-10_000 (basis points) values.
+Updates the quorum threshold in basis points (0–10_000).
 
 
 ### `_setPostQuorumVotingPeriod(uint256 newPeriod)` (internal)
@@ -746,7 +743,6 @@ struct TemplBase.RewardCheckpoint[] checkpoints
 
 
 ### `Action`
-
 
 
 

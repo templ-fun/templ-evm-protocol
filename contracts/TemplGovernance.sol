@@ -125,9 +125,8 @@ contract TemplGovernanceModule is TemplBase {
         return id;
     }
 
-    /// @notice Opens a proposal to update the quorum threshold (bps).
-    /// @dev Accepts either 0-100 (interpreted as %) or 0-10_000 (basis points).
-    /// @param _newQuorumBps New quorum threshold (accepts 0-100 or 0-10_000 values).
+    /// @notice Opens a proposal to update the quorum threshold in basis points.
+    /// @param _newQuorumBps New quorum threshold (0-10_000 bps).
     /// @param _votingPeriod Optional custom voting duration (seconds).
     /// @param _title On-chain title for the proposal.
     /// @param _description On-chain description for the proposal.
@@ -140,9 +139,7 @@ contract TemplGovernanceModule is TemplBase {
     ) external nonReentrant returns (uint256 proposalId) {
         _requireDelegatecall();
         if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
-        if (_newQuorumBps > BPS_DENOMINATOR && _newQuorumBps > 100) {
-            revert TemplErrors.InvalidPercentage();
-        }
+        if (_newQuorumBps > BPS_DENOMINATOR) revert TemplErrors.InvalidPercentage();
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
         p.action = Action.SetQuorumBps;
         p.newQuorumBps = _newQuorumBps;

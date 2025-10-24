@@ -21,7 +21,7 @@ describe("Governance adjustable params (quorum, delay, burn)", function () {
     await templ.executeProposal(0);
 
     // Quorum
-    await expect(templ.connect(priest).setQuorumBpsDAO(40))
+    await expect(templ.connect(priest).setQuorumBpsDAO(4000))
       .to.emit(templ, "QuorumBpsUpdated").withArgs(3300n, 4000n);
     expect(await templ.quorumBps()).to.equal(4000n);
 
@@ -47,11 +47,11 @@ describe("Governance adjustable params (quorum, delay, burn)", function () {
     await joinMembers(templ, token, [member1, member2, member3]);
 
     // Set quorum proposal
-    await templ.connect(member1).createProposalSetQuorumBps(45, 7 * 24 * 60 * 60, "Set quorum", "");
+    await templ.connect(member1).createProposalSetQuorumBps(4500, 7 * 24 * 60 * 60, "Set quorum", "");
     let id = (await templ.proposalCount()) - 1n;
     const [, quorumPayload] = await templ.getProposalActionData(id);
     const decodedQuorum = ethers.AbiCoder.defaultAbiCoder().decode(["uint256"], quorumPayload)[0];
-    expect(decodedQuorum).to.equal(45n);
+    expect(decodedQuorum).to.equal(4500n);
     await templ.connect(member2).vote(id, true);
     await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
     await ethers.provider.send("evm_mine");

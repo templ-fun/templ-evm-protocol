@@ -2,9 +2,19 @@
 
 <img width="100%" alt="templ.fun" src="https://github.com/user-attachments/assets/287b7300-2314-4b88-b4be-1cf0190f4989" />
 
-Templ lets anyone create on-chain, token-gated groups (“templs”) that accrue an access‑token treasury, stream rewards to existing members, and govern changes and payouts entirely on-chain.
+Templ lets anyone create on-chain, token‑gated groups (“templs”) that accrue an access‑token treasury, stream rewards to existing members, and govern changes and payouts entirely on-chain.
 
-Quick links: [Architecture](#architecture) · [Repo Map](#repo-map) · [Quickstart](#quickstart) · [Deploy](#deploy-locally) · [Security](#security) · [Reference](#reference) · [Constraints](#constraints) · [Limits](#limits--defaults) · [Indexing](#indexing-notes) · [Tests](#tests) · [FAQ](#faq) · [Troubleshooting](#troubleshooting) · [Gotchas](#gotchas)
+Quick links: [At a Glance](#protocol-at-a-glance) · [Architecture](#architecture) · [Repo Map](#repo-map) · [Glossary](#glossary) · [Lifecycle](#lifecycle) · [Quickstart](#quickstart) · [Deploy](#deploy-locally) · [Safety Model](#safety-model) · [Security](#security) · [Reference](#reference) · [Docs Index](#docs-index) · [Constraints](#constraints) · [Limits](#limits--defaults) · [Indexing](#indexing-notes) · [Tests](#tests) · [FAQ](#faq) · [Troubleshooting](#troubleshooting) · [Gotchas](#gotchas)
+
+## Protocol At a Glance
+- Create a templ tied to a vanilla ERC‑20 access token; members join by paying an entry fee in that token. The fee is split into burn, treasury, member‑pool, and protocol slices.
+- Existing members accrue pro‑rata rewards from the member‑pool slice and can claim at any time. Templs can also hold ETH or ERC‑20s as external rewards.
+- Governance is member‑only: propose, vote, and execute actions to change parameters, move treasury, update curves/metadata, or call arbitrary external contracts.
+- Optional dictatorship lets a designated “priest” directly execute DAO‑only actions when enabled; otherwise all such actions flow through governance.
+- Pricing curves define how the entry fee evolves with membership growth (static, linear, exponential segments; see `CurveConfig` in `TemplCurve`).
+- Everything is modular: `TEMPL` is a router that delegatecalls membership, treasury, and governance modules over a shared storage layout, keeping concerns clean.
+- Deploy many templs via `TemplFactory`; run permissionless or with a gated deployer.
+
 
 ## Architecture
 At runtime a templ behaves like one contract with clean separation of concerns via delegatecall modules sharing a single storage layout:
@@ -58,11 +68,32 @@ flowchart LR
 - Caps/pauses: optional `maxMembers` (auto‑pauses at cap) plus `joinPaused` toggle.
 - Governance access: proposing and voting require membership; the proposer’s vote is counted YES at creation.
 
+## Glossary
+- templ: One deployed instance wired by `TEMPL` with membership, treasury, and governance modules.
+- access token: The ERC‑20 used for joins, fees, and accounting. Must be vanilla (no fees/rebases/hooks).
+- priest: A designated address with optional dictatorship powers when enabled.
+- dictatorship: Mode where the priest may execute DAO‑only actions directly.
+- member pool: Accounting bucket that streams join fees to existing members, claimable pro‑rata.
+- external rewards: ETH/ERC‑20 balances held by the templ and distributed by proposals or claim logic.
+- entry fee curve: Growth schedule for the next join price (see `CurveConfig` in `TemplCurve`).
+- quorum bps: Percent of eligible members required to reach quorum.
+- pre/post‑quorum window: Voting period before quorum and the anchored window after quorum.
+- proposal fee: Fee paid (from the proposer) to create a proposal; a percentage of the current entry fee.
+- referral share: Portion of the member‑pool slice paid to a valid referrer on join.
+
+## Lifecycle
+1) Deploy modules + factory or use an existing factory (`TemplFactory`).
+2) Create a templ providing the access token, base entry fee, fee split, curve, governance params, and metadata (`createTemplWithConfig`).
+3) Members join by paying the current entry fee in the access token (optionally with a referrer); fees split to burn/treasury/member‑pool/protocol. The next entry fee advances by the curve.
+4) Members propose, vote, and execute: configuration changes, metadata updates, treasury withdrawals/disband, and arbitrary external calls.
+5) Members claim accumulated member‑pool rewards and any external rewards credited to members.
+6) Templs can evolve via governance—adjusting caps, curves, fees, and parameters—or be wound down by disbanding the treasury.
+
 ## Repo Map
 - Contracts: `contracts/`
-  - Core: `TEMPL.sol`, `TemplBase.sol`, `TemplMembership.sol`, `TemplTreasury.sol`, `TemplGovernance.sol`
-  - Factory + config: `TemplFactory.sol`, `TemplCurve.sol`, `TemplDefaults.sol`, `TemplErrors.sol`
-  - Utilities: `tools/BatchExecutor.sol`, `libraries/*`, `mocks/*`, `echidna/*`
+  - Core: `contracts/TEMPL.sol`, `contracts/TemplBase.sol`, `contracts/TemplMembership.sol`, `contracts/TemplTreasury.sol`, `contracts/TemplGovernance.sol`
+  - Factory + config: `contracts/TemplFactory.sol`, `contracts/TemplCurve.sol`, `contracts/TemplDefaults.sol`, `contracts/TemplErrors.sol`
+- Utilities: `contracts/tools/BatchExecutor.sol`, `contracts/mocks/*`, `contracts/echidna/*`
 - Tests: `test/*.test.js` (ethers v6, hardhat). Helpers in `test/utils`.
 - Scripts: `scripts/deploy-factory.cjs`, `scripts/deploy-templ.cjs`
 - Config: `hardhat.config.cjs`, `echidna.yaml`, `slither.config.json`, `.solhint.json`
@@ -134,7 +165,7 @@ await templ.executeProposal(id);
 ```
 
 ### Batched External Calls (approve → stake)
-Use the included [`BatchExecutor`](contracts/tools/BatchExecutor.sol) to sequence multiple downstream calls atomically via a single governance proposal.
+Use the included [`BatchExecutor`](contracts/tools/BatchExecutor.sol) to sequence multiple downstream calls atomically via a single governance proposal. For a simple staking target used in examples/tests, see `contracts/mocks/MockStaking.sol`.
 
 ```js
 // npx hardhat console --network localhost
@@ -232,7 +263,7 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
   - Optional: `PROTOCOL_BPS`, `FACTORY_ADDRESS` (reuse), `FACTORY_DEPLOYER` (defaults to signer address)
   - Deploys modules if not provided via env and wires them into the factory constructor.
 - `scripts/deploy-templ.cjs`: key envs are `FACTORY_ADDRESS` (or omit to auto‑deploy modules + factory locally), `TOKEN_ADDRESS`, `ENTRY_FEE`, plus optional metadata (`TEMPL_NAME`, `TEMPL_DESCRIPTION`, `TEMPL_LOGO_LINK`). Many toggles are supported (priest, quorum/post‑quorum voting periods, caps, fee splits, referral share, curve). Optional: `POST_QUORUM_VOTING_PERIOD_SECONDS`.
-- Verify helpers:
+- Verify helpers (see `scripts/verify-templ.cjs`, `scripts/verify-factory.cjs`):
   - `verify:templ` verifies a TEMPL instance, reconstructing constructor args from chain data. Provide `TEMPL_ADDRESS` or `--templ 0x...` and run with a configured Hardhat network.
   - `verify:factory` verifies a TemplFactory deployment using on‑chain getters. Provide `FACTORY_ADDRESS` or `--factory 0x...`.
 - Permissioning:
@@ -248,6 +279,18 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
   - Factory: [`contracts/TemplFactory.sol`](contracts/TemplFactory.sol) — constructor accepts explicit `factoryDeployer`; use `transferDeployer` to rotate.
 - Proposal views: `getProposal`, `getProposalSnapshots`, `getProposalJoinSequences`, `getActiveProposals*` in [`contracts/TemplGovernance.sol`](contracts/TemplGovernance.sol). Payload helper `getProposalActionData` in [`contracts/TEMPL.sol`](contracts/TEMPL.sol).
   - CallExternal payload shape: `(address target, uint256 value, bytes data)`
+
+## Docs Index
+- Router: `docs/TEMPL.md`
+- Shared storage: `docs/TemplBase.md`
+- Membership module: `docs/TemplMembershipModule.md`
+- Treasury module: `docs/TemplTreasuryModule.md`
+- Governance module: `docs/TemplGovernanceModule.md`
+- Factory: `docs/TemplFactory.md`
+- Defaults: `docs/TemplDefaults.md`
+- Errors: `docs/TemplErrors.md`
+- Tools: `docs/tools/BatchExecutor.md`
+- Fuzz harness: `docs/echidna/EchidnaTemplHarness.md`
 - Events: see [`contracts/TemplBase.sol`](contracts/TemplBase.sol).
 - Learn by tests: see [Tests](#tests) for direct links by topic.
 - DAO setters of interest: `setPreQuorumVotingPeriodDAO`, `setPostQuorumVotingPeriodDAO`, `setQuorumBpsDAO`, `setBurnAddressDAO`, `setEntryFeeCurveDAO`, `setProposalCreationFeeBpsDAO`, `setReferralShareBpsDAO`, `setMaxMembersDAO`, `setJoinPausedDAO`, `updateConfigDAO`.
@@ -274,6 +317,25 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
 - Use `getActiveProposals()` for lists; `getActiveProposalsPaginated(offset,limit)` for pagination.
 - Treasury views: `getTreasuryInfo()` and/or `TreasuryAction`/`TreasuryDisbanded` deltas.
 - Curves: consume `EntryFeeCurveUpdated` for UI refresh.
+
+## Safety Model
+- Vanilla ERC‑20 only: the access token must not tax, rebase, or hook transfers; accounting assumes exact in/out.
+- Router‑only entry: modules can only be reached via `TEMPL` delegatecalls; direct module calls revert by design.
+- Reentrancy containment: module boundaries and state updates are organized to prevent cross‑module reentrancy; tests probe reentrant tokens and hooks.
+- Snapshotting: proposal eligibility freezes at creation, then re‑snapshots at quorum to prevent late join swings.
+- Anchored execution: the post‑quorum window is anchored at quorum time to avoid timing manipulation.
+- Fee invariants: burn + treasury + member‑pool + protocol must sum to 10_000 bps; entry fee ≥10 and divisible by 10; hard cap on max entry fee.
+- Enumeration bounds: external reward tokens are capped for safe pagination and UI enumeration.
+- External call proposals: powerful and dangerous—treat as timelocked admin calls; the system bubbles downstream reverts and executes atomically.
+- Dictatorship guardrails: enabling/disabling dictatorship is a governed action; while enabled, `onlyDAO` actions are priest‑callable.
+
+Proof points in tests:
+- Reentrancy and hooks: `test/Reentrancy.test.js`, `test/ProposalFeeReentrancy.test.js`.
+- Direct‑call guard: `test/DirectModuleCallGuard.test.js`.
+- Voting and snapshots: `test/GovernanceCoverage.test.js`, `test/SingleProposal.test.js`.
+- Fee math and validation: `test/FeeValidationReverts.test.js`, `test/FeeExtremes.test.js`.
+- Curves: `test/EntryFeeCurve.test.js`, `test/ExponentialTinyFactor.test.js`.
+- Treasury safety: `test/TreasuryCoverage.test.js`, `test/TreasuryWithdrawReverts.test.js`.
 
 ## Security
 - Access token must be vanilla ERC‑20 (no fee‑on‑transfer, no rebasing, no hooks). Accounting assumes exact transfer amounts.
@@ -312,7 +374,7 @@ Learn by topic (a non‑exhaustive map):
 - Defenses/guards: `test/Reentrancy.test.js`, `test/ProposalFeeReentrancy.test.js`, `test/DirectModuleCallGuard.test.js`
 - Selectors/ABI surface: `test/TEMPLRegisteredSelectors.test.js`, `test/TEMPLSelectors.test.js`
 
-CI runs on PRs only when Solidity contracts or tests change (`contracts/**`, `test/**`), keeping checks focused on relevant changes.
+CI runs on PRs when source, tests, scripts, or docs change (contracts, tests, scripts, docs, and key configs), keeping checks focused on relevant changes.
 
 ## Gotchas
 - Use a vanilla ERC‑20 for access token (no transfer fees/rebases/hooks).

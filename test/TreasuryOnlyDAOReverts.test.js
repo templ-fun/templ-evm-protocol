@@ -47,7 +47,7 @@ describe("Treasury onlyDAO reverts per function", function () {
     await expect(templ.connect(eoa).cleanupExternalRewardToken(ethers.ZeroAddress))
       .to.be.revertedWithCustomError(templ, "NotDAO");
 
-    await expect(templ.connect(eoa).setQuorumBpsDAO(40))
+    await expect(templ.connect(eoa).setQuorumBpsDAO(4000))
       .to.be.revertedWithCustomError(templ, "NotDAO");
 
   await expect(templ.connect(eoa).setPostQuorumVotingPeriodDAO(3600))

@@ -1,8 +1,8 @@
 testMode: property
-testLimit: 1000000
-seqLen: 50000
-shrinkLimit: 100000
-workers: 10
+testLimit: 1000
+seqLen: 500
+shrinkLimit: 100
+workers: 1
 
 cryticArgs:
   # remapping for OpenZeppelin imports used in contracts

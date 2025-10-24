@@ -176,7 +176,7 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 newReferralShareBps;
         /// @notice Proposed membership cap (0 uncaps).
         uint256 newMaxMembers;
-        /// @notice Quorum threshold proposed (bps). Accepts 0-100 or 0-10_000 format.
+        /// @notice Quorum threshold proposed (bps).
         uint256 newQuorumBps;
         /// @notice Post‑quorum voting period proposed (seconds) after quorum is reached.
         uint256 newPostQuorumVotingPeriod;
@@ -587,33 +587,17 @@ abstract contract TemplBase is ReentrancyGuard {
         accessToken = _accessToken;
         priestIsDictator = _priestIsDictator;
 
-        uint256 burnBpsLocal = _burnBps;
-        uint256 treasuryBpsLocal = _treasuryBps;
-        uint256 memberBpsLocal = _memberPoolBps;
-        uint256 protocolBpsLocal = _protocolBps;
-
         uint256 rawTotal = _burnBps + _treasuryBps + _memberPoolBps + _protocolBps;
-        if (rawTotal == 100) {
-            burnBpsLocal = _burnBps * 100;
-            treasuryBpsLocal = _treasuryBps * 100;
-            memberBpsLocal = _memberPoolBps * 100;
-            protocolBpsLocal = _protocolBps * 100;
-        } else if (rawTotal != BPS_DENOMINATOR) {
-            revert TemplErrors.InvalidPercentageSplit();
-        }
+        if (rawTotal != BPS_DENOMINATOR) revert TemplErrors.InvalidPercentageSplit();
 
-        protocolBps = protocolBpsLocal;
-        _setPercentSplit(burnBpsLocal, treasuryBpsLocal, memberBpsLocal);
+        protocolBps = _protocolBps;
+        _setPercentSplit(_burnBps, _treasuryBps, _memberPoolBps);
 
         if (_quorumBps == 0) {
             quorumBps = DEFAULT_QUORUM_BPS;
         } else {
-            uint256 normalizedQuorum = _quorumBps;
-            if (!(normalizedQuorum > 100)) {
-                normalizedQuorum = normalizedQuorum * 100;
-            }
-            if (normalizedQuorum > BPS_DENOMINATOR) revert TemplErrors.InvalidPercentage();
-            quorumBps = normalizedQuorum;
+            if (_quorumBps > BPS_DENOMINATOR) revert TemplErrors.InvalidPercentage();
+            quorumBps = _quorumBps;
         }
 
         postQuorumVotingPeriod = _executionDelay == 0 ? DEFAULT_POST_QUORUM_VOTING_PERIOD : _executionDelay;
@@ -1091,18 +1075,13 @@ abstract contract TemplBase is ReentrancyGuard {
         emit ReferralShareBpsUpdated(previous, newBps);
     }
 
-    /// @notice Updates the quorum threshold (bps).
-    /// @dev Accepts either 0-100 (interpreted as %) or 0-10_000 (basis points) values.
-    /// @param newQuorumBps New quorum threshold value.
+    /// @notice Updates the quorum threshold in basis points (0-10_000).
+    /// @param newQuorumBps New quorum threshold (bps).
     function _setQuorumBps(uint256 newQuorumBps) internal {
-        uint256 normalized = newQuorumBps;
-        if (!(normalized > 100)) {
-            normalized = normalized * 100;
-        }
-        if (normalized > BPS_DENOMINATOR) revert TemplErrors.InvalidPercentage();
+        if (newQuorumBps > BPS_DENOMINATOR) revert TemplErrors.InvalidPercentage();
         uint256 previous = quorumBps;
-        quorumBps = normalized;
-        emit QuorumBpsUpdated(previous, normalized);
+        quorumBps = newQuorumBps;
+        emit QuorumBpsUpdated(previous, newQuorumBps);
     }
 
     /// @notice Updates the post‑quorum voting period in seconds.

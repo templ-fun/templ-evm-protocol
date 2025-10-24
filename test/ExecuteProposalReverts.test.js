@@ -62,7 +62,7 @@ describe("executeProposal reverts", function () {
       templ: highQuorumTempl,
       token: highQuorumToken,
       accounts: highQuorumAccounts,
-    } = await deployTempl({ entryFee: ENTRY_FEE, quorumBps: 60 });
+    } = await deployTempl({ entryFee: ENTRY_FEE, quorumBps: 6000 });
 
     const members = highQuorumAccounts.slice(2, 8);
 

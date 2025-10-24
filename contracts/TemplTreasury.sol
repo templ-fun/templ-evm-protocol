@@ -121,9 +121,8 @@ contract TemplTreasuryModule is TemplBase {
         _cleanupExternalRewardToken(token);
     }
 
-    /// @notice Governance action that updates the quorum threshold (bps).
-    /// @dev Accepts either 0-100 (interpreted as %) or 0-10_000 (basis points).
-    /// @param newQuorumBps New quorum threshold (accepts 0-100 or 0-10_000 bps values).
+    /// @notice Governance action that updates the quorum threshold in basis points.
+    /// @param newQuorumBps New quorum threshold (0-10_000 bps).
     function setQuorumBpsDAO(uint256 newQuorumBps) external onlyDAO onlyDelegatecall {
         _setQuorumBps(newQuorumBps);
     }

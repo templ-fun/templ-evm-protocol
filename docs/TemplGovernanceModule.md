@@ -43,10 +43,7 @@ Opens a proposal to update templ metadata.
 
 ### `createProposalSetQuorumBps(uint256 _newQuorumBps, uint256 _votingPeriod, string _title, string _description) → uint256 proposalId` (external)
 
-Opens a proposal to update the quorum threshold (bps).
-
-
-Accepts either 0-100 (interpreted as %) or 0-10_000 (basis points).
+Opens a proposal to update the quorum threshold in basis points (0–10_000).
 
 
 ### `createProposalSetPostQuorumVotingPeriod(uint256 _newPeriodSeconds, uint256 _votingPeriod, string _title, string _description) → uint256 proposalId` (external)
@@ -353,7 +350,6 @@ unless called via delegatecall from the TEMPL router.
 
 Prevents direct calls to the module implementation.
     function _requi
-
 
 
 
