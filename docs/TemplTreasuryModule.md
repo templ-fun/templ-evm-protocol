@@ -105,7 +105,9 @@ Removes an empty external reward token so future disbands can reuse the slot.
 
 ### `setQuorumBpsDAO(uint256 newQuorumBps)` (external)
 
-Governance action that updates the quorum threshold in basis points (0–10_000).
+Governance action that updates the quorum threshold in basis points.
+
+
 
 
 ### `setPostQuorumVotingPeriodDAO(uint256 newPeriod)` (external)
@@ -139,6 +141,7 @@ otice Governance action that performs multiple external calls atomically from th
 
 
 Executes each call in-order. If any call reverts, bubbles up revert data and reverts the whole batch.
+
 
 
 

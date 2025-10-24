@@ -36,7 +36,6 @@ abstract contract TemplBase is ReentrancyGuard {
     uint256 public memberPoolBps;
     /// @notice Basis points of the entry fee forwarded to the protocol on every join.
     uint256 public protocolBps;
-
     /// @notice Address empowered to act as the priest (and temporary dictator).
     address public priest;
     /// @notice Address that receives the protocol share during joins and distributions.
@@ -49,8 +48,6 @@ abstract contract TemplBase is ReentrancyGuard {
     uint256 public entryFee;
     /// @notice Entry fee recorded when zero paid joins have occurred.
     uint256 public baseEntryFee;
-    /// @notice Pricing curve configuration that governs how entry fees scale with membership.
-    CurveConfig public entryFeeCurve;
     /// @notice Treasury-held balance denominated in the access token.
     uint256 public treasuryBalance;
     /// @notice Member pool balance denominated in the access token.
@@ -59,7 +56,6 @@ abstract contract TemplBase is ReentrancyGuard {
     bool public joinPaused;
     /// @notice Maximum allowed members when greater than zero (0 = uncapped).
     uint256 public maxMembers;
-
     /// @notice YES vote threshold required to satisfy quorum (basis points).
     uint256 public quorumBps;
     /// @notice Seconds governance must wait after quorum before executing a proposal.
@@ -76,6 +72,8 @@ abstract contract TemplBase is ReentrancyGuard {
     uint256 public proposalCreationFeeBps;
     /// @notice Basis points of the member pool share paid to a referral during joins.
     uint256 public referralShareBps;
+    /// @notice Pricing curve configuration that governs how entry fees scale with membership.
+    CurveConfig public entryFeeCurve;
 
     struct Member {
         /// @notice Whether the address has successfully joined.
@@ -236,7 +234,9 @@ abstract contract TemplBase is ReentrancyGuard {
     mapping(address => uint256) public activeProposalId;
     /// @notice Flags whether a proposer currently has an active proposal.
     mapping(address => bool) public hasActiveProposal;
+    /// @dev Dense set of currently active proposal ids for enumeration.
     uint256[] internal activeProposalIds;
+    /// @dev Index (id -> position+1) for O(1) removals from `activeProposalIds`.
     mapping(uint256 => uint256) internal activeProposalIndex;
     /// @notice Minimum allowed pre‑quorum voting period.
     uint256 public constant MIN_PRE_QUORUM_VOTING_PERIOD = 36 hours;
@@ -337,15 +337,18 @@ abstract contract TemplBase is ReentrancyGuard {
     event JoinPauseUpdated(bool indexed joinPaused);
     /// @notice Emitted when the membership cap is updated.
     /// @param maxMembers New maximum member count (0 = uncapped).
+
     event MaxMembersUpdated(uint256 indexed maxMembers);
     /// @notice Emitted whenever the entry fee curve configuration changes.
     /// @param styles Segment styles in application order (primary first).
     /// @param rateBps Segment rate parameters expressed in basis points.
     /// @param lengths Segment lengths expressed as paid joins (0 = infinite tail).
+
     event EntryFeeCurveUpdated(uint8[] styles, uint32[] rateBps, uint32[] lengths);
     /// @notice Emitted when the priest address is changed.
     /// @param oldPriest Previous priest address.
     /// @param newPriest New priest address.
+
     event PriestChanged(address indexed oldPriest, address indexed newPriest);
     /// @notice Emitted when treasury balances are disbanded into a reward pool.
     /// @param proposalId Proposal id that authorized the disband (0 for direct DAO call).
@@ -353,6 +356,7 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param amount Total amount moved into the pool.
     /// @param perMember Reward amount per member.
     /// @param remainder Remainder carried forward to the next distribution.
+
     event TreasuryDisbanded(
         uint256 indexed proposalId,
         address indexed token,
@@ -371,30 +375,37 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param name New templ name.
     /// @param description New templ description.
     /// @param logoLink New templ logo link.
+
     event TemplMetadataUpdated(string name, string description, string logoLink);
     /// @notice Emitted when the proposal creation fee is updated.
     /// @param previousFeeBps Previous fee (bps of entry fee).
     /// @param newFeeBps New fee (bps of entry fee).
+
     event ProposalCreationFeeUpdated(uint256 indexed previousFeeBps, uint256 indexed newFeeBps);
     /// @notice Emitted when referral share bps is updated.
     /// @param previousBps Previous referral share bps.
     /// @param newBps New referral share bps.
+
     event ReferralShareBpsUpdated(uint256 indexed previousBps, uint256 indexed newBps);
     /// @notice Emitted when the quorum threshold is updated via governance.
     /// @param previousBps Previous quorum threshold (bps).
     /// @param newBps New quorum threshold (bps).
+
     event QuorumBpsUpdated(uint256 indexed previousBps, uint256 indexed newBps);
     /// @notice Emitted when the post‑quorum voting period is updated via governance.
     /// @param previousPeriod Previous period (seconds).
     /// @param newPeriod New period (seconds).
+
     event PostQuorumVotingPeriodUpdated(uint256 indexed previousPeriod, uint256 indexed newPeriod);
     /// @notice Emitted when the burn address is updated via governance.
     /// @param previousBurn Previous burn sink address.
     /// @param newBurn New burn sink address.
+
     event BurnAddressUpdated(address indexed previousBurn, address indexed newBurn);
     /// @notice Emitted when the default pre‑quorum voting period is updated.
     /// @param previousPeriod Previous default pre‑quorum voting period (seconds).
     /// @param newPeriod New default pre‑quorum voting period (seconds).
+
     event PreQuorumVotingPeriodUpdated(uint256 indexed previousPeriod, uint256 indexed newPeriod);
     /// @notice Emitted when dictatorship mode is toggled.
     /// @param enabled True when dictatorship is enabled, false when disabled.
