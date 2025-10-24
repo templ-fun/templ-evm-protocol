@@ -560,8 +560,10 @@ async function main() {
     }
   }
   
-  const config = await contract.getConfig();
-  const treasuryInfo = await contract.getTreasuryInfo();
+  // Use the membership ABI at the TEMPL address to access view helpers
+  const membershipView = await hre.ethers.getContractAt("TemplMembershipModule", contractAddress);
+  const config = await membershipView.getConfig();
+  const treasuryInfo = await membershipView.getTreasuryInfo();
 
   const treasuryAvailable = treasuryInfo?.treasury ?? treasuryInfo?.[0];
   const memberPoolBalance = treasuryInfo?.memberPool ?? treasuryInfo?.[1];
@@ -640,13 +642,24 @@ async function main() {
   
   console.log("\n📁 Deployment info saved to deployments/" + filename);
   
-  if (network.chainId === 8453n) {
-    console.log("\nVerification note:");
-    console.log("TemplFactory deployed => use factory logs to verify downstream TEMPL instances on Basescan.");
-    console.log("You can verify the factory itself with:");
+  if (network.chainId === 8453n && !process.env.SKIP_VERIFY_NOTE) {
+    console.log("\nVerification commands:");
     console.log(
-      `npx hardhat verify --network base ${factoryAddress} ${process.env.FACTORY_DEPLOYER || deployer.address} ${PROTOCOL_FEE_RECIPIENT} ${protocolPercentBps} ${membershipModuleAddress} ${treasuryModuleAddress} ${governanceModuleAddress}`
+      `npx hardhat verify --contract contracts/TemplMembership.sol:TemplMembershipModule --network base ${membershipModuleAddress}`
     );
+    console.log(
+      `npx hardhat verify --contract contracts/TemplTreasury.sol:TemplTreasuryModule --network base ${treasuryModuleAddress}`
+    );
+    console.log(
+      `npx hardhat verify --contract contracts/TemplGovernance.sol:TemplGovernanceModule --network base ${governanceModuleAddress}`
+    );
+    console.log(
+      `npx hardhat verify --contract contracts/TemplFactory.sol:TemplFactory --network base ${factoryAddress} ${(process.env.FACTORY_DEPLOYER || deployer.address).trim()} ${PROTOCOL_FEE_RECIPIENT} ${protocolPercentBps} ${membershipModuleAddress} ${treasuryModuleAddress} ${governanceModuleAddress}`
+    );
+    console.log(
+      `npx hardhat verify --contract contracts/TEMPL.sol:TEMPL --network base ${contractAddress} ${PRIEST_ADDRESS} ${PROTOCOL_FEE_RECIPIENT} ${TOKEN_ADDRESS} ${ENTRY_FEE} ${burnSplit.resolvedBps} ${treasurySplit.resolvedBps} ${memberPoolSplit.resolvedBps} ${protocolPercentBps} ${quorumPercentBps} ${(POST_QUORUM_VOTING_PERIOD_SECONDS ?? 36 * 60 * 60)} ${(BURN_ADDRESS || hre.ethers.ZeroAddress)} ${PRIEST_IS_DICTATOR} ${MAX_MEMBERS} "${NAME}" "${DESCRIPTION}" "${LOGO_LINK}" ${PROPOSAL_FEE_BPS} ${REFERRAL_SHARE_BPS} ${membershipModuleAddress} ${treasuryModuleAddress} ${governanceModuleAddress} [[[curve argument omitted; use scripts/verify-templ.cjs for templ verification]]]`
+    );
+    console.log("Tip: prefer npm run verify:factory and npm run verify:templ which auto-discover constructor args.");
   }
   
   console.log("\n========================================");

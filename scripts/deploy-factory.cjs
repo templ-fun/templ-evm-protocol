@@ -44,6 +44,12 @@ async function main() {
     );
   }
 
+  // Normalize factory deployer early so it's available for logs/verification
+  let factoryDeployer = (process.env.FACTORY_DEPLOYER || deployer.address).trim();
+  if (!hre.ethers.isAddress(factoryDeployer)) {
+    throw new Error("FACTORY_DEPLOYER must be a valid address (or omit to default to signer)");
+  }
+
   const protocolRecipient = (process.env.PROTOCOL_FEE_RECIPIENT || "").trim();
   if (!protocolRecipient) {
     throw new Error("PROTOCOL_FEE_RECIPIENT not set in environment");
@@ -98,6 +104,8 @@ async function main() {
       membershipModuleAddress = await existingFactory.MEMBERSHIP_MODULE();
       treasuryModuleAddress = await existingFactory.TREASURY_MODULE();
       governanceModuleAddress = await existingFactory.GOVERNANCE_MODULE();
+      // Prefer the on-chain factory deployer when reusing an existing deployment
+      factoryDeployer = await existingFactory.factoryDeployer();
       console.log("Existing modules:");
       console.log("  - membership:", membershipModuleAddress);
       console.log("  - treasury:", treasuryModuleAddress);
@@ -130,10 +138,6 @@ async function main() {
 
     console.log("\nDeploying TemplFactory...");
     const Factory = await hre.ethers.getContractFactory("TemplFactory");
-    const factoryDeployer = (process.env.FACTORY_DEPLOYER || deployer.address).trim();
-    if (!hre.ethers.isAddress(factoryDeployer)) {
-      throw new Error("FACTORY_DEPLOYER must be a valid address (or omit to default to signer)");
-    }
     const factory = await Factory.deploy(
       factoryDeployer,
       protocolRecipient,
@@ -200,7 +204,17 @@ async function main() {
   if (network.chainId === 8453n && !process.env.SKIP_VERIFY_NOTE) {
     console.log("\nVerification command:");
     console.log(
-      `npx hardhat verify --network base ${factoryAddress} ${factoryDeployer} ${protocolRecipient} ${protocolPercentBps} ${membershipModuleAddress} ${treasuryModuleAddress} ${governanceModuleAddress}`
+      `npx hardhat verify --contract contracts/TemplFactory.sol:TemplFactory --network base ${factoryAddress} ${factoryDeployer} ${protocolRecipient} ${protocolPercentBps} ${membershipModuleAddress} ${treasuryModuleAddress} ${governanceModuleAddress}`
+    );
+    console.log("\nModule verification commands:");
+    console.log(
+      `npx hardhat verify --contract contracts/TemplMembership.sol:TemplMembershipModule --network base ${membershipModuleAddress}`
+    );
+    console.log(
+      `npx hardhat verify --contract contracts/TemplTreasury.sol:TemplTreasuryModule --network base ${treasuryModuleAddress}`
+    );
+    console.log(
+      `npx hardhat verify --contract contracts/TemplGovernance.sol:TemplGovernanceModule --network base ${governanceModuleAddress}`
     );
   }
 

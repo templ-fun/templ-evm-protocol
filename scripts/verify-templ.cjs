@@ -332,9 +332,13 @@ async function main() {
   const templAddress = normalizeAddress(templArg, 'TEMPL_ADDRESS');
 
   const provider = hre.ethers.provider;
+  const network = await provider.getNetwork();
   const code = await provider.getCode(templAddress);
   if (!code || code === '0x') {
-    throw new Error(`No contract deployed at ${templAddress}`);
+    const chain = network?.chainId ? String(network.chainId) : 'unknown chain';
+    throw new Error(
+      `No contract code at ${templAddress} on chain ${chain}. Ensure HARDHAT_NETWORK=base or pass --network base and set TEMPL_ADDRESS.`
+    );
   }
 
   const contract = await hre.ethers.getContractAt('TEMPL', templAddress);
@@ -633,6 +637,51 @@ async function main() {
   ];
 
   try {
+    // Verify modules (no constructor args)
+    console.log('Verifying modules...');
+    try {
+      await hre.run('verify:verify', {
+        address: constructorArgs.membershipModule,
+        contract: 'contracts/TemplMembership.sol:TemplMembershipModule'
+      });
+      console.log(`Verified Membership module at ${constructorArgs.membershipModule}`);
+    } catch (err) {
+      const message = err?.message || String(err);
+      if (/already verified/i.test(message)) {
+        console.log(`Membership module ${constructorArgs.membershipModule} is already verified.`);
+      } else {
+        throw err;
+      }
+    }
+    try {
+      await hre.run('verify:verify', {
+        address: constructorArgs.treasuryModule,
+        contract: 'contracts/TemplTreasury.sol:TemplTreasuryModule'
+      });
+      console.log(`Verified Treasury module at ${constructorArgs.treasuryModule}`);
+    } catch (err) {
+      const message = err?.message || String(err);
+      if (/already verified/i.test(message)) {
+        console.log(`Treasury module ${constructorArgs.treasuryModule} is already verified.`);
+      } else {
+        throw err;
+      }
+    }
+    try {
+      await hre.run('verify:verify', {
+        address: constructorArgs.governanceModule,
+        contract: 'contracts/TemplGovernance.sol:TemplGovernanceModule'
+      });
+      console.log(`Verified Governance module at ${constructorArgs.governanceModule}`);
+    } catch (err) {
+      const message = err?.message || String(err);
+      if (/already verified/i.test(message)) {
+        console.log(`Governance module ${constructorArgs.governanceModule} is already verified.`);
+      } else {
+        throw err;
+      }
+    }
+
     await hre.run('verify:verify', {
       address: templAddress,
       contract: 'contracts/TEMPL.sol:TEMPL',
