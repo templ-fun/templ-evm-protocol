@@ -31,6 +31,112 @@ Join slippage handling (race‑proof UX)
 - On submit, re‑read `entryFee` from `getConfig()` and check current allowance. If `allowance < entryFee`, prompt to top‑up approval. With the recommended 2× buffer, this should be rare.
 - Show a concise note explaining that the approval buffer both guarantees the join and pre‑funds the first proposal fee.
 
+0) Deploy From Factory
+- Surface factory deployment in the UI for creating new templs. UIs call the factory to create a templ, then switch to the `TEMPL` router for all runtime actions.
+- Access control: read `factory.permissionless()` and `factory.factoryDeployer()`.
+  - When `permissionless == false`, only `factoryDeployer` may create templs; disable the create UI for others.
+  - When `permissionless == true`, anyone may create templs.
+
+Minimal/default deploy (no custom splits)
+- Use `factory.createTempl(token, entryFee, name, description, logoLink)` when the deployer is also the priest.
+- Use `factory.createTemplFor(priest, token, entryFee, name, description, logoLink, proposalFeeBps, referralShareBps)` to set an explicit priest and fee knobs. Other parameters use factory defaults.
+- Defaults applied by the factory:
+  - Splits: burn 3,000 bps; treasury 3,000 bps; memberPool 3,000 bps; protocol `PROTOCOL_BPS`.
+  - Governance: quorum 3,300 bps; post‑quorum voting window 36 hours; burn address dead address.
+  - Caps/curve: `maxMembers = 249`; curve is exponential until member 249, then static.
+  - Metadata caps: name ≤256 bytes; description ≤2048 bytes; logo URI ≤2048 bytes.
+- Ethers v6 example (default deploy):
+```js
+const factory = await ethers.getContractAt("TemplFactory", factoryAddress);
+// Priest = msg.sender (deployer). Use createTempl
+const tx = await factory.createTempl(
+  tokenAddress,
+  entryFee,                 // ≥10 and divisible by 10 (raw token units)
+  templName,
+  templDescription,
+  templLogoLink
+);
+const receipt = await tx.wait();
+// Parse TemplCreated event or pre‑read via staticCall for the new templ address
+const templAddress = await factory.createTempl.staticCall(
+  tokenAddress, entryFee, templName, templDescription, templLogoLink
+);
+```
+
+Safe minimal deploy (token probe)
+- Use `factory.safeDeployFor(priest, token, entryFee, name, description, logo, proposalFeeBps, referralShareBps)` to enforce vanilla ERC‑20 semantics.
+- Requires the caller to pre‑approve the factory for `SAFE_DEPLOY_PROBE_AMOUNT = 100,000` units of the access token. The factory pulls and returns this amount; any tax/rebase/hook triggers `NonVanillaToken` and the deploy reverts.
+- Ethers v6 example (safe deploy):
+```js
+const factory = await ethers.getContractAt("TemplFactory", factoryAddress);
+const PROBE = 100_000n;
+const token = await ethers.getContractAt("IERC20", tokenAddress);
+await token.approve(factoryAddress, PROBE);
+const templAddress = await factory.safeDeployFor.staticCall(
+  priestAddress, tokenAddress, entryFee, templName, templDescription, templLogoLink, 2500, 2500
+);
+await factory.safeDeployFor(
+  priestAddress, tokenAddress, entryFee, templName, templDescription, templLogoLink, 2500, 2500
+);
+```
+
+Complete custom deploy (full config)
+- Use `factory.createTemplWithConfig(CreateConfig)` to set all parameters. Recommended when your UI exposes fee splits, quorum/delay, cap, dictatorship, curve, and metadata.
+- Struct fields (sentinels apply defaults):
+  - `priest`: EOA that becomes priest (zero uses `msg.sender`).
+  - `token`: ERC‑20 access token (must be vanilla; UI should prefer Safe deploy or warn users).
+  - `entryFee`: ≥10 and divisible by 10 (raw token units).
+  - `burnBps`, `treasuryBps`, `memberPoolBps`: `int256`; use `-1` to apply factory defaults; otherwise 0…10,000.
+  - `quorumBps`: 0 applies default; otherwise 0…10,000.
+  - `executionDelaySeconds`: 0 applies default; otherwise positive seconds.
+  - `burnAddress`: zero applies default.
+  - `priestIsDictator`: boolean (true enables dictatorship at genesis).
+  - `maxMembers`: 0 for uncapped; otherwise positive cap. Auto‑pause at cap.
+  - `curveProvided`: false applies factory default curve.
+  - `curve`: `{ primary: {style, rateBps, length}, additionalSegments: CurveSegment[] }` (max 8 segments total).
+  - `name`, `description`, `logoLink`: UI metadata.
+  - `proposalFeeBps`: bps of entry fee charged to proposers.
+  - `referralShareBps`: bps share taken from member‑pool slice for referrers.
+- Constraints your UI must enforce:
+  - Fee split must sum to 10,000 bps including protocol share (factory enforces `burn + treasury + memberPool + PROTOCOL_BPS == 10,000`).
+  - Percent fields in [0, 10,000]; curve segment count ≤8.
+  - Entry fee constraints as above; metadata size caps as above.
+- Ethers v6 example (full config):
+```js
+const factory = await ethers.getContractAt("TemplFactory", factoryAddress);
+const config = {
+  priest: priestAddress,
+  token: tokenAddress,
+  entryFee,                      // raw token units, ≥10 and % 10 == 0
+  burnBps: 3000,                 // or -1 to use default
+  treasuryBps: 3000,             // or -1 to use default
+  memberPoolBps: 3000,           // or -1 to use default
+  quorumBps: 3300,               // or 0 for default
+  executionDelaySeconds: 36*60*60, // or 0 for default
+  burnAddress: ethers.ZeroAddress, // zero for default
+  priestIsDictator: false,
+  maxMembers: 249,
+  curveProvided: true,
+  curve: {
+    primary: { style: 2, rateBps: 11094, length: 248 },
+    additionalSegments: [{ style: 0, rateBps: 0, length: 0 }]
+  },
+  name: templName,
+  description: templDescription,
+  logoLink: templLogoLink,
+  proposalFeeBps: 2500,
+  referralShareBps: 2500
+};
+// Preview the address then send the tx
+const templAddress = await factory.createTemplWithConfig.staticCall(config);
+await factory.createTemplWithConfig(config);
+```
+
+Post‑deploy handoff
+- The `TemplCreated` event includes all genesis parameters and the new templ address. UIs can parse it or use the `staticCall` preview.
+- After deployment, switch to the `TEMPL` router at `templAddress` for all subsequent actions (allowances, joins, proposals, etc.).
+- If the UI supports permissioning, expose a minimal admin panel to flip `factory.setPermissionless(true)` when connected as `factoryDeployer` (otherwise hide this control).
+
 1) Join (default)
 - Step A: read `const [token, entryFee] = (await templ.getConfig());`
 - Step B: `IERC20(token).approve(templ, entryFee)`
