@@ -175,3 +175,12 @@ await templ.createProposalCallExternal(
 Important
 - Calls execute from the templ address. Any `approve` and downstream `transferFrom` affect the templ’s allowance and balance, preserving custody in the templ.
 - Keep `value=0` unless the target expects ETH.
+
+5) Donate (ETH or ERC‑20)
+- Summary: Donations require no templ call. The templ accepts direct transfers of ETH or any ERC‑20; governance can later withdraw these funds to recipients or disband them into member‑claimable external rewards.
+- ETH donation: present the templ address and let donors send ETH directly to `templ.target` (the contract address). This increases the templ’s ETH holdings immediately.
+- ERC‑20 donation: instruct donors to call the token’s `transfer(templ.target, amount)` from their wallet. No allowance is needed for a simple `transfer`.
+- Access‑token donations (the same token used for joins): they increase the templ’s on‑hand access‑token balance available to governance. UI display can reflect this via `getTreasuryInfo()` where `treasury = currentBalance(accessToken) − memberPoolBalance`.
+- External ERC‑20 donations (any other token): they become withdrawable by governance and disband‑able into external rewards (tracked per token). Tokens are auto‑registered for enumeration the first time governance disbands that token. Before the first disband, they won’t appear in `getExternalRewardTokens()` yet (they are still held and withdrawable).
+- Suggested UI copy: “Donate to this templ by sending ETH or any ERC‑20 directly to the templ address. Funds are controlled by governance (or the priest if dictatorship is enabled) and may be withdrawn or distributed to members according to on‑chain votes.”
+- Dictatorship behavior: when dictatorship is enabled, the priest can withdraw or disband donations immediately (no voting window); otherwise, movements happen through governance proposals.
