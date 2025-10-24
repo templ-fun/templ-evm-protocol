@@ -332,9 +332,13 @@ async function main() {
   const templAddress = normalizeAddress(templArg, 'TEMPL_ADDRESS');
 
   const provider = hre.ethers.provider;
+  const network = await provider.getNetwork();
   const code = await provider.getCode(templAddress);
   if (!code || code === '0x') {
-    throw new Error(`No contract deployed at ${templAddress}`);
+    const chain = network?.chainId ? String(network.chainId) : 'unknown chain';
+    throw new Error(
+      `No contract code at ${templAddress} on chain ${chain}. Ensure HARDHAT_NETWORK=base or pass --network base and set TEMPL_ADDRESS.`
+    );
   }
 
   const contract = await hre.ethers.getContractAt('TEMPL', templAddress);

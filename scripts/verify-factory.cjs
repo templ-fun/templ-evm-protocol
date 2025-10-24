@@ -31,10 +31,20 @@ async function main() {
   const factoryAddressRaw = pickFactoryAddress(process.argv);
   if (!factoryAddressRaw) {
     throw new Error(
-      'Provide factory address via --factory <addr>, FACTORY_ADDRESS env, or a positional argument.'
+      'FACTORY_ADDRESS must be set (Hardhat run blocks custom flags). Use FACTORY_ADDRESS=0x... npm run verify:factory'
     );
   }
   const factoryAddress = hre.ethers.getAddress(factoryAddressRaw);
+
+  const provider = hre.ethers.provider;
+  const network = await provider.getNetwork();
+  const code = await provider.getCode(factoryAddress);
+  if (!code || code === '0x') {
+    const chain = network?.chainId ? String(network.chainId) : 'unknown chain';
+    throw new Error(
+      `No contract code at ${factoryAddress} on chain ${chain}. Ensure HARDHAT_NETWORK=base or pass --network base and set FACTORY_ADDRESS.`
+    );
+  }
 
   const factory = await hre.ethers.getContractAt('TemplFactory', factoryAddress);
 
