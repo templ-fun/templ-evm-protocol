@@ -235,6 +235,7 @@ Minimal flow snippets (ethers v6)
 
 Where to look in code
 - Router selectors and mapping: `contracts/TEMPL.sol:120`
+  - Upgrade routing via DAO: `TEMPL.setRoutingModuleDAO(module, selectors)` can be called through a governance CallExternal proposal targeting the TEMPL address. This updates the fallback dispatch mapping without redeploying.
 - Membership APIs: `contracts/TemplMembership.sol:1`
 - Governance APIs: `contracts/TemplGovernance.sol:1`
 - Treasury APIs: `contracts/TemplTreasury.sol:1`

@@ -529,10 +529,10 @@ contract TemplGovernanceModule is TemplBase {
     /// @return returnData ABI-encoded return data for CallExternal actions, empty otherwise.
     function _executeActionInternal(uint256 _proposalId) internal returns (bytes memory returnData) {
         Proposal storage proposal = proposals[_proposalId];
+        returnData = hex"";
         if (proposal.action == Action.CallExternal) {
-            return _governanceCallExternal(proposal);
-        }
-        if (proposal.action == Action.UpdateConfig) {
+            returnData = _governanceCallExternal(proposal);
+        } else if (proposal.action == Action.UpdateConfig) {
             _governanceUpdateConfig(
                 proposal.newEntryFee,
                 proposal.updateFeeSplit,
@@ -540,71 +540,44 @@ contract TemplGovernanceModule is TemplBase {
                 proposal.newTreasuryBps,
                 proposal.newMemberPoolBps
             );
-            return hex"";
-        }
-        if (proposal.action == Action.WithdrawTreasury) {
+        } else if (proposal.action == Action.WithdrawTreasury) {
             _governanceWithdrawTreasury(
                 proposal.token,
                 proposal.recipient,
                 proposal.amount,
                 _proposalId
             );
-            return hex"";
-        }
-        if (proposal.action == Action.DisbandTreasury) {
+        } else if (proposal.action == Action.DisbandTreasury) {
             _governanceDisbandTreasury(proposal.token, _proposalId);
-            return hex"";
-        }
-        if (proposal.action == Action.ChangePriest) {
+        } else if (proposal.action == Action.ChangePriest) {
             _governanceChangePriest(proposal.recipient);
-            return hex"";
-        }
-        if (proposal.action == Action.CleanupExternalRewardToken) {
+        } else if (proposal.action == Action.CleanupExternalRewardToken) {
             _governanceCleanupExternalRewardToken(proposal.token);
-            return hex"";
-        }
-        if (proposal.action == Action.SetJoinPaused) {
+        } else if (proposal.action == Action.SetJoinPaused) {
             _governanceSetJoinPaused(proposal.joinPaused);
-            return hex"";
-        }
-        if (proposal.action == Action.SetDictatorship) {
+        } else if (proposal.action == Action.SetDictatorship) {
             _governanceSetDictatorship(proposal.setDictatorship);
-            return hex"";
-        }
-        if (proposal.action == Action.SetMaxMembers) {
+        } else if (proposal.action == Action.SetMaxMembers) {
             _governanceSetMaxMembers(proposal.newMaxMembers);
-            return hex"";
-        }
-        if (proposal.action == Action.SetMetadata) {
+        } else if (proposal.action == Action.SetMetadata) {
             _governanceUpdateMetadata(proposal.newTemplName, proposal.newTemplDescription, proposal.newLogoLink);
-            return hex"";
-        }
-        if (proposal.action == Action.SetProposalFee) {
+        } else if (proposal.action == Action.SetProposalFee) {
             _governanceSetProposalCreationFee(proposal.newProposalCreationFeeBps);
-            return hex"";
-        }
-        if (proposal.action == Action.SetReferralShare) {
+        } else if (proposal.action == Action.SetReferralShare) {
             _governanceSetReferralShareBps(proposal.newReferralShareBps);
-            return hex"";
-        }
-        if (proposal.action == Action.SetEntryFeeCurve) {
+        } else if (proposal.action == Action.SetEntryFeeCurve) {
             CurveConfig memory curve2 = proposal.curveConfig;
             _governanceSetEntryFeeCurve(curve2, proposal.curveBaseEntryFee);
-            return hex"";
-        }
-        if (proposal.action == Action.SetQuorumBps) {
+        } else if (proposal.action == Action.SetQuorumBps) {
             _governanceSetQuorumBps(proposal.newQuorumBps);
-            return hex"";
-        }
-        if (proposal.action == Action.SetPostQuorumVotingPeriod) {
+        } else if (proposal.action == Action.SetPostQuorumVotingPeriod) {
             _governanceSetPostQuorumVotingPeriod(proposal.newPostQuorumVotingPeriod);
-            return hex"";
-        }
-        if (proposal.action == Action.SetBurnAddress) {
+        } else if (proposal.action == Action.SetBurnAddress) {
             _governanceSetBurnAddress(proposal.newBurnAddress);
-            return hex"";
+        } else {
+            revert TemplErrors.InvalidCallData();
         }
-        revert TemplErrors.InvalidCallData();
+        return returnData;
     }
 
     /// @notice Governance wrapper that sets the join pause flag.

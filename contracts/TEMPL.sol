@@ -371,4 +371,14 @@ contract TEMPL is TemplBase {
             _moduleForSelector[selectors[i]] = module;
         }
     }
+
+    /// @notice Updates routing for function selectors to a module via DAO governance.
+    /// @dev This enables upgrading/replacing module implementations without redeploying the router.
+    ///      Call via a governance proposal using `createProposalCallExternal` targeting this TEMPL address.
+    ///      When dictatorship is disabled, `onlyDAO` enforces that calls originate from the router itself.
+    /// @param module Module address that will handle `selectors` via delegatecall.
+    /// @param selectors Function selectors to associate with `module`.
+    function setRoutingModuleDAO(address module, bytes4[] calldata selectors) external onlyDAO {
+        _registerModule(module, selectors);
+    }
 }
