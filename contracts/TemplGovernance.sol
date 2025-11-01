@@ -299,7 +299,6 @@ contract TemplGovernanceModule is TemplBase {
     /// @param _token Token to withdraw (`address(0)` for ETH).
     /// @param _recipient Destination wallet for the funds.
     /// @param _amount Amount to withdraw.
-    /// @param _reason Free-form text explaining the withdrawal.
     /// @param _votingPeriod Optional custom voting duration (seconds).
     /// @param _title On-chain title for the proposal.
     /// @param _description On-chain description for the proposal.
@@ -308,7 +307,6 @@ contract TemplGovernanceModule is TemplBase {
         address _token,
         address _recipient,
         uint256 _amount,
-        string calldata _reason,
         uint256 _votingPeriod,
         string calldata _title,
         string calldata _description
@@ -320,7 +318,6 @@ contract TemplGovernanceModule is TemplBase {
         p.token = _token;
         p.recipient = _recipient;
         p.amount = _amount;
-        p.reason = _reason;
         return id;
     }
 
@@ -550,7 +547,6 @@ contract TemplGovernanceModule is TemplBase {
                 proposal.token,
                 proposal.recipient,
                 proposal.amount,
-                proposal.reason,
                 _proposalId
             );
             return hex"";
@@ -637,16 +633,14 @@ contract TemplGovernanceModule is TemplBase {
     /// @param token Token to withdraw (`address(0)` for ETH).
     /// @param recipient Destination wallet.
     /// @param amount Amount to transfer.
-    /// @param reason Human-readable reason string.
     /// @param proposalId Authorizing proposal id.
     function _governanceWithdrawTreasury(
         address token,
         address recipient,
         uint256 amount,
-        string memory reason,
         uint256 proposalId
     ) internal {
-        _withdrawTreasury(token, recipient, amount, reason, proposalId);
+        _withdrawTreasury(token, recipient, amount, proposalId);
     }
 
     /// @notice Governance wrapper that disbands treasury into a reward pool for `token`.

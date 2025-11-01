@@ -440,7 +440,6 @@ describe("TEMPL Contract with DAO Governance", function () {
                     token.target,
                     treasury.address,
                     ethers.parseUnits("1", 18),
-                    "Move funds",
                     7 * 24 * 60 * 60
                 )
             ).to.emit(templ, "ProposalCreated");
@@ -635,8 +634,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             const callData = encodeWithdrawTreasuryDAO(
                 token.target,
                 treasury.address,
-                ethers.parseUnits("10", 18),
-                "Test"
+                ethers.parseUnits("10", 18)
             );
 
             await templ.connect(user1).createProposal(
@@ -776,8 +774,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             await expect(templ.connect(priest).withdrawTreasuryDAO(
                 token.target,
                 priest.address,
-                ethers.parseUnits("10", 18),
-                "Unauthorized"
+                ethers.parseUnits("10", 18)
             )).to.be.revertedWithCustomError(templ, "NotDAO");
         });
 
@@ -785,8 +782,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             await expect(templ.connect(user1).withdrawTreasuryDAO(
                 token.target,
                 user1.address,
-                ethers.parseUnits("10", 18),
-                "Unauthorized"
+                ethers.parseUnits("10", 18)
             )).to.be.revertedWithCustomError(templ, "NotDAO");
         });
 
@@ -800,8 +796,7 @@ describe("TEMPL Contract with DAO Governance", function () {
             const callData = encodeWithdrawTreasuryDAO(
                 token.target,
                 treasury.address,
-                withdrawAmount,
-                "Approved withdrawal"
+                withdrawAmount
             );
 
             await templ.connect(user1).createProposal(

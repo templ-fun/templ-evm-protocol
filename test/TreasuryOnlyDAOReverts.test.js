@@ -11,7 +11,7 @@ describe("Treasury onlyDAO reverts per function", function () {
     expect(await templ.priestIsDictator()).to.equal(false);
 
     // Call every treasury DAO function directly from an EOA and expect NotDAO
-    await expect(templ.connect(eoa).withdrawTreasuryDAO(await token.getAddress(), eoa.address, 1, "x"))
+    await expect(templ.connect(eoa).withdrawTreasuryDAO(await token.getAddress(), eoa.address, 1))
       .to.be.revertedWithCustomError(templ, "NotDAO");
 
   await expect(templ.connect(eoa).updateConfigDAO(0, false, 0, 0, 0))

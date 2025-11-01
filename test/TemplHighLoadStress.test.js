@@ -246,7 +246,6 @@ describe("@load Templ High-Load Stress", function () {
         tokenAddress,
         withdrawRecipient.address,
         withdrawAmount,
-        "stress withdraw",
         0,
         "Stress Withdraw",
         "Exercise treasury withdrawal under maximal membership"
@@ -256,7 +255,6 @@ describe("@load Templ High-Load Stress", function () {
         tokenAddress,
         withdrawRecipient.address,
         withdrawAmount,
-        "stress withdraw",
         0,
         "Stress Withdraw",
         "Exercise treasury withdrawal under maximal membership"
@@ -868,7 +866,6 @@ describe("@load Templ High-Load Stress", function () {
         ethers.ZeroAddress,
         recipient.address,
         ethers.parseEther("1"),
-        "ETH withdraw",
         0,
         "ETH W",
         ""
@@ -877,7 +874,6 @@ describe("@load Templ High-Load Stress", function () {
         ethers.ZeroAddress,
         recipient.address,
         ethers.parseEther("1"),
-        "ETH withdraw",
         0,
         "ETH W",
         ""
@@ -904,7 +900,7 @@ describe("@load Templ High-Load Stress", function () {
       await ensureProposalFee(templ, token, accessibleMembers[0], context);
       await templ
         .connect(accessibleMembers[0])
-        .createProposalWithdrawTreasury(otherAddr, recipient.address, half, "ERC20 withdraw", 0, "ERC20 W", "");
+        .createProposalWithdrawTreasury(otherAddr, recipient.address, half, 0, "ERC20 W", "");
       const id2 = (await templ.proposalCount()) - 1n;
       await templ.connect(context.accessibleMembers[0]).vote(id2, true);
       await ensureQuorum(templ, id2);

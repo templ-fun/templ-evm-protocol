@@ -41,7 +41,7 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
 
     const amount = (ENTRY_FEE * 30n) / 100n;
     const before = await token.balanceOf(recipient.address);
-    await templ.daoWithdraw(token.target, recipient.address, amount, "payout");
+    await templ.daoWithdraw(token.target, recipient.address, amount);
     expect(await token.balanceOf(recipient.address)).to.equal(before + amount);
 
     const Other = await ethers.getContractFactory("contracts/mocks/TestToken.sol:TestToken");
@@ -49,7 +49,7 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
     await other.mint(owner.address, 1000n);
     await other.transfer(templ.target, 777n);
     const before2 = await other.balanceOf(recipient.address);
-    await templ.daoWithdraw(other.target, recipient.address, 777n, "drain");
+    await templ.daoWithdraw(other.target, recipient.address, 777n);
     expect(await other.balanceOf(recipient.address)).to.equal(before2 + 777n);
 
     await templ.daoChangePriest(recipient.address);
@@ -134,7 +134,7 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
 
   await templ.daoDisband(token.target);
   await expect(
-    templ.daoWithdraw(token.target, owner.address, 1n, "pool-locked")
+    templ.daoWithdraw(token.target, owner.address, 1n)
   ).to.be.revertedWithCustomError(templ, "InsufficientTreasuryBalance");
 
     const Extra = await ethers.getContractFactory("contracts/mocks/TestToken.sol:TestToken");
@@ -144,13 +144,13 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
 
     await templ.daoDisband(extra.target);
     await expect(
-      templ.daoWithdraw(extra.target, owner.address, 10n, "reserved")
+      templ.daoWithdraw(extra.target, owner.address, 10n)
     ).to.be.revertedWithCustomError(templ, "InsufficientTreasuryBalance");
 
     await owner.sendTransaction({ to: templ.target, value: ethers.parseUnits("1", 18) });
     await templ.daoDisband(ethers.ZeroAddress);
     await expect(
-      templ.daoWithdraw(ethers.ZeroAddress, owner.address, ethers.parseUnits("1", 18), "reserved-eth")
+      templ.daoWithdraw(ethers.ZeroAddress, owner.address, ethers.parseUnits("1", 18))
     ).to.be.revertedWithCustomError(templ, "InsufficientTreasuryBalance");
   });
 

@@ -1,7 +1,7 @@
 const { ethers } = require("hardhat");
 
 const IF_SET_PAUSED = new ethers.Interface(["function setJoinPausedDAO(bool)"]);
-const IF_WT = new ethers.Interface(["function withdrawTreasuryDAO(address,address,uint256,string)"]);
+const IF_WT = new ethers.Interface(["function withdrawTreasuryDAO(address,address,uint256)"]);
 const IF_UC = new ethers.Interface([
   "function updateConfigDAO(uint256,bool,uint256,uint256,uint256)"
 ]);
@@ -19,12 +19,11 @@ async function createProposal({ templ, signer, title, description: proposalDescr
     return await tx.wait();
   } catch {}
   try {
-    const [token, recipient, amount, reason] = IF_WT.decodeFunctionData("withdrawTreasuryDAO", callData);
+    const [token, recipient, amount] = IF_WT.decodeFunctionData("withdrawTreasuryDAO", callData);
     const tx = await conn.createProposalWithdrawTreasury(
       token,
       recipient,
       amount,
-      reason,
       votingPeriod,
       title,
       proposalDescription
@@ -101,7 +100,7 @@ module.exports.attachProposalMetadataShim = function(templ) {
   const expectedArgs = new Map([
     ['createProposalSetJoinPaused', 4],
     ['createProposalUpdateConfig', 8],
-    ['createProposalWithdrawTreasury', 7],
+    ['createProposalWithdrawTreasury', 6],
     ['createProposalDisbandTreasury', 4],
     ['createProposalChangePriest', 4],
     ['createProposalSetDictatorship', 4],

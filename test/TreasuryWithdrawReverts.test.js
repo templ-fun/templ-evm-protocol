@@ -29,7 +29,6 @@ describe("Treasury Withdrawal Reverts", function () {
                 token.target,
                 ethers.ZeroAddress,
                 ethers.parseUnits("1", 18),
-                "Invalid",
                 7 * 24 * 60 * 60
             );
 
@@ -48,7 +47,6 @@ describe("Treasury Withdrawal Reverts", function () {
                 token.target,
                 user1.address,
                 0,
-                "Zero",
                 7 * 24 * 60 * 60
             );
 
@@ -68,7 +66,6 @@ describe("Treasury Withdrawal Reverts", function () {
                 token.target,
                 user1.address,
                 treasury + 1n,
-                "Too much",
                 7 * 24 * 60 * 60
             );
 
@@ -90,7 +87,6 @@ describe("Treasury Withdrawal Reverts", function () {
                 otherToken.target,
                 user1.address,
                 1n,
-                "No balance",
                 7 * 24 * 60 * 60
             );
 

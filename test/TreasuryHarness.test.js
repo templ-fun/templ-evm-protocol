@@ -31,13 +31,13 @@ describe("Treasury harness withdrawals", function () {
 
     const accessAmount = ethers.parseUnits("5", 18);
     await accessToken.mint(await harness.getAddress(), accessAmount);
-    await harness.daoWithdraw(accessToken.target, recipient.address, accessAmount, "access");
+    await harness.daoWithdraw(accessToken.target, recipient.address, accessAmount);
     expect(await accessToken.balanceOf(recipient.address)).to.equal(accessAmount);
 
     const ethAmount = ethers.parseUnits("1", 18);
     await owner.sendTransaction({ to: await harness.getAddress(), value: ethAmount });
     const ethBefore = await ethers.provider.getBalance(recipient.address);
-    const tx = await harness.daoWithdraw(ethers.ZeroAddress, recipient.address, ethAmount, "eth");
+    const tx = await harness.daoWithdraw(ethers.ZeroAddress, recipient.address, ethAmount);
     await tx.wait();
     const ethAfter = await ethers.provider.getBalance(recipient.address);
     expect(ethAfter - ethBefore).to.equal(ethAmount);
@@ -48,7 +48,7 @@ describe("Treasury harness withdrawals", function () {
     const rewardToken = await RewardToken.deploy("Reward", "RWD", 18);
     await rewardToken.waitForDeployment();
     await rewardToken.mint(await harness.getAddress(), accessAmount);
-    await harness.daoWithdraw(rewardToken.target, recipient.address, accessAmount, "reward");
+    await harness.daoWithdraw(rewardToken.target, recipient.address, accessAmount);
     expect(await rewardToken.balanceOf(recipient.address)).to.equal(accessAmount);
   });
 });

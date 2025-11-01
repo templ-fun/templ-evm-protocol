@@ -162,8 +162,7 @@ abstract contract TemplBase is ReentrancyGuard {
         string title;
         /// @notice On-chain description string for the proposal.
         string description;
-        /// @notice Free-form reason string used by withdrawal actions.
-        string reason;
+        // reason removed; use description for context
         /// @notice Desired join pause state when the action is SetJoinPaused.
         bool joinPaused;
         /// @notice Replacement entry fee when updating config (0 keeps existing value).
@@ -319,13 +318,11 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param token Token withdrawn (address(0) for ETH).
     /// @param recipient Recipient wallet.
     /// @param amount Amount transferred.
-    /// @param reason Free-form text reason.
     event TreasuryAction(
         uint256 indexed proposalId,
         address indexed token,
         address indexed recipient,
-        uint256 amount,
-        string reason
+        uint256 amount
     );
 
     /// @notice Emitted when templ configuration is updated.
@@ -1145,13 +1142,11 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param token Token to withdraw (`address(0)` for ETH, or ERC-20 address).
     /// @param recipient Destination wallet.
     /// @param amount Amount to transfer.
-    /// @param reason Human-readable justification.
     /// @param proposalId Proposal id authorizing the withdrawal (0 for direct DAO call).
     function _withdrawTreasury(
         address token,
         address recipient,
         uint256 amount,
-        string memory reason,
         uint256 proposalId
     ) internal {
         if (recipient == address(0)) revert TemplErrors.InvalidRecipient();
@@ -1182,7 +1177,7 @@ abstract contract TemplBase is ReentrancyGuard {
             if (amount > availableBalance) revert TemplErrors.InsufficientTreasuryBalance();
             _safeTransfer(token, recipient, amount);
         }
-        emit TreasuryAction(proposalId, token, recipient, amount, reason);
+        emit TreasuryAction(proposalId, token, recipient, amount);
     }
 
     /// @notice Applies updates to the entry fee and/or fee split configuration.

@@ -244,7 +244,7 @@ contract TEMPL is TemplBase {
         } else if (action == Action.CallExternal) {
             payload = abi.encode(p.externalCallTarget, p.externalCallValue, p.externalCallData);
         } else if (action == Action.WithdrawTreasury) {
-            payload = abi.encode(p.token, p.recipient, p.amount, p.reason);
+            payload = abi.encode(p.token, p.recipient, p.amount);
         } else if (action == Action.DisbandTreasury) {
             payload = abi.encode(p.token);
         } else if (action == Action.CleanupExternalRewardToken) {

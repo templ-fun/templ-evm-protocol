@@ -168,7 +168,6 @@ describe("Priest dictatorship governance toggle", function () {
           ethers.ZeroAddress,
           member.address,
           0,
-          "test",
           VOTING_PERIOD,
           "withdraw",
           "dict"

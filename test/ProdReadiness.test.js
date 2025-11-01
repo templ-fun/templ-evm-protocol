@@ -309,7 +309,6 @@ describe("Prod Readiness", function () {
           await token.getAddress(),
           await eve.getAddress(),
           ethers.parseUnits("100", 18),
-          "Ops",
           0,
           "Withdraw",
           "Pay ops"
@@ -434,7 +433,7 @@ describe("Prod Readiness", function () {
 
     // m) Withdraw ETH via DAO (top-up ETH after previous disbands/claims)
     await (await deployer.sendTransaction({ to: templ.target, value: ethers.parseEther("5") })).wait();
-    await (await treasury.connect(alice).withdrawTreasuryDAO(ethers.ZeroAddress, await dave.getAddress(), ethers.parseEther("0.25"), "refund"))
+    await (await treasury.connect(alice).withdrawTreasuryDAO(ethers.ZeroAddress, await dave.getAddress(), ethers.parseEther("0.25")))
       .wait();
 
     // n) Turn dictatorship off via DAO call

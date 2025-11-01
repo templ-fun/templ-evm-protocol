@@ -64,7 +64,6 @@ describe("Treasury coverage extras", function () {
         ethers.ZeroAddress,
         recipient,
         donation,
-        "fail",
         VOTING_PERIOD
       );
     await templ.connect(member).vote(0, true);
@@ -172,7 +171,6 @@ describe("Treasury coverage extras", function () {
         await token.getAddress(),
         priest.address,
         available + 1n,
-        "too-much",
         VOTING_PERIOD
       );
     await templ.connect(member).vote(0, true);

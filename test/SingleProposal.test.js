@@ -27,15 +27,13 @@ describe("Single Active Proposal Restriction", function () {
             const callData = encodeWithdrawTreasuryDAO(
                 token.target,
                 member1.address,
-                ethers.parseUnits("10", 18),
-                "Test withdrawal"
+                ethers.parseUnits("10", 18)
             );
 
             await expect(templ.connect(member1).createProposalWithdrawTreasury(
                 token.target,
                 member1.address,
                 ethers.parseUnits("10", 18),
-                "Test withdrawal",
                 7 * 24 * 60 * 60,
                 ...META
             )).to.emit(templ, "ProposalCreated");
@@ -48,8 +46,7 @@ describe("Single Active Proposal Restriction", function () {
             const callData = encodeWithdrawTreasuryDAO(
                 token.target,
                 member1.address,
-                ethers.parseUnits("10", 18),
-                "Test"
+                ethers.parseUnits("10", 18)
             );
 
             // Create first proposal
@@ -57,7 +54,6 @@ describe("Single Active Proposal Restriction", function () {
                 token.target,
                 member1.address,
                 ethers.parseUnits("10", 18),
-                "Test",
                 7 * 24 * 60 * 60,
                 ...META
             );
@@ -67,7 +63,6 @@ describe("Single Active Proposal Restriction", function () {
                 token.target,
                 member1.address,
                 ethers.parseUnits("10", 18),
-                "Test",
                 7 * 24 * 60 * 60,
                 ...META
             )).to.be.revertedWithCustomError(templ, "ActiveProposalExists");
@@ -77,8 +72,7 @@ describe("Single Active Proposal Restriction", function () {
             const callData = encodeWithdrawTreasuryDAO(
                 token.target,
                 member1.address,
-                ethers.parseUnits("10", 18),
-                "Test"
+                ethers.parseUnits("10", 18)
             );
 
             // Member 1 creates proposal
@@ -86,7 +80,6 @@ describe("Single Active Proposal Restriction", function () {
                 token.target,
                 member1.address,
                 ethers.parseUnits("10", 18),
-                "Test",
                 7 * 24 * 60 * 60
             );
 
@@ -95,7 +88,6 @@ describe("Single Active Proposal Restriction", function () {
                 token.target,
                 member1.address,
                 ethers.parseUnits("10", 18),
-                "Test",
                 7 * 24 * 60 * 60
             );
 
@@ -104,7 +96,6 @@ describe("Single Active Proposal Restriction", function () {
                 token.target,
                 member1.address,
                 ethers.parseUnits("10", 18),
-                "Test",
                 7 * 24 * 60 * 60
             );
 
@@ -155,8 +146,7 @@ describe("Single Active Proposal Restriction", function () {
             const callData = encodeWithdrawTreasuryDAO(
                 token.target,
                 member1.address,
-                ethers.parseUnits("10", 18),
-                "Test"
+                ethers.parseUnits("10", 18)
             );
 
             // Create first proposal
@@ -164,7 +154,6 @@ describe("Single Active Proposal Restriction", function () {
                 token.target,
                 member1.address,
                 ethers.parseUnits("10", 18),
-                "Test",
                 7 * 24 * 60 * 60 // 7 days
             );
 
@@ -177,7 +166,6 @@ describe("Single Active Proposal Restriction", function () {
                 token.target,
                 member1.address,
                 ethers.parseUnits("10", 18),
-                "Test",
                 7 * 24 * 60 * 60
             )).to.emit(templ, "ProposalCreated");
 
@@ -189,8 +177,7 @@ describe("Single Active Proposal Restriction", function () {
             const callData = encodeWithdrawTreasuryDAO(
                 token.target,
                 member1.address,
-                ethers.parseUnits("10", 18),
-                "Test"
+                ethers.parseUnits("10", 18)
             );
 
             // Create first proposal
@@ -198,7 +185,6 @@ describe("Single Active Proposal Restriction", function () {
                 token.target,
                 member1.address,
                 ethers.parseUnits("10", 18),
-                "Test",
                 7 * 24 * 60 * 60
             );
 
@@ -229,8 +215,7 @@ describe("Single Active Proposal Restriction", function () {
             const badCallData = encodeWithdrawTreasuryDAO(
                 token.target,
                 member1.address,
-                tooMuch,
-                "Too much"
+                tooMuch
             );
 
             await templ.connect(member1).createProposal(
@@ -273,7 +258,6 @@ describe("Single Active Proposal Restriction", function () {
                 token.target,
                 member1.address,
                 ethers.parseUnits("10", 18),
-                "Test",
                 7 * 24 * 60 * 60
             )).to.emit(templ, "ProposalCreated");
         });

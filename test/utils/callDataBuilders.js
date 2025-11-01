@@ -5,11 +5,11 @@ function encodeSetJoinPausedDAO(paused) {
   return iface.encodeFunctionData("setJoinPausedDAO", [paused]);
 }
 
-function encodeWithdrawTreasuryDAO(token, recipient, amount, reason) {
+function encodeWithdrawTreasuryDAO(token, recipient, amount) {
   const iface = new ethers.Interface([
-    "function withdrawTreasuryDAO(address,address,uint256,string)"
+    "function withdrawTreasuryDAO(address,address,uint256)"
   ]);
-  return iface.encodeFunctionData("withdrawTreasuryDAO", [token, recipient, amount, reason]);
+  return iface.encodeFunctionData("withdrawTreasuryDAO", [token, recipient, amount]);
 }
 
 //

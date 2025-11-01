@@ -43,7 +43,6 @@ describe("Voting Eligibility Based on Join Time", function () {
                 token.target,
                 member1.address,
                 ethers.parseUnits("10", 18),
-                "Test",
                 7 * 24 * 60 * 60
             );
 
@@ -83,7 +82,6 @@ describe("Voting Eligibility Based on Join Time", function () {
                 token.target,
                 member1.address,
                 ethers.parseUnits("10", 18),
-                "Test",
                 7 * 24 * 60 * 60
             );
 
@@ -117,7 +115,6 @@ describe("Voting Eligibility Based on Join Time", function () {
                 token.target,
                 member1.address,
                 ethers.parseUnits("10", 18),
-                "Test",
                 7 * 24 * 60 * 60
             );
 
@@ -200,7 +197,6 @@ describe("Voting Eligibility Based on Join Time", function () {
                 token.target,
                 member1.address,
                 ethers.parseUnits("50", 18),
-                "Selfish withdrawal",
                 7 * 24 * 60 * 60
             );
 

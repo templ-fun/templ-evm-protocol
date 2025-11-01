@@ -48,7 +48,6 @@ describe("Governance coverage gaps", function () {
           await token.getAddress(),
           outsider.address,
           1n,
-          "test",
           VOTING_PERIOD
         )
     ).to.be.revertedWithCustomError(templ, "NotMember");
