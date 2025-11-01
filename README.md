@@ -4,7 +4,7 @@
 
 Templ lets anyone create on-chain, token‑gated groups (“templs”) that accrue an access‑token treasury, stream rewards to existing members, and govern changes and payouts entirely on-chain.
 
-Quick links: [At a Glance](#protocol-at-a-glance) · [Architecture](#architecture) · [Upgradeable Controls](#upgradeable-controls) · [Repo Map](#repo-map) · [Glossary](#glossary) · [Lifecycle](#lifecycle) · [Quickstart](#quickstart) · [Deploy](#deploy-locally) · [Safety Model](#safety-model) · [Security](#security) · [Reference](#reference) · [Constraints](#constraints) · [Limits](#limits--defaults) · [Indexing](#indexing-notes) · [Tests](#tests) · [FAQ](#faq) · [Troubleshooting](#troubleshooting) · [Gotchas](#gotchas)
+Quick links: [At a Glance](#protocol-at-a-glance) · [Architecture](#architecture) · [Governance‑Controlled Upgrades](#governance-controlled-upgrades) · [Repo Map](#repo-map) · [Glossary](#glossary) · [Lifecycle](#lifecycle) · [Quickstart](#quickstart) · [Deploy](#deploy-locally) · [Safety Model](#safety-model) · [Security](#security) · [Reference](#reference) · [Constraints](#constraints) · [Limits](#limits--defaults) · [Indexing](#indexing-notes) · [Tests](#tests) · [FAQ](#faq) · [Troubleshooting](#troubleshooting) · [Gotchas](#gotchas)
 
 ## Protocol At a Glance
 - Create a templ tied to a vanilla ERC‑20 access token; members join by paying an entry fee in that token. The fee is split into burn, treasury, member‑pool, and protocol slices.
@@ -31,18 +31,18 @@ At runtime a templ behaves like one contract with clean separation of concerns v
 
 Deployers configure pricing curves, fee splits, referral rewards, proposal fees, quorum/delay, membership caps, and an optional dictatorship (priest) override. The access token is any vanilla ERC‑20 you choose.
 
-## Upgradeable Controls
+## Governance‑Controlled Upgrades
 
-Templ is intentionally upgradeable at the routing layer. The `TEMPL` contract is a selector→module router that delegates calls to module implementations over a shared storage layout. Governance (or the priest when dictatorship is enabled) can update routing and even add new modules without redeploying the router.
+Templ supports governance‑controlled routing updates. There is no protocol admin key and no owner that can change behavior out from under a templ. The only way to change routing is via that templ’s own on‑chain governance. The priest can perform these actions only when dictatorship is explicitly enabled for that templ.
 
 What is fixed vs dynamic
 - Dynamic routing table: The authoritative mapping is internal (`_moduleForSelector[bytes4] → address`) and can be changed at runtime.
 - Static helper: `getRegisteredSelectors()` returns static, canonical selector sets for the three shipped modules for tooling and quick introspection. It does not change when you update routing. To inspect the live mapping for any selector, call `getModuleForSelector(bytes4)`.
 
 Permissions and safety
-- Only via DAO: `setRoutingModuleDAO(address module, bytes4[] selectors)` is `onlyDAO`. When dictatorship is disabled, it can only be reached through a governance proposal (see examples below). When dictatorship is enabled, the priest may call it directly.
+- Only by governance (no protocol admin): `setRoutingModuleDAO(address,bytes4[])` is `onlyDAO`. With dictatorship disabled, direct calls from EOAs (including protocol devs) revert; it is only reachable during execution of a passed governance proposal targeting the router. With dictatorship enabled, the priest may call it directly.
 - Direct module calls revert: Modules enforce delegatecall‑only access; always call the `TEMPL` router.
-- Arbitrary calls are powerful: `createProposalCallExternal` and `batchDAO` execute from the templ address and can move funds or rewire routing. Frontends must surface strong warnings and quorum requirements protect abuse.
+- Arbitrary calls are powerful: `createProposalCallExternal` and `batchDAO` execute from the templ address and can move funds or rewire routing. Only governance (or the priest in dictatorship) can execute them. Frontends must surface strong warnings and quorum requirements protect abuse.
 
 Add or replace modules
 1) Deploy your module implementation (recommended: inherit `TemplBase` and do not declare new storage variables).
@@ -120,8 +120,9 @@ Rollbacks and verification
 - Events: `setRoutingModuleDAO` does not emit an event; rely on on‑chain calls and `getModuleForSelector` for introspection.
 
 Security notes
+- There is no protocol‑level upgrade authority. Routing and external calls are controlled by each templ’s governance.
 - Treat `setRoutingModuleDAO` and `CallExternal` as highly privileged. A malicious routing change can brick functions or drain funds through arbitrary calls. Use conservative quorum and clear UI warnings for proposals that target the router.
-- In dictatorship mode, the priest can perform any `onlyDAO` action (including `batchDAO`). Disable dictatorship for decentralized control.
+- In dictatorship mode, the priest (a templ‑specific address chosen at deploy time or by governance) can perform any `onlyDAO` action (including `batchDAO`). Keep dictatorship disabled for decentralized control.
 
 Storage/layout policy
 - Modules share a single storage layout via `TemplBase`. Keep layout compatible across upgrades. For changes to storage‑backed structs after a mainnet launch, preserve slot order or introduce reserved/deprecated fields to avoid state corruption on upgrade.
