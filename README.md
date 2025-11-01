@@ -4,7 +4,7 @@
 
 Templ lets anyone create on-chain, token‑gated groups (“templs”) that accrue an access‑token treasury, stream rewards to existing members, and govern changes and payouts entirely on-chain.
 
-Quick links: [At a Glance](#protocol-at-a-glance) · [Architecture](#architecture) · [Governance‑Controlled Upgrades](#governance-controlled-upgrades) · [Repo Map](#repo-map) · [Glossary](#glossary) · [Lifecycle](#lifecycle) · [Quickstart](#quickstart) · [Deploy](#deploy-locally) · [Safety Model](#safety-model) · [Security](#security) · [Reference](#reference) · [Constraints](#constraints) · [Limits](#limits--defaults) · [Indexing](#indexing-notes) · [Tests](#tests) · [FAQ](#faq) · [Troubleshooting](#troubleshooting) · [Gotchas](#gotchas)
+Quick links: [At a Glance](#protocol-at-a-glance) · [Architecture](#architecture) · [Governance‑Controlled Upgrades](#governance-controlled-upgrades) · [Solidity Patterns](#solidity-patterns) · [Repo Map](#repo-map) · [Glossary](#glossary) · [Lifecycle](#lifecycle) · [Quickstart](#quickstart) · [Deploy](#deploy-locally) · [Safety Model](#safety-model) · [Security](#security) · [Reference](#reference) · [Constraints](#constraints) · [Limits](#limits--defaults) · [Indexing](#indexing-notes) · [Proposal Views](#proposal-views) · [Tests](#tests) · [FAQ](#faq) · [Troubleshooting](#troubleshooting) · [Gotchas](#gotchas)
 
 ## Protocol At a Glance
 - Create a templ tied to a vanilla ERC‑20 access token; members join by paying an entry fee in that token. The fee is split into burn, treasury, member‑pool, and protocol slices.
@@ -15,6 +15,9 @@ Quick links: [At a Glance](#protocol-at-a-glance) · [Architecture](#architectur
 - Pricing curves define how the entry fee evolves with membership growth (static, linear, exponential segments; see `CurveConfig` in `TemplCurve`).
 - Everything is modular: `TEMPL` is a router that delegatecalls membership, treasury, and governance modules over a shared storage layout, keeping concerns clean.
 - Deploy many templs via `TemplFactory`; run permissionless or with a gated deployer.
+
+Priest bootstrap
+- On deploy, the priest is auto‑enrolled as member #1. `joinSequence` starts at 1 and the priest’s `rewardSnapshot` is initialized to the current `cumulativeMemberRewards`.
 
 ## Templ Factories
 
@@ -137,7 +140,7 @@ flowchart LR
   subgraph Modules
     M[TemplMembershipModule]
     Tr[TemplTreasuryModule]
-    G[TemplGovernanceModule]
+  G[TemplGovernanceModule]
   end
 
   TEMPL --> M
@@ -158,6 +161,17 @@ flowchart LR
 - Treasury: governance/priests withdraw, disband, update config/splits/curve/metadata/referral/proposal fee.
 - Governance: create/vote/execute proposals, quorum + delay, dictatorship toggle, safe external calls (single or batched), and opportunistic tail‑pruning of inactive proposals on execution to keep the active index compact.
 - Shared storage: all persistent state lives in [`TemplBase`](contracts/TemplBase.sol).
+
+## Solidity Patterns
+- Delegatecall router: `TEMPL` fallback maps `selector → module` and uses `delegatecall` to execute in shared storage (contracts/TEMPL.sol).
+- Delegatecall‑only modules: Each module stores an immutable `SELF` and reverts when called directly, enforcing router‑only entry (contracts/TemplMembership.sol, contracts/TemplTreasury.sol, contracts/TemplGovernance.sol).
+- Only‑DAO guard: `onlyDAO` in `TemplBase` gates actions to either the router itself (when dictatorship is disabled) or the router/priest (when enabled) (contracts/TemplBase.sol).
+- Reentrancy guards: User‑facing mutators like joins, claims, proposal creation/execution, and withdrawals use `nonReentrant` (contracts/TemplMembership.sol, contracts/TemplGovernance.sol, contracts/TemplTreasury.sol).
+- Snapshotting by join sequence: Proposals capture `preQuorumJoinSequence`; at quorum, a second snapshot anchors eligibility (`quorumJoinSequence`) (contracts/TemplBase.sol, contracts/TemplGovernance.sol).
+- Bounded enumeration: External reward tokens capped at 256; active proposals support paginated reads with a 1..100 `limit` (contracts/TemplBase.sol, contracts/TemplGovernance.sol).
+- Safe token ops: Uses OpenZeppelin `SafeERC20` for ERC‑20 transfers and explicit ETH forwarding with revert bubbling (contracts/TemplBase.sol, contracts/TemplGovernance.sol).
+- Saturating math for curves: Price growth saturates at `MAX_ENTRY_FEE` to avoid overflow during linear/exponential scaling (contracts/TemplBase.sol).
+- Governance‑controlled upgrades: `setRoutingModuleDAO(address,bytes4[])` rewires selectors under `onlyDAO` (contracts/TEMPL.sol).
 
 ## Key Concepts
 - Fee split: burn / treasury / member pool / protocol; must sum to 10_000 bps.
@@ -204,7 +218,7 @@ flowchart LR
 - Tests: [test/](test/)
 - Deployments: [deployments/](deployments/)
 - Docs template: [docs-templates/contract.hbs](docs-templates/contract.hbs)
-- UI integration guide: [UI](UI)
+- UI integration guide: [UI.md](UI.md)
 
 ## Quickstart
 - Prereqs: Node >=22, `npm`. Docker recommended for fuzzing.
@@ -351,7 +365,7 @@ await templ.executeProposal(pid);
 
 Notes
 - Calls execute from the templ address. Any approvals and transfers affect the templ’s allowances and balances.
-- To forward ETH in the batch, set `values` per inner call and set the top‑level `value` in `createProposalCallExternal` to `sum(values)`.
+- To forward ETH in the batch, set `values` per inner call and set the top‑level `value` in `createProposalCallExternal` to at least `sum(values)` (or ensure the templ holds enough ETH to cover the forwarded values).
 - If any inner call reverts, the entire batch reverts; no partial effects.
 - Proposing and voting require membership; ensure the caller has joined.
 
@@ -462,6 +476,7 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
 - Entry fee: must be ≥10 and divisible by 10.
 - Fee split: burn + treasury + member pool + protocol must sum to 10_000 bps.
 - Pre‑quorum voting window: bounded to [36 hours, 30 days].
+- Pagination: `getActiveProposalsPaginated` requires `1 ≤ limit ≤ 100`.
 
 ## Limits & Defaults
 - `BPS_DENOMINATOR = 10_000`.
@@ -483,6 +498,25 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
 - Use `getActiveProposals()` for lists; `getActiveProposalsPaginated(offset,limit)` for pagination.
 - Treasury views: `getTreasuryInfo()` and/or `TreasuryAction`/`TreasuryDisbanded` deltas.
 - Curves: consume `EntryFeeCurveUpdated` for UI refresh.
+
+## Proposal Views
+- For any proposal id, `TEMPL.getProposalActionData(id)` returns `(Action action, bytes payload)`. Decode `payload` using the shapes below:
+- SetJoinPaused → `abi.encode(bool joinPaused)`
+- UpdateConfig → `abi.encode(uint256 newEntryFee, bool updateFeeSplit, uint256 newBurnBps, uint256 newTreasuryBps, uint256 newMemberPoolBps)`
+- SetMaxMembers → `abi.encode(uint256 newMaxMembers)`
+- SetMetadata → `abi.encode(string name, string description, string logoLink)`
+- SetProposalFee → `abi.encode(uint256 newProposalCreationFeeBps)`
+- SetReferralShare → `abi.encode(uint256 newReferralShareBps)`
+- SetEntryFeeCurve → `abi.encode(CurveConfig curve, uint256 baseEntryFee)`
+- CallExternal → `abi.encode(address target, uint256 value, bytes calldata)`
+- WithdrawTreasury → `abi.encode(address token, address recipient, uint256 amount)`
+- DisbandTreasury → `abi.encode(address token)`
+- CleanupExternalRewardToken → `abi.encode(address token)`
+- ChangePriest → `abi.encode(address newPriest)`
+- SetDictatorship → `abi.encode(bool enabled)`
+- SetQuorumBps → `abi.encode(uint256 newQuorumBps)`
+- SetPostQuorumVotingPeriod → `abi.encode(uint256 newPostQuorumVotingPeriod)`
+- SetBurnAddress → `abi.encode(address newBurnAddress)`
 
 ## Safety Model
 - Vanilla ERC‑20 only: the access token must not tax, rebase, or hook transfers; accounting assumes exact in/out.
@@ -510,7 +544,7 @@ See tests by topic in [test/](test/).
 
 ## FAQ
 - Can the access token change later? No — deploy a new templ.
-- Why divisible by 10? Prevents rounding drift in fee math.
+- Why divisible by 10? It is an on‑chain invariant enforced by `_validateEntryFeeAmount`; updates that don’t meet it revert.
 - How do referrals work? Paid from the member‑pool slice when the referrer is a member and not the joiner.
 - Can I enumerate external reward tokens? Yes: `getExternalRewardTokens()` (or paginated) and `getExternalRewardState(token)`; cleanup via DAO‑only `cleanupExternalRewardToken`.
 

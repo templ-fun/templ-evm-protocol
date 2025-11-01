@@ -77,6 +77,11 @@ const templAddress = await factory.createTempl.staticCall(
 );
 ```
 
+Optional: safe vanilla‑token deploy
+- Use `factory.safeDeployFor(priest, token, entryFee, name, description, logoLink, proposalFeeBps, referralShareBps)` to atomically probe for vanilla ERC‑20 semantics before deploy.
+- The caller must approve the factory for 100,000 units of the token (probe amount). The function pulls and returns exactly 100,000 and reverts with `NonVanillaToken` if transfers are taxed/rebased/hooked.
+- If the probe passes, the templ is deployed with the provided params.
+
 Complete custom deploy (full config)
 - Use `factory.createTemplWithConfig(CreateConfig)` to set all parameters. Recommended when your UI exposes fee splits, quorum/delay, cap, dictatorship, curve, and metadata.
 - Struct fields (sentinels apply defaults):
@@ -115,7 +120,7 @@ const config = {
   maxMembers: 249,
   curveProvided: true,
   curve: {
-    primary: { style: 2, rateBps: 11094, length: 248 },
+    primary: { style: 2, rateBps: 10094, length: 248 },
     additionalSegments: [{ style: 0, rateBps: 0, length: 0 }]
   },
   name: templName,
@@ -242,11 +247,11 @@ Minimal flow snippets (ethers v6)
 - Execute: `templ.executeProposal(id)`.
 
 Where to look in code
-- Router selectors and mapping: `contracts/TEMPL.sol:120`
+- Router selectors and mapping: `contracts/TEMPL.sol`
   - Upgrade routing via DAO: `TEMPL.setRoutingModuleDAO(module, selectors)` can be called through a governance CallExternal proposal targeting the TEMPL address. This updates the fallback dispatch mapping without redeploying.
-- Membership APIs: `contracts/TemplMembership.sol:1`
-- Governance APIs: `contracts/TemplGovernance.sol:1`
-- Treasury APIs: `contracts/TemplTreasury.sol:1`
+- Membership APIs: `contracts/TemplMembership.sol`
+- Governance APIs: `contracts/TemplGovernance.sol`
+- Treasury APIs: `contracts/TemplTreasury.sol`
 
 Gotchas and validation checklist
 - One active proposal per proposer: `templ.hasActiveProposal(user)` blocks new proposals until the previous one is executed/expired. Disable create UI when true.
@@ -255,15 +260,15 @@ Gotchas and validation checklist
 - Title/description caps: title ≤256 bytes, description ≤2048 bytes. Truncate or warn before submit.
 - Entry fee update constraints: new fee must be ≥10 and divisible by 10 (raw token units). Validate before proposing.
 - Curve config bounds: at most 8 total segments (primary + additional). Validate before proposing curve changes.
-- Batch external calls with ETH: when batching via `templ.batchDAO`, set `target = templ.getAddress()` and pass `value = sum(values)` to `createProposalCallExternal`. Any inner revert bubbles and reverts the whole batch.
-- Pagination limits: `getActiveProposalsPaginated` and `getExternalRewardTokensPaginated` require `1 ≤ limit ≤ 100`. Respect `hasMore` when paginating.
+- Batch external calls with ETH: when batching via `templ.batchDAO`, set `target = templ.getAddress()` and pass `value ≥ sum(values)` to `createProposalCallExternal`, or ensure the templ already holds sufficient ETH to cover the inner `values`. Any inner revert bubbles and reverts the whole batch.
+- Pagination limits: `getActiveProposalsPaginated` requires `1 ≤ limit ≤ 100`. `getExternalRewardTokensPaginated` has no on‑chain limit; pick a reasonable UI page size (e.g., 50–100) and respect `hasMore`.
 - Donations and enumeration: donated ERC‑20s are withdrawable immediately but only appear in `getExternalRewardTokens()` after the first disband for that token.
 - External reward cleanup: show “Cleanup token” only when `getExternalRewardState(token).poolBalance == 0` AND `remainder == 0`. Remainders are flushed as membership changes or on subsequent disbands.
 - Join auto‑pause at cap: if `maxMembers` is set and reached, `joinPaused` flips true automatically. Always read `joinPaused` before enabling join UI.
 - Referral rules: referrer must be an existing member and not the recipient; otherwise referral pays 0. Consider checking `isMember(referrer)` pre‑submit.
 - Dictatorship mode: when `priestIsDictator()` is true, block proposal create/vote/execute in the UI (except the dictatorship toggle), and surface priest‑only controls for DAO actions (including `batchDAO`).
 - ETH recipients: treasury ETH withdrawals call `recipient.call{value: amount}("")`. If the recipient is a non‑payable contract or reverts in `receive()`, the withdrawal reverts. Prefer EOA or payable targets.
-- Action payload helper: `contracts/TEMPL.sol:240` via `getProposalActionData`
+- Action payload helper: call `TEMPL.getProposalActionData(id)` to fetch `(Action action, bytes payload)`. See README “Proposal Views” for payload shapes.
 
 Example: Approve + Deploy Vesting (from templ via batchDAO)
 - Goal: create a proposal that atomically approves a vesting/streaming factory, then calls its `deploy_vesting_contract` entrypoint, with both calls originating from the templ address.
