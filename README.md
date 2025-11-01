@@ -4,7 +4,7 @@
 
 Templ lets anyone create on-chain, token‑gated groups (“templs”) that accrue an access‑token treasury, stream rewards to existing members, and govern changes and payouts entirely on-chain.
 
-Quick links: [At a Glance](#protocol-at-a-glance) · [Architecture](#architecture) · [Repo Map](#repo-map) · [Glossary](#glossary) · [Lifecycle](#lifecycle) · [Quickstart](#quickstart) · [Deploy](#deploy-locally) · [Safety Model](#safety-model) · [Security](#security) · [Reference](#reference) · [Constraints](#constraints) · [Limits](#limits--defaults) · [Indexing](#indexing-notes) · [Tests](#tests) · [FAQ](#faq) · [Troubleshooting](#troubleshooting) · [Gotchas](#gotchas)
+Quick links: [At a Glance](#protocol-at-a-glance) · [Architecture](#architecture) · [Upgradeable Controls](#upgradeable-controls) · [Repo Map](#repo-map) · [Glossary](#glossary) · [Lifecycle](#lifecycle) · [Quickstart](#quickstart) · [Deploy](#deploy-locally) · [Safety Model](#safety-model) · [Security](#security) · [Reference](#reference) · [Constraints](#constraints) · [Limits](#limits--defaults) · [Indexing](#indexing-notes) · [Tests](#tests) · [FAQ](#faq) · [Troubleshooting](#troubleshooting) · [Gotchas](#gotchas)
 
 ## Protocol At a Glance
 - Create a templ tied to a vanilla ERC‑20 access token; members join by paying an entry fee in that token. The fee is split into burn, treasury, member‑pool, and protocol slices.
@@ -30,6 +30,101 @@ At runtime a templ behaves like one contract with clean separation of concerns v
 - Shared storage: [`TemplBase`](contracts/TemplBase.sol)
 
 Deployers configure pricing curves, fee splits, referral rewards, proposal fees, quorum/delay, membership caps, and an optional dictatorship (priest) override. The access token is any vanilla ERC‑20 you choose.
+
+## Upgradeable Controls
+
+Templ is intentionally upgradeable at the routing layer. The `TEMPL` contract is a selector→module router that delegates calls to module implementations over a shared storage layout. Governance (or the priest when dictatorship is enabled) can update routing and even add new modules without redeploying the router.
+
+What is fixed vs dynamic
+- Dynamic routing table: The authoritative mapping is internal (`_moduleForSelector[bytes4] → address`) and can be changed at runtime.
+- Static helper: `getRegisteredSelectors()` returns static, canonical selector sets for the three shipped modules for tooling and quick introspection. It does not change when you update routing. To inspect the live mapping for any selector, call `getModuleForSelector(bytes4)`.
+
+Permissions and safety
+- Only via DAO: `setRoutingModuleDAO(address module, bytes4[] selectors)` is `onlyDAO`. When dictatorship is disabled, it can only be reached through a governance proposal (see examples below). When dictatorship is enabled, the priest may call it directly.
+- Direct module calls revert: Modules enforce delegatecall‑only access; always call the `TEMPL` router.
+- Arbitrary calls are powerful: `createProposalCallExternal` and `batchDAO` execute from the templ address and can move funds or rewire routing. Frontends must surface strong warnings and quorum requirements protect abuse.
+
+Add or replace modules
+1) Deploy your module implementation (recommended: inherit `TemplBase` and do not declare new storage variables).
+2) Choose the function selectors to route to it.
+3) Update routing via governance (or priest in dictatorship mode).
+
+Inspect current routing
+
+```js
+// npx hardhat console --network <net>
+const templ = await ethers.getContractAt("TEMPL", "0xYourTempl");
+const Membership = await ethers.getContractFactory("TemplMembershipModule");
+const sel = Membership.interface.getFunction("getMemberCount").selector;
+await templ.getModuleForSelector(sel); // → current module address (0x0 if unregistered)
+```
+
+Governance: map selectors to a new module (single)
+
+```js
+// Prepare routing update (map one selector)
+const templ = await ethers.getContractAt("TEMPL", "0xYourTempl");
+const NewMod = await ethers.getContractFactory("MockMembershipOverride"); // example
+const newModule = await NewMod.deploy();
+const setRoutingSel = templ.interface.getFunction("setRoutingModuleDAO").selector;
+
+// bytes4[] with one entry
+const Membership = await ethers.getContractFactory("TemplMembershipModule");
+const selector = Membership.interface.getFunction("getMemberCount").selector;
+const params = ethers.AbiCoder.defaultAbiCoder().encode([
+  "address","bytes4[]"
+], [await newModule.getAddress(), [selector]]);
+
+// Create proposal to call templ.setRoutingModuleDAO(module, selectors)
+const pid = await templ.createProposalCallExternal(
+  await templ.getAddress(),
+  0,
+  setRoutingSel,
+  params,
+  36 * 60 * 60, // voting period
+  "Route getMemberCount to new module",
+  "Demonstrate routing upgrade via governance"
+);
+// vote() and executeProposal(pid) per usual
+```
+
+Governance: map a batch of selectors
+
+```js
+// Build an array of selectors implemented by your module
+const Gov = await ethers.getContractFactory("TemplGovernanceModule");
+const selectors = [
+  Gov.interface.getFunction("getActiveProposals").selector,
+  Gov.interface.getFunction("getActiveProposalsPaginated").selector,
+];
+const params = ethers.AbiCoder.defaultAbiCoder().encode([
+  "address","bytes4[]"
+], [await newModule.getAddress(), selectors]);
+// Propose via createProposalCallExternal targeting templ.setRoutingModuleDAO as above
+```
+
+Dictatorship (priest‑only) path
+
+```js
+// When dictatorship is enabled, the priest can call directly
+await templ.setRoutingModuleDAO(await newModule.getAddress(), [selector]);
+```
+
+Add a brand‑new module
+- You are not limited to the three shipped modules. Any new selectors you map will be routed by the fallback and execute via `delegatecall` with the templ’s storage.
+- Best practice: implement your module as `contract MyModule is TemplBase { ... }` and avoid declaring new storage variables to prevent slot collisions. If you need bespoke storage, use a dedicated diamond‑storage pattern under a unique slot hash.
+
+Rollbacks and verification
+- Rollback: route selectors back to the previous module address using the same flow.
+- Verify: call `getModuleForSelector(bytes4)` for each selector you updated to confirm the live mapping.
+- Events: `setRoutingModuleDAO` does not emit an event; rely on on‑chain calls and `getModuleForSelector` for introspection.
+
+Security notes
+- Treat `setRoutingModuleDAO` and `CallExternal` as highly privileged. A malicious routing change can brick functions or drain funds through arbitrary calls. Use conservative quorum and clear UI warnings for proposals that target the router.
+- In dictatorship mode, the priest can perform any `onlyDAO` action (including `batchDAO`). Disable dictatorship for decentralized control.
+
+Storage/layout policy
+- Modules share a single storage layout via `TemplBase`. Keep layout compatible across upgrades. For changes to storage‑backed structs after a mainnet launch, preserve slot order or introduce reserved/deprecated fields to avoid state corruption on upgrade.
 
 ## How It Works
 
