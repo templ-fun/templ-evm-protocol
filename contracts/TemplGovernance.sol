@@ -299,7 +299,6 @@ contract TemplGovernanceModule is TemplBase {
     /// @param _token Token to withdraw (`address(0)` for ETH).
     /// @param _recipient Destination wallet for the funds.
     /// @param _amount Amount to withdraw.
-    /// @param _reason Free-form text explaining the withdrawal.
     /// @param _votingPeriod Optional custom voting duration (seconds).
     /// @param _title On-chain title for the proposal.
     /// @param _description On-chain description for the proposal.
@@ -308,7 +307,6 @@ contract TemplGovernanceModule is TemplBase {
         address _token,
         address _recipient,
         uint256 _amount,
-        string calldata _reason,
         uint256 _votingPeriod,
         string calldata _title,
         string calldata _description
@@ -320,7 +318,6 @@ contract TemplGovernanceModule is TemplBase {
         p.token = _token;
         p.recipient = _recipient;
         p.amount = _amount;
-        p.reason = _reason;
         return id;
     }
 
@@ -532,10 +529,10 @@ contract TemplGovernanceModule is TemplBase {
     /// @return returnData ABI-encoded return data for CallExternal actions, empty otherwise.
     function _executeActionInternal(uint256 _proposalId) internal returns (bytes memory returnData) {
         Proposal storage proposal = proposals[_proposalId];
+        returnData = hex"";
         if (proposal.action == Action.CallExternal) {
-            return _governanceCallExternal(proposal);
-        }
-        if (proposal.action == Action.UpdateConfig) {
+            returnData = _governanceCallExternal(proposal);
+        } else if (proposal.action == Action.UpdateConfig) {
             _governanceUpdateConfig(
                 proposal.newEntryFee,
                 proposal.updateFeeSplit,
@@ -543,72 +540,39 @@ contract TemplGovernanceModule is TemplBase {
                 proposal.newTreasuryBps,
                 proposal.newMemberPoolBps
             );
-            return hex"";
-        }
-        if (proposal.action == Action.WithdrawTreasury) {
-            _governanceWithdrawTreasury(
-                proposal.token,
-                proposal.recipient,
-                proposal.amount,
-                proposal.reason,
-                _proposalId
-            );
-            return hex"";
-        }
-        if (proposal.action == Action.DisbandTreasury) {
+        } else if (proposal.action == Action.WithdrawTreasury) {
+            _governanceWithdrawTreasury(proposal.token, proposal.recipient, proposal.amount, _proposalId);
+        } else if (proposal.action == Action.DisbandTreasury) {
             _governanceDisbandTreasury(proposal.token, _proposalId);
-            return hex"";
-        }
-        if (proposal.action == Action.ChangePriest) {
+        } else if (proposal.action == Action.ChangePriest) {
             _governanceChangePriest(proposal.recipient);
-            return hex"";
-        }
-        if (proposal.action == Action.CleanupExternalRewardToken) {
+        } else if (proposal.action == Action.CleanupExternalRewardToken) {
             _governanceCleanupExternalRewardToken(proposal.token);
-            return hex"";
-        }
-        if (proposal.action == Action.SetJoinPaused) {
+        } else if (proposal.action == Action.SetJoinPaused) {
             _governanceSetJoinPaused(proposal.joinPaused);
-            return hex"";
-        }
-        if (proposal.action == Action.SetDictatorship) {
+        } else if (proposal.action == Action.SetDictatorship) {
             _governanceSetDictatorship(proposal.setDictatorship);
-            return hex"";
-        }
-        if (proposal.action == Action.SetMaxMembers) {
+        } else if (proposal.action == Action.SetMaxMembers) {
             _governanceSetMaxMembers(proposal.newMaxMembers);
-            return hex"";
-        }
-        if (proposal.action == Action.SetMetadata) {
+        } else if (proposal.action == Action.SetMetadata) {
             _governanceUpdateMetadata(proposal.newTemplName, proposal.newTemplDescription, proposal.newLogoLink);
-            return hex"";
-        }
-        if (proposal.action == Action.SetProposalFee) {
+        } else if (proposal.action == Action.SetProposalFee) {
             _governanceSetProposalCreationFee(proposal.newProposalCreationFeeBps);
-            return hex"";
-        }
-        if (proposal.action == Action.SetReferralShare) {
+        } else if (proposal.action == Action.SetReferralShare) {
             _governanceSetReferralShareBps(proposal.newReferralShareBps);
-            return hex"";
-        }
-        if (proposal.action == Action.SetEntryFeeCurve) {
+        } else if (proposal.action == Action.SetEntryFeeCurve) {
             CurveConfig memory curve2 = proposal.curveConfig;
             _governanceSetEntryFeeCurve(curve2, proposal.curveBaseEntryFee);
-            return hex"";
-        }
-        if (proposal.action == Action.SetQuorumBps) {
+        } else if (proposal.action == Action.SetQuorumBps) {
             _governanceSetQuorumBps(proposal.newQuorumBps);
-            return hex"";
-        }
-        if (proposal.action == Action.SetPostQuorumVotingPeriod) {
+        } else if (proposal.action == Action.SetPostQuorumVotingPeriod) {
             _governanceSetPostQuorumVotingPeriod(proposal.newPostQuorumVotingPeriod);
-            return hex"";
-        }
-        if (proposal.action == Action.SetBurnAddress) {
+        } else if (proposal.action == Action.SetBurnAddress) {
             _governanceSetBurnAddress(proposal.newBurnAddress);
-            return hex"";
+        } else {
+            revert TemplErrors.InvalidCallData();
         }
-        revert TemplErrors.InvalidCallData();
+        return returnData;
     }
 
     /// @notice Governance wrapper that sets the join pause flag.
@@ -637,16 +601,14 @@ contract TemplGovernanceModule is TemplBase {
     /// @param token Token to withdraw (`address(0)` for ETH).
     /// @param recipient Destination wallet.
     /// @param amount Amount to transfer.
-    /// @param reason Human-readable reason string.
     /// @param proposalId Authorizing proposal id.
     function _governanceWithdrawTreasury(
         address token,
         address recipient,
         uint256 amount,
-        string memory reason,
         uint256 proposalId
     ) internal {
-        _withdrawTreasury(token, recipient, amount, reason, proposalId);
+        _withdrawTreasury(token, recipient, amount, proposalId);
     }
 
     /// @notice Governance wrapper that disbands treasury into a reward pool for `token`.

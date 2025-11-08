@@ -85,10 +85,20 @@ maybeDescribe("Bytecode size limits", function () {
 
     const labels = contractArtifacts.map(([, , label]) => label);
 
+    // Report exact sizes for each contract/module
+    console.log(`\n[bytecode] EIP-170 limit: ${limit} bytes`);
+    for (let i = 0; i < sizes.length; i += 1) {
+      const [file, name, label] = contractArtifacts[i];
+      const size = sizes[i];
+      const kib = (size / 1024).toFixed(2);
+      console.log(`[bytecode] ${label} (${name}) -> ${size} bytes (${kib} KiB)`);
+    }
+
     // If any bytecode is clearly beyond the EIP-170 limit, assume instrumentation is active
     // and skip strict enforcement (we already validate limits in non-instrumented runs).
     const instrumented = sizes.some((s) => s > 40_000);
     if (instrumented) {
+      console.log("[bytecode] Detected coverage/instrumented build; skipping strict size assertions.\n");
       return;
     }
 

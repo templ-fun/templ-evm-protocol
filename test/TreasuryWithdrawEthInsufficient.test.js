@@ -18,7 +18,6 @@ describe("Treasury ETH insufficient balance reverts", function () {
       ethers.ZeroAddress,
       member.address,
       1n,
-      "no-eth",
       VOTING_PERIOD
     );
     await templ.connect(voter).vote(0, true);
@@ -31,4 +30,3 @@ describe("Treasury ETH insufficient balance reverts", function () {
     );
   });
 });
-

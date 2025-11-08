@@ -26,14 +26,12 @@ contract TemplTreasuryModule is TemplBase {
     /// @param token Token to withdraw (`address(0)` for ETH, access token, or arbitrary ERC-20).
     /// @param recipient Destination wallet for the withdrawal.
     /// @param amount Amount to transfer.
-    /// @param reason Human-readable justification emitted for off-chain consumers.
     function withdrawTreasuryDAO(
         address token,
         address recipient,
-        uint256 amount,
-        string calldata reason
+        uint256 amount
     ) external onlyDAO nonReentrant onlyDelegatecall {
-        _withdrawTreasury(token, recipient, amount, reason, 0);
+        _withdrawTreasury(token, recipient, amount, 0);
     }
 
     /// @notice Governance action that updates the entry fee and/or fee split configuration.

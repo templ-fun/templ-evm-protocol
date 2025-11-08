@@ -170,4 +170,17 @@ contract TemplHarness is TEMPL {
     function harnessRemoveExternalToken(address token) external {
         _removeExternalToken(token);
     }
+
+    // ---- Internal math helpers exposure for coverage ----
+    function harnessScaleInverse(uint256 amount, uint256 divisor) external pure returns (uint256) {
+        return _scaleInverse(amount, divisor);
+    }
+
+    function harnessScaleForward(uint256 amount, uint256 multiplier) external pure returns (uint256) {
+        return _scaleForward(amount, multiplier);
+    }
+
+    function harnessMulWouldOverflow(uint256 a, uint256 b) external pure returns (bool) {
+        return _mulWouldOverflow(a, b);
+    }
 }

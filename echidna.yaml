@@ -1,8 +1,13 @@
 testMode: property
-testLimit: 1000
-seqLen: 500
-shrinkLimit: 100
-workers: 1
+
+# Stress profile for a powerful machine
+# - Increase total tests and sequence length to explore deeper state space
+# - Increase shrink limit to improve counterexample minimization
+# - Use multiple workers to parallelize fuzzing
+testLimit: 150000
+seqLen: 2000
+shrinkLimit: 800
+workers: 8
 
 cryticArgs:
   # remapping for OpenZeppelin imports used in contracts
@@ -11,3 +16,8 @@ cryticArgs:
   # enable via-IR and optimizer to avoid stack-too-deep on complex constructors
   - --solc-args
   - '--via-ir --optimize --optimize-runs 200'
+
+# Notes
+# - For even heavier runs, consider: testLimit: 300000, seqLen: 3000, workers: 12–16
+# - For quicker sanity runs, drop to: testLimit: 20000, seqLen: 500, workers: 4
+# - Keep via-IR/optimizer enabled to match production compilation behavior

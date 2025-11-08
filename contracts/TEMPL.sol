@@ -244,7 +244,7 @@ contract TEMPL is TemplBase {
         } else if (action == Action.CallExternal) {
             payload = abi.encode(p.externalCallTarget, p.externalCallValue, p.externalCallData);
         } else if (action == Action.WithdrawTreasury) {
-            payload = abi.encode(p.token, p.recipient, p.amount, p.reason);
+            payload = abi.encode(p.token, p.recipient, p.amount);
         } else if (action == Action.DisbandTreasury) {
             payload = abi.encode(p.token);
         } else if (action == Action.CleanupExternalRewardToken) {
@@ -370,5 +370,15 @@ contract TEMPL is TemplBase {
         for (uint256 i = 0; i < len; ++i) {
             _moduleForSelector[selectors[i]] = module;
         }
+    }
+
+    /// @notice Updates routing for function selectors to a module via DAO governance.
+    /// @dev This enables upgrading/replacing module implementations without redeploying the router.
+    ///      Call via a governance proposal using `createProposalCallExternal` targeting this TEMPL address.
+    ///      When dictatorship is disabled, `onlyDAO` enforces that calls originate from the router itself.
+    /// @param module Module address that will handle `selectors` via delegatecall.
+    /// @param selectors Function selectors to associate with `module`.
+    function setRoutingModuleDAO(address module, bytes4[] calldata selectors) external onlyDAO {
+        _registerModule(module, selectors);
     }
 }

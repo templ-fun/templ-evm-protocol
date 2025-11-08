@@ -30,7 +30,6 @@ describe("Vote reverts", function () {
             token.target,
             member1.address,
             ethers.parseUnits("10", 18),
-            "Test",
             7 * 24 * 60 * 60
         );
 
@@ -50,7 +49,6 @@ describe("Vote reverts", function () {
             token.target,
             member1.address,
             ethers.parseUnits("10", 18),
-            "Coverage",
             7 * 24 * 60 * 60
         );
 

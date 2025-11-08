@@ -121,26 +121,23 @@ describe("Proposal payload decode coverage (getProposalActionData)", function ()
     const tokenAddr = await token.getAddress();
     const recipient = m1.address;
     const amount = 1n;
-    const reason = "test reason";
     await templ.connect(m3).createProposalWithdrawTreasury(
       tokenAddr,
       recipient,
       amount,
-      reason,
       VOTING_PERIOD,
       "Withdraw",
       ""
     );
     const id = (await templ.proposalCount()) - 1n;
     const [, payload] = await templ.getProposalActionData(id);
-    const [rToken, rRecip, rAmt, rReason] = ethers.AbiCoder.defaultAbiCoder().decode(
-      ["address","address","uint256","string"],
+    const [rToken, rRecip, rAmt] = ethers.AbiCoder.defaultAbiCoder().decode(
+      ["address","address","uint256"],
       payload
     );
     expect(rToken).to.equal(tokenAddr);
     expect(rRecip).to.equal(recipient);
     expect(rAmt).to.equal(amount);
-    expect(rReason).to.equal(reason);
   });
 
   it("decodes SetProposalFee and SetReferralShare", async function () {

@@ -37,7 +37,6 @@ describe("Treasury withdrawals for arbitrary assets", function () {
         otherToken.target,
         member1.address,
         DONATED_AMOUNT,
-        "withdraw donated ERC20",
         7 * 24 * 60 * 60
       );
 
@@ -59,7 +58,6 @@ describe("Treasury withdrawals for arbitrary assets", function () {
         ethers.ZeroAddress,
         member2.address,
         DONATED_AMOUNT,
-        "withdraw donated ETH",
         7 * 24 * 60 * 60
       );
 
@@ -109,7 +107,6 @@ describe("Treasury withdrawals for arbitrary assets", function () {
         token.target,
         member1.address,
         withdrawAmount,
-        "use donations",
         7 * 24 * 60 * 60
       );
 

@@ -4,7 +4,7 @@
 
 Templ lets anyone create on-chain, token‑gated groups (“templs”) that accrue an access‑token treasury, stream rewards to existing members, and govern changes and payouts entirely on-chain.
 
-Quick links: [At a Glance](#protocol-at-a-glance) · [Architecture](#architecture) · [Repo Map](#repo-map) · [Glossary](#glossary) · [Lifecycle](#lifecycle) · [Quickstart](#quickstart) · [Deploy](#deploy-locally) · [Safety Model](#safety-model) · [Security](#security) · [Reference](#reference) · [Constraints](#constraints) · [Limits](#limits--defaults) · [Indexing](#indexing-notes) · [Tests](#tests) · [FAQ](#faq) · [Troubleshooting](#troubleshooting) · [Gotchas](#gotchas)
+Quick links: [At a Glance](#protocol-at-a-glance) · [Architecture](#architecture) · [Governance‑Controlled Upgrades](#governance-controlled-upgrades) · [Solidity Patterns](#solidity-patterns) · [Repo Map](#repo-map) · [Glossary](#glossary) · [Lifecycle](#lifecycle) · [Quickstart](#quickstart) · [Deploy](#deploy-locally) · [Safety Model](#safety-model) · [Security](#security) · [Reference](#reference) · [Constraints](#constraints) · [Limits](#limits--defaults) · [Indexing](#indexing-notes) · [Proposal Views](#proposal-views) · [Tests](#tests) · [FAQ](#faq) · [Troubleshooting](#troubleshooting) · [Gotchas](#gotchas)
 
 ## Protocol At a Glance
 - Create a templ tied to a vanilla ERC‑20 access token; members join by paying an entry fee in that token. The fee is split into burn, treasury, member‑pool, and protocol slices.
@@ -15,6 +15,9 @@ Quick links: [At a Glance](#protocol-at-a-glance) · [Architecture](#architectur
 - Pricing curves define how the entry fee evolves with membership growth (static, linear, exponential segments; see `CurveConfig` in `TemplCurve`).
 - Everything is modular: `TEMPL` is a router that delegatecalls membership, treasury, and governance modules over a shared storage layout, keeping concerns clean.
 - Deploy many templs via `TemplFactory`; run permissionless or with a gated deployer.
+
+Priest bootstrap
+- On deploy, the priest is auto‑enrolled as member #1. `joinSequence` starts at 1 and the priest’s `rewardSnapshot` is initialized to the current `cumulativeMemberRewards`.
 
 ## Templ Factories
 
@@ -31,6 +34,102 @@ At runtime a templ behaves like one contract with clean separation of concerns v
 
 Deployers configure pricing curves, fee splits, referral rewards, proposal fees, quorum/delay, membership caps, and an optional dictatorship (priest) override. The access token is any vanilla ERC‑20 you choose.
 
+## Governance‑Controlled Upgrades
+
+Templ supports governance‑controlled routing updates. There is no protocol admin key and no owner that can change behavior out from under a templ. The only way to change routing is via that templ’s own on‑chain governance. The priest can perform these actions only when dictatorship is explicitly enabled for that templ.
+
+What is fixed vs dynamic
+- Dynamic routing table: The authoritative mapping is internal (`_moduleForSelector[bytes4] → address`) and can be changed at runtime.
+- Static helper: `getRegisteredSelectors()` returns static, canonical selector sets for the three shipped modules for tooling and quick introspection. It does not change when you update routing. To inspect the live mapping for any selector, call `getModuleForSelector(bytes4)`.
+
+Permissions and safety
+- Only by governance (no protocol admin): `setRoutingModuleDAO(address,bytes4[])` is `onlyDAO`. With dictatorship disabled, direct calls from EOAs (including protocol devs) revert; it is only reachable during execution of a passed governance proposal targeting the router. With dictatorship enabled, the priest may call it directly.
+- Direct module calls revert: Modules enforce delegatecall‑only access; always call the `TEMPL` router.
+- Arbitrary calls are powerful: `createProposalCallExternal` and `batchDAO` execute from the templ address and can move funds or rewire routing. Only governance (or the priest in dictatorship) can execute them. Frontends must surface strong warnings and quorum requirements protect abuse.
+
+Add or replace modules
+1) Deploy your module implementation (recommended: inherit `TemplBase` and do not declare new storage variables).
+2) Choose the function selectors to route to it.
+3) Update routing via governance (or priest in dictatorship mode).
+
+Inspect current routing
+
+```js
+// npx hardhat console --network <net>
+const templ = await ethers.getContractAt("TEMPL", "0xYourTempl");
+const Membership = await ethers.getContractFactory("TemplMembershipModule");
+const sel = Membership.interface.getFunction("getMemberCount").selector;
+await templ.getModuleForSelector(sel); // → current module address (0x0 if unregistered)
+```
+
+Governance: map selectors to a new module (single)
+
+```js
+// Prepare routing update (map one selector)
+const templ = await ethers.getContractAt("TEMPL", "0xYourTempl");
+const NewMod = await ethers.getContractFactory("MockMembershipOverride"); // example
+const newModule = await NewMod.deploy();
+const setRoutingSel = templ.interface.getFunction("setRoutingModuleDAO").selector;
+
+// bytes4[] with one entry
+const Membership = await ethers.getContractFactory("TemplMembershipModule");
+const selector = Membership.interface.getFunction("getMemberCount").selector;
+const params = ethers.AbiCoder.defaultAbiCoder().encode([
+  "address","bytes4[]"
+], [await newModule.getAddress(), [selector]]);
+
+// Create proposal to call templ.setRoutingModuleDAO(module, selectors)
+const pid = await templ.createProposalCallExternal(
+  await templ.getAddress(),
+  0,
+  setRoutingSel,
+  params,
+  36 * 60 * 60, // voting period
+  "Route getMemberCount to new module",
+  "Demonstrate routing upgrade via governance"
+);
+// vote() and executeProposal(pid) per usual
+```
+
+Governance: map a batch of selectors
+
+```js
+// Build an array of selectors implemented by your module
+const Gov = await ethers.getContractFactory("TemplGovernanceModule");
+const selectors = [
+  Gov.interface.getFunction("getActiveProposals").selector,
+  Gov.interface.getFunction("getActiveProposalsPaginated").selector,
+];
+const params = ethers.AbiCoder.defaultAbiCoder().encode([
+  "address","bytes4[]"
+], [await newModule.getAddress(), selectors]);
+// Propose via createProposalCallExternal targeting templ.setRoutingModuleDAO as above
+```
+
+Dictatorship (priest‑only) path
+
+```js
+// When dictatorship is enabled, the priest can call directly
+await templ.setRoutingModuleDAO(await newModule.getAddress(), [selector]);
+```
+
+Add a brand‑new module
+- You are not limited to the three shipped modules. Any new selectors you map will be routed by the fallback and execute via `delegatecall` with the templ’s storage.
+- Best practice: implement your module as `contract MyModule is TemplBase { ... }` and avoid declaring new storage variables to prevent slot collisions. If you need bespoke storage, use a dedicated diamond‑storage pattern under a unique slot hash.
+
+Rollbacks and verification
+- Rollback: route selectors back to the previous module address using the same flow.
+- Verify: call `getModuleForSelector(bytes4)` for each selector you updated to confirm the live mapping.
+- Events: `setRoutingModuleDAO` does not emit an event; rely on on‑chain calls and `getModuleForSelector` for introspection.
+
+Security notes
+- There is no protocol‑level upgrade authority. Routing and external calls are controlled by each templ’s governance.
+- Treat `setRoutingModuleDAO` and `CallExternal` as highly privileged. A malicious routing change can brick functions or drain funds through arbitrary calls. Use conservative quorum and clear UI warnings for proposals that target the router.
+- In dictatorship mode, the priest (a templ‑specific address chosen at deploy time or by governance) can perform any `onlyDAO` action (including `batchDAO`). Keep dictatorship disabled for decentralized control.
+
+Storage/layout policy
+- Modules share a single storage layout via `TemplBase`. Keep layout compatible across upgrades. For changes to storage‑backed structs after a mainnet launch, preserve slot order or introduce reserved/deprecated fields to avoid state corruption on upgrade.
+
 ## How It Works
 
 ```mermaid
@@ -41,7 +140,7 @@ flowchart LR
   subgraph Modules
     M[TemplMembershipModule]
     Tr[TemplTreasuryModule]
-    G[TemplGovernanceModule]
+  G[TemplGovernanceModule]
   end
 
   TEMPL --> M
@@ -59,9 +158,20 @@ flowchart LR
 
 - `TEMPL` routes calls to modules via delegatecall and exposes selector→module lookup.
 - Membership: joins, fee‑split accounting, member reward accrual and claims, eligibility snapshots.
-- Treasury: governance/priests withdraw, disband, update config/splits/curve/metadata/referral/proposal fee.
-- Governance: create/vote/execute proposals, quorum + delay, dictatorship toggle, safe external calls (single or batched), and opportunistic tail‑pruning of inactive proposals on execution to keep the active index compact.
+- Treasury: governance/priests manage pause/cap/config/curve, change the priest or dictatorship state, adjust referral/proposal fees, quorum/post‑quorum windows, burn address, clean up settled external rewards, withdraw/disband assets, and run atomic multi‑call batches via `batchDAO`.
+- Governance: create/vote/execute proposals covering all treasury setters (including quorum/burn/curve metadata), safe external calls (single or batched), dictatorship toggle, and opportunistic tail‑pruning of inactive proposals on execution to keep the active index compact.
 - Shared storage: all persistent state lives in [`TemplBase`](contracts/TemplBase.sol).
+
+## Solidity Patterns
+- Delegatecall router: `TEMPL` fallback maps `selector → module` and uses `delegatecall` to execute in shared storage (contracts/TEMPL.sol).
+- Delegatecall‑only modules: Each module stores an immutable `SELF` and reverts when called directly, enforcing router‑only entry (contracts/TemplMembership.sol, contracts/TemplTreasury.sol, contracts/TemplGovernance.sol).
+- Only‑DAO guard: `onlyDAO` in `TemplBase` gates actions to either the router itself (when dictatorship is disabled) or the router/priest (when enabled) (contracts/TemplBase.sol).
+- Reentrancy guards: User‑facing mutators like joins, claims, proposal creation/execution, and withdrawals use `nonReentrant` (contracts/TemplMembership.sol, contracts/TemplGovernance.sol, contracts/TemplTreasury.sol).
+- Snapshotting by join sequence: Proposals capture `preQuorumJoinSequence`; at quorum, a second snapshot anchors eligibility (`quorumJoinSequence`) (contracts/TemplBase.sol, contracts/TemplGovernance.sol).
+- Bounded enumeration: External reward tokens capped at 256; active proposals support paginated reads with a 1..100 `limit` (contracts/TemplBase.sol, contracts/TemplGovernance.sol).
+- Safe token ops: Uses OpenZeppelin `SafeERC20` for ERC‑20 transfers and explicit ETH forwarding with revert bubbling (contracts/TemplBase.sol, contracts/TemplGovernance.sol).
+- Saturating math for curves: Price growth saturates at `MAX_ENTRY_FEE` to avoid overflow during linear/exponential scaling (contracts/TemplBase.sol).
+- Governance‑controlled upgrades: `setRoutingModuleDAO(address,bytes4[])` rewires selectors under `onlyDAO` (contracts/TEMPL.sol).
 
 ## Key Concepts
 - Fee split: burn / treasury / member pool / protocol; must sum to 10_000 bps.
@@ -108,7 +218,7 @@ flowchart LR
 - Tests: [test/](test/)
 - Deployments: [deployments/](deployments/)
 - Docs template: [docs-templates/contract.hbs](docs-templates/contract.hbs)
-- UI integration guide: [UI](UI)
+- UI integration guide: [UI.md](UI.md)
 
 ## Quickstart
 - Prereqs: Node >=22, `npm`. Docker recommended for fuzzing.
@@ -189,12 +299,13 @@ const templ = await ethers.getContractAt("TEMPL", "0xYourTempl");
 const token = await ethers.getContractAt("IERC20", (await templ.getConfig())[0]);
 // Approve a bounded buffer (~2× entryFee) to absorb join races and cover first proposal fee
 const entryFee = (await templ.getConfig())[1];
-await token.approve(templ.target, entryFee * 2n);
-await templ.join();
-const id = await templ.createProposalSetJoinPaused(true, 36*60*60, "Pause joins", "Cooldown");
-await templ.vote(id, true);
+await (await token.approve(templ.target, entryFee * 2n)).wait();
+await (await templ.join()).wait();
+const id = await templ.callStatic.createProposalSetJoinPaused(true, 36 * 60 * 60, "Pause joins", "Cooldown");
+await (await templ.createProposalSetJoinPaused(true, 36 * 60 * 60, "Pause joins", "Cooldown")).wait();
+await (await templ.vote(id, true)).wait();
 // ...advance time...
-await templ.executeProposal(id);
+await (await templ.executeProposal(id)).wait();
 
 ```
 
@@ -237,7 +348,7 @@ const batchParams = ethers.AbiCoder.defaultAbiCoder().encode(
 
 // 3) Propose the external call (templ -> templ.batchDAO)
 const votingPeriod = 36 * 60 * 60;
-const pid = await templ.createProposalCallExternal(
+const pid = await templ.callStatic.createProposalCallExternal(
   await templ.getAddress(),
   0, // no ETH forwarded in this example
   batchSel,
@@ -246,16 +357,27 @@ const pid = await templ.createProposalCallExternal(
   "Approve and stake",
   "Approve token then stake in a single atomic batch (sender = templ)"
 );
+await (
+  await templ.createProposalCallExternal(
+    await templ.getAddress(),
+    0,
+    batchSel,
+    batchParams,
+    votingPeriod,
+    "Approve and stake",
+    "Approve token then stake in a single atomic batch (sender = templ)"
+  )
+).wait();
 
 // 4) Vote and execute after quorum + delay
-await templ.vote(pid, true);
+await (await templ.vote(pid, true)).wait();
 // ...advance time to satisfy post‑quorum voting period...
-await templ.executeProposal(pid);
+await (await templ.executeProposal(pid)).wait();
 ```
 
 Notes
 - Calls execute from the templ address. Any approvals and transfers affect the templ’s allowances and balances.
-- To forward ETH in the batch, set `values` per inner call and set the top‑level `value` in `createProposalCallExternal` to `sum(values)`.
+- To forward ETH in the batch, set `values` per inner call and set the top‑level `value` in `createProposalCallExternal` to at least `sum(values)` (or ensure the templ holds enough ETH to cover the forwarded values).
 - If any inner call reverts, the entire batch reverts; no partial effects.
 - Proposing and voting require membership; ensure the caller has joined.
 
@@ -366,6 +488,7 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
 - Entry fee: must be ≥10 and divisible by 10.
 - Fee split: burn + treasury + member pool + protocol must sum to 10_000 bps.
 - Pre‑quorum voting window: bounded to [36 hours, 30 days].
+- Pagination: `getActiveProposalsPaginated` requires `1 ≤ limit ≤ 100`.
 
 ## Limits & Defaults
 - `BPS_DENOMINATOR = 10_000`.
@@ -387,6 +510,25 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
 - Use `getActiveProposals()` for lists; `getActiveProposalsPaginated(offset,limit)` for pagination.
 - Treasury views: `getTreasuryInfo()` and/or `TreasuryAction`/`TreasuryDisbanded` deltas.
 - Curves: consume `EntryFeeCurveUpdated` for UI refresh.
+
+## Proposal Views
+- For any proposal id, `TEMPL.getProposalActionData(id)` returns `(Action action, bytes payload)`. Decode `payload` using the shapes below:
+- SetJoinPaused → `abi.encode(bool joinPaused)`
+- UpdateConfig → `abi.encode(uint256 newEntryFee, bool updateFeeSplit, uint256 newBurnBps, uint256 newTreasuryBps, uint256 newMemberPoolBps)`
+- SetMaxMembers → `abi.encode(uint256 newMaxMembers)`
+- SetMetadata → `abi.encode(string name, string description, string logoLink)`
+- SetProposalFee → `abi.encode(uint256 newProposalCreationFeeBps)`
+- SetReferralShare → `abi.encode(uint256 newReferralShareBps)`
+- SetEntryFeeCurve → `abi.encode(CurveConfig curve, uint256 baseEntryFee)`
+- CallExternal → `abi.encode(address target, uint256 value, bytes calldata)`
+- WithdrawTreasury → `abi.encode(address token, address recipient, uint256 amount)`
+- DisbandTreasury → `abi.encode(address token)`
+- CleanupExternalRewardToken → `abi.encode(address token)`
+- ChangePriest → `abi.encode(address newPriest)`
+- SetDictatorship → `abi.encode(bool enabled)`
+- SetQuorumBps → `abi.encode(uint256 newQuorumBps)`
+- SetPostQuorumVotingPeriod → `abi.encode(uint256 newPostQuorumVotingPeriod)`
+- SetBurnAddress → `abi.encode(address newBurnAddress)`
 
 ## Safety Model
 - Vanilla ERC‑20 only: the access token must not tax, rebase, or hook transfers; accounting assumes exact in/out.
@@ -414,14 +556,14 @@ See tests by topic in [test/](test/).
 
 ## FAQ
 - Can the access token change later? No — deploy a new templ.
-- Why divisible by 10? Prevents rounding drift in fee math.
+- Why divisible by 10? It is an on‑chain invariant enforced by `_validateEntryFeeAmount`; updates that don’t meet it revert.
 - How do referrals work? Paid from the member‑pool slice when the referrer is a member and not the joiner.
 - Can I enumerate external reward tokens? Yes: `getExternalRewardTokens()` (or paginated) and `getExternalRewardState(token)`; cleanup via DAO‑only `cleanupExternalRewardToken`.
 
 ## Tests
 - Default: `npm test` (heavy `@load` suite is excluded).
 - High‑load stress: `npm run test:load` with `TEMPL_LOAD=...`.
-- End‑to‑end readiness: see [test/UltimateProdReadiness.test.js](test/UltimateProdReadiness.test.js).
+- End‑to‑end readiness: see [test/ProdReadiness.test.js](test/ProdReadiness.test.js).
 - Coverage: `npm run coverage`. Static: `npm run slither`.
 - Property fuzzing: `npm run test:fuzz` (via Docker) using [echidna.yaml](echidna.yaml) and [contracts/echidna/EchidnaTemplHarness.sol](contracts/echidna/EchidnaTemplHarness.sol).
 
