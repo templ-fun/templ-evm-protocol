@@ -747,42 +747,6 @@ contract TemplGovernanceModule is TemplBase {
         return _returndata;
     }
 
-    /// @notice Returns quorum-related snapshot data for a proposal.
-    /// @param _proposalId Proposal id to inspect.
-    /// @return eligibleVotersPreQuorum Members eligible before quorum was reached.
-    /// @return eligibleVotersPostQuorum Members eligible after quorum was reached.
-    /// @return preQuorumSnapshotBlock Block recorded when the proposal opened.
-    /// @return quorumSnapshotBlock Block recorded when quorum was reached (if any).
-    /// @return createdAt Timestamp when the proposal was created.
-    /// @return quorumReachedAt Timestamp when quorum was reached (0 when never reached).
-    /// @notice Returns the join sequence snapshots captured for proposal eligibility.
-    /// @param _proposalId Proposal id to inspect.
-    /// @return preQuorumJoinSequence Join sequence recorded when the proposal was created.
-    /// @return quorumJoinSequence Join sequence recorded when quorum was reached (0 if never reached).
-    /// @notice Returns whether a voter participated in a proposal and their recorded choice.
-    /// @param _proposalId Proposal id to inspect.
-    /// @param _voter Wallet to query.
-    /// @return voted True if the voter has cast a ballot.
-    /// @return support Recorded support value (false when `voted` is false).
-    /// @notice Lists proposal ids that are still within their active voting/execution window.
-    /// @return proposalIds Array of currently active proposal ids.
-    /// @notice Returns active proposal ids using offset + limit pagination.
-    /// @param offset Starting index within the proposal array.
-    /// @param limit Maximum number of active proposals to return (capped at 100).
-    /// @return proposalIds Active proposal ids discovered in the window.
-    /// @return hasMore True when additional active proposals exist beyond the window.
-
-    /// @notice Creates the base proposal structure, applies fee, and tracks proposer state.
-    /// @param _votingPeriod Requested voting period (seconds). 0 applies the default.
-    /// @param _title On-chain title for the proposal.
-    /// @param _description On-chain description for the proposal.
-    /// @return proposalId Newly created proposal id.
-    /// @return proposal Storage reference to the created proposal.
-    /// @dev Captures a pre‑quorum snapshot (block, join sequence, eligible voters), applies a proposal fee
-    ///      when configured, and auto‑votes YES for the proposer. The voting period is clamped to
-    ///      `[MIN_PRE_QUORUM_VOTING_PERIOD, MAX_PRE_QUORUM_VOTING_PERIOD]` with `preQuorumVotingPeriod`
-    ///      applied when callers pass zero.
-
     /// @notice Removes up to `maxRemovals` inactive proposals from the tail of the active set.
     /// @param maxRemovals Maximum number of entries to remove.
     function _pruneInactiveTail(uint256 maxRemovals) internal {

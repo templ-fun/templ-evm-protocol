@@ -180,7 +180,6 @@ abstract contract TemplBase is ReentrancyGuard {
         string title;
         /// @notice On-chain description string for the proposal.
         string description;
-        // reason removed; use description for context
         /// @notice Desired join pause state when the action is SetJoinPaused.
         bool joinPaused;
         /// @notice Replacement entry fee when updating config (0 keeps existing value).
