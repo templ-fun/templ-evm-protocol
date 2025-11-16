@@ -404,6 +404,9 @@ contract TemplFactory {
             revert TemplErrors.InstantQuorumBelowQuorum();
         }
 
+        // Validate initial council members array at factory level
+        _validateInitialCouncilMembers(cfg.initialCouncilMembers);
+
         TEMPL deployed = new TEMPL(
             cfg.priest,
             PROTOCOL_FEE_RECIPIENT,
@@ -502,6 +505,22 @@ contract TemplFactory {
     function _enforceCreationAccess() internal view {
         if (!permissionless && msg.sender != factoryDeployer) {
             revert TemplErrors.FactoryAccessRestricted();
+        }
+    }
+
+    /// @notice Validates initial council members array for deployment.
+    /// @param members Array of addresses to validate.
+    function _validateInitialCouncilMembers(address[] memory members) internal pure {
+        uint256 len = members.length;
+        if (len > 100) revert TemplErrors.InitialCouncilTooLarge();
+        for (uint256 i = 0; i < len; ++i) {
+            if (members[i] == address(0)) revert TemplErrors.InvalidRecipient();
+            // Check for duplicates
+            for (uint256 j = 0; j < i; ++j) {
+                if (members[j] == members[i]) {
+                    revert TemplErrors.DuplicateCouncilMember();
+                }
+            }
         }
     }
 

@@ -129,12 +129,31 @@ const config = {
   logoLink: templLogoLink,
   proposalFeeBps: 2500,
   referralShareBps: 2500,
+  // Single council member (priest only)
   initialCouncilMembers: [priestAddress]
 };
 // Preview the address then send the tx
 const templAddress = await factory.createTemplWithConfig.staticCall(config);
 await factory.createTemplWithConfig(config);
 ```
+
+For a multi-member council setup:
+```js
+const config = {
+  // ... other parameters same as above ...
+  councilMode: true,
+  // Multiple council members for better governance resilience
+  initialCouncilMembers: [
+    priestAddress,
+    trustedMemberAddress1,
+    trustedMemberAddress2
+  ]
+};
+const templAddress = await factory.createTemplWithConfig.staticCall(config);
+await factory.createTemplWithConfig(config);
+```
+
+**Note**: If you want the priest to have member status but NOT voting power on the council, exclude their address from `initialCouncilMembers`. Leave the array empty (`[]`) to start with zero councillors, though this will require the priest to use their bootstrap seat before governance is functional.
 
 Post‑deploy handoff
 - The `TemplCreated` event includes all genesis parameters and the new templ address. UIs can parse it or use the `staticCall` preview.

@@ -461,6 +461,16 @@ async function main() {
     "Initial Council Members:",
     initialCouncilMembers.length === 0 ? '(none)' : initialCouncilMembers.join(', ')
   );
+  if (START_COUNCIL_MODE && initialCouncilMembers.length === 0) {
+    console.log("\n⚠️  WARNING: Council mode is enabled but no initial council members specified.");
+    console.log("    The templ will start with zero councillors. Governance will be non-functional");
+    console.log("    until the priest uses the bootstrap seat to add at least one council member.");
+    console.log("    Consider providing INITIAL_COUNCIL_MEMBERS for better initial setup.\n");
+  }
+  if (START_COUNCIL_MODE && initialCouncilMembers.length > 0 && initialCouncilMembers.length < 3) {
+    console.log("\n⚠️  WARNING: Council mode is enabled with fewer than 3 council members.");
+    console.log("    This may create governance risks. Consider adding more members for resilience.\n");
+  }
   console.log("YES Vote Threshold (bps):", yesVoteThresholdBps);
   console.log("Instant Quorum (bps):", instantQuorumBps);
   console.log('Curve configuration:', curveConfigEnv.description);

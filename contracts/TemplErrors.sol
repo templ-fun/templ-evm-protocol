@@ -115,4 +115,8 @@ library TemplErrors {
     error DelegatecallOnly();
     /// @notice Thrown when an access token fails vanilla ERC-20 checks during safe deployment probing.
     error NonVanillaToken();
+    /// @notice Thrown when the initial council members array exceeds the maximum allowed size.
+    error InitialCouncilTooLarge();
+    /// @notice Thrown when the initial council members array contains duplicate addresses.
+    error DuplicateCouncilMember();
 }

@@ -123,6 +123,20 @@ contract TEMPL is TemplBase {
         }
         if (_startInCouncilMode && _priestIsDictator) revert TemplErrors.CouncilModeActive();
 
+        // Validate initial council members array
+        uint256 councilLen = _initialCouncilMembers.length;
+        if (councilLen > 100) revert TemplErrors.InitialCouncilTooLarge();
+        for (uint256 i = 0; i < councilLen; ++i) {
+            address account = _initialCouncilMembers[i];
+            if (account == address(0)) revert TemplErrors.InvalidRecipient();
+            // Check for duplicates by scanning earlier entries
+            for (uint256 j = 0; j < i; ++j) {
+                if (_initialCouncilMembers[j] == account) {
+                    revert TemplErrors.DuplicateCouncilMember();
+                }
+            }
+        }
+
         MEMBERSHIP_MODULE = _membershipModule;
         TREASURY_MODULE = _treasuryModule;
         GOVERNANCE_MODULE = _governanceModule;
@@ -135,15 +149,19 @@ contract TEMPL is TemplBase {
 
         priest = _priest;
         joinPaused = false;
+        // The priest is always enrolled as a genesis member, regardless of whether they're in the initial council.
+        // This ensures the priest always has member status, but only gets council voting power if explicitly included.
         _enrollGenesisMember(_priest);
-        uint256 councilLen = _initialCouncilMembers.length;
+        // Enroll and add initial council members
         for (uint256 i = 0; i < councilLen; ++i) {
             address account = _initialCouncilMembers[i];
+            // Skip enrollment if the priest is in the council (already enrolled above)
             if (!members[account].joined) {
                 _enrollGenesisMember(account);
             }
             _addCouncilMember(account, _priest);
         }
+        // Track genesis member count to separate paid joins from auto-enrolled members
         genesisMemberCount = memberCount;
         if (_startInCouncilMode) {
             _setCouncilMode(true);
