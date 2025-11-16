@@ -465,6 +465,15 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @notice Emitted when dictatorship mode is toggled.
     /// @param enabled True when dictatorship is enabled, false when disabled.
     event DictatorshipModeChanged(bool indexed enabled);
+    /// @notice Emitted when DAO sweeps an external reward remainder to a recipient.
+    /// @param token External reward token that was swept (address(0) for ETH).
+    /// @param recipient Wallet receiving the remainder.
+    /// @param amount Amount transferred to `recipient`.
+    event ExternalRewardRemainderSwept(address indexed token, address indexed recipient, uint256 indexed amount);
+    /// @notice Emitted when DAO sweeps the member pool remainder to a recipient.
+    /// @param recipient Wallet receiving the swept access-token amount.
+    /// @param amount Amount transferred to `recipient`.
+    event MemberPoolRemainderSwept(address indexed recipient, uint256 indexed amount);
 
     struct ExternalRewardState {
         uint256 poolBalance;
@@ -610,6 +619,40 @@ abstract contract TemplBase is ReentrancyGuard {
             rewards.cumulativeRewards += perMember;
             _recordExternalCheckpoint(rewards);
         }
+    }
+
+    /// @notice Sends an external reward remainder to `recipient`, forfeiting dust that cannot be evenly split.
+    /// @param token External reward token whose remainder should be swept (address(0) for ETH).
+    /// @param recipient Destination wallet for the swept amount.
+    function _sweepExternalRewardRemainder(address token, address recipient) internal {
+        if (recipient == address(0)) revert TemplErrors.InvalidRecipient();
+        ExternalRewardState storage rewards = externalRewards[token];
+        if (!rewards.exists) revert TemplErrors.InvalidCallData();
+        uint256 remainder = rewards.rewardRemainder;
+        if (remainder == 0) revert TemplErrors.NoRewardsToClaim();
+        if (remainder > rewards.poolBalance) revert TemplErrors.InvalidCallData();
+        rewards.rewardRemainder = 0;
+        rewards.poolBalance -= remainder;
+        if (token == address(0)) {
+            (bool success, ) = payable(recipient).call{value: remainder}("");
+            if (!success) revert TemplErrors.ProposalExecutionFailed();
+        } else {
+            _safeTransfer(token, recipient, remainder);
+        }
+        emit ExternalRewardRemainderSwept(token, recipient, remainder);
+    }
+
+    /// @notice Sends the member pool remainder (access token) to `recipient`.
+    /// @param recipient Wallet receiving the leftover member pool amount.
+    function _sweepMemberPoolRemainder(address recipient) internal {
+        if (recipient == address(0)) revert TemplErrors.InvalidRecipient();
+        uint256 remainder = memberRewardRemainder;
+        if (remainder == 0) revert TemplErrors.NoRewardsToClaim();
+        if (remainder > memberPoolBalance) revert TemplErrors.InvalidCallData();
+        memberRewardRemainder = 0;
+        memberPoolBalance -= remainder;
+        _safeTransfer(accessToken, recipient, remainder);
+        emit MemberPoolRemainderSwept(recipient, remainder);
     }
 
     /// @notice Sets immutable configuration and initial governance parameters shared across modules.

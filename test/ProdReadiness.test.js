@@ -109,7 +109,7 @@ describe("Prod Readiness", function () {
     // Sanity: registered selectors are complete and route to expected modules
     const [mSels, tSels, gSels, cSels] = await templ.getRegisteredSelectors();
     expect(mSels.length).to.equal(18);
-    expect(tSels.length).to.equal(23);
+    expect(tSels.length).to.equal(25);
     expect(gSels.length).to.equal(20);
     expect(cSels.length).to.equal(4);
 

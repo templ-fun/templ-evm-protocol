@@ -56,6 +56,8 @@ describe("TEMPL.getRegisteredSelectors()", function () {
       "removeCouncilMemberDAO",
       "bootstrapCouncilMember",
       "setInstantQuorumBpsDAO",
+      "sweepExternalRewardRemainderDAO",
+      "sweepMemberPoolRemainderDAO",
     ].map(sel);
 
     const expectedGovernance = [
