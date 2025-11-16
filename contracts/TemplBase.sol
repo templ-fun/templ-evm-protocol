@@ -861,6 +861,10 @@ abstract contract TemplBase is ReentrancyGuard {
     }
 
     /// @notice Updates proposal state when instant quorum is satisfied.
+    /// @dev When instant quorum threshold is met, this function mutates the proposal's `endTime` to `block.timestamp`,
+    ///      effectively closing the voting window immediately and enabling instant execution. This mutation means `endTime`
+    ///      no longer reflects the originally configured voting period. Indexers and UIs should check `instantQuorumMet`
+    ///      and `instantQuorumReachedAt` to detect when this state transition occurs.
     /// @param proposal Proposal being evaluated for instant quorum.
     function _maybeTriggerInstantQuorum(Proposal storage proposal) internal {
         if (proposal.instantQuorumMet) {
@@ -1453,6 +1457,9 @@ abstract contract TemplBase is ReentrancyGuard {
     }
 
     /// @notice Allows the priest to add a single bootstrap council member outside of governance.
+    /// @dev This is a single-use seat available only to the priest. Requires `councilModeEnabled == true`
+    ///      to prevent the bootstrap from being consumed before council governance is active. After one use,
+    ///      `councilBootstrapConsumed` is set permanently and further bootstrap attempts revert.
     /// @param account Wallet receiving the bootstrap council seat.
     /// @param caller Original msg.sender forwarded for event context.
     function _bootstrapCouncilMember(address account, address caller) internal {
