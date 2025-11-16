@@ -74,7 +74,7 @@ abstract contract TemplBase is ReentrancyGuard {
     bool public joinPaused;
     /// @notice Maximum allowed members when greater than zero (0 = uncapped).
     uint256 public maxMembers;
-    /// @notice YES vote threshold required to satisfy quorum (basis points).
+    /// @notice Minimum participation threshold (bps of eligible voters) required to reach quorum.
     uint256 public quorumBps;
     /// @notice Seconds governance must wait after quorum before executing a proposal.
     uint256 public postQuorumVotingPeriod;

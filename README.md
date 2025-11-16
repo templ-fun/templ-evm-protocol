@@ -152,11 +152,13 @@ flowchart LR
     M[TemplMembershipModule]
     Tr[TemplTreasuryModule]
   G[TemplGovernanceModule]
+  C[TemplCouncilModule]
   end
 
   TEMPL --> M
   TEMPL --> Tr
   TEMPL --> G
+  TEMPL --> C
   TEMPL -.-> B[TemplBase Shared Storage]
 
   M --> Token[Access Token ERC-20]
@@ -165,6 +167,7 @@ flowchart LR
   M -.-> B
   Tr -.-> B
   G --> Tr
+  C --> G
 ```
 
 - `TEMPL` routes calls to modules via delegatecall and exposes selector→module lookup.
