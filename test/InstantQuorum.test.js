@@ -42,24 +42,31 @@ describe("Instant quorum execution", function () {
   });
 
   it("executes council proposals immediately once instant quorum is met", async function () {
+    const allAccounts = await ethers.getSigners();
     const { templ, token, accounts } = await deployTempl({
       entryFee: ENTRY_FEE,
       proposalFeeBps: 0,
       instantQuorumBps: 7_500,
       councilMode: true,
+      initialCouncilMembers: [allAccounts[1].address, allAccounts[2].address, allAccounts[3].address],
     });
-    const [, priest, member1] = accounts;
-    await mintToUsers(token, [member1], TOKEN_SUPPLY);
-    await joinMembers(templ, token, [member1]);
+    const [, priest, councilMember1, councilMember2, newMember] = accounts;
+    // Add a new member who is not on the council
+    await mintToUsers(token, [newMember], TOKEN_SUPPLY);
+    await joinMembers(templ, token, [newMember]);
 
-    await templ.connect(priest).bootstrapCouncilMember(member1.address);
+    // Use bootstrap to add the new member to council
+    await templ.connect(priest).bootstrapCouncilMember(newMember.address);
 
     const councilBurn = ethers.getAddress("0x00000000000000000000000000000000000000ac");
-    await templ.connect(member1).createProposalSetBurnAddress(councilBurn, WEEK, "council burn", "");
+    await templ.connect(councilMember1).createProposalSetBurnAddress(councilBurn, WEEK, "council burn", "");
     const proposalId = (await templ.proposalCount()) - 1n;
 
+    // Need 75% (instantQuorumBps=7_500) of 3 council members = 3 votes for instant execution
     await templ.connect(priest).vote(proposalId, true);
-    await expect(templ.connect(member1).executeProposal(proposalId)).to.not.be.reverted;
+    await templ.connect(councilMember1).vote(proposalId, true);
+    await templ.connect(councilMember2).vote(proposalId, true);
+    await expect(templ.connect(councilMember1).executeProposal(proposalId)).to.not.be.reverted;
     expect(await templ.burnAddress()).to.equal(councilBurn);
   });
 

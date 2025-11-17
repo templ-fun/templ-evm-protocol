@@ -58,6 +58,10 @@ contract TEMPL is TemplBase {
     /// @param _councilModule Address of the deployed council governance module implementation.
     /// @param _curve Pricing curve configuration applied to future joins.
     /// @param _initialCouncilMembers Pre-council wallets to auto-enroll as members + council at deploy.
+    ///                                The priest is ALWAYS enrolled as a member regardless of this array.
+    ///                                Include the priest's address in this array to grant them council voting power.
+    ///                                Exclude the priest to give them member status without voting rights.
+    ///                                Requires at least 3 addresses when _startInCouncilMode is true to prevent governance deadlock.
     constructor(
         address _priest,
         address _protocolFeeRecipient,

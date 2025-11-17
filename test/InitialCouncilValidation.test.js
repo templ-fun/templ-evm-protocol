@@ -104,7 +104,7 @@ describe("Initial Council Members Validation", function () {
   });
 
   describe("Empty initial council array", function () {
-    it("deploys successfully with empty initial council", async function () {
+    it("deploys successfully with empty initial council when council mode disabled", async function () {
       const { templ } = await deployTempl({
         entryFee: ENTRY_FEE,
         councilMode: false,
@@ -116,15 +116,47 @@ describe("Initial Council Members Validation", function () {
       expect(await templ.councilMemberCount()).to.equal(0n);
     });
 
-    it("reverts when enabling council mode with empty initial council (no voters)", async function () {
-      // Council mode cannot be enabled without any voters, so this should revert
+    it("reverts when enabling council mode with empty initial council (< 3 members)", async function () {
+      // Council mode requires at least 3 council members to prevent governance deadlock
       await expect(
         deployTempl({
           entryFee: ENTRY_FEE,
           councilMode: true,
           initialCouncilMembers: []
         })
-      ).to.be.revertedWithCustomError({ interface: (await ethers.getContractFactory("TEMPL")).interface }, "NoMembers");
+      ).to.be.revertedWithCustomError({ interface: (await ethers.getContractFactory("TEMPL")).interface }, "CouncilMemberMinimum");
+    });
+
+    it("reverts when enabling council mode with only 1 council member", async function () {
+      await expect(
+        deployTempl({
+          entryFee: ENTRY_FEE,
+          councilMode: true,
+          initialCouncilMembers: [member1.address]
+        })
+      ).to.be.revertedWithCustomError({ interface: (await ethers.getContractFactory("TEMPL")).interface }, "CouncilMemberMinimum");
+    });
+
+    it("reverts when enabling council mode with only 2 council members", async function () {
+      await expect(
+        deployTempl({
+          entryFee: ENTRY_FEE,
+          councilMode: true,
+          initialCouncilMembers: [member1.address, member2.address]
+        })
+      ).to.be.revertedWithCustomError({ interface: (await ethers.getContractFactory("TEMPL")).interface }, "CouncilMemberMinimum");
+    });
+
+    it("succeeds when enabling council mode with exactly 3 council members", async function () {
+      const { templ } = await deployTempl({
+        entryFee: ENTRY_FEE,
+        councilMode: true,
+        initialCouncilMembers: [member1.address, member2.address, member3.address]
+      });
+
+      expect(await templ.councilModeEnabled()).to.equal(true);
+      expect(await templ.councilMemberCount()).to.equal(3n);
+      expect(await templ.memberCount()).to.equal(4n); // 3 council + priest
     });
   });
 
@@ -133,12 +165,12 @@ describe("Initial Council Members Validation", function () {
       const { templ } = await deployTempl({
         entryFee: ENTRY_FEE,
         councilMode: true,
-        initialCouncilMembers: [priest.address, member1.address]
+        initialCouncilMembers: [priest.address, member1.address, member2.address]
       });
 
-      expect(await templ.memberCount()).to.equal(2n);
-      expect(await templ.genesisMemberCount()).to.equal(2n);
-      expect(await templ.councilMemberCount()).to.equal(2n);
+      expect(await templ.memberCount()).to.equal(3n);
+      expect(await templ.genesisMemberCount()).to.equal(3n);
+      expect(await templ.councilMemberCount()).to.equal(3n);
       expect(await templ.councilMembers(priest.address)).to.equal(true);
     });
 
@@ -146,7 +178,7 @@ describe("Initial Council Members Validation", function () {
       const { templ } = await deployTempl({
         entryFee: ENTRY_FEE,
         councilMode: true,
-        initialCouncilMembers: [member1.address, member2.address]
+        initialCouncilMembers: [member1.address, member2.address, member3.address]
       });
 
       // Priest is enrolled as a member
@@ -155,8 +187,8 @@ describe("Initial Council Members Validation", function () {
 
       // But not on the council
       expect(await templ.councilMembers(priest.address)).to.equal(false);
-      expect(await templ.councilMemberCount()).to.equal(2n);
-      expect(await templ.memberCount()).to.equal(3n); // priest + 2 council members
+      expect(await templ.councilMemberCount()).to.equal(3n);
+      expect(await templ.memberCount()).to.equal(4n); // priest + 3 council members
     });
   });
 
@@ -193,7 +225,7 @@ describe("Initial Council Members Validation", function () {
       const { templ, token } = await deployTempl({
         entryFee: ENTRY_FEE,
         councilMode: true,
-        initialCouncilMembers: [priest.address, member1.address]
+        initialCouncilMembers: [priest.address, member1.address, member2.address]
       });
 
       await mintToUsers(token, [member3], TOKEN_SUPPLY);
@@ -267,7 +299,7 @@ describe("Initial Council Members Validation", function () {
       const { templ, token } = await deployTempl({
         entryFee: ENTRY_FEE,
         councilMode: true,
-        initialCouncilMembers: [priest.address, member1.address],
+        initialCouncilMembers: [priest.address, member1.address, member2.address],
         curve: {
           primary: { style: 1, rateBps: 10500, length: 0 }, // 5% increase per join
           additionalSegments: []
@@ -315,7 +347,7 @@ describe("Initial Council Members Validation", function () {
       const { templ, token } = await deployTempl({
         entryFee: ENTRY_FEE,
         councilMode: true,
-        initialCouncilMembers: [priest.address, member1.address]
+        initialCouncilMembers: [priest.address, member1.address, member2.address]
       });
 
       // Add a non-council member
@@ -341,72 +373,70 @@ describe("Initial Council Members Validation", function () {
       const { templ, token } = await deployTempl({
         entryFee: ENTRY_FEE,
         councilMode: true,
-        initialCouncilMembers: [priest.address, member1.address]
+        initialCouncilMembers: [priest.address, member1.address, member2.address]
       });
 
       expect(await templ.councilBootstrapConsumed()).to.equal(false);
 
-      // member2 must join first before being added to council
-      await mintToUsers(token, [member2], TOKEN_SUPPLY);
+      // member3 must join first before being added to council
+      await mintToUsers(token, [member3], TOKEN_SUPPLY);
       const templAddress = await templ.getAddress();
-      await token.connect(member2).approve(templAddress, ENTRY_FEE);
-      await templ.connect(member2).join();
+      await token.connect(member3).approve(templAddress, ENTRY_FEE);
+      await templ.connect(member3).join();
 
-      await expect(templ.connect(priest).bootstrapCouncilMember(member2.address))
+      await expect(templ.connect(priest).bootstrapCouncilMember(member3.address))
         .to.emit(templ, "CouncilMemberAdded")
-        .withArgs(member2.address, priest.address);
+        .withArgs(member3.address, priest.address);
 
       expect(await templ.councilBootstrapConsumed()).to.equal(true);
-      expect(await templ.councilMemberCount()).to.equal(3n);
+      expect(await templ.councilMemberCount()).to.equal(4n);
     });
 
     it("cannot use bootstrap seat twice", async function () {
       const { templ, token } = await deployTempl({
         entryFee: ENTRY_FEE,
         councilMode: true,
-        initialCouncilMembers: [priest.address]
+        initialCouncilMembers: [priest.address, member1.address, member2.address]
       });
 
-      // member1 must join first
-      await mintToUsers(token, [member1, member2], TOKEN_SUPPLY);
+      // member3 and member4 must join first
+      await mintToUsers(token, [member3, member4], TOKEN_SUPPLY);
       const templAddress = await templ.getAddress();
-      await token.connect(member1).approve(templAddress, ENTRY_FEE);
-      await templ.connect(member1).join();
+      await token.connect(member3).approve(templAddress, ENTRY_FEE);
+      await templ.connect(member3).join();
 
-      await templ.connect(priest).bootstrapCouncilMember(member1.address);
+      await templ.connect(priest).bootstrapCouncilMember(member3.address);
 
-      // member2 joins
-      await token.connect(member2).approve(templAddress, ENTRY_FEE);
-      await templ.connect(member2).join();
+      // member4 joins
+      await token.connect(member4).approve(templAddress, ENTRY_FEE);
+      await templ.connect(member4).join();
 
-      await expect(templ.connect(priest).bootstrapCouncilMember(member2.address))
+      await expect(templ.connect(priest).bootstrapCouncilMember(member4.address))
         .to.be.revertedWithCustomError(templ, "CouncilBootstrapConsumed");
     });
   });
 
   describe("Edge cases", function () {
-    it("single genesis council member works correctly", async function () {
-      const { templ } = await deployTempl({
-        entryFee: ENTRY_FEE,
-        councilMode: true,
-        initialCouncilMembers: [member1.address] // Not including priest
-      });
-
-      expect(await templ.memberCount()).to.equal(2n); // priest + member1
-      expect(await templ.councilMemberCount()).to.equal(1n);
-      expect(await templ.councilMembers(priest.address)).to.equal(false);
-      expect(await templ.councilMembers(member1.address)).to.equal(true);
+    it("single genesis council member fails validation (requires 3)", async function () {
+      // Council mode requires at least 3 members to prevent governance deadlock
+      await expect(
+        deployTempl({
+          entryFee: ENTRY_FEE,
+          councilMode: true,
+          initialCouncilMembers: [member1.address] // Not including priest
+        })
+      ).to.be.revertedWithCustomError({ interface: (await ethers.getContractFactory("TEMPL")).interface }, "CouncilMemberMinimum");
     });
 
     it("genesisMemberCount persists correctly", async function () {
       const { templ, token } = await deployTempl({
         entryFee: ENTRY_FEE,
         councilMode: true,
-        initialCouncilMembers: [priest.address, member1.address]
+        initialCouncilMembers: [priest.address, member1.address, member2.address]
       });
 
       const initialGenesis = await templ.genesisMemberCount();
-      expect(initialGenesis).to.equal(2n);
+      expect(initialGenesis).to.equal(3n);
 
       // Add more members
       await mintToUsers(token, [member3, member4], TOKEN_SUPPLY);
@@ -418,7 +448,7 @@ describe("Initial Council Members Validation", function () {
 
       // genesisMemberCount should not change
       expect(await templ.genesisMemberCount()).to.equal(initialGenesis);
-      expect(await templ.memberCount()).to.equal(4n);
+      expect(await templ.memberCount()).to.equal(5n); // 3 genesis + 2 paid joins
     });
   });
 });

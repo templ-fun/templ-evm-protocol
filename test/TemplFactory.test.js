@@ -208,7 +208,7 @@ describe("TemplFactory", function () {
     });
 
     it("configures council mode and YES threshold via factory config", async function () {
-        const [, priest, protocolRecipient] = await ethers.getSigners();
+        const [, priest, protocolRecipient, councilMember1, councilMember2] = await ethers.getSigners();
         const token = await deployToken("Council", "CNCL");
 
         const Factory = await ethers.getContractFactory("TemplFactory");
@@ -245,7 +245,7 @@ describe("TemplFactory", function () {
             yesVoteThresholdBps: 6_000,
             councilMode: true,
             instantQuorumBps: 7_500,
-            initialCouncilMembers: [priest.address]
+            initialCouncilMembers: [priest.address, councilMember1.address, councilMember2.address]
         });
 
         const templAddress = await factory.createTemplWithConfig.staticCall(config);
@@ -255,7 +255,7 @@ describe("TemplFactory", function () {
         expect(await templ.yesVoteThresholdBps()).to.equal(6_000n);
         expect(await templ.instantQuorumBps()).to.equal(7_500n);
         expect(await templ.councilModeEnabled()).to.equal(true);
-        expect(await templ.councilMemberCount()).to.equal(1n);
+        expect(await templ.councilMemberCount()).to.equal(3n);
 
         const templCreated = receipt.logs
             .map((log) => {
@@ -270,7 +270,7 @@ describe("TemplFactory", function () {
         expect(templCreated.args.yesVoteThresholdBps).to.equal(6_000n);
         expect(templCreated.args.instantQuorumBps).to.equal(7_500n);
         expect(templCreated.args.councilMode).to.equal(true);
-        expect(templCreated.args.initialCouncilMembers).to.deep.equal([priest.address]);
+        expect(templCreated.args.initialCouncilMembers).to.deep.equal([priest.address, councilMember1.address, councilMember2.address]);
     });
 
     it("enables priest dictatorship when requested in config", async function () {
@@ -584,8 +584,9 @@ describe("TemplFactory", function () {
         expect(await templ.postQuorumVotingPeriod()).to.equal(36 * 60 * 60);
         expect(await templ.burnAddress()).to.equal("0x000000000000000000000000000000000000dEaD");
         expect(await templ.maxMembers()).to.equal(249n);
-        expect(await templ.councilModeEnabled()).to.equal(true);
-        expect(await templ.councilMemberCount()).to.equal(1n);
+        // Simple factory methods default to member-wide governance (councilMode=false)
+        expect(await templ.councilModeEnabled()).to.equal(false);
+        expect(await templ.councilMemberCount()).to.equal(0n);
 
         const templCreated = receipt.logs
             .map((log) => {
@@ -603,7 +604,8 @@ describe("TemplFactory", function () {
         expect(curveStyles).to.deep.equal([CURVE_STYLE.Exponential, CURVE_STYLE.Static]);
         expect(curveRates).to.deep.equal([10_094, 0]);
         expect(curveLengths).to.deep.equal([248, 0]);
-        expect(templCreated.args.councilMode).to.equal(true);
+        // Simple factory methods default to member-wide governance (councilMode=false)
+        expect(templCreated.args.councilMode).to.equal(false);
 
         await mintToUsers(token, [joiner], ENTRY_FEE * 5n);
         await token.connect(joiner).approve(templAddress, ENTRY_FEE);
@@ -645,8 +647,9 @@ describe("TemplFactory", function () {
 
         const templ = await getTemplAt(templAddress, ethers.provider);
         expect(await templ.priest()).to.equal(delegatedPriest.address);
-        expect(await templ.councilModeEnabled()).to.equal(true);
-        expect(await templ.councilMemberCount()).to.equal(1n);
+        // Simple factory methods default to member-wide governance (councilMode=false)
+        expect(await templ.councilModeEnabled()).to.equal(false);
+        expect(await templ.councilMemberCount()).to.equal(0n);
 
         const templCreated = receipt.logs
             .map((log) => {
@@ -666,7 +669,8 @@ describe("TemplFactory", function () {
         expect(styles).to.deep.equal([CURVE_STYLE.Exponential, CURVE_STYLE.Static]);
         expect(rates).to.deep.equal([10_094, 0]);
         expect(lengths).to.deep.equal([248, 0]);
-        expect(templCreated.args.councilMode).to.equal(true);
+        // Simple factory methods default to member-wide governance (councilMode=false)
+        expect(templCreated.args.councilMode).to.equal(false);
         expect(templCreated.args.instantQuorumBps).to.equal(10_000n);
     });
 

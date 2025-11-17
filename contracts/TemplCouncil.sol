@@ -56,7 +56,7 @@ contract TemplCouncilModule is TemplBase {
         string calldata _description
     ) external nonReentrant onlyDelegatecall returns (uint256 proposalId) {
         if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
-        if (_enable && councilMemberCount == 0) revert TemplErrors.NoMembers();
+        if (_enable && councilMemberCount < 3) revert TemplErrors.CouncilMemberMinimum();
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
         p.action = Action.SetCouncilMode;
         p.setCouncilMode = _enable;

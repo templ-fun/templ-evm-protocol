@@ -279,8 +279,10 @@ contract TemplFactory {
     ) public returns (address templAddress) {
         _enforceCreationAccess();
         if (_priest == address(0)) revert TemplErrors.InvalidRecipient();
-        address[] memory initialCouncil = new address[](1);
-        initialCouncil[0] = _priest;
+        // Simple factory methods default to member-wide governance (councilMode=false)
+        // since council mode requires at least 3 members for safety.
+        // Use createTemplWithConfig to enable council mode with 3+ initial council members.
+        address[] memory emptyCouncil = new address[](0);
         CreateConfig memory cfg = CreateConfig({
             priest: _priest,
             token: _token,
@@ -301,9 +303,9 @@ contract TemplFactory {
             proposalFeeBps: _proposalFeeBps,
             referralShareBps: _referralShareBps,
             yesVoteThresholdBps: TemplDefaults.DEFAULT_YES_VOTE_THRESHOLD_BPS,
-            councilMode: true,
+            councilMode: false,
             instantQuorumBps: TemplDefaults.DEFAULT_INSTANT_QUORUM_BPS,
-            initialCouncilMembers: initialCouncil
+            initialCouncilMembers: emptyCouncil
         });
         return _deploy(cfg);
     }

@@ -120,9 +120,12 @@ abstract contract TemplBase is ReentrancyGuard {
 
     /// @notice Membership records keyed by wallet address.
     mapping(address => Member) public members;
-    /// @notice Number of active members (includes the auto-enrolled priest).
+    /// @notice Number of active members (includes all genesis members enrolled at deployment).
     uint256 public memberCount;
     /// @notice Members that existed at genesis (priest + any pre-enrolled council members).
+    ///         This value is set once during construction and never changes thereafter.
+    ///         Used to calculate paid join count for pricing curves: paidJoins = memberCount - genesisMemberCount.
+    ///         Ensures genesis members don't affect entry fee pricing or join ID assignment.
     uint256 public genesisMemberCount;
     /// @notice Cumulative member-pool claims per wallet.
     mapping(address => uint256) public memberPoolClaims;
@@ -1451,7 +1454,7 @@ abstract contract TemplBase is ReentrancyGuard {
         if (councilModeEnabled == enabled) revert TemplErrors.InvalidCallData();
         if (enabled) {
             if (priestIsDictator) revert TemplErrors.CouncilModeActive();
-            if (councilMemberCount == 0) revert TemplErrors.NoMembers();
+            if (councilMemberCount < 3) revert TemplErrors.CouncilMemberMinimum();
         }
         councilModeEnabled = enabled;
         emit CouncilModeUpdated(enabled);
