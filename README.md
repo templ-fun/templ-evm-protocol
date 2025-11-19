@@ -727,7 +727,6 @@ Council members are exempted from proposal fees while non-council members must p
 ## Tests
 - Default: `npm test` (heavy `@load` suite is excluded).
 - High‑load stress: `npm run test:load` with `TEMPL_LOAD=...`.
-- End‑to‑end readiness: see [test/ProdReadiness.test.js](test/ProdReadiness.test.js).
 - Coverage: `npm run coverage`. Static: `npm run slither`.
 - Property fuzzing: `npm run test:fuzz` (via Docker) using [echidna.yaml](echidna.yaml) and [contracts/echidna/EchidnaTemplHarness.sol](contracts/echidna/EchidnaTemplHarness.sol).
 
