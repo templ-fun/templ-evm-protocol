@@ -133,6 +133,7 @@ contract TemplFactory {
     /// @param _treasuryModule Address of the deployed treasury module implementation.
     /// @param _governanceModule Address of the deployed governance module implementation.
     /// @param _councilModule Address of the deployed council governance module implementation.
+    /// @param _templDeployer Helper contract that instantiates fresh templ routers.
     constructor(
         address _factoryDeployer,
         address _protocolFeeRecipient,

@@ -49,4 +49,3 @@ struct CreateConfig {
     /// @notice Instant quorum threshold (bps) that enables immediate execution when satisfied. Must be ≥ quorum. 0 applies factory default.
     uint256 instantQuorumBps;
 }
-
