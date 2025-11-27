@@ -2,7 +2,7 @@ const { expect } = require("chai");
 const hre = require("hardhat");
 const { ethers } = hre;
 
-const { deployTemplModules } = require("./utils/modules");
+const { deployTemplModules, deployTemplDeployer } = require("./utils/modules");
 const { getTemplAt } = require("./utils/templ");
 
 // Coverage instrumentation inflates deployed bytecode sizes; skip this suite under coverage.
@@ -24,6 +24,7 @@ maybeDescribe("Bytecode size limits", function () {
     await token.waitForDeployment();
 
     const modules = await deployTemplModules();
+    const templDeployer = await deployTemplDeployer();
     const TemplFactory = await ethers.getContractFactory("TemplFactory");
     const factory = await TemplFactory.connect(deployer).deploy(
       deployer.address,
@@ -32,7 +33,8 @@ maybeDescribe("Bytecode size limits", function () {
       modules.membershipModule,
       modules.treasuryModule,
       modules.governanceModule,
-      modules.councilModule
+      modules.councilModule,
+      templDeployer
     );
     await factory.waitForDeployment();
 
@@ -72,7 +74,9 @@ maybeDescribe("Bytecode size limits", function () {
       ["TemplMembership.sol", "TemplMembershipModule", "membership module"],
       ["TemplTreasury.sol", "TemplTreasuryModule", "treasury module"],
       ["TemplGovernance.sol", "TemplGovernanceModule", "governance module"],
-      ["TemplCouncil.sol", "TemplCouncilModule", "council module"]
+      ["TemplCouncil.sol", "TemplCouncilModule", "council module"],
+      ["TemplFactory.sol", "TemplFactory", "factory"],
+      ["TemplDeployer.sol", "TemplDeployer", "templ deployer"]
     ];
     const limit = 24_576; // EIP-170 deployed bytecode size limit
     const inflatedLimit = 60_000; // coverage instrumentation inflates sizes; allow slack under tooling

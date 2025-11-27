@@ -70,6 +70,8 @@ async function main() {
   const membershipModule = await factory.MEMBERSHIP_MODULE();
   const treasuryModule = await factory.TREASURY_MODULE();
   const governanceModule = await factory.GOVERNANCE_MODULE();
+  const councilModule = await factory.COUNCIL_MODULE();
+  const templDeployer = await factory.TEMPL_DEPLOYER();
 
   console.log('Verifying TemplFactory with constructor arguments:');
   console.table({
@@ -78,7 +80,9 @@ async function main() {
     protocolBps: protocolBps.toString(),
     membershipModule,
     treasuryModule,
-    governanceModule
+    governanceModule,
+    councilModule,
+    templDeployer
   });
 
   const constructorArguments = [
@@ -87,7 +91,9 @@ async function main() {
     protocolBps,
     membershipModule,
     treasuryModule,
-    governanceModule
+    governanceModule,
+    councilModule,
+    templDeployer
   ];
 
   try {
@@ -131,6 +137,34 @@ async function main() {
       const message = err?.message || String(err);
       if (/already verified/i.test(message)) {
         console.log(`Governance module ${governanceModule} is already verified.`);
+      } else {
+        throw err;
+      }
+    }
+    try {
+      await hre.run('verify:verify', {
+        address: councilModule,
+        contract: 'contracts/TemplCouncil.sol:TemplCouncilModule'
+      });
+      console.log(`Verified Council module at ${councilModule}`);
+    } catch (err) {
+      const message = err?.message || String(err);
+      if (/already verified/i.test(message)) {
+        console.log(`Council module ${councilModule} is already verified.`);
+      } else {
+        throw err;
+      }
+    }
+    try {
+      await hre.run('verify:verify', {
+        address: templDeployer,
+        contract: 'contracts/TemplDeployer.sol:TemplDeployer'
+      });
+      console.log(`Verified TemplDeployer at ${templDeployer}`);
+    } catch (err) {
+      const message = err?.message || String(err);
+      if (/already verified/i.test(message)) {
+        console.log(`TemplDeployer ${templDeployer} is already verified.`);
       } else {
         throw err;
       }

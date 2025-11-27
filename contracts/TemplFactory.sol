@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import {TEMPL} from "./TEMPL.sol";
 import {TemplErrors} from "./TemplErrors.sol";
 import {CurveConfig, CurveSegment, CurveStyle} from "./TemplCurve.sol";
 import {TemplDefaults} from "./TemplDefaults.sol";
+import {ITemplDeployer} from "./TemplDeployer.sol";
+import {CreateConfig} from "./TemplFactoryTypes.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
@@ -31,52 +32,6 @@ contract TemplFactory {
     /// @dev Probe amount used by `safeDeployFor` to sanity-check vanilla ERC-20 semantics.
     uint256 internal constant SAFE_DEPLOY_PROBE_AMOUNT = 100_000;
 
-    /// @notice Full templ creation configuration. Use `createTemplWithConfig` to apply.
-    struct CreateConfig {
-        /// @notice Initial priest wallet (auto-enrolled as member #1).
-        address priest;
-        /// @notice ERC-20 token used for membership payments.
-        address token;
-        /// @notice Initial entry fee (must be ≥ 10 and divisible by 10).
-        uint256 entryFee;
-        /// @notice Burn share (bps). Use -1 to apply factory default.
-        int256 burnBps;
-        /// @notice Treasury share (bps). Use -1 to apply factory default.
-        int256 treasuryBps;
-        /// @notice Member pool share (bps). Use -1 to apply factory default.
-        int256 memberPoolBps;
-        /// @notice Quorum threshold (bps). 0 applies factory default.
-        uint256 quorumBps;
-        /// @notice Execution delay after quorum (seconds). 0 applies factory default.
-        uint256 executionDelaySeconds;
-        /// @notice Burn address (zero applies default dead address).
-        address burnAddress;
-        /// @notice Start in dictatorship mode (priest may call onlyDAO actions directly).
-        bool priestIsDictator;
-        /// @notice Optional membership cap (0 = uncapped).
-        uint256 maxMembers;
-        /// @notice Whether a custom curve is provided (false uses factory default curve).
-        bool curveProvided;
-        /// @notice Pricing curve configuration (see TemplCurve).
-        CurveConfig curve;
-        /// @notice Human-readable templ name.
-        string name;
-        /// @notice Short description.
-        string description;
-        /// @notice Canonical logo URL.
-        string logoLink;
-        /// @notice Proposal creation fee (bps of current entry fee).
-        uint256 proposalFeeBps;
-        /// @notice Referral share (bps of the member pool allocation).
-        uint256 referralShareBps;
-        /// @notice YES vote threshold (bps of votes cast). 0 applies factory default.
-        uint256 yesVoteThresholdBps;
-        /// @notice Whether the templ should start in council governance mode.
-        bool councilMode;
-        /// @notice Instant quorum threshold (bps) that enables immediate execution when satisfied. Must be ≥ quorum. 0 applies factory default.
-        uint256 instantQuorumBps;
-    }
-
     /// @notice Address that receives the protocol share in newly created templs.
     address public immutable PROTOCOL_FEE_RECIPIENT;
     /// @notice Protocol fee share (bps) applied to all templs created by this factory.
@@ -89,6 +44,8 @@ contract TemplFactory {
     address public immutable GOVERNANCE_MODULE;
     /// @notice Council governance module implementation used by templs deployed via this factory.
     address public immutable COUNCIL_MODULE;
+    /// @notice Dedicated deployer that instantiates new templ contracts.
+    ITemplDeployer public immutable TEMPL_DEPLOYER;
     /// @notice Account allowed to create templs while permissionless mode is disabled.
     /// @dev Can be transferred by the current deployer via `transferDeployer`.
     address public factoryDeployer;
@@ -176,6 +133,7 @@ contract TemplFactory {
     /// @param _treasuryModule Address of the deployed treasury module implementation.
     /// @param _governanceModule Address of the deployed governance module implementation.
     /// @param _councilModule Address of the deployed council governance module implementation.
+    /// @param _templDeployer Helper contract that instantiates fresh templ routers.
     constructor(
         address _factoryDeployer,
         address _protocolFeeRecipient,
@@ -183,7 +141,8 @@ contract TemplFactory {
         address _membershipModule,
         address _treasuryModule,
         address _governanceModule,
-        address _councilModule
+        address _councilModule,
+        address _templDeployer
     ) {
         if (_factoryDeployer == address(0)) revert TemplErrors.InvalidRecipient();
         if (_protocolFeeRecipient == address(0)) revert TemplErrors.InvalidRecipient();
@@ -196,12 +155,14 @@ contract TemplFactory {
         ) {
             revert TemplErrors.InvalidCallData();
         }
+        if (_templDeployer == address(0)) revert TemplErrors.InvalidRecipient();
         PROTOCOL_FEE_RECIPIENT = _protocolFeeRecipient;
         PROTOCOL_BPS = _protocolBps;
         MEMBERSHIP_MODULE = _membershipModule;
         TREASURY_MODULE = _treasuryModule;
         GOVERNANCE_MODULE = _governanceModule;
         COUNCIL_MODULE = _councilModule;
+        TEMPL_DEPLOYER = ITemplDeployer(_templDeployer);
         factoryDeployer = _factoryDeployer;
         permissionless = false;
     }
@@ -397,35 +358,20 @@ contract TemplFactory {
             revert TemplErrors.InstantQuorumBelowQuorum();
         }
 
-        TEMPL deployed = new TEMPL(
-            cfg.priest,
+        cfg.burnBps = int256(burnBps);
+        cfg.treasuryBps = int256(treasuryBps);
+        cfg.memberPoolBps = int256(memberPoolBps);
+
+        templAddress = TEMPL_DEPLOYER.deployTempl(
+            cfg,
             PROTOCOL_FEE_RECIPIENT,
-            cfg.token,
-            cfg.entryFee,
-            burnBps,
-            treasuryBps,
-            memberPoolBps,
             PROTOCOL_BPS,
-            cfg.quorumBps,
-            cfg.executionDelaySeconds,
-            cfg.burnAddress,
-            cfg.priestIsDictator,
-            cfg.maxMembers,
-            cfg.name,
-            cfg.description,
-            cfg.logoLink,
-            cfg.proposalFeeBps,
-            cfg.referralShareBps,
-            cfg.yesVoteThresholdBps,
-            cfg.instantQuorumBps,
-            cfg.councilMode,
             MEMBERSHIP_MODULE,
             TREASURY_MODULE,
             GOVERNANCE_MODULE,
-            COUNCIL_MODULE,
-            cfg.curve
+            COUNCIL_MODULE
         );
-        templAddress = address(deployed);
+        if (templAddress == address(0)) revert TemplErrors.DeploymentFailed();
         uint256 extraLen = cfg.curve.additionalSegments.length;
         uint8[] memory curveStyles = new uint8[](extraLen + 1);
         uint32[] memory curveRates = new uint32[](extraLen + 1);

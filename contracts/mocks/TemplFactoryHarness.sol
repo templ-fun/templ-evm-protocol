@@ -10,7 +10,8 @@ contract TemplFactoryHarness is TemplFactory {
         address membershipModule,
         address treasuryModule,
         address governanceModule,
-        address councilModule
+        address councilModule,
+        address templDeployer
     )
         TemplFactory(
             factoryDeployer,
@@ -19,7 +20,8 @@ contract TemplFactoryHarness is TemplFactory {
             membershipModule,
             treasuryModule,
             governanceModule,
-            councilModule
+            councilModule,
+            templDeployer
         )
     {}
 }

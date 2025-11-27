@@ -1,13 +1,13 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { deployTemplModules } = require("./utils/modules");
+const { deployTemplModules, deployTemplDeployer } = require("./utils/modules");
 const { getTemplAt } = require("./utils/templ");
 
 describe("TemplFactory.safeDeployFor", function () {
   const ENTRY_FEE = ethers.parseUnits("100", 18);
   const PROBE = 100_000n; // mirrors SAFE_DEPLOY_PROBE_AMOUNT
 
-  async function deployFactory(modules, deployer, protocolRecipient, protocolBps = 1_000) {
+  async function deployFactory(modules, templDeployer, deployer, protocolRecipient, protocolBps = 1_000) {
     const Factory = await ethers.getContractFactory("TemplFactory");
     const factory = await Factory.deploy(
       deployer.address,
@@ -16,7 +16,8 @@ describe("TemplFactory.safeDeployFor", function () {
       modules.membershipModule,
       modules.treasuryModule,
       modules.governanceModule,
-      modules.councilModule
+      modules.councilModule,
+      templDeployer
     );
     await factory.waitForDeployment();
     return factory;
@@ -37,13 +38,15 @@ describe("TemplFactory.safeDeployFor", function () {
   }
 
   let modules;
+  let templDeployer;
   beforeEach(async function () {
     modules = await deployTemplModules();
+    templDeployer = await deployTemplDeployer();
   });
 
   it("reverts with NonVanillaToken for fee-on-transfer tokens", async function () {
     const [deployer, protocolRecipient, priest] = await ethers.getSigners();
-    const factory = await deployFactory(modules, deployer, protocolRecipient, 1_000);
+    const factory = await deployFactory(modules, templDeployer, deployer, protocolRecipient, 1_000);
     const fot = await deployFOTToken();
 
     // approve factory for the probe
@@ -65,7 +68,7 @@ describe("TemplFactory.safeDeployFor", function () {
 
   it("deploys successfully for vanilla ERC-20 tokens", async function () {
     const [deployer, protocolRecipient, priest] = await ethers.getSigners();
-    const factory = await deployFactory(modules, deployer, protocolRecipient, 1_000);
+    const factory = await deployFactory(modules, templDeployer, deployer, protocolRecipient, 1_000);
     const token = await deployTestToken();
 
     // fund deployer and approve factory for the probe

@@ -92,6 +92,7 @@ async function main() {
   let treasuryModuleAddress = (process.env.TREASURY_MODULE_ADDRESS || "").trim();
   let governanceModuleAddress = (process.env.GOVERNANCE_MODULE_ADDRESS || "").trim();
   let councilModuleAddress = (process.env.COUNCIL_MODULE_ADDRESS || "").trim();
+  let templDeployerAddress = (process.env.TEMPL_DEPLOYER_ADDRESS || "").trim();
 
   const network = await hre.ethers.provider.getNetwork();
   const networkName = resolveNetworkName(network);
@@ -122,6 +123,7 @@ async function main() {
       treasuryModuleAddress = await existingFactory.TREASURY_MODULE();
       governanceModuleAddress = await existingFactory.GOVERNANCE_MODULE();
       councilModuleAddress = await existingFactory.COUNCIL_MODULE();
+      templDeployerAddress = await existingFactory.TEMPL_DEPLOYER();
       // Prefer the on-chain factory deployer when reusing an existing deployment
       factoryDeployer = await existingFactory.factoryDeployer();
       console.log("Existing modules:");
@@ -129,6 +131,7 @@ async function main() {
       console.log("  - treasury:", treasuryModuleAddress);
       console.log("  - governance:", governanceModuleAddress);
       console.log("  - council:", councilModuleAddress);
+      console.log("  - templ deployer:", templDeployerAddress);
     } catch (err) {
     console.warn("Warning: unable to read protocol bps from factory:", err?.message || err);
     }
@@ -159,6 +162,11 @@ async function main() {
       "TemplCouncilModule",
       "COUNCIL_MODULE_ADDRESS"
     );
+    templDeployerAddress = await deployModuleIfNeeded(
+      "Templ deployer",
+      "TemplDeployer",
+      "TEMPL_DEPLOYER_ADDRESS"
+    );
 
     console.log("\nDeploying TemplFactory...");
     const Factory = await hre.ethers.getContractFactory("TemplFactory");
@@ -169,7 +177,8 @@ async function main() {
       membershipModuleAddress,
       treasuryModuleAddress,
       governanceModuleAddress,
-      councilModuleAddress
+      councilModuleAddress,
+      templDeployerAddress
     );
     await factory.waitForDeployment();
     factoryAddress = await factory.getAddress();
@@ -195,6 +204,7 @@ async function main() {
   console.log("- Treasury Module:", treasuryModuleAddress);
   console.log("- Governance Module:", governanceModuleAddress);
   console.log("- Council Module:", councilModuleAddress);
+  console.log("- Templ Deployer:", templDeployerAddress);
 
   await waitForContractCode(factoryAddress, hre.ethers.provider);
   console.log("\n✅ TemplFactory ready at:", factoryAddress);
@@ -212,6 +222,7 @@ async function main() {
     treasuryModule: treasuryModuleAddress,
     governanceModule: governanceModuleAddress,
     councilModule: councilModuleAddress,
+    templDeployer: templDeployerAddress,
     deployedAt: new Date().toISOString(),
     deployer: deployer.address,
     deploymentTx: deploymentReceipt?.hash || null,
@@ -232,7 +243,7 @@ async function main() {
     const verifyNetwork = networkName || "base";
     console.log("\nVerification command:");
     console.log(
-      `npx hardhat verify --contract contracts/TemplFactory.sol:TemplFactory --network ${verifyNetwork} ${factoryAddress} ${factoryDeployer} ${protocolRecipient} ${protocolPercentBps} ${membershipModuleAddress} ${treasuryModuleAddress} ${governanceModuleAddress} ${councilModuleAddress}`
+      `npx hardhat verify --contract contracts/TemplFactory.sol:TemplFactory --network ${verifyNetwork} ${factoryAddress} ${factoryDeployer} ${protocolRecipient} ${protocolPercentBps} ${membershipModuleAddress} ${treasuryModuleAddress} ${governanceModuleAddress} ${councilModuleAddress} ${templDeployerAddress}`
     );
     console.log("\nModule verification commands:");
     console.log(
@@ -246,6 +257,9 @@ async function main() {
     );
     console.log(
       `npx hardhat verify --contract contracts/TemplCouncil.sol:TemplCouncilModule --network ${verifyNetwork} ${councilModuleAddress}`
+    );
+    console.log(
+      `npx hardhat verify --contract contracts/TemplDeployer.sol:TemplDeployer --network ${verifyNetwork} ${templDeployerAddress}`
     );
   }
 

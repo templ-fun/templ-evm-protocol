@@ -7,7 +7,7 @@ describe("Prod Readiness", function () {
   const PROTOCOL_BPS = 1000; // 10%
 
   let deployer, protocol, priest, alice, bob, carol, dave, eve;
-  let membershipModule, treasuryModule, governanceModule, councilModule;
+  let membershipModule, treasuryModule, governanceModule, councilModule, templDeployer;
   let factory;
   let token; // access token
   let extraToken; // external reward ERC20
@@ -35,6 +35,12 @@ describe("Prod Readiness", function () {
     councilModule = await Council.deploy();
     await councilModule.waitForDeployment();
 
+    // Deploy templ deployer + factory
+    const TemplDeployer = await ethers.getContractFactory("TemplDeployer");
+    const templDeployerInstance = await TemplDeployer.deploy();
+    await templDeployerInstance.waitForDeployment();
+    templDeployer = await templDeployerInstance.getAddress();
+
     // Deploy factory
     const Factory = await ethers.getContractFactory("TemplFactory");
     factory = await Factory.deploy(
@@ -44,7 +50,8 @@ describe("Prod Readiness", function () {
       await membershipModule.getAddress(),
       await treasuryModule.getAddress(),
       await governanceModule.getAddress(),
-      await councilModule.getAddress()
+      await councilModule.getAddress(),
+      templDeployer
     );
     await factory.waitForDeployment();
 

@@ -25,6 +25,14 @@ async function deployTemplModules() {
   };
 }
 
+async function deployTemplDeployer() {
+  const Deployer = await ethers.getContractFactory("TemplDeployer");
+  const instance = await Deployer.deploy();
+  await instance.waitForDeployment();
+  return instance.getAddress();
+}
+
 module.exports = {
   deployTemplModules,
+  deployTemplDeployer,
 };

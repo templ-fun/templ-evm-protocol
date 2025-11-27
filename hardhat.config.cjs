@@ -55,13 +55,33 @@ const config = {
       initialBaseFeePerGas: 0
     },
     base: {
-      url: process.env.RPC_URL || "https://mainnet.base.org",
+      url: process.env.RPC_BASE_URL || process.env.RPC_URL || "https://mainnet.base.org",
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
       chainId: 8453
+    },
+    mainnet: {
+      url: process.env.RPC_MAINNET_URL || "https://rpc.ankr.com/eth",
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+      chainId: 1
+    },
+    optimism: {
+      url: process.env.RPC_OPTIMISM_URL || "https://mainnet.optimism.io",
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+      chainId: 10
+    },
+    arbitrum: {
+      url: process.env.RPC_ARBITRUM_URL || "https://arb1.arbitrum.io/rpc",
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+      chainId: 42161
     }
   },
   etherscan: {
-    apiKey: process.env.ETHERSCAN_API_KEY || process.env.BASESCAN_API_KEY || "",
+    apiKey: {
+      mainnet: process.env.ETHERSCAN_API_KEY || "",
+      base: process.env.BASESCAN_API_KEY || process.env.ETHERSCAN_API_KEY || "",
+      optimism: process.env.OPTIMISM_API_KEY || process.env.ETHERSCAN_API_KEY || "",
+      arbitrum: process.env.ARBISCAN_API_KEY || process.env.ETHERSCAN_API_KEY || ""
+    },
     customChains: [
       {
         network: "base",
