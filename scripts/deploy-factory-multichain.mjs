@@ -88,7 +88,7 @@ async function main() {
     if (network.chainId !== chain.chainId) {
       throw new Error(`Connected to chainId ${network.chainId} for ${chain.name}, expected ${chain.chainId}`);
     }
-    const nonce = await provider.getTransactionCount(signer.address);
+    const nonce = BigInt(await provider.getTransactionCount(signer.address));
     chainContexts.push({ ...chain, provider, signer, nonce });
   }
 
@@ -257,4 +257,3 @@ main().catch((err) => {
   console.error("\n❌ Multichain deployment failed:", err);
   process.exit(1);
 });
-
