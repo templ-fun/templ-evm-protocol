@@ -209,7 +209,7 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 newMaxMembers;
         /// @notice Quorum threshold proposed (bps).
         uint256 newQuorumBps;
-        /// @notice Post‑quorum voting period proposed (seconds) after quorum is reached.
+        /// @notice Post-quorum voting period proposed (seconds) after quorum is reached.
         uint256 newPostQuorumVotingPeriod;
         /// @notice Burn address proposed to receive burn allocations.
         address newBurnAddress;
@@ -281,11 +281,15 @@ abstract contract TemplBase is ReentrancyGuard {
     uint256[] internal activeProposalIds;
     /// @dev Index (id -> position+1) for O(1) removals from `activeProposalIds`.
     mapping(uint256 => uint256) internal activeProposalIndex;
-    /// @notice Minimum allowed pre‑quorum voting period.
+    /// @notice Minimum allowed pre-quorum voting period.
     uint256 public constant MIN_PRE_QUORUM_VOTING_PERIOD = 36 hours;
-    /// @notice Maximum allowed pre‑quorum voting period.
+    /// @notice Maximum allowed pre-quorum voting period.
     uint256 public constant MAX_PRE_QUORUM_VOTING_PERIOD = 30 days;
-    /// @notice Default pre‑quorum voting period applied when proposal creators pass zero.
+    /// @notice Minimum allowed post-quorum voting period.
+    uint256 public constant MIN_POST_QUORUM_VOTING_PERIOD = 1 hours;
+    /// @notice Maximum allowed post-quorum voting period.
+    uint256 public constant MAX_POST_QUORUM_VOTING_PERIOD = 30 days;
+    /// @notice Default pre-quorum voting period applied when proposal creators pass zero.
     uint256 public preQuorumVotingPeriod;
 
     /// @notice Emitted after a successful join.
@@ -298,7 +302,7 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param protocolAmount Portion forwarded to the protocol fee recipient.
     /// @param timestamp Block timestamp when the join completed.
     /// @param blockNumber Block number when the join completed.
-    /// @param joinId Monotonic index for non‑priest joins, starting at 0 for the first non‑priest member.
+    /// @param joinId Monotonic index for non-priest joins, starting at 0 for the first non-priest member.
     event MemberJoined(
         address indexed payer,
         address indexed member,
@@ -344,6 +348,11 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param success True when the execution succeeded.
     /// @param returnDataHash Keccak256 hash of returned bytes (or empty).
     event ProposalExecuted(uint256 indexed proposalId, bool indexed success, bytes32 returnDataHash);
+
+    /// @notice Emitted when a proposer cancels their own proposal.
+    /// @param proposalId Proposal id that was cancelled.
+    /// @param proposer Wallet that cancelled the proposal.
+    event ProposalCancelled(uint256 indexed proposalId, address indexed proposer);
 
     /// @notice Emitted when a treasury withdrawal is executed.
     /// @param proposalId Proposal id that authorized the withdrawal (0 for direct DAO call).
@@ -428,7 +437,7 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param newBps New quorum threshold (bps).
 
     event QuorumBpsUpdated(uint256 indexed previousBps, uint256 indexed newBps);
-    /// @notice Emitted when the post‑quorum voting period is updated via governance.
+    /// @notice Emitted when the post-quorum voting period is updated via governance.
     /// @param previousPeriod Previous period (seconds).
     /// @param newPeriod New period (seconds).
 
@@ -438,9 +447,9 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param newBurn New burn sink address.
 
     event BurnAddressUpdated(address indexed previousBurn, address indexed newBurn);
-    /// @notice Emitted when the default pre‑quorum voting period is updated.
-    /// @param previousPeriod Previous default pre‑quorum voting period (seconds).
-    /// @param newPeriod New default pre‑quorum voting period (seconds).
+    /// @notice Emitted when the default pre-quorum voting period is updated.
+    /// @param previousPeriod Previous default pre-quorum voting period (seconds).
+    /// @param newPeriod New default pre-quorum voting period (seconds).
 
     event PreQuorumVotingPeriodUpdated(uint256 indexed previousPeriod, uint256 indexed newPeriod);
     /// @notice Emitted when the YES vote threshold changes.
@@ -714,6 +723,7 @@ abstract contract TemplBase is ReentrancyGuard {
         }
 
         postQuorumVotingPeriod = _executionDelay == 0 ? DEFAULT_POST_QUORUM_VOTING_PERIOD : _executionDelay;
+        _validatePostQuorumVotingPeriod(postQuorumVotingPeriod);
         burnAddress = _burnAddress == address(0) ? DEFAULT_BURN_ADDRESS : _burnAddress;
         _setTemplMetadata(_name, _description, _logoLink);
         _setProposalCreationFee(_proposalCreationFeeBps);
@@ -922,8 +932,7 @@ abstract contract TemplBase is ReentrancyGuard {
         if (period < MIN_PRE_QUORUM_VOTING_PERIOD) revert TemplErrors.VotingPeriodTooShort();
         if (period > MAX_PRE_QUORUM_VOTING_PERIOD) revert TemplErrors.VotingPeriodTooLong();
         uint256 feeBps = proposalCreationFeeBps;
-        bool proposerIsCouncil = councilModeEnabled && councilMembers[msg.sender];
-        if (feeBps > 0 && !proposerIsCouncil) {
+        if (feeBps > 0) {
             uint256 proposalFee = (entryFee * feeBps) / BPS_DENOMINATOR;
             if (proposalFee > 0) {
                 _safeTransferFrom(accessToken, msg.sender, address(this), proposalFee);
@@ -1368,9 +1377,18 @@ abstract contract TemplBase is ReentrancyGuard {
         emit QuorumBpsUpdated(previous, newQuorumBps);
     }
 
-    /// @notice Updates the post‑quorum voting period in seconds.
+    /// @notice Ensures the post-quorum voting period is within the allowed bounds.
+    /// @param newPeriod New period (seconds) applied after quorum before execution.
+    function _validatePostQuorumVotingPeriod(uint256 newPeriod) internal pure {
+        if (newPeriod < MIN_POST_QUORUM_VOTING_PERIOD || newPeriod > MAX_POST_QUORUM_VOTING_PERIOD) {
+            revert TemplErrors.InvalidCallData();
+        }
+    }
+
+    /// @notice Updates the post-quorum voting period in seconds.
     /// @param newPeriod New period (seconds) applied after quorum before execution.
     function _setPostQuorumVotingPeriod(uint256 newPeriod) internal {
+        _validatePostQuorumVotingPeriod(newPeriod);
         uint256 previous = postQuorumVotingPeriod;
         postQuorumVotingPeriod = newPeriod;
         emit PostQuorumVotingPeriodUpdated(previous, newPeriod);
@@ -1385,8 +1403,8 @@ abstract contract TemplBase is ReentrancyGuard {
         emit BurnAddressUpdated(previous, newBurn);
     }
 
-    /// @notice Updates the default pre‑quorum voting period used when proposals do not supply one.
-    /// @param newPeriod New default pre‑quorum voting period (seconds).
+    /// @notice Updates the default pre-quorum voting period used when proposals do not supply one.
+    /// @param newPeriod New default pre-quorum voting period (seconds).
     function _setPreQuorumVotingPeriod(uint256 newPeriod) internal {
         if (newPeriod < MIN_PRE_QUORUM_VOTING_PERIOD || newPeriod > MAX_PRE_QUORUM_VOTING_PERIOD) {
             revert TemplErrors.InvalidCallData();
@@ -1450,7 +1468,7 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param removedBy Caller initiating the removal (used for events).
     function _removeCouncilMember(address account, address removedBy) internal {
         if (!councilMembers[account]) revert TemplErrors.CouncilMemberMissing();
-        if (councilMemberCount < 3) revert TemplErrors.CouncilMemberMinimum();
+        if (councilMemberCount < 2) revert TemplErrors.CouncilMemberMinimum();
         councilMembers[account] = false;
         --councilMemberCount;
         emit CouncilMemberRemoved(account, removedBy);
@@ -1490,16 +1508,22 @@ abstract contract TemplBase is ReentrancyGuard {
             _safeTransfer(accessToken, recipient, amount);
         } else if (token == address(0)) {
             ExternalRewardState storage rewards = externalRewards[address(0)];
+            if (!rewards.exists && (rewards.poolBalance != 0 || rewards.rewardRemainder != 0)) {
+                revert TemplErrors.ExternalRewardsNotSettled();
+            }
             uint256 currentBalance = address(this).balance;
-            uint256 reservedForMembers = rewards.poolBalance;
+            uint256 reservedForMembers = rewards.exists ? rewards.poolBalance : 0;
             uint256 availableBalance = currentBalance > reservedForMembers ? currentBalance - reservedForMembers : 0;
             if (amount > availableBalance) revert TemplErrors.InsufficientTreasuryBalance();
             (bool success, ) = payable(recipient).call{value: amount}("");
             if (!success) revert TemplErrors.ProposalExecutionFailed();
         } else {
             ExternalRewardState storage rewards = externalRewards[token];
+            if (!rewards.exists && (rewards.poolBalance != 0 || rewards.rewardRemainder != 0)) {
+                revert TemplErrors.ExternalRewardsNotSettled();
+            }
             uint256 currentBalance = IERC20(token).balanceOf(address(this));
-            uint256 reservedForMembers = rewards.poolBalance;
+            uint256 reservedForMembers = rewards.exists ? rewards.poolBalance : 0;
             uint256 availableBalance = currentBalance > reservedForMembers ? currentBalance - reservedForMembers : 0;
             if (amount > availableBalance) revert TemplErrors.InsufficientTreasuryBalance();
             _safeTransfer(token, recipient, amount);
@@ -1544,6 +1568,7 @@ abstract contract TemplBase is ReentrancyGuard {
         if (newPriest == address(0)) revert TemplErrors.InvalidRecipient();
         address old = priest;
         if (newPriest == old) revert TemplErrors.InvalidCallData();
+        if (!members[newPriest].joined) revert TemplErrors.NotMember();
         priest = newPriest;
         emit PriestChanged(old, newPriest);
     }
@@ -1591,8 +1616,7 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 totalAmount = tokenBalance > poolBalance ? tokenBalance - poolBalance : 0;
         if (totalAmount == 0) revert TemplErrors.NoTreasuryFunds();
 
-        uint256 carry = rewards.rewardRemainder;
-        uint256 toSplit = totalAmount + carry;
+        uint256 toSplit = totalAmount + rewards.rewardRemainder;
         uint256 perMember = toSplit / activeMembers;
         uint256 newRemainder = toSplit % activeMembers;
 

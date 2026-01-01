@@ -18,7 +18,7 @@ describe('Anchored execution delay after quorum', function () {
 
     const { membershipModule, treasuryModule, governanceModule, councilModule } = await deployTemplModules();
 
-    // Use a short execution delay (2 seconds) and warp time across checks.
+    // Use the minimum execution delay and warp time across checks.
     const Templ = await ethers.getContractFactory('TEMPL');
     let templ = await Templ.deploy(
       priest.address,
@@ -30,7 +30,7 @@ describe('Anchored execution delay after quorum', function () {
       3000,
       1000,
       3300,
-      2,
+      60 * 60,
       '0x000000000000000000000000000000000000dEaD',
       false,
       0,
@@ -80,7 +80,8 @@ describe('Anchored execution delay after quorum', function () {
     const proposalB = (await templ.proposalCount()) - 1n;
 
     // Fast forward past the short default delay to execute proposal B first.
-    await ethers.provider.send('evm_increaseTime', [3]);
+    const delay = Number(await templ.postQuorumVotingPeriod());
+    await ethers.provider.send('evm_increaseTime', [delay + 1]);
     await ethers.provider.send('evm_mine', []);
     await templ.executeProposal(proposalB);
 

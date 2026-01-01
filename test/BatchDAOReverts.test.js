@@ -42,7 +42,7 @@ describe("batchDAO invalid input handling", function () {
   });
 
   it("governance CallExternal path: bubbles InvalidCallData/InvalidRecipient from batchDAO", async function () {
-    const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE, executionDelay: 2 });
+    const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE, executionDelay: 60 * 60 });
     const [, , m1, m2] = accounts;
     await mintToUsers(token, [m1, m2], ENTRY_FEE * 4n);
     await joinMembers(templ, token, [m1, m2]);
@@ -59,7 +59,8 @@ describe("batchDAO invalid input handling", function () {
       .createProposalCallExternal(router, 0, batchSel, enc([router], [], []), 0, "batch bad lens", "");
     let id = (await templ.proposalCount()) - 1n;
     await templ.connect(m2).vote(id, true);
-    await ethers.provider.send("evm_increaseTime", [3]);
+    const delay = Number(await templ.postQuorumVotingPeriod());
+    await ethers.provider.send("evm_increaseTime", [delay + 1]);
     await ethers.provider.send("evm_mine", []);
     await expect(templ.executeProposal(id)).to.be.revertedWithCustomError(templ, "InvalidCallData");
 
@@ -69,7 +70,7 @@ describe("batchDAO invalid input handling", function () {
       .createProposalCallExternal(router, 0, batchSel, enc([ethers.ZeroAddress], [0], ["0x"]), 0, "batch zero", "");
     id = (await templ.proposalCount()) - 1n;
     await templ.connect(m2).vote(id, true);
-    await ethers.provider.send("evm_increaseTime", [3]);
+    await ethers.provider.send("evm_increaseTime", [delay + 1]);
     await ethers.provider.send("evm_mine", []);
     await expect(templ.executeProposal(id)).to.be.revertedWithCustomError(templ, "InvalidRecipient");
   });

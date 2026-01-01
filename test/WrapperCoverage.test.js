@@ -53,8 +53,8 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
     await templ.daoWithdraw(other.target, recipient.address, 777n);
     expect(await other.balanceOf(recipient.address)).to.equal(before2 + 777n);
 
-    await templ.daoChangePriest(recipient.address);
-    expect(await templ.priest()).to.equal(recipient.address);
+    await templ.daoChangePriest(member.address);
+    expect(await templ.priest()).to.equal(member.address);
 
     expect(await templ.priestIsDictator()).to.equal(false);
     await templ.daoSetDictatorship(true);
@@ -222,6 +222,10 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
     await templ.connect(member).join();
 
     await expect(templ.connect(priest).disbandTreasuryDAO(token.target)).to.not.be.reverted;
+
+    await token.mint(newPriest.address, ENTRY_FEE);
+    await token.connect(newPriest).approve(templ.target, ENTRY_FEE);
+    await templ.connect(newPriest).join();
 
     await expect(templ.connect(priest).changePriestDAO(newPriest.address)).to.not.be.reverted;
   });

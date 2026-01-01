@@ -164,7 +164,7 @@ describe("TemplHarness coverage helpers", function () {
     expect(cumulative).to.equal(42);
   });
 
-  it("rolls external remainders forward at disband time", async function () {
+  it("rolls external remainders into disband distributions", async function () {
     const signers = await ethers.getSigners();
     const [,, , memberA, memberB] = signers;
     const entryFee = await harness.entryFee();
@@ -181,8 +181,8 @@ describe("TemplHarness coverage helpers", function () {
     await harness.harnessDisbandTreasury(rewardAddr);
 
     const [, cumulative, remainder] = await harness.getExternalRewardState(rewardAddr);
-    // Members: priest + memberA + memberB = 3. (10 + 2) / 3 = 4 per member, 0 remainder
-    expect(cumulative).to.equal(9); // was 5, plus 4 per-member added
+    // Members: priest + memberA + memberB = 3. Seeded remainder (10) + disband (2) => 12 / 3 = 4.
+    expect(cumulative).to.equal(9n); // 5 + 4 per-member
     expect(remainder).to.equal(0n);
   });
 

@@ -53,7 +53,7 @@ describe("Proposal creation fee reentrancy", function () {
       "https://templ.fun/reentrancy.png",
       PROPOSAL_FEE_BPS,
       0,
-      5_000,
+      5_100,
        10_000,
       false,
       membershipModule,

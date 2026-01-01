@@ -10,7 +10,7 @@ struct CreateConfig {
     address priest;
     /// @notice ERC-20 token used for membership payments.
     address token;
-    /// @notice Initial entry fee (must be ≥ 10 and divisible by 10).
+    /// @notice Initial entry fee (must be >= 10 and divisible by 10).
     uint256 entryFee;
     /// @notice Burn share (bps). Use -1 to apply factory default.
     int256 burnBps;
@@ -46,6 +46,6 @@ struct CreateConfig {
     uint256 yesVoteThresholdBps;
     /// @notice Whether the templ should start in council governance mode.
     bool councilMode;
-    /// @notice Instant quorum threshold (bps) that enables immediate execution when satisfied. Must be ≥ quorum. 0 applies factory default.
+    /// @notice Instant quorum threshold (bps) that enables immediate execution when satisfied. Must be >= quorum. 0 applies factory default.
     uint256 instantQuorumBps;
 }

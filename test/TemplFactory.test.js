@@ -27,7 +27,7 @@ describe("TemplFactory", function () {
     };
 
     const withCouncilDefaults = (config) => ({
-        yesVoteThresholdBps: 5_000,
+        yesVoteThresholdBps: 5_100,
         councilMode: false,
         instantQuorumBps: 10_000,
         ...config,
@@ -144,7 +144,7 @@ describe("TemplFactory", function () {
         expect(await templ.templLogoLink()).to.equal(DEFAULT_METADATA.logoLink);
         expect(await templ.proposalCreationFeeBps()).to.equal(250n);
         expect(await templ.referralShareBps()).to.equal(1_000n);
-        expect(await templ.yesVoteThresholdBps()).to.equal(5_000n);
+        expect(await templ.yesVoteThresholdBps()).to.equal(5_100n);
         expect(await templ.instantQuorumBps()).to.equal(10_000n);
 
         const templCreated = receipt.logs
@@ -163,7 +163,7 @@ describe("TemplFactory", function () {
         expect(templCreated.args.logoLink).to.equal(DEFAULT_METADATA.logoLink);
         expect(templCreated.args.proposalFeeBps).to.equal(250n);
         expect(templCreated.args.referralShareBps).to.equal(1_000n);
-        expect(templCreated.args.yesVoteThresholdBps).to.equal(5_000n);
+        expect(templCreated.args.yesVoteThresholdBps).to.equal(5_100n);
         expect(templCreated.args.instantQuorumBps).to.equal(10_000n);
         expect(templCreated.args.councilMode).to.equal(false);
 

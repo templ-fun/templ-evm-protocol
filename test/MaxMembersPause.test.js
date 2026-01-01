@@ -15,7 +15,7 @@ describe("Max Members Pause Handling", function () {
   let m1;
   let m2;
 
-  const EXECUTION_DELAY = 2;
+  const EXECUTION_DELAY = 60 * 60;
 
   beforeEach(async function () {
     ({ templ, token, accounts } = await deployTempl({
@@ -37,7 +37,8 @@ describe("Max Members Pause Handling", function () {
     await templ.connect(m1).createProposalSetJoinPaused(false, VOTING_PERIOD);
     await templ.connect(priest).vote(0, true);
 
-    await ethers.provider.send("evm_increaseTime", [EXECUTION_DELAY + 1]);
+    const delay = Number(await templ.postQuorumVotingPeriod());
+    await ethers.provider.send("evm_increaseTime", [delay + 1]);
     await ethers.provider.send("evm_mine", []);
 
     await templ.executeProposal(0);

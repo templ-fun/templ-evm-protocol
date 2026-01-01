@@ -26,9 +26,11 @@ describe("TEMPL selector → module introspection", function () {
     const governance = await templ.GOVERNANCE_MODULE();
     const createSel = templ.interface.getFunction("createProposalSetJoinPaused").selector;
     const voteSel = templ.interface.getFunction("vote").selector;
+    const cancelSel = templ.interface.getFunction("cancelProposal").selector;
     const execSel = templ.interface.getFunction("executeProposal").selector;
     expect(await templ.getModuleForSelector(createSel)).to.equal(governance);
     expect(await templ.getModuleForSelector(voteSel)).to.equal(governance);
+    expect(await templ.getModuleForSelector(cancelSel)).to.equal(governance);
     expect(await templ.getModuleForSelector(execSel)).to.equal(governance);
   });
 

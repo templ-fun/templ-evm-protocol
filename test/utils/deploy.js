@@ -55,7 +55,7 @@ async function deployTemplContracts({
   logoLink = "",
   proposalFeeBps = 0,
   referralShareBps = 0,
-  yesVoteThresholdBps = 5000,
+  yesVoteThresholdBps = 5100,
   instantQuorumBps = 10_000,
   councilMode = false,
   curve = STATIC_CURVE,

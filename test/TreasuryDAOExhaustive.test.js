@@ -90,9 +90,13 @@ describe("TemplTreasury onlyDAO exhaustive coverage", function () {
     if (claimableJoiner > 0n) {
       await templ.connect(joiner).claimExternalReward(other.target);
     }
-    // Pool and remainder should now be 0 or minimal; attempt cleanup (if still not 0, skip)
+    // Pool and remainder should now be minimal; sweep dust if needed, then cleanup.
     const state = await templ.getExternalRewardState(other.target);
-    if (state.poolBalance === 0n && state.remainder === 0n) {
+    if (state.remainder > 0n) {
+      await templ.connect(priest).sweepExternalRewardRemainderDAO(other.target, priest.address);
+    }
+    const settled = await templ.getExternalRewardState(other.target);
+    if (settled.poolBalance === 0n && settled.remainder === 0n) {
       await templ.connect(priest).cleanupExternalRewardToken(other.target);
     }
 
@@ -115,4 +119,3 @@ describe("TemplTreasury onlyDAO exhaustive coverage", function () {
     expect(await target.storedValue()).to.equal(123n);
   });
 });
-

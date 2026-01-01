@@ -50,7 +50,7 @@ contract TemplHarness is TEMPL {
             _logoLink,
             _proposalCreationFeeBps,
             _referralShareBps,
-            5_000,
+            5_100,
             10_000,
             false,
             _membershipModule,

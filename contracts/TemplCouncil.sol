@@ -115,7 +115,7 @@ contract TemplCouncilModule is TemplBase {
             if (councilMembers[member]) revert TemplErrors.CouncilMemberExists();
         } else {
             if (!councilMembers[member]) revert TemplErrors.CouncilMemberMissing();
-            if (councilMemberCount < 3) revert TemplErrors.CouncilMemberMinimum();
+            if (councilMemberCount < 2) revert TemplErrors.CouncilMemberMinimum();
         }
         (uint256 id, Proposal storage p) = _createBaseProposal(votingPeriod, title, description);
         p.action = add ? Action.AddCouncilMember : Action.RemoveCouncilMember;

@@ -92,7 +92,7 @@ describe("Prod Readiness", function () {
       logoLink: "https://example.com/logo.png",
       proposalFeeBps: 2_500,
       referralShareBps: 2_500,
-      yesVoteThresholdBps: 5_000,
+      yesVoteThresholdBps: 5_100,
       councilMode: false,
       instantQuorumBps: 10_000
     });
@@ -115,9 +115,9 @@ describe("Prod Readiness", function () {
 
     // Sanity: registered selectors are complete and route to expected modules
     const [mSels, tSels, gSels, cSels] = await templ.getRegisteredSelectors();
-    expect(mSels.length).to.equal(18);
-    expect(tSels.length).to.equal(25);
-    expect(gSels.length).to.equal(20);
+    expect(mSels.length).to.equal(22);
+    expect(tSels.length).to.equal(26);
+    expect(gSels.length).to.equal(21);
     expect(cSels.length).to.equal(4);
 
     for (const sel of mSels) {
@@ -438,18 +438,13 @@ describe("Prod Readiness", function () {
         await (await membership.connect(who).claimExternalReward(await extraToken.getAddress())).wait();
       }
     }
-    // Pool may still have tiny remainder; flush by disbanding zero-amount path is not possible; instead force remainder to 0 by updating membership count bias: add a new joiner (eve)
-    await (await token.connect(eve).approve(templ.target, ethers.MaxUint256)).wait();
-    await (await membership.connect(eve).join()).wait();
-    // After a join, remainder distribution gets flushed; attempt claims again
-    for (const who of [priest, alice, bob, carol, dave, eve]) {
-      const claimable = await membership.getClaimableExternalReward(
-        await who.getAddress(),
-        await extraToken.getAddress()
-      );
-      if (claimable > 0n) {
-        await (await membership.connect(who).claimExternalReward(await extraToken.getAddress())).wait();
-      }
+    // Pool may still have tiny remainder; sweep the dust so cleanup can succeed.
+    const preSweep = await membership.getExternalRewardState(await extraToken.getAddress());
+    if (preSweep.remainder > 0n) {
+      await (await treasury.connect(alice).sweepExternalRewardRemainderDAO(
+        await extraToken.getAddress(),
+        await alice.getAddress()
+      )).wait();
     }
     const stateEXT = await membership.getExternalRewardState(await extraToken.getAddress());
     expect(stateEXT.poolBalance).to.equal(0n);

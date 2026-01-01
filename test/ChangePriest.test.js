@@ -10,9 +10,9 @@ describe("ChangePriest governance action", function () {
     const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE });
     const [, oldPriest, member1, member2, newPriest] = accounts;
 
-    // Fund and onboard two members
-    await mintToUsers(token, [member1, member2], ENTRY_FEE * 10n);
-    await joinMembers(templ, token, [member1, member2]);
+    // Fund and onboard members (new priest must be a member)
+    await mintToUsers(token, [member1, member2, newPriest], ENTRY_FEE * 10n);
+    await joinMembers(templ, token, [member1, member2, newPriest]);
 
     // Sanity: initial priest is deploy-time arg
     expect(await templ.priest()).to.equal(oldPriest.address);

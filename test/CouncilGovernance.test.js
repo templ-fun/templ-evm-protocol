@@ -91,8 +91,22 @@ describe("Council governance", function () {
     expect(await templ.councilMembers(member2.address)).to.equal(false);
     expect(await templ.councilMemberCount()).to.equal(2n);
 
+    await templ.connect(member1).createProposalRemoveCouncilMember(priest.address, WEEK, "remove priest", "");
+    proposalId = (await templ.proposalCount()) - 1n;
+    await templ.connect(priest).vote(proposalId, true);
+    await advanceTime();
+    await templ.executeProposal(proposalId);
+    expect(await templ.councilMembers(priest.address)).to.equal(false);
+    expect(await templ.councilMemberCount()).to.equal(1n);
+
+    const soloBurn = "0x0000000000000000000000000000000000000020";
+    await templ.connect(member1).createProposalSetBurnAddress(soloBurn, WEEK, "solo burn", "");
+    proposalId = (await templ.proposalCount()) - 1n;
+    await templ.executeProposal(proposalId);
+    expect(await templ.burnAddress()).to.equal(soloBurn);
+
     await expect(
-      templ.connect(member1).createProposalRemoveCouncilMember(priest.address, WEEK, "remove last", "")
+      templ.connect(member1).createProposalRemoveCouncilMember(member1.address, WEEK, "remove last", "")
     ).to.be.revertedWithCustomError(templ, "CouncilMemberMinimum");
   });
 
@@ -128,7 +142,7 @@ describe("Council governance", function () {
     expect(await templ.burnAddress()).to.equal(passingBurn);
   });
 
-  it("waives proposal fees for council members but charges non-council proposers", async function () {
+  it("charges proposal fees for council and non-council proposers", async function () {
     const { templ, token, priest, member1, member2 } = await setupTempl({ proposalFeeBps: 1_000 });
 
     const templAddress = await templ.getAddress();
@@ -150,13 +164,13 @@ describe("Council governance", function () {
     expect(await templ.treasuryBalance()).to.equal(treasuryBefore + fee);
     expect(nonCouncilBalanceBefore - (await token.balanceOf(member2.address))).to.equal(fee);
 
-    // Council proposer skips the fee
+    // Council proposer pays the fee as well
     const councilBalanceBefore = await token.balanceOf(member1.address);
     const treasuryAfter = await templ.treasuryBalance();
     await templ
       .connect(member1)
       .createProposalSetBurnAddress("0x00000000000000000000000000000000000000BB", WEEK, "Council", "");
-    expect(await templ.treasuryBalance()).to.equal(treasuryAfter);
-    expect(councilBalanceBefore - (await token.balanceOf(member1.address))).to.equal(0n);
+    expect(await templ.treasuryBalance()).to.equal(treasuryAfter + fee);
+    expect(councilBalanceBefore - (await token.balanceOf(member1.address))).to.equal(fee);
   });
 });

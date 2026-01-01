@@ -6,7 +6,7 @@ const { deployTemplModules } = require("./utils/modules");
 const { attachTemplInterface } = require("./utils/templ");
 
 describe("External reward remainders", function () {
-  it("do not leak to members who joined after the remainder accrued", async function () {
+  it("rolls remainder dust into later distributions after new joins", async function () {
     const [owner, protocolRecipient, member1, member2, member3, lateMember] = await ethers.getSigners();
 
     const AccessToken = await ethers.getContractFactory(
@@ -48,6 +48,7 @@ describe("External reward remainders", function () {
     await rewardToken.mint(owner.address, ethers.parseUnits("100", 18));
     await rewardToken.connect(owner).transfer(templ.target, tenTokens);
     await templ.connect(owner).daoDisband(rewardToken.target);
+    const membersAtFirst = await templ.getMemberCount();
 
     await joinMembers(templ, accessToken, [lateMember], entryFee);
 
@@ -57,9 +58,14 @@ describe("External reward remainders", function () {
 
     const claimableLate = await templ.getClaimableExternalReward(lateMember.address, rewardToken.target);
 
+    const remainderFromFirst = tenTokens % membersAtFirst;
     const totalMembers = await templ.getMemberCount();
-    const expected = sevenTokens / totalMembers;
+    const expected = (sevenTokens + remainderFromFirst) / totalMembers;
     expect(claimableLate).to.equal(expected);
+
+    const expectedInitial = (tenTokens / membersAtFirst) + expected;
+    const claimableEarly = await templ.getClaimableExternalReward(member1.address, rewardToken.target);
+    expect(claimableEarly).to.equal(expectedInitial);
   });
 
   it("allows members to claim ERC20 rewards routed through disband", async function () {

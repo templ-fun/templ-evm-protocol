@@ -37,7 +37,7 @@ contract DaoCallerHarness is TEMPL {
             "https://templ.fun/logo.png",
             500,
             0,
-            5_000,
+            5_100,
             10_000,
             false,
             membershipModule,

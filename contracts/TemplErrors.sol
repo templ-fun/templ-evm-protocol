@@ -53,6 +53,8 @@ library TemplErrors {
     error InvalidEntryFee();
     /// @notice Thrown when the entry fee exceeds the supported maximum.
     error EntryFeeTooLarge();
+    /// @notice Thrown when the entry fee exceeds the caller's max entry fee.
+    error EntryFeeTooHigh();
     /// @notice Thrown when an entry fee curve configuration is invalid.
     error InvalidCurveConfig();
     /// @notice Thrown when fee percentages do not sum correctly or exceed limits.

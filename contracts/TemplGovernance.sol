@@ -170,7 +170,7 @@ contract TemplGovernanceModule is TemplBase {
         return id;
     }
 
-    /// @notice Opens a proposal to update the post‑quorum voting period in seconds.
+    /// @notice Opens a proposal to update the post-quorum voting period in seconds.
     /// @param _newPeriodSeconds New period (seconds) applied after quorum before execution.
     /// @param _votingPeriod Optional custom voting duration (seconds).
     /// @param _title On-chain title for the proposal.
@@ -285,7 +285,7 @@ contract TemplGovernanceModule is TemplBase {
     /// @notice Opens a proposal to perform an arbitrary external call through the templ.
     /// @dev Reverts if `_target` is zero or if no calldata is supplied. Any revert
     ///      produced by the downstream call will be bubbled up during execution.
-    ///      This is extremely dangerous—frontends surface prominent warnings clarifying that approving
+    ///      This is extremely dangerous; frontends surface prominent warnings clarifying that approving
     ///      these proposals grants arbitrary control and may allow the treasury to be drained.
     /// @param _target Destination contract for the call.
     /// @param _value ETH value to forward along with the call.
@@ -348,7 +348,7 @@ contract TemplGovernanceModule is TemplBase {
     /// @param _title On-chain title for the proposal.
     /// @param _description On-chain description for the proposal.
     /// @return proposalId Newly created proposal identifier.
-    /// @dev If the proposer is the `priest`, the proposal is quorum‑exempt to allow
+    /// @dev If the proposer is the `priest`, the proposal is quorum-exempt to allow
     ///      an otherwise inactive templ (insufficient turnout) to unwind with a simple majority.
     function createProposalDisbandTreasury(
         address _token,
@@ -434,7 +434,7 @@ contract TemplGovernanceModule is TemplBase {
     /// @param _proposalId Proposal id to vote on.
     /// @param _support True for YES, false for NO.
     /// @dev Prior to quorum, eligibility is locked to the join sequence captured at proposal creation.
-    ///      Once quorum is reached, eligibility is re‑snapshotted to prevent later joins from swinging the vote.
+    ///      Once quorum is reached, eligibility is re-snapshotted to prevent later joins from swinging the vote.
     function vote(uint256 _proposalId, bool _support) external onlyMember {
         _requireDelegatecall();
         if (!(_proposalId < proposalCount)) revert TemplErrors.InvalidProposal();
@@ -504,8 +504,8 @@ contract TemplGovernanceModule is TemplBase {
 
     /// @notice Executes a passed proposal after quorum (or voting) requirements are satisfied.
     /// @param _proposalId Proposal id to execute.
-    /// @dev For quorum‑gated proposals, the `endTime` captured at quorum anchors the post‑quorum voting window
-    ///      to prevent mid‑flight changes from affecting execution timing. After execution, the
+    /// @dev For quorum-gated proposals, the `endTime` captured at quorum anchors the post-quorum voting window
+    ///      to prevent mid-flight changes from affecting execution timing. After execution, the
     ///      active proposals index opportunistically prunes up to `EXECUTION_TAIL_PRUNE` inactive
     ///      entries from its tail to keep the set compact.
     function executeProposal(uint256 _proposalId) external nonReentrant {
@@ -548,6 +548,34 @@ contract TemplGovernanceModule is TemplBase {
         bytes memory returnData = _executeActionInternal(_proposalId);
 
         emit ProposalExecuted(_proposalId, true, keccak256(returnData));
+        _removeActiveProposal(_proposalId);
+        _pruneInactiveTail(EXECUTION_TAIL_PRUNE);
+    }
+
+    /// @notice Cancels an active proposal before any other members vote.
+    /// @param _proposalId Proposal id to cancel.
+    function cancelProposal(uint256 _proposalId) external nonReentrant {
+        _requireDelegatecall();
+        if (!(_proposalId < proposalCount)) revert TemplErrors.InvalidProposal();
+        Proposal storage proposal = proposals[_proposalId];
+        if (proposal.executed) revert TemplErrors.AlreadyExecuted();
+        if (proposal.proposer != msg.sender) revert TemplErrors.InvalidCallData();
+        if (!(block.timestamp < proposal.endTime)) revert TemplErrors.VotingEnded();
+
+        uint256 totalVotes = proposal.yesVotes + proposal.noVotes;
+        uint256 allowedVotes = proposal.hasVoted[msg.sender] ? 1 : 0;
+        if (totalVotes > allowedVotes) revert TemplErrors.InvalidCallData();
+
+        proposal.executed = true;
+        proposal.endTime = block.timestamp;
+
+        address proposerAddr = proposal.proposer;
+        if (hasActiveProposal[proposerAddr] && activeProposalId[proposerAddr] == _proposalId) {
+            hasActiveProposal[proposerAddr] = false;
+            activeProposalId[proposerAddr] = 0;
+        }
+
+        emit ProposalCancelled(_proposalId, msg.sender);
         _removeActiveProposal(_proposalId);
         _pruneInactiveTail(EXECUTION_TAIL_PRUNE);
     }
@@ -717,7 +745,7 @@ contract TemplGovernanceModule is TemplBase {
         _setQuorumBps(newQuorumBps);
     }
 
-    /// @notice Governance wrapper that updates the post‑quorum voting period.
+    /// @notice Governance wrapper that updates the post-quorum voting period.
     /// @param newPeriod New period in seconds.
     function _governanceSetPostQuorumVotingPeriod(uint256 newPeriod) internal {
         _setPostQuorumVotingPeriod(newPeriod);

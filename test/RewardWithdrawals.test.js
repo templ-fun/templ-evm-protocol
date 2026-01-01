@@ -134,6 +134,7 @@ describe("Reward withdrawal rounding", function () {
     const [poolAfterFirst, , remainderAfterFirst] = await templ.getExternalRewardState(rewardToken.target);
     const increaseFirst = poolAfterFirst - poolStart;
     const perMemberFirst = (increaseFirst + remainderStart - remainderAfterFirst) / memberCount;
+    expect(remainderAfterFirst).to.equal((increaseFirst + remainderStart) % memberCount);
 
     await rewardToken.connect(owner).transfer(templAddress, secondDeposit);
     await templ.connect(priest).disbandTreasuryDAO(rewardToken.target);

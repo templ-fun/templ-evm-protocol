@@ -5,8 +5,8 @@ const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 
 describe("Auto tail prune on execute", function () {
   it("prunes up to k inactive proposals from the tail after execution", async function () {
-    // Configure a short post-quorum delay so quorum-reached proposals end quickly.
-    const EXEC_DELAY = 60; // seconds
+    // Configure a valid post-quorum delay so quorum-reached proposals end quickly.
+    const EXEC_DELAY = 60 * 60; // seconds
     const VOTING_PERIOD = 36 * 60 * 60; // pre-quorum period (min), ignored once quorum is reached
     const { templ, token, accounts } = await deployTempl({ executionDelay: EXEC_DELAY });
 
@@ -44,7 +44,8 @@ describe("Auto tail prune on execute", function () {
     await templ.connect(members[1]).vote(liveId, true);
 
     // Wait the post-quorum delay then execute the live proposal
-    await ethers.provider.send("evm_increaseTime", [EXEC_DELAY + 1]);
+    const delay = Number(await templ.postQuorumVotingPeriod());
+    await ethers.provider.send("evm_increaseTime", [delay + 1]);
     await ethers.provider.send("evm_mine", []);
     await templ.executeProposal(liveId);
 

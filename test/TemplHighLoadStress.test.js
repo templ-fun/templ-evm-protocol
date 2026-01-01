@@ -11,6 +11,7 @@ const { getTemplAt, attachTemplInterface } = require("./utils/templ");
 const MAX_ENTRY_FEE = (1n << 128n) - 1n;
 const TOTAL_PERCENT_BPS = 10_000n;
 const VOTING_PERIOD_SECONDS = 7 * 24 * 60 * 60;
+const POST_QUORUM_DELAY_SECONDS = 60 * 60;
 const CurveStyle = { Static: 0, Linear: 1, Exponential: 2 };
 const METADATA = {
   name: "Saturation Templ",
@@ -76,6 +77,12 @@ async function ensureProposalFee(templ, token, proposer, context) {
   await token.connect(proposer).approve(templAddress, expectedFee);
 }
 
+async function advancePostQuorum(templ, extraSeconds = 1) {
+  const delay = Number(await templ.postQuorumVotingPeriod());
+  await ethers.provider.send("evm_increaseTime", [delay + extraSeconds]);
+  await ethers.provider.send("evm_mine");
+}
+
 async function setupHighLoadTempl() {
   const [priest, protocolFeeRecipient, memberA, memberB] = await ethers.getSigners();
   const accessibleMembers = [memberA, memberB];
@@ -96,7 +103,7 @@ async function setupHighLoadTempl() {
     4_000,
     1_000, // 1% protocol share
     100, // 100 bps quorum to keep voting cheap under load
-    1, // 1 second execution delay
+    POST_QUORUM_DELAY_SECONDS, // 1 hour execution delay
     ethers.ZeroAddress,
     false,
     0,
@@ -105,7 +112,7 @@ async function setupHighLoadTempl() {
     METADATA.logo,
     0,
     0,
-    5_000,
+    5_100,
      10_000,
     false,
     modules.membershipModule,
@@ -320,9 +327,7 @@ describe("@load Templ High-Load Stress", function () {
 
       const withdrawProposal = await templ.getProposal(withdrawProposalId);
       expect(withdrawProposal.yesVotes).to.be.at.least(requiredYesVotes);
-
-      await ethers.provider.send("evm_increaseTime", [2]);
-      await ethers.provider.send("evm_mine");
+      await advancePostQuorum(templ);
 
       const recipientBalanceBefore = await token.balanceOf(withdrawRecipient.address);
       await templ.connect(priest).executeProposal(withdrawProposalId);
@@ -386,8 +391,7 @@ describe("@load Templ High-Load Stress", function () {
       expect(hv[0]).to.equal(true);
       expect(hv[1]).to.equal(true);
       await ensureQuorum(templ, id);
-      await ethers.provider.send("evm_increaseTime", [2]);
-      await ethers.provider.send("evm_mine");
+      await advancePostQuorum(templ);
       await templ.executeProposal(id);
       expect(await templ.templName()).to.equal("StressMeta");
 
@@ -407,8 +411,7 @@ describe("@load Templ High-Load Stress", function () {
       id = (await templ.proposalCount()) - 1n;
       await templ.connect(accessibleMembers[1]).vote(id, true);
       await ensureQuorum(templ, id);
-      await ethers.provider.send("evm_increaseTime", [2]);
-      await ethers.provider.send("evm_mine");
+      await advancePostQuorum(templ);
       await templ.executeProposal(id);
       expect(await templ.proposalCreationFeeBps()).to.equal(600n);
 
@@ -429,8 +432,7 @@ describe("@load Templ High-Load Stress", function () {
       id = (await templ.proposalCount()) - 1n;
       await templ.connect(accessibleMembers[1]).vote(id, true);
       await ensureQuorum(templ, id);
-      await ethers.provider.send("evm_increaseTime", [2]);
-      await ethers.provider.send("evm_mine");
+      await advancePostQuorum(templ);
       await templ.executeProposal(id);
       expect(await templ.referralShareBps()).to.equal(1_000n);
 
@@ -463,8 +465,7 @@ describe("@load Templ High-Load Stress", function () {
       id = (await templ.proposalCount()) - 1n;
       await templ.connect(accessibleMembers[1]).vote(id, true);
       await ensureQuorum(templ, id);
-      await ethers.provider.send("evm_increaseTime", [2]);
-      await ethers.provider.send("evm_mine");
+      await advancePostQuorum(templ);
       await templ.executeProposal(id);
       expect(await target.storedValue()).to.equal(123n);
     });
@@ -492,8 +493,7 @@ describe("@load Templ High-Load Stress", function () {
       let id = (await templ.proposalCount()) - 1n;
       await templ.connect(accessibleMembers[1]).vote(id, true);
       await ensureQuorum(templ, id);
-      await ethers.provider.send("evm_increaseTime", [2]);
-      await ethers.provider.send("evm_mine");
+      await advancePostQuorum(templ);
       await templ.executeProposal(id);
 
       expect(await target.storedValue()).to.equal(777n);
@@ -515,8 +515,7 @@ describe("@load Templ High-Load Stress", function () {
       const id = (await templ.proposalCount()) - 1n;
       await templ.connect(accessibleMembers[1]).vote(id, true);
       await ensureQuorum(templ, id);
-      await ethers.provider.send("evm_increaseTime", [2]);
-      await ethers.provider.send("evm_mine");
+      await advancePostQuorum(templ);
       await templ.executeProposal(id);
       expect(await templ.preQuorumVotingPeriod()).to.equal(BigInt(newDefault));
 
@@ -551,8 +550,7 @@ describe("@load Templ High-Load Stress", function () {
       let id = (await templ.proposalCount()) - 1n;
       await templ.connect(accessibleMembers[1]).vote(id, true);
       await ensureQuorum(templ, id);
-      await ethers.provider.send("evm_increaseTime", [2]);
-      await ethers.provider.send("evm_mine");
+      await advancePostQuorum(templ);
       await templ.executeProposal(id);
       expect(await templ.burnBps()).to.equal(BigInt(newBurn));
       expect(await templ.treasuryBps()).to.equal(BigInt(newTreasury));
@@ -566,8 +564,7 @@ describe("@load Templ High-Load Stress", function () {
       id = (await templ.proposalCount()) - 1n;
       await templ.connect(accessibleMembers[1]).vote(id, true);
       await ensureQuorum(templ, id);
-      await ethers.provider.send("evm_increaseTime", [2]);
-      await ethers.provider.send("evm_mine");
+      await advancePostQuorum(templ);
       await expect(templ.executeProposal(id)).to.emit(templ, "EntryFeeCurveUpdated");
 
       // Toggle member cap to current count (should auto-pause), then remove cap
@@ -577,8 +574,7 @@ describe("@load Templ High-Load Stress", function () {
       id = (await templ.proposalCount()) - 1n;
       await templ.connect(accessibleMembers[1]).vote(id, true);
       await ensureQuorum(templ, id);
-      await ethers.provider.send("evm_increaseTime", [2]);
-      await ethers.provider.send("evm_mine");
+      await advancePostQuorum(templ);
       await templ.executeProposal(id);
       expect(await templ.maxMembers()).to.equal(count);
       expect(await templ.joinPaused()).to.equal(true);
@@ -588,8 +584,7 @@ describe("@load Templ High-Load Stress", function () {
       id = (await templ.proposalCount()) - 1n;
       await templ.connect(accessibleMembers[1]).vote(id, true);
       await ensureQuorum(templ, id);
-      await ethers.provider.send("evm_increaseTime", [2]);
-      await ethers.provider.send("evm_mine");
+      await advancePostQuorum(templ);
       await templ.executeProposal(id);
       expect(await templ.maxMembers()).to.equal(0n);
     });
@@ -604,8 +599,7 @@ describe("@load Templ High-Load Stress", function () {
         const id = (await templ.proposalCount()) - 1n;
         await templ.connect(accessibleMembers[1]).vote(id, true);
         await ensureQuorum(templ, id);
-        await ethers.provider.send("evm_increaseTime", [2]);
-        await ethers.provider.send("evm_mine");
+        await advancePostQuorum(templ);
         await templ.executeProposal(id);
       }
 
@@ -616,8 +610,7 @@ describe("@load Templ High-Load Stress", function () {
         let id = (await templ.proposalCount()) - 1n;
         await templ.connect(accessibleMembers[1]).vote(id, true);
         await ensureQuorum(templ, id);
-        await ethers.provider.send("evm_increaseTime", [2]);
-        await ethers.provider.send("evm_mine");
+        await advancePostQuorum(templ);
         await templ.executeProposal(id);
       }
       if ((await templ.maxMembers()) !== 0n) {
@@ -626,8 +619,7 @@ describe("@load Templ High-Load Stress", function () {
         let id = (await templ.proposalCount()) - 1n;
         await templ.connect(accessibleMembers[1]).vote(id, true);
         await ensureQuorum(templ, id);
-        await ethers.provider.send("evm_increaseTime", [2]);
-        await ethers.provider.send("evm_mine");
+        await advancePostQuorum(templ);
         await templ.executeProposal(id);
       }
 
@@ -657,8 +649,7 @@ describe("@load Templ High-Load Stress", function () {
       let id = (await templ.proposalCount()) - 1n;
       await templ.connect(accessibleMembers[1]).vote(id, true);
       await ensureQuorum(templ, id);
-      await ethers.provider.send("evm_increaseTime", [2]);
-      await ethers.provider.send("evm_mine");
+      await advancePostQuorum(templ);
       await templ.executeProposal(id);
       expect(await templ.joinPaused()).to.equal(true);
 
@@ -672,8 +663,7 @@ describe("@load Templ High-Load Stress", function () {
       id = (await templ.proposalCount()) - 1n;
       await templ.connect(accessibleMembers[1]).vote(id, true);
       await ensureQuorum(templ, id);
-      await ethers.provider.send("evm_increaseTime", [2]);
-      await ethers.provider.send("evm_mine");
+      await advancePostQuorum(templ);
       await templ.executeProposal(id);
       expect(await templ.joinPaused()).to.equal(false);
 
@@ -691,8 +681,7 @@ describe("@load Templ High-Load Stress", function () {
       let id = (await templ.proposalCount()) - 1n;
       await templ.connect(accessibleMembers[1]).vote(id, true);
       await ensureQuorum(templ, id);
-      await ethers.provider.send("evm_increaseTime", [2]);
-      await ethers.provider.send("evm_mine");
+      await advancePostQuorum(templ);
       await templ.executeProposal(id);
       expect(await templ.priest()).to.equal(accessibleMembers[0].address);
 
@@ -702,8 +691,7 @@ describe("@load Templ High-Load Stress", function () {
       id = (await templ.proposalCount()) - 1n;
       await templ.connect(accessibleMembers[1]).vote(id, true);
       await ensureQuorum(templ, id);
-      await ethers.provider.send("evm_increaseTime", [2]);
-      await ethers.provider.send("evm_mine");
+      await advancePostQuorum(templ);
       await templ.executeProposal(id);
       expect(await templ.priestIsDictator()).to.equal(true);
 
@@ -742,8 +730,7 @@ describe("@load Templ High-Load Stress", function () {
       const id = (await templ.proposalCount()) - 1n;
       await templ.connect(accessibleMembers[0]).vote(id, true);
       await ensureQuorum(templ, id);
-      await ethers.provider.send("evm_increaseTime", [2]);
-      await ethers.provider.send("evm_mine");
+      await advancePostQuorum(templ);
       await templ.executeProposal(id);
 
       // One member claims their external reward share
@@ -770,8 +757,7 @@ describe("@load Templ High-Load Stress", function () {
       const cleanupId = (await templ.proposalCount()) - 1n;
       await templ.connect(accessibleMembers[1]).vote(cleanupId, true);
       await ensureQuorum(templ, cleanupId);
-      await ethers.provider.send("evm_increaseTime", [2]);
-      await ethers.provider.send("evm_mine");
+      await advancePostQuorum(templ);
       await expect(templ.executeProposal(cleanupId)).to.be.revertedWithCustomError(
         templ,
         "ExternalRewardsNotSettled"
@@ -781,26 +767,26 @@ describe("@load Templ High-Load Stress", function () {
     it("updates quorum and execution delay; updates burn address then verifies burn on next join", async function () {
       const { templ, accessibleMembers, priest, token } = context;
 
-      // Set quorum to 100 bps and set 2s execution delay
+      // Set quorum to 100 bps and update execution delay
       await ensureProposalFee(templ, token, accessibleMembers[0], context);
       await templ.connect(accessibleMembers[0]).createProposalSetQuorumBps(100, 0, "Quorum", "");
       let id = (await templ.proposalCount()) - 1n;
       await templ.connect(accessibleMembers[1]).vote(id, true);
       await ensureQuorum(templ, id);
-      await ethers.provider.send("evm_increaseTime", [2]);
-      await ethers.provider.send("evm_mine");
+      await advancePostQuorum(templ);
       await templ.executeProposal(id);
       expect(await templ.quorumBps()).to.equal(100n);
 
       await ensureProposalFee(templ, token, accessibleMembers[0], context);
-      await templ.connect(accessibleMembers[0]).createProposalSetPostQuorumVotingPeriod(2, 0, "Delay", "");
+      await templ
+        .connect(accessibleMembers[0])
+        .createProposalSetPostQuorumVotingPeriod(POST_QUORUM_DELAY_SECONDS, 0, "Delay", "");
       id = (await templ.proposalCount()) - 1n;
       await templ.connect(accessibleMembers[1]).vote(id, true);
       await ensureQuorum(templ, id);
-      await ethers.provider.send("evm_increaseTime", [2]);
-      await ethers.provider.send("evm_mine");
+      await advancePostQuorum(templ);
       await templ.executeProposal(id);
-      expect(await templ.postQuorumVotingPeriod()).to.equal(2n);
+      expect(await templ.postQuorumVotingPeriod()).to.equal(BigInt(POST_QUORUM_DELAY_SECONDS));
 
       // Change burn address to a known wallet and confirm next join burns to it
       const burner = ethers.Wallet.createRandom().connect(ethers.provider);
@@ -809,8 +795,7 @@ describe("@load Templ High-Load Stress", function () {
       id = (await templ.proposalCount()) - 1n;
       await templ.connect(accessibleMembers[1]).vote(id, true);
       await ensureQuorum(templ, id);
-      await ethers.provider.send("evm_increaseTime", [2]);
-      await ethers.provider.send("evm_mine");
+      await advancePostQuorum(templ);
       await templ.executeProposal(id);
       expect(await templ.burnAddress()).to.equal(burner.address);
 
@@ -821,8 +806,7 @@ describe("@load Templ High-Load Stress", function () {
         id = (await templ.proposalCount()) - 1n;
         await templ.connect(accessibleMembers[1]).vote(id, true);
         await ensureQuorum(templ, id);
-        await ethers.provider.send("evm_increaseTime", [2]);
-        await ethers.provider.send("evm_mine");
+        await advancePostQuorum(templ);
         await templ.executeProposal(id);
         expect(await templ.joinPaused()).to.equal(false);
       }
@@ -882,7 +866,7 @@ describe("@load Templ High-Load Stress", function () {
         created.push(id);
       }
 
-      // Some get quorum and execute quickly (due to 2s delay from earlier test), others lapse
+      // Some get quorum and execute quickly (post-quorum delay), others lapse
       const toExecute = created.slice(0, Math.ceil(created.length / 2));
       for (const id of toExecute) {
         await templ.connect(accessibleMembers[0]).vote(id, true);
@@ -897,8 +881,7 @@ describe("@load Templ High-Load Stress", function () {
         if (yes < required) {
           await ensureQuorum(templ, id);
         }
-        await ethers.provider.send("evm_increaseTime", [3]);
-        await ethers.provider.send("evm_mine");
+        await advancePostQuorum(templ);
         await templ.executeProposal(id);
       }
 
@@ -946,8 +929,7 @@ describe("@load Templ High-Load Stress", function () {
       );
       await templ.connect(accessibleMembers[0]).vote(idW, true);
       await ensureQuorum(templ, idW);
-      await ethers.provider.send("evm_increaseTime", [2]);
-      await ethers.provider.send("evm_mine");
+      await advancePostQuorum(templ);
       await templ.executeProposal(idW);
       const ethAfter = await ethers.provider.getBalance(recipient.address);
       expect(ethAfter).to.be.gt(ethBefore);
@@ -970,8 +952,7 @@ describe("@load Templ High-Load Stress", function () {
       const id2 = (await templ.proposalCount()) - 1n;
       await templ.connect(context.accessibleMembers[0]).vote(id2, true);
       await ensureQuorum(templ, id2);
-      await ethers.provider.send("evm_increaseTime", [2]);
-      await ethers.provider.send("evm_mine");
+      await advancePostQuorum(templ);
       await templ.executeProposal(id2);
       const balAfter = await other.balanceOf(recipient.address);
       expect(balAfter - balBefore).to.equal(half);
@@ -1079,8 +1060,7 @@ describe("@load Templ High-Load Stress", function () {
       const id = (await templ.proposalCount()) - 1n;
       await templ.connect(accessibleMembers[1]).vote(id, true);
       await ensureQuorum(templ, id);
-      await ethers.provider.send("evm_increaseTime", [2]);
-      await ethers.provider.send("evm_mine");
+      await advancePostQuorum(templ);
 
       const balBefore = await token.balanceOf(templAddr);
       const stakedBefore = await staking.staked(templAddr);
@@ -1105,8 +1085,7 @@ describe("@load Templ High-Load Stress", function () {
       const id = (await templ.proposalCount()) - 1n;
       await templ.connect(accessibleMembers[1]).vote(id, true);
       await ensureQuorum(templ, id);
-      await ethers.provider.send("evm_increaseTime", [2]);
-      await ethers.provider.send("evm_mine");
+      await advancePostQuorum(templ);
       await templ.executeProposal(id);
 
       // Fee unchanged (split-only path)
@@ -1126,8 +1105,7 @@ describe("@load Templ High-Load Stress", function () {
       let id = (await templ.proposalCount()) - 1n;
       await templ.connect(accessibleMembers[1]).vote(id, true);
       await ensureQuorum(templ, id);
-      await ethers.provider.send("evm_increaseTime", [2]);
-      await ethers.provider.send("evm_mine");
+      await advancePostQuorum(templ);
       await templ.executeProposal(id);
 
       const members = await templ.memberCount();

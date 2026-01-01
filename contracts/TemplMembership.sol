@@ -30,19 +30,19 @@ contract TemplMembershipModule is TemplBase {
 
     /// @notice Join the templ by paying the configured entry fee on behalf of the caller.
     function join() external whenNotPaused notSelf nonReentrant onlyDelegatecall {
-        _join(msg.sender, msg.sender, address(0));
+        _join(msg.sender, msg.sender, address(0), type(uint256).max);
     }
 
     /// @notice Join the templ by paying the entry fee on behalf of the caller with a referral.
     /// @param referral Member credited with the referral reward.
     function joinWithReferral(address referral) external whenNotPaused notSelf nonReentrant onlyDelegatecall {
-        _join(msg.sender, msg.sender, referral);
+        _join(msg.sender, msg.sender, referral, type(uint256).max);
     }
 
     /// @notice Join the templ on behalf of another wallet by covering their entry fee.
     /// @param recipient Wallet receiving membership. Must not already be a member.
     function joinFor(address recipient) external whenNotPaused notSelf nonReentrant onlyDelegatecall {
-        _join(msg.sender, recipient, address(0));
+        _join(msg.sender, recipient, address(0), type(uint256).max);
     }
 
     /// @notice Join the templ for another wallet while crediting a referral.
@@ -52,18 +52,58 @@ contract TemplMembershipModule is TemplBase {
         address recipient,
         address referral
     ) external whenNotPaused notSelf nonReentrant onlyDelegatecall {
-        _join(msg.sender, recipient, referral);
+        _join(msg.sender, recipient, referral, type(uint256).max);
     }
 
+    /// @notice Join the templ with a maximum entry fee to protect against slippage.
+    /// @param maxEntryFee Maximum entry fee the caller is willing to pay.
+    function joinWithMaxEntryFee(uint256 maxEntryFee) external whenNotPaused notSelf nonReentrant onlyDelegatecall {
+        _join(msg.sender, msg.sender, address(0), maxEntryFee);
+    }
+
+    /// @notice Join the templ with a referral and a maximum entry fee.
+    /// @param referral Member credited with the referral reward.
+    /// @param maxEntryFee Maximum entry fee the caller is willing to pay.
+    function joinWithReferralMaxEntryFee(
+        address referral,
+        uint256 maxEntryFee
+    ) external whenNotPaused notSelf nonReentrant onlyDelegatecall {
+        _join(msg.sender, msg.sender, referral, maxEntryFee);
+    }
+
+    /// @notice Join the templ on behalf of another wallet with a maximum entry fee.
+    /// @param recipient Wallet receiving membership. Must not already be a member.
+    /// @param maxEntryFee Maximum entry fee the caller is willing to pay.
+    function joinForWithMaxEntryFee(
+        address recipient,
+        uint256 maxEntryFee
+    ) external whenNotPaused notSelf nonReentrant onlyDelegatecall {
+        _join(msg.sender, recipient, address(0), maxEntryFee);
+    }
+
+    /// @notice Join the templ for another wallet with a referral and a maximum entry fee.
+    /// @param recipient Wallet receiving membership. Must not already be a member.
+    /// @param referral Member credited with the referral reward.
+    /// @param maxEntryFee Maximum entry fee the caller is willing to pay.
+    function joinForWithReferralMaxEntryFee(
+        address recipient,
+        address referral,
+        uint256 maxEntryFee
+    ) external whenNotPaused notSelf nonReentrant onlyDelegatecall {
+        _join(msg.sender, recipient, referral, maxEntryFee);
+    }
     /// @notice Shared join workflow that handles accounting updates for new members.
     /// @param payer Wallet that pays the entry fee.
     /// @param recipient Wallet that receives membership.
     /// @param referral Optional referrer credited from the member pool.
-    function _join(address payer, address recipient, address referral) internal {
+    /// @param maxEntryFee Maximum entry fee the caller is willing to pay.
+    function _join(address payer, address recipient, address referral, uint256 maxEntryFee) internal {
         if (recipient == address(0)) revert TemplErrors.InvalidRecipient();
 
         Member storage joiningMember = members[recipient];
         if (joiningMember.joined) revert TemplErrors.MemberAlreadyJoined();
+
+        _flushExternalRemainders();
 
         uint256 currentMemberCount = memberCount;
 
@@ -72,6 +112,7 @@ contract TemplMembershipModule is TemplBase {
         }
 
         uint256 price = entryFee;
+        if (price > maxEntryFee) revert TemplErrors.EntryFeeTooHigh();
 
         uint256 burnAmount = (price * burnBps) / BPS_DENOMINATOR;
         uint256 memberPoolAmount = (price * memberPoolBps) / BPS_DENOMINATOR;

@@ -118,6 +118,21 @@ describe("Membership coverage extras", function () {
     ).to.be.revertedWithCustomError(templ, "MemberAlreadyJoined");
   });
 
+  it("enforces a maximum entry fee for slippage-protected joins", async function () {
+    const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE });
+    const [, , member] = accounts;
+
+    await mintToUsers(token, [member], ENTRY_FEE * 2n);
+    await token.connect(member).approve(await templ.getAddress(), ENTRY_FEE * 2n);
+
+    await expect(
+      templ.connect(member).joinWithMaxEntryFee(ENTRY_FEE - 1n)
+    ).to.be.revertedWithCustomError(templ, "EntryFeeTooHigh");
+
+    await templ.connect(member).joinWithMaxEntryFee(ENTRY_FEE);
+    expect(await templ.isMember(member.address)).to.equal(true);
+  });
+
   it("rejects external reward claims using the access token", async function () {
     const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE });
     const [, , member] = accounts;

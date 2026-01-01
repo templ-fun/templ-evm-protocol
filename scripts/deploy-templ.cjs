@@ -279,7 +279,7 @@ async function main() {
     defaultBps: 2_500
   });
   const YES_VOTE_THRESHOLD_INPUT = (process.env.YES_VOTE_THRESHOLD_BPS || '').trim();
-  let yesVoteThresholdBps = 5_000;
+  let yesVoteThresholdBps = 5_100;
   if (YES_VOTE_THRESHOLD_INPUT) {
     const parsed = Number(YES_VOTE_THRESHOLD_INPUT);
     if (!Number.isFinite(parsed)) {
@@ -366,8 +366,20 @@ async function main() {
   if (QUORUM_BPS !== undefined && (!Number.isFinite(QUORUM_BPS) || QUORUM_BPS < 0 || QUORUM_BPS > 10_000)) {
     throw new Error('QUORUM_BPS must be between 0 and 10,000');
   }
-  if (POST_QUORUM_VOTING_PERIOD_SECONDS !== undefined && (!Number.isFinite(POST_QUORUM_VOTING_PERIOD_SECONDS) || POST_QUORUM_VOTING_PERIOD_SECONDS <= 0)) {
-    throw new Error('POST_QUORUM_VOTING_PERIOD_SECONDS must be a positive number of seconds');
+  const MIN_POST_QUORUM_SECONDS = 60 * 60;
+  const MAX_POST_QUORUM_SECONDS = 30 * 24 * 60 * 60;
+  if (POST_QUORUM_VOTING_PERIOD_SECONDS !== undefined) {
+    if (!Number.isFinite(POST_QUORUM_VOTING_PERIOD_SECONDS)) {
+      throw new Error('POST_QUORUM_VOTING_PERIOD_SECONDS must be a number');
+    }
+    if (
+      POST_QUORUM_VOTING_PERIOD_SECONDS < MIN_POST_QUORUM_SECONDS ||
+      POST_QUORUM_VOTING_PERIOD_SECONDS > MAX_POST_QUORUM_SECONDS
+    ) {
+      throw new Error(
+        `POST_QUORUM_VOTING_PERIOD_SECONDS must be between ${MIN_POST_QUORUM_SECONDS} and ${MAX_POST_QUORUM_SECONDS}`
+      );
+    }
   }
   if (BURN_ADDRESS && !hre.ethers.isAddress(BURN_ADDRESS)) {
     throw new Error('BURN_ADDRESS must be a valid address');
@@ -759,6 +771,7 @@ async function main() {
   console.log("- Treasury controlled by member voting");
   console.log("- Proposals pass when YES > NO and quorum/time checks are met");
   console.log("- Voting period: ≥36h (max 30 days)");
+  console.log("- Post-quorum delay: 1h-30d");
   console.log("- One member = one vote (proposer auto‑YES; votes changeable until deadline)");
   console.log("\n🔒 Security Features:");
   console.log("- No backdoor functions");

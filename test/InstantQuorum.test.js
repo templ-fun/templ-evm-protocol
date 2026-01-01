@@ -118,7 +118,7 @@ describe("Instant quorum execution", function () {
         "",
         0,
         0,
-        5_000,
+        5_100,
         5_000,
         false,
         modules.membershipModule,

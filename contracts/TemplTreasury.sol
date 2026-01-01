@@ -174,7 +174,7 @@ contract TemplTreasuryModule is TemplBase {
         _setQuorumBps(newQuorumBps);
     }
 
-    /// @notice Governance action that updates the post‑quorum voting period in seconds.
+    /// @notice Governance action that updates the post-quorum voting period in seconds.
     /// @param newPeriod Seconds to wait after quorum before execution.
     function setPostQuorumVotingPeriodDAO(uint256 newPeriod) external onlyDAO onlyDelegatecall {
         _setPostQuorumVotingPeriod(newPeriod);
@@ -187,13 +187,20 @@ contract TemplTreasuryModule is TemplBase {
         _setBurnAddress(newBurn);
     }
 
-    /// @notice Governance action that updates the default pre‑quorum voting period (seconds).
+    /// @notice Governance action that updates the default pre-quorum voting period (seconds).
     /// @dev Governance can reach this setter by proposing a `CallExternal` targeting the TEMPL
     ///      router with the `setPreQuorumVotingPeriodDAO` selector and encoded params.
     ///      The allowed range is [36 hours, 30 days].
-    /// @param newPeriod New default pre‑quorum voting period (seconds).
+    /// @param newPeriod New default pre-quorum voting period (seconds).
     function setPreQuorumVotingPeriodDAO(uint256 newPeriod) external onlyDAO onlyDelegatecall {
         _setPreQuorumVotingPeriod(newPeriod);
+    }
+
+    /// @notice Governance action that registers an external reward token for reconciliation.
+    /// @param token Token to register (`address(0)` for ETH).
+    function reconcileExternalRewardTokenDAO(address token) external onlyDAO onlyDelegatecall {
+        if (token == accessToken) revert TemplErrors.InvalidCallData();
+        _registerExternalToken(token);
     }
 
     /// @notice Governance action that performs multiple external calls atomically from the templ.
