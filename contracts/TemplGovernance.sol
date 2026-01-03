@@ -837,6 +837,7 @@ contract TemplGovernanceModule is TemplBase {
         if (address(this) == SELF) revert TemplErrors.DelegatecallOnly();
     }
 
+    /// @notice Reverts unless called via delegatecall and dictatorship mode is disabled.
     function _requireDelegatecallAndNotDictator() internal view {
         _requireDelegatecall();
         if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
