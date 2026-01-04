@@ -453,34 +453,37 @@ contract TemplGovernanceModule is TemplBase {
         proposal.hasVoted[msg.sender] = true;
         proposal.voteChoice[msg.sender] = _support;
 
-        if (!hadVoted) {
-            if (_support) {
-                ++proposal.yesVotes;
-            } else {
-                ++proposal.noVotes;
-            }
-        } else if (previous != _support) {
-            if (previous) {
-                --proposal.yesVotes;
-                ++proposal.noVotes;
-            } else {
-                --proposal.noVotes;
-                ++proposal.yesVotes;
+        unchecked {
+            if (!hadVoted) {
+                if (_support) {
+                    ++proposal.yesVotes;
+                } else {
+                    ++proposal.noVotes;
+                }
+            } else if (previous != _support) {
+                if (previous) {
+                    --proposal.yesVotes;
+                    ++proposal.noVotes;
+                } else {
+                    --proposal.noVotes;
+                    ++proposal.yesVotes;
+                }
             }
         }
 
         if (!proposal.quorumExempt && proposal.quorumReachedAt == 0) {
-            if (
-                proposal.eligibleVoters != 0 &&
-                !(proposal.yesVotes * BPS_DENOMINATOR < quorumBps * proposal.eligibleVoters)
-            ) {
-                proposal.quorumReachedAt = block.timestamp;
-                proposal.quorumSnapshotBlock = block.number;
-                proposal.postQuorumEligibleVoters = councilSnapshotEpoch == 0
-                    ? _eligibleVoterCount()
-                    : proposal.eligibleVoters;
-                proposal.quorumJoinSequence = joinSequence;
-                proposal.endTime = block.timestamp + postQuorumVotingPeriod;
+            if (proposal.eligibleVoters != 0) {
+                unchecked {
+                    if (!(proposal.yesVotes * BPS_DENOMINATOR < quorumBps * proposal.eligibleVoters)) {
+                        proposal.quorumReachedAt = block.timestamp;
+                        proposal.quorumSnapshotBlock = block.number;
+                        proposal.postQuorumEligibleVoters = councilSnapshotEpoch == 0
+                            ? memberCount
+                            : proposal.eligibleVoters;
+                        proposal.quorumJoinSequence = joinSequence;
+                        proposal.endTime = block.timestamp + postQuorumVotingPeriod;
+                    }
+                }
             }
         }
 

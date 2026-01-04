@@ -7,7 +7,7 @@ Router-first rule
 - Discover module mapping if needed via:
   - `TEMPL.getRegisteredSelectors()` to see the canonical ABI surface per module.
   - `TEMPL.getModuleForSelector(bytes4)` to sanity-check routing for a selector.
-  - `TEMPL.MEMBERSHIP_MODULE()`, `TEMPL.TREASURY_MODULE()`, `TEMPL.GOVERNANCE_MODULE()` return implementation addresses (do not call them directly).
+  - `TEMPL.MEMBERSHIP_MODULE()`, `TEMPL.TREASURY_MODULE()`, `TEMPL.GOVERNANCE_MODULE()`, `TEMPL.COUNCIL_MODULE()` return implementation addresses (do not call them directly).
 
 Governance-controlled upgrades
 - No protocol admin: there is no owner or protocol dev key that can change behavior for a templ. Routing changes are only possible via that templ’s own governance.
@@ -44,6 +44,7 @@ Allowance checklist (TL;DR)
 Join slippage handling (race‑proof UX)
 - On submit, re‑read `entryFee` from `getConfig()` and check current allowance. If `allowance < entryFee`, prompt to top‑up approval. With the recommended 2× buffer, this should be rare.
 - Show a concise note explaining that the approval buffer both guarantees the join and pre‑funds the first proposal fee.
+- Runtime entry fees are normalized to ≥10 and divisible by 10; decaying curves floor at 10, so display the on-chain `entryFee` verbatim.
 
 0) Deploy From Factory
 - Surface factory deployment in the UI for creating new templs. UIs call the factory to create a templ, then switch to the `TEMPL` router for all runtime actions.
@@ -90,7 +91,7 @@ Complete custom deploy (full config)
   - `entryFee`: ≥10 and divisible by 10 (raw token units).
   - `burnBps`, `treasuryBps`, `memberPoolBps`: `int256`; use `-1` to apply factory defaults; otherwise 0…10,000.
   - `quorumBps`: 0 applies default; otherwise 0…10,000.
-  - `executionDelaySeconds`: 0 applies default; otherwise positive seconds.
+  - `executionDelaySeconds`: 0 applies default; otherwise within [1 hour, 30 days].
   - `burnAddress`: zero applies default.
   - `priestIsDictator`: boolean (true enables dictatorship at genesis).
   - `maxMembers`: 0 for uncapped; otherwise positive cap. Auto‑pause at cap.
@@ -99,10 +100,16 @@ Complete custom deploy (full config)
   - `name`, `description`, `logoLink`: UI metadata.
   - `proposalFeeBps`: bps of entry fee charged to proposers.
   - `referralShareBps`: bps share taken from member‑pool slice for referrers.
+  - `yesVoteThresholdBps`: bps of votes cast required for proposals to pass (0 applies default).
+  - `councilMode`: boolean to start in council governance mode.
+  - `instantQuorumBps`: bps of eligible voters required for instant quorum (0 applies default).
 - Constraints your UI must enforce:
   - Fee split must sum to 10,000 bps including protocol share (factory enforces `burn + treasury + memberPool + PROTOCOL_BPS == 10,000`).
   - Percent fields in [0, 10,000]; curve segment count ≤8.
-  - Entry fee constraints as above; metadata size caps as above.
+  - `yesVoteThresholdBps` must be in [100, 10,000].
+  - `instantQuorumBps` must be in [1, 10,000] and `instantQuorumBps >= quorumBps`.
+  - `councilMode` cannot be true when `priestIsDictator` is true.
+  - Entry fee constraints as above; runtime curve recomputes normalize to ≥10 and divisible by 10.
 - Ethers v6 example (full config):
 ```js
 const factory = await ethers.getContractAt("TemplFactory", factoryAddress);
@@ -127,7 +134,10 @@ const config = {
   description: templDescription,
   logoLink: templLogoLink,
   proposalFeeBps: 2500,
-  referralShareBps: 2500
+  referralShareBps: 2500,
+  yesVoteThresholdBps: 5100,
+  councilMode: true,
+  instantQuorumBps: 10000
 };
 // Preview the address then send the tx
 const templAddress = await factory.createTemplWithConfig.staticCall(config);
@@ -169,13 +179,13 @@ Post‑deploy handoff
   - Pause/resume joins: `templ.createProposalSetJoinPaused(bool paused, uint256 votingPeriod, string title, string description)`
   - Update entry fee / split: `templ.createProposalUpdateConfig(uint256 newFee, uint256 newBurnBps, uint256 newTreasuryBps, uint256 newMemberPoolBps, bool updateSplit, uint256 votingPeriod, string title, string description)`
   - Withdraw treasury/external funds: `templ.createProposalWithdrawTreasury(address tokenOrZero, address recipient, uint256 amount, uint256 votingPeriod, string title, string description)`
- - Arbitrary external call: `templ.createProposalCallExternal(address target, uint256 value, bytes4 selector, bytes params, uint256 votingPeriod, string title, string description)`
+  - Arbitrary external call: `templ.createProposalCallExternal(address target, uint256 value, bytes4 selector, bytes params, uint256 votingPeriod, string title, string description)`
 - Building CallExternal params (ethers v6 style):
   - Selector: `target.interface.getFunction("fn").selector`
   - Params: `ethers.AbiCoder.defaultAbiCoder().encode(["type",...], [values...])`
   - calldata is selector || params; the module does this packing for you when you pass both.
 - Full proposal surface and payload shapes:
-  - Read `contracts/TemplGovernance.sol` create functions for the complete list and param types.
+  - Read `contracts/TemplGovernance.sol` and `contracts/TemplCouncil.sol` create functions for the complete list and param types.
   - For any proposal id, use `TEMPL.getProposalActionData(id)` to fetch `(Action action, bytes payload)` and inspect the exact payload for rendering and indexing.
 
 Allowance steps for proposal creation (ethers v6):
@@ -198,6 +208,7 @@ if (proposalFee > 0n) {
 - Snapshot rules enforced on-chain:
   - Eligibility locks at creation by join sequence; after quorum, it re‑snapshots. UI can show `getProposalSnapshots(id)` and `getProposalJoinSequences(id)`.
   - Voting mode is snapshotted per proposal; use `getProposalVotingMode(id)` instead of the current `councilModeEnabled` when deciding who can vote.
+  - For member‑wide proposals, the post‑quorum eligible voter count snapshots `memberCount` at quorum even if council mode toggles later.
 - Helpful reads: `templ.getProposal(id)`, `templ.hasVoted(id, user)`.
 
 6) Execute a Proposal
@@ -228,8 +239,13 @@ Complete proposal creators (scan in code for params)
 - `createProposalSetDictatorship`
 - `createProposalCleanupExternalRewardToken`
 - `createProposalSetQuorumBps`
+- `createProposalSetInstantQuorumBps`
 - `createProposalSetPostQuorumVotingPeriod`
 - `createProposalSetBurnAddress`
+- `createProposalSetYesVoteThreshold`
+- `createProposalSetCouncilMode`
+- `createProposalAddCouncilMember`
+- `createProposalRemoveCouncilMember`
 
 Security notes for UIs
 - Default to a bounded buffer, not unlimited. Approve `~2× entryFee` for joins (adjustable) and avoid unlimited approvals.
@@ -261,9 +277,9 @@ Gotchas and validation checklist
 - Title/description caps: title ≤256 bytes, description ≤2048 bytes. Truncate or warn before submit.
 - Entry fee update constraints: new fee must be ≥10 and divisible by 10 (raw token units). Validate before proposing.
 - Curve config bounds: at most 8 total segments (primary + additional). Validate before proposing curve changes.
-- Batch external calls with ETH: when batching via `templ.batchDAO`, set `target = templ.getAddress()` and pass `value ≥ sum(values)` to `createProposalCallExternal`, or ensure the templ already holds sufficient ETH to cover the inner `values`. Any inner revert bubbles and reverts the whole batch.
+- Batch external calls with ETH: when batching via `templ.batchDAO`, set `target = templ.getAddress()` and ensure the templ already holds sufficient ETH to cover the inner `values` (top-level `value` can be 0). Any inner revert bubbles and reverts the whole batch.
 - Pagination limits: `getActiveProposalsPaginated` requires `1 ≤ limit ≤ 100`. `getExternalRewardTokensPaginated` has no on‑chain limit; pick a reasonable UI page size (e.g., 50–100) and respect `hasMore`.
-- Donations and enumeration: donated ERC‑20s are withdrawable immediately but only appear in `getExternalRewardTokens()` after the first disband for that token.
+- Donations and enumeration: donated ERC‑20s are withdrawable immediately but only appear in `getExternalRewardTokens()` after the first disband for that token (or after a DAO `reconcileExternalRewardTokenDAO` call).
 - External reward cleanup: show “Cleanup token” only when `getExternalRewardState(token).poolBalance == 0` AND `remainder == 0`. Remainders are flushed as membership changes or on subsequent disbands.
 - Join auto‑pause at cap: if `maxMembers` is set and reached, `joinPaused` flips true automatically. Always read `joinPaused` before enabling join UI.
 - Referral rules: referrer must be an existing member and not the recipient; otherwise referral pays 0. Consider checking `isMember(referrer)` pre‑submit.

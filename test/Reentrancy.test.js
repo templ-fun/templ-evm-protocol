@@ -234,4 +234,78 @@ const METADATA = {
         .withArgs(await rewardToken.getAddress(), await rewardToken.getAddress());
     });
   });
+
+  describe("sweepMemberPoolRemainderDAO", function () {
+    let accounts;
+    let templ;
+    let token;
+    let priest;
+
+    beforeEach(async function () {
+      accounts = await ethers.getSigners();
+      [, priest] = accounts;
+
+      const ReentrantToken = await ethers.getContractFactory(
+        "contracts/mocks/ReentrantToken.sol:ReentrantToken"
+      );
+      token = await ReentrantToken.deploy("Reentrant Token", "RNT");
+      await token.waitForDeployment();
+
+      const { membershipModule, treasuryModule, governanceModule, councilModule } = await deployTemplModules();
+      const entryFee = 1010n;
+
+      const TemplFactory = await ethers.getContractFactory("TEMPL");
+      templ = await TemplFactory.deploy(
+        priest.address,
+        priest.address,
+        await token.getAddress(),
+        entryFee,
+        2900,
+        2900,
+        3200,
+        PROTOCOL_BPS,
+        QUORUM_BPS,
+        7 * 24 * 60 * 60,
+        "0x000000000000000000000000000000000000dEaD",
+        true,
+        0,
+        METADATA.name,
+        METADATA.description,
+        METADATA.logo,
+        0,
+        0,
+        5_100,
+        10_000,
+        false,
+        membershipModule,
+        treasuryModule,
+        governanceModule,
+        councilModule,
+        STATIC_CURVE
+      );
+      await templ.waitForDeployment();
+      templ = await attachTemplInterface(templ);
+
+      await token.setTempl(await templ.getAddress());
+    });
+
+    it("reverts when sweeping member pool reenters claimMemberRewards", async function () {
+      const entryFee = 1010n;
+      const [, , member1, member2, member3, recipient] = accounts;
+
+      await token.joinTempl(entryFee);
+
+      await mintToUsers(token, [member1, member2, member3], entryFee * 10n);
+      await joinMembers(templ, token, [member1, member2, member3]);
+
+      const remainder = await templ.memberRewardRemainder();
+      expect(remainder).to.be.gt(0n);
+
+      await token.setCallback(2);
+
+      await expect(
+        templ.connect(priest).sweepMemberPoolRemainderDAO(recipient.address)
+      ).to.be.revertedWithCustomError(templ, "ReentrancyGuardReentrantCall");
+    });
+  });
 });

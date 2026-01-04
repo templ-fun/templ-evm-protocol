@@ -53,6 +53,37 @@ describe("Council governance", function () {
     await expect(templ.connect(member3).vote(memberProposalId, true)).to.emit(templ, "VoteCast");
   });
 
+  it("snapshots member quorum denominators even after council mode is enabled", async function () {
+    const { templ, member1, member2, member3, member4 } = await setupTempl({ councilMode: false });
+
+    await templ.connect(member1).createProposalAddCouncilMember(member2.address, WEEK, "Add council", "");
+    let proposalId = (await templ.proposalCount()) - 1n;
+    await templ.connect(member3).vote(proposalId, true);
+    await templ.connect(member4).vote(proposalId, true);
+    await advanceTime();
+    await templ.executeProposal(proposalId);
+    expect(await templ.councilMemberCount()).to.equal(2n);
+
+    const longVotingPeriod = 14 * 24 * 60 * 60;
+    await templ
+      .connect(member1)
+      .createProposalSetBurnAddress("0x0000000000000000000000000000000000000102", longVotingPeriod, "burn", "");
+    const memberProposalId = (await templ.proposalCount()) - 1n;
+
+    await templ.connect(member3).createProposalSetCouncilMode(true, WEEK, "Enable council", "");
+    proposalId = (await templ.proposalCount()) - 1n;
+    await templ.connect(member1).vote(proposalId, true);
+    await templ.connect(member4).vote(proposalId, true);
+    await advanceTime();
+    await templ.executeProposal(proposalId);
+    expect(await templ.councilModeEnabled()).to.equal(true);
+
+    await templ.connect(member4).vote(memberProposalId, true);
+
+    const [, postQuorumEligibleVoters] = await templ.getProposalSnapshots(memberProposalId);
+    expect(postQuorumEligibleVoters).to.equal(await templ.memberCount());
+  });
+
   it("freezes council membership for active proposals", async function () {
     const { templ, priest, member1, member2 } = await setupTempl({ councilMode: true });
     const longVotingPeriod = 14 * 24 * 60 * 60;

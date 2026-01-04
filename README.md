@@ -4,14 +4,14 @@
 
 Templ lets anyone create on-chain, token‑gated groups (“templs”) that accrue an access‑token treasury, stream rewards to existing members, and govern changes and payouts entirely on-chain.
 
-Quick links: [At a Glance](#protocol-at-a-glance) · [Architecture](#architecture) · [Governance‑Controlled Upgrades](#governance-controlled-upgrades) · [Solidity Patterns](#solidity-patterns) · [Repo Map](#repo-map) · [Glossary](#glossary) · [Lifecycle](#lifecycle) · [Quickstart](#quickstart) · [Deploy](#deploy-locally) · [Safety Model](#safety-model) · [Security](#security) · [Reference](#reference) · [Constraints](#constraints) · [Limits](#limits--defaults) · [Indexing](#indexing-notes) · [Proposal Views](#proposal-views) · [Tests](#tests) · [FAQ](#faq) · [Troubleshooting](#troubleshooting) · [Gotchas](#gotchas)
+Quick links: [At a Glance](#protocol-at-a-glance) · [Architecture](#architecture) · [Governance‑Controlled Upgrades](#governance-controlled-upgrades) · [Solidity Patterns](#solidity-patterns) · [Repo Map](#repo-map) · [Glossary](#glossary) · [Lifecycle](#lifecycle) · [Quickstart](#quickstart) · [Deploy](#deploy-locally) · [Safety Model](#safety-model) · [Security](#security) · [Constraints](#constraints) · [Limits](#limits--defaults) · [Indexing](#indexing-notes) · [Proposal Views](#proposal-views) · [Tests](#tests) · [FAQ](#faq) · [Troubleshooting](#troubleshooting) · [Gotchas](#gotchas)
 
 ## Protocol At a Glance
 - Create a templ tied to a vanilla ERC‑20 access token; members join by paying an entry fee in that token. The fee is split into burn, treasury, member‑pool, and protocol slices.
 - Existing members accrue pro‑rata rewards from the member‑pool slice and can claim at any time. Templs can also hold ETH or ERC‑20s as external rewards.
 - Donations (ETH or ERC‑20) sent directly to the templ address are held by the templ and governed: governance can withdraw these funds to recipients, or disband them into claimable external rewards for members. ERC‑721 NFTs can also be custodied by a templ and later moved via governance (see NFT notes below).
 - Governance is member‑only: propose, vote, and execute actions to change parameters, move treasury, update curves/metadata, or call arbitrary external contracts.
-- Council mode (default for new templs deployed via `TemplFactory`) narrows voting power to a curated council while still letting any member open proposals. The priest gets a single bootstrap seat to add another council member, and thereafter council composition changes only via governance. Council mode cannot be active while dictatorship is enabled; templs must return to member voting (or never enable dictatorship) before re-entering council mode.
+- Council mode (default for `createTempl` / `createTemplFor` deployments) narrows voting power to a curated council while still letting any member open proposals. The priest gets a single bootstrap seat to add another council member, and thereafter council composition changes only via governance. Council mode cannot be active while dictatorship is enabled; templs must return to member voting (or never enable dictatorship) before re-entering council mode.
 - The YES vote threshold (bps of votes cast) is configurable per templ (default 5,100 bps, i.e. 51%) and can be changed via governance alongside quorum/post‑quorum windows.
 - Instant quorum (bps of eligible voters, default 10,000 bps) lets proposals bypass the post‑quorum execution delay when a higher approval ratio—never lower than the normal quorum threshold—is satisfied.
 - Optional dictatorship lets a designated “priest” directly execute DAO‑only actions when enabled; when active it blocks normal proposal create/vote/execute flows (except toggling dictatorship). Dictatorship and council governance are mutually exclusive.
@@ -194,7 +194,7 @@ Add a brand‑new module
 Rollbacks and verification
 - Rollback: route selectors back to the previous module address using the same flow.
 - Verify: call `getModuleForSelector(bytes4)` for each selector you updated to confirm the live mapping.
-- Events: `setRoutingModuleDAO` does not emit an event; rely on on‑chain calls and `getModuleForSelector` for introspection.
+- Events: `setRoutingModuleDAO` emits `RoutingUpdated(module, selectors)`; use `getModuleForSelector` for introspection.
 
 Security notes
 - There is no protocol‑level upgrade authority. Routing and external calls are controlled by each templ’s governance.
@@ -247,7 +247,7 @@ flowchart LR
 - Snapshotting by join sequence: Proposals capture `preQuorumJoinSequence`; at quorum, a second snapshot anchors eligibility (`quorumJoinSequence`) (contracts/TemplBase.sol, contracts/TemplGovernance.sol).
 - Bounded enumeration: External reward tokens capped at 256; active proposals support paginated reads with a 1..100 `limit` (contracts/TemplBase.sol, contracts/TEMPL.sol).
 - Safe token ops: Uses OpenZeppelin `SafeERC20` for ERC‑20 transfers and explicit ETH forwarding with revert bubbling (contracts/TemplBase.sol, contracts/TemplGovernance.sol).
-- Saturating math for curves: Price growth saturates at `MAX_ENTRY_FEE` to avoid overflow during linear/exponential scaling (contracts/TemplBase.sol).
+- Saturating math for curves: Price growth saturates at `MAX_ENTRY_FEE`; recomputed `entryFee` values are normalized to ≥10 and divisible by 10 (contracts/TemplBase.sol).
 - Governance‑controlled upgrades: `setRoutingModuleDAO(address,bytes4[])` rewires selectors under `onlyDAO` (contracts/TEMPL.sol).
 
 ## Key Concepts
@@ -255,7 +255,7 @@ flowchart LR
 - Member pool: portion of each join streamed to existing members pro‑rata; optional referral share is paid from this slice.
 - Curves: entry fee evolves by static/linear/exponential segments; see [`TemplCurve`](contracts/TemplCurve.sol).
 - Dictatorship: when enabled, the priest may call `onlyDAO` actions directly with no voting window or timelock. The priest can exercise the full DAO surface, including `batchDAO` for arbitrary external calls executed from the templ address. When dictatorship is disabled, all `onlyDAO` actions execute via governance.
-- Snapshots: eligibility is frozen by join sequence at proposal creation, then again at quorum; proposals also snapshot their voting mode and (if council-only) the council roster.
+- Snapshots: eligibility is frozen by join sequence at proposal creation, then again at quorum; proposals also snapshot their voting mode and (if council-only) the council roster. For member-wide proposals, the post‑quorum eligible voter count snapshots `memberCount` at quorum even if council mode changes later.
 - Caps/pauses: optional `maxMembers` (auto‑pauses at cap) plus `joinPaused` toggle.
 - Governance access: proposing and voting require membership; proposers auto‑vote YES only when they are allowed to vote (i.e., not excluded by council mode).
 
@@ -425,7 +425,7 @@ const entryFee = (await templ.getConfig())[1];
 const maxEntryFee = entryFee; // cap slippage at the current price
 await (await token.approve(templ.target, entryFee * 2n)).wait();
 await (await templ.joinWithMaxEntryFee(maxEntryFee)).wait();
-const id = await templ.callStatic.createProposalSetJoinPaused(true, 36 * 60 * 60, "Pause joins", "Cooldown");
+const id = await templ.createProposalSetJoinPaused.staticCall(true, 36 * 60 * 60, "Pause joins", "Cooldown");
 await (await templ.createProposalSetJoinPaused(true, 36 * 60 * 60, "Pause joins", "Cooldown")).wait();
 await (await templ.vote(id, true)).wait();
 // ...advance time...
@@ -472,7 +472,7 @@ const batchParams = ethers.AbiCoder.defaultAbiCoder().encode(
 
 // 3) Propose the external call (templ -> templ.batchDAO)
 const votingPeriod = 36 * 60 * 60;
-const pid = await templ.callStatic.createProposalCallExternal(
+const pid = await templ.createProposalCallExternal.staticCall(
   await templ.getAddress(),
   0, // no ETH forwarded in this example
   batchSel,
@@ -501,7 +501,7 @@ await (await templ.executeProposal(pid)).wait();
 
 Notes
 - Calls execute from the templ address. Any approvals and transfers affect the templ’s allowances and balances.
-- To forward ETH in the batch, set `values` per inner call and set the top‑level `value` in `createProposalCallExternal` to at least `sum(values)` (or ensure the templ holds enough ETH to cover the forwarded values).
+- To forward ETH in the batch, set `values` per inner call and ensure the templ holds enough ETH to cover `sum(values)` (top-level `value` can be 0 when targeting `templ.batchDAO`).
 - If any inner call reverts, the entire batch reverts; no partial effects.
 - Proposing and voting require membership; ensure the caller has joined.
 
@@ -609,6 +609,7 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
 
 ## Constraints
 - Entry fee: must be ≥10 and divisible by 10.
+- Entry fee (runtime): curve recomputes normalize to ≥10 and divisible by 10 (decaying curves floor at 10).
 - Fee split: burn + treasury + member pool + protocol must sum to 10_000 bps.
 - Pre‑quorum voting window: bounded to [36 hours, 30 days].
 - Post-quorum voting window: bounded to [1 hour, 30 days].
@@ -630,7 +631,7 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
   - Curve: exponential primary segment at 10_094 bps for 248 paid joins, then static tail (price holds if cap expands).
   - Proposal fee: 2_500 bps (25% of current entry fee); Referral share: 2_500 bps (25% of member‑pool slice).
 - YES vote threshold: 5_100 bps (51%); valid range [100, 10_000] bps via governance or deploy config.
-  - `createTemplWithConfig` does not auto-fill these when zero/false; pass `-1` for the split fields or explicit values to receive defaults.
+  - `createTemplWithConfig` auto-fills quorum, execution delay, burn address, curve, YES threshold, and instant quorum when passed as 0/false; use `-1` for split fields to receive defaults.
 
 ## Indexing Notes
 - Track `ProposalCreated` then hydrate with `getProposal` + `getProposalSnapshots`.
@@ -748,7 +749,7 @@ CI runs on PRs when contracts, tests, package files, or `hardhat.config.cjs` cha
 
 ## Gotchas
 - Use a vanilla ERC‑20 for access token (no transfer fees/rebases/hooks).
-- Entry fee must be ≥10 and divisible by 10; there’s a `MAX_ENTRY_FEE` guard.
+- Entry fee must be ≥10 and divisible by 10; runtime curve outputs are floored to the nearest 10 with a minimum of 10, and there’s a `MAX_ENTRY_FEE` guard.
 - Entry fee can move with the curve between submission and mining; use `joinWithMaxEntryFee` variants to cap slippage.
 - Only one active proposal per proposer.
 - `TemplFactory` can be set permissionless to let anyone create templs.

@@ -835,7 +835,19 @@ abstract contract TemplBase is ReentrancyGuard {
         if (baseEntryFee == 0) {
             return;
         }
-        entryFee = _priceForPaidJoinsFromStorage(baseEntryFee, entryFeeCurve, _currentPaidJoins());
+        entryFee = _normalizeEntryFee(_priceForPaidJoinsFromStorage(baseEntryFee, entryFeeCurve, _currentPaidJoins()));
+    }
+
+    /// @notice Normalizes entry fees to match minimum and divisibility invariants.
+    /// @param amount Entry fee value to normalize.
+    /// @return normalized Entry fee clamped to the minimum and rounded down to a multiple of 10.
+    function _normalizeEntryFee(uint256 amount) internal pure returns (uint256 normalized) {
+        if (amount < 10) {
+            return 10;
+        }
+        unchecked {
+            return amount - (amount % 10);
+        }
     }
 
     /// @notice Returns the number of paid joins that have occurred (excludes the auto-enrolled priest).
@@ -871,12 +883,19 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param noVotes Count of NO ballots.
     /// @return meets True when the YES ratio clears the configured threshold.
     function _meetsYesVoteThreshold(uint256 yesVotes, uint256 noVotes) internal view returns (bool meets) {
-        uint256 totalVotes = yesVotes + noVotes;
+        uint256 totalVotes;
+        unchecked {
+            totalVotes = yesVotes + noVotes;
+        }
         if (totalVotes == 0) {
             return false;
         }
-        uint256 lhs = yesVotes * BPS_DENOMINATOR;
-        uint256 rhs = yesVoteThresholdBps * totalVotes;
+        uint256 lhs;
+        uint256 rhs;
+        unchecked {
+            lhs = yesVotes * BPS_DENOMINATOR;
+            rhs = yesVoteThresholdBps * totalVotes;
+        }
         if (lhs == rhs) {
             return true;
         }
@@ -901,14 +920,16 @@ abstract contract TemplBase is ReentrancyGuard {
         if (basis == 0) {
             return;
         }
-        if (proposal.yesVotes * BPS_DENOMINATOR < threshold * basis) {
-            return;
+        unchecked {
+            if (proposal.yesVotes * BPS_DENOMINATOR < threshold * basis) {
+                return;
+            }
         }
         if (proposal.quorumReachedAt == 0) {
             proposal.quorumReachedAt = block.timestamp;
             proposal.quorumSnapshotBlock = block.number;
             proposal.postQuorumEligibleVoters = proposal.councilSnapshotEpoch == 0
-                ? _eligibleVoterCount()
+                ? memberCount
                 : proposal.eligibleVoters;
             proposal.quorumJoinSequence = joinSequence;
         }
@@ -948,18 +969,25 @@ abstract contract TemplBase is ReentrancyGuard {
         if (period > MAX_PRE_QUORUM_VOTING_PERIOD) revert TemplErrors.VotingPeriodTooLong();
         uint256 feeBps = proposalCreationFeeBps;
         if (feeBps > 0) {
-            uint256 proposalFee = (entryFee * feeBps) / BPS_DENOMINATOR;
+            uint256 proposalFee;
+            unchecked {
+                proposalFee = (entryFee * feeBps) / BPS_DENOMINATOR;
+            }
             if (proposalFee > 0) {
                 _safeTransferFrom(accessToken, msg.sender, address(this), proposalFee);
                 treasuryBalance += proposalFee;
             }
         }
         proposalId = proposalCount;
-        ++proposalCount;
+        unchecked {
+            proposalCount = proposalId + 1;
+        }
         proposal = proposals[proposalId];
         proposal.id = proposalId;
         proposal.proposer = msg.sender;
-        proposal.endTime = block.timestamp + period;
+        unchecked {
+            proposal.endTime = block.timestamp + period;
+        }
         proposal.createdAt = block.timestamp;
         proposal.title = _title;
         proposal.description = _description;
@@ -987,7 +1015,9 @@ abstract contract TemplBase is ReentrancyGuard {
             proposal.quorumSnapshotBlock = block.number;
             proposal.postQuorumEligibleVoters = proposal.eligibleVoters;
             proposal.quorumJoinSequence = proposal.preQuorumJoinSequence;
-            proposal.endTime = block.timestamp + postQuorumVotingPeriod;
+            unchecked {
+                proposal.endTime = block.timestamp + postQuorumVotingPeriod;
+            }
         }
         _maybeTriggerInstantQuorum(proposal);
         _addActiveProposal(proposalId);
@@ -1010,12 +1040,20 @@ abstract contract TemplBase is ReentrancyGuard {
         }
         uint256 denom = proposal.postQuorumEligibleVoters;
         if (denom != 0 && !instant) {
-            if (proposal.yesVotes * BPS_DENOMINATOR < quorumBps * denom) {
-                return false;
+            unchecked {
+                if (proposal.yesVotes * BPS_DENOMINATOR < quorumBps * denom) {
+                    return false;
+                }
             }
         }
-        if (!instant && block.timestamp < proposal.quorumReachedAt + postQuorumVotingPeriod) {
-            return false;
+        if (!instant) {
+            uint256 quorumEnd;
+            unchecked {
+                quorumEnd = proposal.quorumReachedAt + postQuorumVotingPeriod;
+            }
+            if (block.timestamp < quorumEnd) {
+                return false;
+            }
         }
         return _meetsYesVoteThreshold(proposal.yesVotes, proposal.noVotes);
     }
@@ -1106,18 +1144,44 @@ abstract contract TemplBase is ReentrancyGuard {
         if (paidJoins == 0) {
             return targetPrice;
         }
-        uint256 remaining = paidJoins;
-        uint256 amount = targetPrice;
-        (amount, remaining) = _consumeSegment(amount, curve.primary, remaining, false);
-        if (remaining == 0) {
-            return amount;
-        }
         CurveSegment[] memory extras = curve.additionalSegments;
         uint256 len = extras.length;
+        if (len == 0) {
+            return _applySegment(targetPrice, curve.primary, paidJoins, false);
+        }
+
+        uint256 remaining = paidJoins;
+        uint256 primarySteps = _min(remaining, uint256(curve.primary.length));
+        unchecked {
+            remaining -= primarySteps;
+        }
+
+        uint256[] memory extraSteps = new uint256[](len);
         for (uint256 i = 0; i < len && remaining > 0; ++i) {
-            (amount, remaining) = _consumeSegment(amount, extras[i], remaining, false);
+            uint256 segmentLength = uint256(extras[i].length);
+            uint256 steps = segmentLength == 0 ? remaining : _min(remaining, segmentLength);
+            extraSteps[i] = steps;
+            if (segmentLength == 0) {
+                remaining = 0;
+            } else {
+                unchecked {
+                    remaining -= steps;
+                }
+            }
         }
         if (remaining > 0) revert TemplErrors.InvalidCurveConfig();
+
+        uint256 amount = targetPrice;
+        for (uint256 i = len; i > 0; --i) {
+            uint256 steps = extraSteps[i - 1];
+            if (steps == 0) {
+                continue;
+            }
+            amount = _applySegment(amount, extras[i - 1], steps, false);
+        }
+        if (primarySteps > 0) {
+            amount = _applySegment(amount, curve.primary, primarySteps, false);
+        }
         return amount;
     }
 
@@ -1141,7 +1205,9 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 steps = segmentLength == 0 ? remaining : _min(remaining, segmentLength);
         if (steps > 0) {
             amount = _applySegment(amount, segment, steps, forward);
-            remaining -= steps;
+            unchecked {
+                remaining -= steps;
+            }
         }
         if (segmentLength == 0) {
             remaining = 0;
