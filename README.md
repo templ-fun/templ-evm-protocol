@@ -274,7 +274,7 @@ flowchart LR
 - member pool: Accounting bucket that streams join fees to existing members, claimable pro‑rata.
 - external rewards: ETH/ERC‑20 balances held by the templ and distributed by proposals or claim logic; reward checkpoints use a monotonic event sequence to disambiguate same-block joins/disbands.
 - entry fee curve: Growth schedule for the next join price (see `CurveConfig` in `TemplCurve`).
-- quorum bps: Percent of eligible members required to reach quorum.
+- quorum bps: Percent of eligible members whose YES votes are required to reach quorum.
 - pre/post‑quorum window: Voting period before quorum and the anchored window after quorum.
 - proposal fee: Fee paid (from the proposer) to create a proposal; a percentage of the current entry fee.
 - referral share: Portion of the member‑pool slice paid to a valid referrer on join.
@@ -575,7 +575,7 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
   - Fee split: burn 3_000 bps, treasury 3_000 bps, member pool 3_000 bps (plus protocol bps from factory).
   - Membership cap: 249.
   - Curve: exponential primary segment at 10_094 bps for 248 paid joins, then static tail (price holds if cap expands).
-  - Proposal fee: 2_500 bps (25% of current entry fee); Referral share: 2_500 bps (25% of member‑pool slice).
+  - Proposal fee / referral share: defaults to 2_500 bps each only for `createTempl`; `createTemplFor`/`safeDeployFor` use caller-provided values, and `createTemplWithConfig` requires explicit values.
 - YES vote threshold: 5_100 bps (51%); valid range [100, 10_000] bps via governance or deploy config.
   - `createTemplWithConfig` auto-fills quorum, execution delay, burn address, curve, YES threshold, and instant quorum when passed as 0/false; use `-1` for split fields to receive defaults.
 
@@ -624,6 +624,15 @@ See tests by topic in [test/](test/).
 - External‑call proposals can execute arbitrary logic; treat with the same caution as timelocked admin calls.
 - Reentrancy is guarded; modules are only reachable via the `TEMPL` router (direct module calls revert).
 - No external audit yet. Treat as experimental and keep treasury exposure conservative until audited.
+
+### Threat Model & Assumptions
+Governance is powerful by design: it can upgrade modules and perform arbitrary external calls (CallExternal).
+
+`batchDAO` is intended only for batching external contract calls (like a multisig) and is not meant for calling back into the templ itself.
+
+The access token is assumed to be "vanilla ERC20" (no fee-on-transfer, rebasing, hooks). The factory provides "safe deploy" checks, but deployment outside the factory can violate this assumption.
+
+Council Mode is intended to be a stable governance configuration, but the protocol supports transitioning between governance modes.
 
 ### Security Considerations
 

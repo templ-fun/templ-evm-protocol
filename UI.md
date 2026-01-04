@@ -235,7 +235,7 @@ Complete proposal creators (scan in code for params)
 - `createProposalSetEntryFeeCurve`
 - `createProposalCallExternal`
 - `createProposalWithdrawTreasury`
-- `createProposalDisbandTreasury`
+- `createProposalDisbandTreasury` (when proposed by the priest, the proposal is quorum-exempt but still must meet the YES vote threshold after voting ends)
 - `createProposalChangePriest`
 - `createProposalSetDictatorship`
 - `createProposalCleanupExternalRewardToken`
