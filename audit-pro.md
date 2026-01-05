@@ -76,26 +76,8 @@ While “governance can do anything” is a common assumption, this is still a *
 
 ---
 
-### [M-01] Join gas can degrade due to `_flushExternalRemainders()` looping over all tracked external reward tokens
 
-**Where**
-- `TemplMembership.sol`: `_join()` calls `_flushExternalRemainders()`
-- `TemplBase.sol`: `_flushExternalRemainders()` iterates `externalRewardTokens`
-
-**Issue**
-Every join triggers a loop over `externalRewardTokens` to distribute external reward remainders. The code caps tokens at `MAX_EXTERNAL_REWARD_TOKENS = 256`, but 256 iterations plus storage writes can still be expensive and make joining unreliable on congested networks or under adversarial conditions.
-
-This becomes a griefing vector if governance (or a dictator priest) registers many external reward tokens, or if normal operation accumulates a large set over time.
-
-**Recommendation**
-- Consider amortizing remainder distribution:
-  - distribute remainders lazily on claim (per-token) rather than on join,
-  - allow batching/partial flushing with a cursor,
-  - keep the cap but also provide a cheaper “skip flush” join path that sets snapshots safely (careful design required).
-
----
-
-### [M-02] Governance “external call” proposals are effectively arbitrary contract calls with ETH forwarding
+### [M-01] Governance “external call” proposals are effectively arbitrary contract calls with ETH forwarding
 
 **Where**
 - `TemplGovernance.sol`: execution uses `target.call{value: callValue}(callData)`
@@ -121,8 +103,7 @@ This is not inherently a bug—many DAOs want it—but it is a **meaningful secu
 ### [L-01] ETH transfers use `.call` and depend on recipients; failures revert proposal execution
 
 **Where**
-- `TemplBase.sol`: `_withdrawTreasury()` ETH path, `_sweepExternalRewardRemainder()` ETH path
-- `TemplMembership.sol`: `claimExternalReward(address(0))`
+- `TemplBase.sol`: `_withdrawTreasury()` ETH path
 
 **Issue**
 ETH is sent via `.call{value: amount}("")` and reverts on failure. This is generally best practice, but it creates an availability risk: if governance selects a recipient contract that rejects ETH, execution reverts.
@@ -153,10 +134,9 @@ Creation permissions are controlled by a single `factoryDeployer` address. If co
 ## Informational notes / Good practices observed
 
 - **Non-vanilla tokens are rejected** for transfers that must match exact amounts (`_safeTransferFrom` checks balance deltas). This is a good defense against fee-on-transfer / rebasing tokens.
-- **Reentrancy guard** (`ReentrancyGuard`) is used on key externally-invokable flows (joins, rewards claim, proposal execute, withdrawals).
+- **Reentrancy guard** (`ReentrancyGuard`) is used on key externally-invokable flows (joins, claims, proposal execute, withdrawals).
 - **DAO-only gating** via `onlyDAO` using self-call semantics is a reasonable pattern to prevent direct external invocation of privileged actions.
-- **External reward accounting** uses checkpoints and per-member snapshots, which is generally sound for pro-rata distribution.
-- **Caps** exist for several potentially unbounded structures (e.g., external reward token count, curve segments, string lengths).
+- **Caps** exist for several potentially unbounded structures (e.g., curve segments, string lengths).
 
 ---
 
@@ -166,14 +146,13 @@ Creation permissions are controlled by a single `factoryDeployer` address. If co
    - total accessToken in contract >= memberPoolBalance (and related relationships),
    - proposal execution cannot be re-entered to execute twice,
    - joining cannot dilute previously accrued rewards incorrectly,
-   - disbanding external tokens preserves `poolBalance + remainder` invariants.
+   - disbanding access-token treasury preserves member pool accounting.
 
 2) **Upgrade/routing safety tests** (if routing remains mutable):
    - selector reassignment cannot break core invariants or corrupt storage,
    - roll-forward and roll-back scenarios.
 
 3) **Worst-case gas profiling**
-   - join with `externalRewardTokens.length == 256`,
    - proposal execution with `batchDAO` / `ExternalCall` patterns.
 
 ---

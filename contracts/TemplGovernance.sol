@@ -329,7 +329,7 @@ contract TemplGovernanceModule is TemplBase {
         return id;
     }
 
-    /// @notice Opens a proposal to disband treasury holdings into member or external reward pools.
+    /// @notice Opens a proposal to disband treasury holdings into the member pool or protocol sweep.
     /// @param _token Token whose treasury allocation should be disbanded.
     /// @param _votingPeriod Optional custom voting duration (seconds).
     /// @param _title On-chain title for the proposal.
@@ -350,25 +350,6 @@ contract TemplGovernanceModule is TemplBase {
         if (msg.sender == priest || councilMembers[msg.sender]) {
             p.quorumExempt = true;
         }
-        return id;
-    }
-
-    /// @notice Opens a proposal to cleanup an external reward token once fully settled.
-    /// @param _token External reward token to cleanup (cannot be the access token).
-    /// @param _votingPeriod Optional custom voting duration (seconds).
-    /// @param _title On-chain title for the proposal.
-    /// @param _description On-chain description for the proposal.
-    /// @return proposalId Newly created proposal identifier.
-    function createProposalCleanupExternalRewardToken(
-        address _token,
-        uint256 _votingPeriod,
-        string calldata _title,
-        string calldata _description
-    ) external nonReentrant returns (uint256 proposalId) {
-        _requireDelegatecallAndNotDictator();
-        (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
-        p.action = Action.CleanupExternalRewardToken;
-        p.token = _token;
         return id;
     }
 
@@ -594,8 +575,6 @@ contract TemplGovernanceModule is TemplBase {
             _governanceDisbandTreasury(proposal.token, _proposalId);
         } else if (proposal.action == Action.ChangePriest) {
             _governanceChangePriest(proposal.recipient);
-        } else if (proposal.action == Action.CleanupExternalRewardToken) {
-            _governanceCleanupExternalRewardToken(proposal.token);
         } else if (proposal.action == Action.SetJoinPaused) {
             _governanceSetJoinPaused(proposal.joinPaused);
         } else if (proposal.action == Action.SetDictatorship) {
@@ -723,12 +702,6 @@ contract TemplGovernanceModule is TemplBase {
     /// @param baseEntryFee Optional base entry fee anchor (0 keeps current base).
     function _governanceSetEntryFeeCurve(CurveConfig memory curve, uint256 baseEntryFee) internal {
         _applyCurveUpdate(curve, baseEntryFee);
-    }
-
-    /// @notice Governance wrapper that removes a settled external reward token from enumeration.
-    /// @param token Token to remove (cannot be the access token).
-    function _governanceCleanupExternalRewardToken(address token) internal {
-        _cleanupExternalRewardToken(token);
     }
 
     /// @notice Governance wrapper that updates quorum threshold (bps).

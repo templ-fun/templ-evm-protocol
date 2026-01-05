@@ -30,23 +30,11 @@ Out of scope:
 ## Summary of Findings
 - Critical: 0
 - High: 0
-- Medium: 1
+- Medium: 0
 - Low: 1
 - Informational: 2
 
 ## Findings
-
-### [M-1] External reward accounting assumes vanilla ERC-20 behavior
-**Impact:** If the DAO disbands or registers a rebasing or fee-on-transfer token as an external reward, member claims can revert or deliver less than the on-chain accounting expects. This can permanently strand rewards or create unpredictable payouts for members.
-
-**Details:** External rewards rely on internal accounting (`poolBalance`, `cumulativeRewards`) while claims are paid via `_safeTransfer`, which does not verify balance deltas. There is no vanilla-token validation for external rewards, so non-standard tokens can desync accounting and cause claim failures.
-
-**Recommendation:** Enforce vanilla ERC-20 behavior for external reward tokens (e.g., probe on `reconcileExternalRewardTokenDAO` similar to factory safe deploy checks), or adjust claim logic to reconcile against actual balances and handle fee-on-transfer/rebasing semantics. At minimum, document that only vanilla tokens are supported for external rewards.
-
-**References:**
-- contracts/TemplTreasury.sol:196
-- contracts/TemplMembership.sol:263
-- contracts/TemplBase.sol:1825
 
 ### [L-1] Protocol fee recipient (and burn address) cannot be the payer in joins
 **Impact:** If the payer is the `protocolFeeRecipient` (or the `burnAddress`) and the corresponding fee is non-zero, the join will revert with `NonVanillaToken`. This makes it impossible for those addresses to join as members when fees are enabled.
@@ -77,4 +65,3 @@ Out of scope:
 
 ## Additional Notes
 - Governance can execute arbitrary external calls via proposals, so DAO security (quorum parameters, execution delay, multisig, timelocks) is a critical trust assumption.
-- Access token behavior is validated to be vanilla for joins, but external reward tokens are not; treat them accordingly in operations and docs.

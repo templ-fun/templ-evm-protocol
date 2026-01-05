@@ -384,9 +384,12 @@ describe("EntryFeeCurve", function () {
             additionalSegments: []
         };
 
+        const signers = await ethers.getSigners();
+        const protocolFeeRecipient = signers[2];
         const { templ, token, accounts } = await deployTempl({
             entryFee: ENTRY_FEE,
             curve: discountCurve,
+            protocolFeeRecipient: protocolFeeRecipient.address,
         });
 
         const [, priest] = accounts;

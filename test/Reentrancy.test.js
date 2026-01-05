@@ -1,6 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { deployTempl, STATIC_CURVE } = require("./utils/deploy");
+const { STATIC_CURVE } = require("./utils/deploy");
 const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 const { deployTemplModules } = require("./utils/modules");
 const { attachTemplInterface } = require("./utils/templ");
@@ -162,76 +162,6 @@ const METADATA = {
       await expect(
         templ.connect(member1).claimMemberRewards()
       ).to.be.revertedWithCustomError(templ, "ReentrancyGuardReentrantCall");
-    });
-  });
-
-  describe("claimExternalReward", function () {
-    const VOTING_PERIOD = 7 * 24 * 60 * 60;
-
-    it("reverts when claimExternalReward is reentered", async function () {
-      const { templ, token, accounts, priest } = await deployTempl({ entryFee: ENTRY_FEE });
-      const [, , member, donor] = accounts;
-
-      const ReentrantToken = await ethers.getContractFactory(
-        "contracts/mocks/ReentrantToken.sol:ReentrantToken"
-      );
-      const rewardToken = await ReentrantToken.deploy("Reentrant Reward", "RRW");
-      await rewardToken.waitForDeployment();
-      await rewardToken.setTempl(await templ.getAddress());
-
-      await mintToUsers(token, [priest, member], ENTRY_FEE * 4n);
-      await joinMembers(templ, token, [priest, member]);
-
-      await token.mint(await rewardToken.getAddress(), ENTRY_FEE);
-      await rewardToken.joinTemplWithAccessToken(await token.getAddress(), ENTRY_FEE);
-
-      expect(await templ.isMember(priest.address)).to.equal(true);
-      expect(await templ.isMember(member.address)).to.equal(true);
-      expect(await templ.isMember(await rewardToken.getAddress())).to.equal(true);
-
-      const donation = ethers.parseUnits("30", 18);
-      await rewardToken.mint(donor.address, donation);
-      await rewardToken.connect(donor).transfer(await templ.getAddress(), donation);
-
-      await templ
-        .connect(priest)
-        .createProposalDisbandTreasury(rewardToken.target, VOTING_PERIOD, "Disband", "Handle rewards");
-
-      await ethers.provider.send("evm_increaseTime", [VOTING_PERIOD + 1]);
-      await ethers.provider.send("evm_mine", []);
-      await templ.executeProposal(0);
-
-      expect(await templ.isMember(member.address)).to.equal(true);
-
-      await rewardToken.setCallback(3);
-      await rewardToken.setCallbackToken(await rewardToken.getAddress());
-
-      await expect(
-        templ.connect(member).claimExternalReward(rewardToken.target)
-      ).to.be.revertedWithCustomError(templ, "ReentrancyGuardReentrantCall");
-    });
-
-    it("invokes the claimExternal callback when configured", async function () {
-      const ReentrantToken = await ethers.getContractFactory(
-        "contracts/mocks/ReentrantToken.sol:ReentrantToken"
-      );
-      const rewardToken = await ReentrantToken.deploy("Reentrant Reward", "RRW");
-      await rewardToken.waitForDeployment();
-
-      const Target = await ethers.getContractFactory(
-        "contracts/mocks/ClaimExternalTarget.sol:ClaimExternalTarget"
-      );
-      const target = await Target.deploy();
-      await target.waitForDeployment();
-
-      await rewardToken.setTempl(await target.getAddress());
-      await rewardToken.mint((await ethers.getSigners())[0].address, ENTRY_FEE);
-
-      await rewardToken.setCallback(3);
-
-      await expect(rewardToken.transfer((await ethers.getSigners())[1].address, ENTRY_FEE))
-        .to.emit(target, "ExternalClaim")
-        .withArgs(await rewardToken.getAddress(), await rewardToken.getAddress());
     });
   });
 

@@ -103,8 +103,6 @@ contract TemplMembershipModule is TemplBase {
         Member storage joiningMember = members[recipient];
         if (joiningMember.joined) revert TemplErrors.MemberAlreadyJoined();
 
-        _flushExternalRemainders();
-
         uint256 currentMemberCount = memberCount;
 
         if (maxMembers > 0 && currentMemberCount == maxMembers) {
@@ -134,8 +132,6 @@ contract TemplMembershipModule is TemplBase {
         joiningMember.joined = true;
         joiningMember.timestamp = block.timestamp;
         joiningMember.blockNumber = block.number;
-        joiningMember.joinRewardEventSequence = ++rewardEventSequence;
-
         uint256 sequence = ++joinSequence;
         memberCount = currentMemberCount + 1;
 
@@ -198,51 +194,6 @@ contract TemplMembershipModule is TemplBase {
         return accrued > snapshot ? accrued - snapshot : 0;
     }
 
-    /// @notice Lists ERC-20 (or ETH) reward tokens with active external pools.
-    /// @return tokens Array of reward token addresses currently tracked.
-    function getExternalRewardTokens() external view onlyDelegatecall returns (address[] memory tokens) {
-        return externalRewardTokens;
-    }
-
-    /// @notice Returns the global accounting for an external reward token.
-    /// @param token ERC-20 token address or address(0) for ETH.
-    /// @return poolBalance Amount reserved for members but not yet claimed.
-    /// @return cumulativeRewards Cumulative reward per member used for snapshots.
-    /// @return remainder Remainder carried forward for the next distribution.
-    function getExternalRewardState(
-        address token
-    ) external view onlyDelegatecall returns (uint256 poolBalance, uint256 cumulativeRewards, uint256 remainder) {
-        ExternalRewardState storage rewards = externalRewards[token];
-        return (rewards.poolBalance, rewards.cumulativeRewards, rewards.rewardRemainder);
-    }
-
-    /// @notice Computes how much of an external reward token a member can claim.
-    /// @param member Wallet to inspect.
-    /// @param token ERC-20 token address or address(0) for ETH.
-    /// @return amount Claimable balance of the external reward for the member.
-    function getClaimableExternalReward(
-        address member,
-        address token
-    ) public view onlyDelegatecall returns (uint256 amount) {
-        if (!members[member].joined) {
-            return 0;
-        }
-        if (token == accessToken) {
-            return 0;
-        }
-        ExternalRewardState storage rewards = externalRewards[token];
-        if (!rewards.exists) {
-            return 0;
-        }
-        Member storage memberInfo = members[member];
-        uint256 accrued = rewards.cumulativeRewards;
-        uint256 baseline = _externalBaselineForMember(rewards, memberInfo);
-        uint256 snapshot = memberExternalRewardSnapshots[member][token];
-        if (snapshot < baseline) {
-            snapshot = baseline;
-        }
-        return accrued > snapshot ? accrued - snapshot : 0;
-    }
 
     /// @notice Claims the caller's accrued share of the member rewards pool.
     function claimMemberRewards() external onlyMember nonReentrant onlyDelegatecall {
@@ -260,31 +211,6 @@ contract TemplMembershipModule is TemplBase {
         emit MemberRewardsClaimed(msg.sender, claimableAmount, block.timestamp);
     }
 
-    /// @notice Claims the caller's accrued share of an external reward token or ETH.
-    /// @param token ERC-20 token address or address(0) for ETH.
-    function claimExternalReward(address token) external onlyMember nonReentrant onlyDelegatecall {
-        if (token == accessToken) revert TemplErrors.InvalidCallData();
-        ExternalRewardState storage rewards = externalRewards[token];
-        if (!rewards.exists) revert TemplErrors.NoRewardsToClaim();
-
-        uint256 claimable = getClaimableExternalReward(msg.sender, token);
-        if (claimable == 0) revert TemplErrors.NoRewardsToClaim();
-
-        uint256 remaining = rewards.poolBalance;
-        if (remaining < claimable) revert TemplErrors.InsufficientPoolBalance();
-
-        memberExternalRewardSnapshots[msg.sender][token] = rewards.cumulativeRewards;
-        rewards.poolBalance = remaining - claimable;
-
-        if (token == address(0)) {
-            (bool success, ) = payable(msg.sender).call{value: claimable}("");
-            if (!success) revert TemplErrors.ProposalExecutionFailed();
-        } else {
-            _safeTransfer(token, msg.sender, claimable);
-        }
-
-        emit ExternalRewardClaimed(token, msg.sender, claimable);
-    }
 
     /// @notice Reports whether a wallet currently counts as a member.
     /// @param user Wallet to inspect.
@@ -393,25 +319,4 @@ contract TemplMembershipModule is TemplBase {
         return 1;
     }
 
-    /// @notice Returns external reward tokens with pagination to avoid large arrays.
-    /// @param offset Number of tokens to skip from the start.
-    /// @param limit Maximum number of tokens to return.
-    /// @return tokens Slice of token addresses.
-    /// @return hasMore True when there are additional tokens past the slice.
-    function getExternalRewardTokensPaginated(
-        uint256 offset,
-        uint256 limit
-    ) external view onlyDelegatecall returns (address[] memory tokens, bool hasMore) {
-        uint256 len = externalRewardTokens.length;
-        if (!(offset < len)) {
-            return (new address[](0), false);
-        }
-        uint256 remaining = len - offset;
-        uint256 take = limit < remaining ? limit : remaining;
-        address[] memory out = new address[](take);
-        for (uint256 i = 0; i < take; ++i) {
-            out[i] = externalRewardTokens[offset + i];
-        }
-        return (out, offset + take < len);
-    }
 }

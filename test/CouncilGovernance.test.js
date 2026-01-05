@@ -131,7 +131,6 @@ describe("Council governance", function () {
 
     await templ.connect(priest).createProposalAddCouncilMember(member1.address, WEEK, "re-add member1", "");
     proposalId = (await templ.proposalCount()) - 1n;
-    await templ.connect(priest).vote(proposalId, true);
     await advanceTime(twoDays);
     await templ.executeProposal(proposalId);
     expect(await templ.councilMembers(member1.address)).to.equal(true);

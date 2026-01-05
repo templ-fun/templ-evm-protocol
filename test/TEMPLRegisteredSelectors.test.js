@@ -21,11 +21,7 @@ describe("TEMPL.getRegisteredSelectors()", function () {
       "joinForWithMaxEntryFee",
       "joinForWithReferralMaxEntryFee",
       "claimMemberRewards",
-      "claimExternalReward",
       "getClaimableMemberRewards",
-      "getExternalRewardTokens",
-      "getExternalRewardState",
-      "getClaimableExternalReward",
       "isMember",
       "getJoinDetails",
       "getTreasuryInfo",
@@ -33,7 +29,6 @@ describe("TEMPL.getRegisteredSelectors()", function () {
       "getMemberCount",
       "getVoteWeight",
       "totalJoins",
-      "getExternalRewardTokensPaginated",
     ].map(sel);
 
     const expectedTreasury = [
@@ -48,8 +43,6 @@ describe("TEMPL.getRegisteredSelectors()", function () {
       "setProposalCreationFeeBpsDAO",
       "setReferralShareBpsDAO",
       "setEntryFeeCurveDAO",
-      "cleanupExternalRewardToken",
-      "reconcileExternalRewardTokenDAO",
       "setQuorumBpsDAO",
       "setPostQuorumVotingPeriodDAO",
       "setBurnAddressDAO",
@@ -60,7 +53,6 @@ describe("TEMPL.getRegisteredSelectors()", function () {
       "addCouncilMemberDAO",
       "removeCouncilMemberDAO",
       "setInstantQuorumBpsDAO",
-      "sweepExternalRewardRemainderDAO",
       "sweepMemberPoolRemainderDAO",
     ].map(sel);
 
@@ -81,7 +73,6 @@ describe("TEMPL.getRegisteredSelectors()", function () {
       "cancelProposal",
       "executeProposal",
       "pruneInactiveProposals",
-      "createProposalCleanupExternalRewardToken",
       "createProposalSetQuorumBps",
       "createProposalSetPostQuorumVotingPeriod",
       "createProposalSetBurnAddress",

@@ -8,8 +8,8 @@ Quick links: [At a Glance](#protocol-at-a-glance) · [Architecture](#architectur
 
 ## Protocol At a Glance
 - Create a templ tied to a vanilla ERC‑20 access token; members join by paying an entry fee in that token. The fee is split into burn, treasury, member‑pool, and protocol slices.
-- Existing members accrue pro‑rata rewards from the member‑pool slice and can claim at any time. Templs can also hold ETH or ERC‑20s as external rewards.
-- Donations (ETH or ERC‑20) sent directly to the templ address are held by the templ and governed: governance can withdraw these funds to recipients, or disband them into claimable external rewards for members. ERC‑721 NFTs can also be custodied by a templ and later moved via governance (see NFT notes below).
+- Existing members accrue pro‑rata rewards from the member‑pool slice and can claim at any time. Templs can also hold ETH or other ERC‑20s as unaccounted treasury assets.
+- Donations (ETH or ERC‑20) sent directly to the templ address are held by the templ and governed: governance can withdraw these funds to recipients. Disbanding the access token moves treasury into the member pool; disbanding other tokens sweeps the full balance to the protocol fee recipient. ERC‑721 NFTs can also be custodied by a templ and later moved via governance (see NFT notes below).
 - Governance is member‑only: propose, vote, and execute actions to change parameters, move treasury, update curves/metadata, or call arbitrary external contracts.
 - Council mode (default for `createTempl` / `createTemplFor` deployments) narrows voting power to a curated council while still letting any member open proposals. Council composition changes via governance. Council mode cannot be active while dictatorship is enabled; templs must return to member voting (or never enable dictatorship) before re-entering council mode.
 - The YES vote threshold (bps of votes cast) is configurable per templ (default 5,100 bps, i.e. 51%) and can be changed via governance alongside quorum/post‑quorum windows.
@@ -232,7 +232,7 @@ flowchart LR
 
 - `TEMPL` routes calls to modules via delegatecall and exposes selector→module lookup.
 - Membership: joins, fee‑split accounting, member reward accrual and claims, eligibility snapshots.
-- Treasury: governance/priests manage pause/cap/config/curve, change the priest or dictatorship state, adjust referral/proposal fees, quorum/post‑quorum windows, burn address, reconcile/register external rewards, clean up settled external rewards, withdraw/disband assets, and run atomic multi‑call batches via `batchDAO`. External reward dust is carried into later disbands; if you need to fully settle a token for cleanup, sweep the remainder via `sweepExternalRewardRemainderDAO`.
+- Treasury: governance/priests manage pause/cap/config/curve, change the priest or dictatorship state, adjust referral/proposal fees, quorum/post‑quorum windows, burn address, withdraw/disband assets, and run atomic multi‑call batches via `batchDAO`.
 - Governance: create/vote/execute/cancel proposals covering all treasury setters (including quorum/burn/curve metadata), safe external calls (single or batched), dictatorship toggle, and opportunistic tail‑pruning of inactive proposals on execution to keep the active index compact.
 - Shared storage: all persistent state lives in [`TemplBase`](contracts/TemplBase.sol).
 
@@ -242,7 +242,7 @@ flowchart LR
 - Only‑DAO guard: `onlyDAO` in `TemplBase` gates actions to either the router itself (when dictatorship is disabled) or the router/priest (when enabled) (contracts/TemplBase.sol).
 - Reentrancy guards: User‑facing mutators like joins, claims, proposal creation/execution, and withdrawals use `nonReentrant` (contracts/TemplMembership.sol, contracts/TemplGovernance.sol, contracts/TemplTreasury.sol).
 - Snapshotting by join sequence: Proposals capture `preQuorumJoinSequence`; at quorum, a second snapshot anchors eligibility (`quorumJoinSequence`) (contracts/TemplBase.sol, contracts/TemplGovernance.sol).
-- Bounded enumeration: External reward tokens capped at 256; active proposals support paginated reads with a 1..100 `limit` (contracts/TemplBase.sol, contracts/TEMPL.sol).
+- Bounded enumeration: active proposals support paginated reads with a 1..100 `limit` (contracts/TemplBase.sol, contracts/TEMPL.sol).
 - Safe token ops: Uses OpenZeppelin `SafeERC20` for ERC‑20 transfers and explicit ETH forwarding with revert bubbling (contracts/TemplBase.sol, contracts/TemplGovernance.sol).
 - Saturating math for curves: Price growth saturates at `MAX_ENTRY_FEE`; recomputed `entryFee` values are normalized to ≥10 and divisible by 10 (contracts/TemplBase.sol).
 - Governance‑controlled upgrades: `setRoutingModuleDAO(address,bytes4[])` rewires selectors under `onlyDAO` (contracts/TEMPL.sol).
@@ -258,8 +258,8 @@ flowchart LR
 
 ### Donations: Address and Custody
 - Donation address: Send donations to the templ contract address (the TEMPL/router address). There is no separate “treasury address”. “Treasury” is an accounting bucket inside the templ that tracks how much of the templ’s on-chain balance is available for governance withdrawals versus reserved for member rewards.
-- ETH: Send ETH directly to the templ address. ETH is held by the templ and governed. Governance can later withdraw it to recipients or disband it into claimable external rewards.
-- ERC‑20: Transfer tokens to the templ address (e.g., `transfer(templAddress, amount)`). Governance can withdraw or disband these balances just like ETH.
+- ETH: Send ETH directly to the templ address. ETH is held by the templ and governed. Governance can later withdraw it to recipients or disband it (sweeps to the protocol fee recipient).
+- ERC‑20: Transfer tokens to the templ address (e.g., `transfer(templAddress, amount)`). Governance can withdraw these balances; disbanding non‑access tokens sweeps the full balance to the protocol fee recipient.
 - NFTs (ERC‑721): The templ can custody NFTs. It does not implement `IERC721Receiver`, so `safeTransferFrom(..., templAddress, ...)` will revert. Use `transferFrom` to the templ, or have the DAO “pull” the NFT via `transferFrom(owner, templ, tokenId)` after the owner approves the templ. NFTs are governed treasury items and are moved via external‑call proposals.
 
 - Membership note: Donations (including in the access token) do not grant membership. Membership requires calling `join*` and paying the entry fee through the contract, which updates accounting and emits the `MemberJoined` event.
@@ -270,7 +270,6 @@ flowchart LR
 - priest: A designated address with optional dictatorship powers when enabled.
 - dictatorship: Mode where the priest may execute DAO‑only actions directly.
 - member pool: Accounting bucket that streams join fees to existing members, claimable pro‑rata.
-- external rewards: ETH/ERC‑20 balances held by the templ and distributed by proposals or claim logic; reward checkpoints use a monotonic event sequence to disambiguate same-block joins/disbands.
 - entry fee curve: Growth schedule for the next join price (see `CurveConfig` in `TemplCurve`).
 - quorum bps: Percent of eligible members whose YES votes are required to reach quorum.
 - pre/post‑quorum window: Voting period before quorum and the anchored window after quorum.
@@ -282,7 +281,7 @@ flowchart LR
 2) Create a templ providing the access token, base entry fee, fee split, curve, governance params, and metadata (`createTemplWithConfig`).
 3) Members join by paying the current entry fee in the access token (optionally with a referrer); fees split to burn/treasury/member‑pool/protocol. The next entry fee advances by the curve.
 4) Members propose, vote, cancel (before other votes), and execute: configuration changes, metadata updates, treasury withdrawals/disband, and arbitrary external calls.
-5) Members claim accumulated member‑pool rewards and any external rewards credited to members.
+5) Members claim accumulated member‑pool rewards.
 6) Templs can evolve via governance—adjusting caps, curves, fees, and parameters—or be wound down by disbanding the treasury.
 
 ## Repo Map
@@ -321,33 +320,6 @@ TEMPL_NAME="templ.fun OG" \
 TEMPL_DESCRIPTION="Genesis collective" \
 npm run deploy:local
 ```
-
-Safe deploy (vanilla token probe):
-
-```bash
-# 1) Approve the factory to pull the probe amount (100,000 units)
-#    from the account that will call safeDeployFor
-#    Example using ethers in Hardhat console:
-#      const token = await ethers.getContractAt("IERC20", TOKEN_ADDRESS)
-#      await token.approve(FACTORY_ADDRESS, 100000)
-
-# 2) Call safeDeployFor to atomically probe + deploy
-#    (reverts with NonVanillaToken when the access token taxes/rebases/hooks transfers)
-// npx hardhat console --network localhost
-const factory = await ethers.getContractAt("TemplFactory", FACTORY_ADDRESS);
-await factory.safeDeployFor(
-  "0xPriest",
-  TOKEN_ADDRESS,
-  ENTRY_FEE,
-  TEMPL_NAME,
-  TEMPL_DESCRIPTION,
-  "https://example.com/logo.png",
-  0, // proposal fee bps
-  0  // referral share bps
-);
-```
-
-Other factory entrypoints (`createTempl*`) do not run the vanilla-token probe; use `safeDeployFor` unless you have independently validated the token's transfer semantics.
 
 Verify on Base (optional):
 
@@ -562,18 +534,17 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
 ## Limits & Defaults
 - `BPS_DENOMINATOR = 10_000`.
 - Defaults via [`TemplDefaults`](contracts/TemplDefaults.sol): quorum bps, post‑quorum voting period, burn address, YES vote threshold, instant quorum.
-- `MAX_EXTERNAL_REWARD_TOKENS = 256` (UI enumeration bound).
 - `MAX_ENTRY_FEE = type(uint128).max` (entry fee safety guard).
 - `MAX_CURVE_SEGMENTS = 8` (primary + additional; prevents curve OOG griefing).
 - Proposal metadata caps: title ≤256 bytes; description ≤2048 bytes.
 - Templ metadata caps: name ≤256 bytes; description ≤2048 bytes; logo URI ≤2048 bytes.
 - Pre‑quorum voting window: default 36 hours (min 36h, max 30 days); view `preQuorumVotingPeriod`; adjust via `setPreQuorumVotingPeriodDAO`.
 - Post-quorum voting window: default 36 hours (min 1h, max 30 days); view `postQuorumVotingPeriod`; adjust via `setPostQuorumVotingPeriodDAO`.
-- Factory defaults when using `createTempl` / `createTemplFor` / `safeDeployFor`:
+- Factory defaults when using `createTempl` / `createTemplFor`:
   - Fee split: burn 3_000 bps, treasury 3_000 bps, member pool 3_000 bps (plus protocol bps from factory).
   - Membership cap: 249.
   - Curve: exponential primary segment at 10_094 bps for 248 paid joins, then static tail (price holds if cap expands).
-  - Proposal fee / referral share: defaults to 2_500 bps each only for `createTempl`; `createTemplFor`/`safeDeployFor` use caller-provided values, and `createTemplWithConfig` requires explicit values.
+  - Proposal fee / referral share: defaults to 2_500 bps each only for `createTempl`; `createTemplFor` uses caller-provided values, and `createTemplWithConfig` requires explicit values.
 - YES vote threshold: 5_100 bps (51%); valid range [100, 10_000] bps via governance or deploy config.
   - `createTemplWithConfig` auto-fills quorum, execution delay, burn address, curve, YES threshold, and instant quorum when passed as 0/false; use `-1` for split fields to receive defaults; `maxMembers` is never auto-filled (0 = uncapped).
 
@@ -595,7 +566,6 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
 - CallExternal → `abi.encode(address target, uint256 value, bytes calldata)`
 - WithdrawTreasury → `abi.encode(address token, address recipient, uint256 amount)`
 - DisbandTreasury → `abi.encode(address token)`
-- CleanupExternalRewardToken → `abi.encode(address token)`
 - ChangePriest → `abi.encode(address newPriest)`
 - SetDictatorship → `abi.encode(bool enabled)`
 - SetQuorumBps → `abi.encode(uint256 newQuorumBps)`
@@ -608,7 +578,6 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
 
 ## Safety Model
 - Vanilla ERC‑20 only: the access token must not tax, rebase, or hook transfers; accounting assumes exact in/out.
-- Factory enforcement option: use `safeDeployFor` to probe vanilla semantics before deploying.
 - Router‑only entry: modules can only be reached via `TEMPL` delegatecalls; direct module calls revert by design.
 - Reentrancy containment and snapshotting of eligibility at creation/quorum.
 - Anchored execution window post‑quorum; strict fee invariants; bounded enumeration.
@@ -678,7 +647,6 @@ Proposal fees apply equally to council and non-council proposers:
 - Can the access token change later? No — deploy a new templ.
 - Why divisible by 10? It is an on‑chain invariant enforced by `_validateEntryFeeAmount`; updates that don’t meet it revert.
 - How do referrals work? Paid from the member‑pool slice when the referrer is a member and not the joiner.
-- Can I enumerate external reward tokens? Yes: `getExternalRewardTokens()` (or paginated) and `getExternalRewardState(token)`; cleanup via DAO‑only `cleanupExternalRewardToken`.
 
 ## Tests
 - Default: `npm test` (heavy `@load` suite is excluded).

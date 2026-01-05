@@ -101,10 +101,6 @@ library TemplErrors {
     error CouncilModeActive();
     /// @notice Thrown when attempting a council-only action while council governance is inactive.
     error CouncilModeInactive();
-    /// @notice Thrown when the external reward registry has reached its capacity.
-    error ExternalRewardLimitReached();
-    /// @notice Thrown when attempting to clear an external reward token that still holds value.
-    error ExternalRewardsNotSettled();
     /// @notice Thrown when templ creation is restricted to the factory deployer.
     error FactoryAccessRestricted();
     /// @notice Thrown when a non-deployer attempts to update factory permissionless settings.
@@ -113,6 +109,6 @@ library TemplErrors {
     error PermissionlessUnchanged();
     /// @notice Thrown when a module function is called directly instead of via delegatecall through TEMPL.
     error DelegatecallOnly();
-    /// @notice Thrown when an access token fails vanilla ERC-20 checks during safe deployment probing.
+    /// @notice Thrown when a token transfer violates vanilla ERC-20 balance delta expectations.
     error NonVanillaToken();
 }

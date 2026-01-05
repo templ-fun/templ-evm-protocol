@@ -140,8 +140,6 @@ contract TEMPL is TemplBase {
         priestMember.rewardSnapshot = cumulativeMemberRewards;
         joinSequence = 1;
         priestMember.joinSequence = 1;
-        rewardEventSequence = 1;
-        priestMember.joinRewardEventSequence = 1;
         memberCount = 1;
         _addCouncilMember(_priest, _priest);
         if (_startInCouncilMode) {
@@ -154,7 +152,7 @@ contract TEMPL is TemplBase {
         _configureEntryFeeCurve(_entryFee, _curve);
     }
 
-    /// @notice Accepts ETH so proposals can later disburse it as external rewards.
+    /// @notice Accepts ETH so proposals can later disburse it from treasury.
     receive() external payable {}
 
     /// @notice Exposes the module registered for a given function selector.
@@ -181,7 +179,7 @@ contract TEMPL is TemplBase {
             bytes4[] memory council
         )
     {
-        membership = new bytes4[](22);
+        membership = new bytes4[](17);
         membership[0] = TemplMembershipModule.join.selector;
         membership[1] = TemplMembershipModule.joinWithReferral.selector;
         membership[2] = TemplMembershipModule.joinFor.selector;
@@ -191,21 +189,16 @@ contract TEMPL is TemplBase {
         membership[6] = TemplMembershipModule.joinForWithMaxEntryFee.selector;
         membership[7] = TemplMembershipModule.joinForWithReferralMaxEntryFee.selector;
         membership[8] = TemplMembershipModule.claimMemberRewards.selector;
-        membership[9] = TemplMembershipModule.claimExternalReward.selector;
-        membership[10] = TemplMembershipModule.getClaimableMemberRewards.selector;
-        membership[11] = TemplMembershipModule.getExternalRewardTokens.selector;
-        membership[12] = TemplMembershipModule.getExternalRewardState.selector;
-        membership[13] = TemplMembershipModule.getClaimableExternalReward.selector;
-        membership[14] = TemplMembershipModule.isMember.selector;
-        membership[15] = TemplMembershipModule.getJoinDetails.selector;
-        membership[16] = TemplMembershipModule.getTreasuryInfo.selector;
-        membership[17] = TemplMembershipModule.getConfig.selector;
-        membership[18] = TemplMembershipModule.getMemberCount.selector;
-        membership[19] = TemplMembershipModule.getVoteWeight.selector;
-        membership[20] = TemplMembershipModule.totalJoins.selector;
-        membership[21] = TemplMembershipModule.getExternalRewardTokensPaginated.selector;
+        membership[9] = TemplMembershipModule.getClaimableMemberRewards.selector;
+        membership[10] = TemplMembershipModule.isMember.selector;
+        membership[11] = TemplMembershipModule.getJoinDetails.selector;
+        membership[12] = TemplMembershipModule.getTreasuryInfo.selector;
+        membership[13] = TemplMembershipModule.getConfig.selector;
+        membership[14] = TemplMembershipModule.getMemberCount.selector;
+        membership[15] = TemplMembershipModule.getVoteWeight.selector;
+        membership[16] = TemplMembershipModule.totalJoins.selector;
 
-        treasury = new bytes4[](25);
+        treasury = new bytes4[](22);
         treasury[0] = TemplTreasuryModule.withdrawTreasuryDAO.selector;
         treasury[1] = TemplTreasuryModule.updateConfigDAO.selector;
         treasury[2] = TemplTreasuryModule.setJoinPausedDAO.selector;
@@ -217,22 +210,19 @@ contract TEMPL is TemplBase {
         treasury[8] = TemplTreasuryModule.setProposalCreationFeeBpsDAO.selector;
         treasury[9] = TemplTreasuryModule.setReferralShareBpsDAO.selector;
         treasury[10] = TemplTreasuryModule.setEntryFeeCurveDAO.selector;
-        treasury[11] = TemplTreasuryModule.cleanupExternalRewardToken.selector;
-        treasury[12] = TemplTreasuryModule.reconcileExternalRewardTokenDAO.selector;
-        treasury[13] = TemplTreasuryModule.setQuorumBpsDAO.selector;
-        treasury[14] = TemplTreasuryModule.setPostQuorumVotingPeriodDAO.selector;
-        treasury[15] = TemplTreasuryModule.setBurnAddressDAO.selector;
-        treasury[16] = TemplTreasuryModule.batchDAO.selector;
-        treasury[17] = TemplTreasuryModule.setPreQuorumVotingPeriodDAO.selector;
-        treasury[18] = TemplTreasuryModule.setYesVoteThresholdBpsDAO.selector;
-        treasury[19] = TemplTreasuryModule.setCouncilModeDAO.selector;
-        treasury[20] = TemplTreasuryModule.addCouncilMemberDAO.selector;
-        treasury[21] = TemplTreasuryModule.removeCouncilMemberDAO.selector;
-        treasury[22] = TemplTreasuryModule.setInstantQuorumBpsDAO.selector;
-        treasury[23] = TemplTreasuryModule.sweepExternalRewardRemainderDAO.selector;
-        treasury[24] = TemplTreasuryModule.sweepMemberPoolRemainderDAO.selector;
+        treasury[11] = TemplTreasuryModule.setQuorumBpsDAO.selector;
+        treasury[12] = TemplTreasuryModule.setPostQuorumVotingPeriodDAO.selector;
+        treasury[13] = TemplTreasuryModule.setBurnAddressDAO.selector;
+        treasury[14] = TemplTreasuryModule.batchDAO.selector;
+        treasury[15] = TemplTreasuryModule.setPreQuorumVotingPeriodDAO.selector;
+        treasury[16] = TemplTreasuryModule.setYesVoteThresholdBpsDAO.selector;
+        treasury[17] = TemplTreasuryModule.setCouncilModeDAO.selector;
+        treasury[18] = TemplTreasuryModule.addCouncilMemberDAO.selector;
+        treasury[19] = TemplTreasuryModule.removeCouncilMemberDAO.selector;
+        treasury[20] = TemplTreasuryModule.setInstantQuorumBpsDAO.selector;
+        treasury[21] = TemplTreasuryModule.sweepMemberPoolRemainderDAO.selector;
 
-        governance = new bytes4[](21);
+        governance = new bytes4[](20);
         governance[0] = TemplGovernanceModule.createProposalSetJoinPaused.selector;
         governance[1] = TemplGovernanceModule.createProposalUpdateConfig.selector;
         governance[2] = TemplGovernanceModule.createProposalSetMaxMembers.selector;
@@ -249,11 +239,10 @@ contract TEMPL is TemplBase {
         governance[13] = TemplGovernanceModule.cancelProposal.selector;
         governance[14] = TemplGovernanceModule.executeProposal.selector;
         governance[15] = TemplGovernanceModule.pruneInactiveProposals.selector;
-        governance[16] = TemplGovernanceModule.createProposalCleanupExternalRewardToken.selector;
-        governance[17] = TemplGovernanceModule.createProposalSetQuorumBps.selector;
-        governance[18] = TemplGovernanceModule.createProposalSetPostQuorumVotingPeriod.selector;
-        governance[19] = TemplGovernanceModule.createProposalSetBurnAddress.selector;
-        governance[20] = TemplGovernanceModule.createProposalSetInstantQuorumBps.selector;
+        governance[16] = TemplGovernanceModule.createProposalSetQuorumBps.selector;
+        governance[17] = TemplGovernanceModule.createProposalSetPostQuorumVotingPeriod.selector;
+        governance[18] = TemplGovernanceModule.createProposalSetBurnAddress.selector;
+        governance[19] = TemplGovernanceModule.createProposalSetInstantQuorumBps.selector;
         council = new bytes4[](4);
         council[0] = TemplCouncilModule.createProposalSetYesVoteThreshold.selector;
         council[1] = TemplCouncilModule.createProposalSetCouncilMode.selector;
@@ -297,8 +286,6 @@ contract TEMPL is TemplBase {
         } else if (action == Action.WithdrawTreasury) {
             payload = abi.encode(p.token, p.recipient, p.amount);
         } else if (action == Action.DisbandTreasury) {
-            payload = abi.encode(p.token);
-        } else if (action == Action.CleanupExternalRewardToken) {
             payload = abi.encode(p.token);
         } else if (action == Action.ChangePriest) {
             payload = abi.encode(p.recipient);
@@ -524,7 +511,7 @@ contract TEMPL is TemplBase {
     /// @notice Registers membership function selectors to dispatch to `module`.
     /// @param module Module address that implements membership functions.
     function _registerMembershipSelectors(address module) internal {
-        bytes4[] memory selectors = new bytes4[](22);
+        bytes4[] memory selectors = new bytes4[](17);
         selectors[0] = TemplMembershipModule.join.selector;
         selectors[1] = TemplMembershipModule.joinWithReferral.selector;
         selectors[2] = TemplMembershipModule.joinFor.selector;
@@ -534,26 +521,21 @@ contract TEMPL is TemplBase {
         selectors[6] = TemplMembershipModule.joinForWithMaxEntryFee.selector;
         selectors[7] = TemplMembershipModule.joinForWithReferralMaxEntryFee.selector;
         selectors[8] = TemplMembershipModule.claimMemberRewards.selector;
-        selectors[9] = TemplMembershipModule.claimExternalReward.selector;
-        selectors[10] = TemplMembershipModule.getClaimableMemberRewards.selector;
-        selectors[11] = TemplMembershipModule.getExternalRewardTokens.selector;
-        selectors[12] = TemplMembershipModule.getExternalRewardState.selector;
-        selectors[13] = TemplMembershipModule.getClaimableExternalReward.selector;
-        selectors[14] = TemplMembershipModule.isMember.selector;
-        selectors[15] = TemplMembershipModule.getJoinDetails.selector;
-        selectors[16] = TemplMembershipModule.getTreasuryInfo.selector;
-        selectors[17] = TemplMembershipModule.getConfig.selector;
-        selectors[18] = TemplMembershipModule.getMemberCount.selector;
-        selectors[19] = TemplMembershipModule.getVoteWeight.selector;
-        selectors[20] = TemplMembershipModule.totalJoins.selector;
-        selectors[21] = TemplMembershipModule.getExternalRewardTokensPaginated.selector;
+        selectors[9] = TemplMembershipModule.getClaimableMemberRewards.selector;
+        selectors[10] = TemplMembershipModule.isMember.selector;
+        selectors[11] = TemplMembershipModule.getJoinDetails.selector;
+        selectors[12] = TemplMembershipModule.getTreasuryInfo.selector;
+        selectors[13] = TemplMembershipModule.getConfig.selector;
+        selectors[14] = TemplMembershipModule.getMemberCount.selector;
+        selectors[15] = TemplMembershipModule.getVoteWeight.selector;
+        selectors[16] = TemplMembershipModule.totalJoins.selector;
         _registerModule(module, selectors);
     }
 
     /// @notice Registers treasury function selectors to dispatch to `module`.
     /// @param module Module address that implements treasury functions.
     function _registerTreasurySelectors(address module) internal {
-        bytes4[] memory selectors = new bytes4[](25);
+        bytes4[] memory selectors = new bytes4[](22);
         selectors[0] = TemplTreasuryModule.withdrawTreasuryDAO.selector;
         selectors[1] = TemplTreasuryModule.updateConfigDAO.selector;
         selectors[2] = TemplTreasuryModule.setJoinPausedDAO.selector;
@@ -565,27 +547,24 @@ contract TEMPL is TemplBase {
         selectors[8] = TemplTreasuryModule.setProposalCreationFeeBpsDAO.selector;
         selectors[9] = TemplTreasuryModule.setReferralShareBpsDAO.selector;
         selectors[10] = TemplTreasuryModule.setEntryFeeCurveDAO.selector;
-        selectors[11] = TemplTreasuryModule.cleanupExternalRewardToken.selector;
-        selectors[12] = TemplTreasuryModule.reconcileExternalRewardTokenDAO.selector;
-        selectors[13] = TemplTreasuryModule.setQuorumBpsDAO.selector;
-        selectors[14] = TemplTreasuryModule.setPostQuorumVotingPeriodDAO.selector;
-        selectors[15] = TemplTreasuryModule.setBurnAddressDAO.selector;
-        selectors[16] = TemplTreasuryModule.batchDAO.selector;
-        selectors[17] = TemplTreasuryModule.setPreQuorumVotingPeriodDAO.selector;
-        selectors[18] = TemplTreasuryModule.setYesVoteThresholdBpsDAO.selector;
-        selectors[19] = TemplTreasuryModule.setCouncilModeDAO.selector;
-        selectors[20] = TemplTreasuryModule.addCouncilMemberDAO.selector;
-        selectors[21] = TemplTreasuryModule.removeCouncilMemberDAO.selector;
-        selectors[22] = TemplTreasuryModule.setInstantQuorumBpsDAO.selector;
-        selectors[23] = TemplTreasuryModule.sweepExternalRewardRemainderDAO.selector;
-        selectors[24] = TemplTreasuryModule.sweepMemberPoolRemainderDAO.selector;
+        selectors[11] = TemplTreasuryModule.setQuorumBpsDAO.selector;
+        selectors[12] = TemplTreasuryModule.setPostQuorumVotingPeriodDAO.selector;
+        selectors[13] = TemplTreasuryModule.setBurnAddressDAO.selector;
+        selectors[14] = TemplTreasuryModule.batchDAO.selector;
+        selectors[15] = TemplTreasuryModule.setPreQuorumVotingPeriodDAO.selector;
+        selectors[16] = TemplTreasuryModule.setYesVoteThresholdBpsDAO.selector;
+        selectors[17] = TemplTreasuryModule.setCouncilModeDAO.selector;
+        selectors[18] = TemplTreasuryModule.addCouncilMemberDAO.selector;
+        selectors[19] = TemplTreasuryModule.removeCouncilMemberDAO.selector;
+        selectors[20] = TemplTreasuryModule.setInstantQuorumBpsDAO.selector;
+        selectors[21] = TemplTreasuryModule.sweepMemberPoolRemainderDAO.selector;
         _registerModule(module, selectors);
     }
 
     /// @notice Registers governance function selectors to dispatch to `module`.
     /// @param module Module address that implements governance functions.
     function _registerGovernanceSelectors(address module) internal {
-        bytes4[] memory selectors = new bytes4[](21);
+        bytes4[] memory selectors = new bytes4[](20);
         selectors[0] = TemplGovernanceModule.createProposalSetJoinPaused.selector;
         selectors[1] = TemplGovernanceModule.createProposalUpdateConfig.selector;
         selectors[2] = TemplGovernanceModule.createProposalSetMaxMembers.selector;
@@ -602,11 +581,10 @@ contract TEMPL is TemplBase {
         selectors[13] = TemplGovernanceModule.cancelProposal.selector;
         selectors[14] = TemplGovernanceModule.executeProposal.selector;
         selectors[15] = TemplGovernanceModule.pruneInactiveProposals.selector;
-        selectors[16] = TemplGovernanceModule.createProposalCleanupExternalRewardToken.selector;
-        selectors[17] = TemplGovernanceModule.createProposalSetQuorumBps.selector;
-        selectors[18] = TemplGovernanceModule.createProposalSetPostQuorumVotingPeriod.selector;
-        selectors[19] = TemplGovernanceModule.createProposalSetBurnAddress.selector;
-        selectors[20] = TemplGovernanceModule.createProposalSetInstantQuorumBps.selector;
+        selectors[16] = TemplGovernanceModule.createProposalSetQuorumBps.selector;
+        selectors[17] = TemplGovernanceModule.createProposalSetPostQuorumVotingPeriod.selector;
+        selectors[18] = TemplGovernanceModule.createProposalSetBurnAddress.selector;
+        selectors[19] = TemplGovernanceModule.createProposalSetInstantQuorumBps.selector;
         _registerModule(module, selectors);
     }
 

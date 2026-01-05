@@ -244,9 +244,9 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
     expect(await templ.referralShareBps()).to.equal(1200n);
   });
 
-  it("covers curve + cleanup wrappers (DAO calls)", async function () {
-    const { templ, token, accounts } = await deployHarness();
-    const [, priest, member] = accounts;
+  it("covers curve wrappers (DAO calls)", async function () {
+    const { templ, accounts } = await deployHarness();
+    const [, priest] = accounts;
 
     // Enable dictatorship so priest can call onlyDAO externals
     await templ.daoSetDictatorship(true);
@@ -258,9 +258,5 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
     // base remains unchanged when baseEntryFee is zero
     expect(await templ.baseEntryFee()).to.equal(baseBefore);
 
-    // cleanupExternalRewardToken should revert for access token, still covers function path
-    await expect(
-      templ.connect(priest).cleanupExternalRewardToken(await token.getAddress())
-    ).to.be.revertedWithCustomError(templ, "InvalidCallData");
   });
 });

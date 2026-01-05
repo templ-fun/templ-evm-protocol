@@ -6,7 +6,7 @@ import {TemplErrors} from "./TemplErrors.sol";
 import {CurveConfig} from "./TemplCurve.sol";
 
 /// @title Templ Treasury Module
-/// @notice Adds treasury controls, fee configuration, and external reward management.
+/// @notice Adds treasury controls and fee configuration.
 /// @author templ.fun
 contract TemplTreasuryModule is TemplBase {
     /// @notice Sentinel used to detect direct calls to the module implementation.
@@ -62,8 +62,8 @@ contract TemplTreasuryModule is TemplBase {
         _setMaxMembers(_maxMembers);
     }
 
-    /// @notice Governance action that moves treasury balances into the member or external reward pools.
-    /// @param token Asset to disband (`address(0)` for ETH).
+    /// @notice Governance action that disbands access-token treasury into the member pool.
+    /// @param token Asset to disband (`address(0)` for ETH or ERC-20 for protocol sweep).
     function disbandTreasuryDAO(address token) external onlyDAO nonReentrant onlyDelegatecall {
         _disbandTreasury(token, 0);
     }
@@ -111,22 +111,6 @@ contract TemplTreasuryModule is TemplBase {
     function setEntryFeeCurveDAO(CurveConfig calldata curve, uint256 baseEntryFee) external onlyDAO onlyDelegatecall {
         CurveConfig memory config = curve;
         _applyCurveUpdate(config, baseEntryFee);
-    }
-
-    /// @notice Removes an empty external reward token so future disbands can reuse the slot.
-    /// @param token Asset to remove from the enumeration set.
-    function cleanupExternalRewardToken(address token) external onlyDAO onlyDelegatecall {
-        _cleanupExternalRewardToken(token);
-    }
-
-    /// @notice Governance action that sends an external reward remainder to a recipient.
-    /// @param token External reward token whose remainder should be swept (address(0) for ETH).
-    /// @param recipient Wallet receiving the swept amount.
-    function sweepExternalRewardRemainderDAO(
-        address token,
-        address recipient
-    ) external onlyDAO nonReentrant onlyDelegatecall {
-        _sweepExternalRewardRemainder(token, recipient);
     }
 
     /// @notice Governance action that sends the member pool remainder to a recipient.
@@ -191,13 +175,6 @@ contract TemplTreasuryModule is TemplBase {
     /// @param newPeriod New default pre-quorum voting period (seconds).
     function setPreQuorumVotingPeriodDAO(uint256 newPeriod) external onlyDAO onlyDelegatecall {
         _setPreQuorumVotingPeriod(newPeriod);
-    }
-
-    /// @notice Governance action that registers an external reward token for reconciliation.
-    /// @param token Token to register (`address(0)` for ETH).
-    function reconcileExternalRewardTokenDAO(address token) external onlyDAO onlyDelegatecall {
-        if (token == accessToken) revert TemplErrors.InvalidCallData();
-        _registerExternalToken(token);
     }
 
     /// @notice Governance action that performs multiple external calls atomically from the templ.

@@ -77,7 +77,6 @@ contract TemplHarness is TEMPL {
         info.timestamp = timestamp;
         info.joined = joined;
         info.joinSequence = joinSequenceValue;
-        info.joinRewardEventSequence = joinSequenceValue;
     }
 
     /// @dev Exposes the internal snapshot helper for coverage assertions.
@@ -85,89 +84,10 @@ contract TemplHarness is TEMPL {
         return _joinedAfterSnapshot(members[member], snapshotJoinSequence);
     }
 
-    /// @dev Clears checkpoints while keeping rewards active for baseline checks.
-    function harnessResetExternalRewards(address token, uint256 cumulative) external {
-        ExternalRewardState storage rewards = externalRewards[token];
-        rewards.exists = true;
-        rewards.cumulativeRewards = cumulative;
-        delete rewards.checkpoints;
-    }
-
-    /// @dev Pushes a checkpoint to drive binary-search branches in tests.
-    function harnessPushCheckpoint(
-        address token,
-        uint64 blockNumber,
-        uint64 timestamp,
-        uint256 cumulative,
-        uint256 eventSequence
-    ) external {
-        ExternalRewardState storage rewards = externalRewards[token];
-        rewards.exists = true;
-        rewardEventSequence = eventSequence;
-        rewards.checkpoints.push(
-            RewardCheckpoint({
-                blockNumber: blockNumber,
-                timestamp: timestamp,
-                cumulative: cumulative,
-                eventSequence: eventSequence
-            })
-        );
-    }
-
-    /// @dev Returns the external baseline for a member using the current reward state.
-    function harnessExternalBaseline(address token, address member) external view returns (uint256) {
-        return _externalBaselineForMember(externalRewards[token], members[member]);
-    }
-
-    /// @dev Updates the latest checkpoint within the same block to cover mutation branches.
-    function harnessUpdateCheckpointSameBlock(address token, uint256 newCumulative) external {
-        ExternalRewardState storage rewards = externalRewards[token];
-        rewards.exists = true;
-        uint256 seededSequence = ++rewardEventSequence;
-        rewards.checkpoints.push(
-            RewardCheckpoint({
-                blockNumber: uint64(block.number),
-                timestamp: uint64(block.timestamp),
-                cumulative: rewards.cumulativeRewards,
-                eventSequence: seededSequence
-            })
-        );
-        rewards.cumulativeRewards = newCumulative;
-        _recordExternalCheckpoint(rewards);
-    }
-
-    /// @dev Returns the latest checkpoint metadata for assertions.
-    function harnessGetLatestCheckpoint(
-        address token
-    ) external view returns (uint64 blockNumber, uint64 timestamp, uint256 cumulative) {
-        ExternalRewardState storage rewards = externalRewards[token];
-        uint256 len = rewards.checkpoints.length;
-        if (len == 0) {
-            return (0, 0, 0);
-        }
-        RewardCheckpoint storage cp = rewards.checkpoints[len - 1];
-        return (cp.blockNumber, cp.timestamp, cp.cumulative);
-    }
 
     /// @dev Exposes the active proposal removal helper to hit guard branches in tests.
     function harnessRemoveActiveProposal(uint256 proposalId) external {
         _removeActiveProposal(proposalId);
-    }
-
-    /// @dev Seeds an external remainder so flush logic can be exercised under controlled scenarios.
-    function harnessSeedExternalRemainder(address token, uint256 remainder, uint256 cumulative) external {
-        ExternalRewardState storage rewards = externalRewards[token];
-        if (!rewards.exists) {
-            rewards.exists = true;
-            externalRewardTokens.push(token);
-        }
-        rewards.rewardRemainder = remainder;
-        rewards.cumulativeRewards = cumulative;
-    }
-
-    /// @dev Flushes external remainders for coverage purposes.
-    function harnessFlushExternalRemainders() external {
-        _flushExternalRemainders();
     }
 
     /// @dev Clears the member count for zero-member edge tests.
@@ -179,16 +99,6 @@ contract TemplHarness is TEMPL {
     /// @dev Calls the internal disband helper for branch coverage.
     function harnessDisbandTreasury(address token) external {
         _disbandTreasury(token, 0);
-    }
-
-    /// @dev Exposes token registration to exercise external reward limits in tests.
-    function harnessRegisterExternalToken(address token) external {
-        _registerExternalToken(token);
-    }
-
-    /// @dev Invokes the base removal helper for coverage scenarios.
-    function harnessRemoveExternalToken(address token) external {
-        _removeExternalToken(token);
     }
 
     // ---- Internal math helpers exposure for coverage ----

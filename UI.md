@@ -20,12 +20,10 @@ Common preflight helpers
 - Access token and entry fee: `TEMPL.getConfig()` → `(token, fee, joinPaused, joins, treasury, pool, burnBps, treasuryBps, memberPoolBps, protocolBps)`
 - Treasury/burn display: `TEMPL.getTreasuryInfo()` → `(treasury, memberPool, protocolRecipient, burned)`
 - Member status: `TEMPL.isMember(address)`; count: `TEMPL.getMemberCount()`
-- External rewards list: `TEMPL.getExternalRewardTokens()` or paginated `getExternalRewardTokensPaginated(offset, limit)`
 
 Allowances and approvals
 - Joins (all variants): approve the access token to `templ.target` before calling the join. Recommend a buffer of `2 × entryFee` to absorb fee changes and cover the first proposal creation fee. Always make this adjustable and never default to unlimited.
 - Proposal creation fee: when `proposalCreationFeeBps > 0`, the proposer must approve `proposalFee = entryFee * proposalCreationFeeBps / 10_000` to `templ.target` prior to any `createProposal*` call.
-- External reward claims: no approvals are required; the templ transfers out ERC‑20s and sends ETH directly.
 - Donations: no approvals are needed. Donors send ETH directly to the templ address, or call token `transfer(templ.target, amount)`.
 
 Donations: address and custody
@@ -38,7 +36,7 @@ Donations: address and custody
 Allowance checklist (TL;DR)
 - join / joinWithReferral / joinFor / joinForWithReferral / joinWithMaxEntryFee / joinWithReferralMaxEntryFee / joinForWithMaxEntryFee / joinForWithReferralMaxEntryFee → approve access token to `templ.target` (payer = `msg.sender`).
 - createProposal* (if fee > 0) → approve access token to `templ.target` for `proposalFee`.
-- claimMemberRewards / claimExternalReward → no approvals.
+- claimMemberRewards → no approvals.
 - batchDAO / external calls (proposals or dictatorship) → no user approvals; if tokens need templ approvals, include them inside the batch.
 
 Join slippage handling (race‑proof UX)
@@ -78,11 +76,6 @@ const templAddress = await factory.createTempl.staticCall(
   tokenAddress, entryFee, templName, templDescription, templLogoLink
 );
 ```
-
-Optional: safe vanilla‑token deploy
-- Use `factory.safeDeployFor(priest, token, entryFee, name, description, logoLink, proposalFeeBps, referralShareBps)` to atomically probe for vanilla ERC‑20 semantics before deploy.
-- The caller must approve the factory for 100,000 units of the token (probe amount). The function pulls and returns exactly 100,000 and reverts with `NonVanillaToken` if transfers are taxed/rebased/hooked.
-- If the probe passes, the templ is deployed with the provided params.
 
 Complete custom deploy (full config)
 - Use `factory.createTemplWithConfig(CreateConfig)` to set all parameters. Recommended when your UI exposes fee splits, quorum/delay, cap, dictatorship, curve, and metadata.
@@ -163,14 +156,10 @@ Post‑deploy handoff
 - Variant `templ.joinFor(recipient)`: payer is the caller; approve `entryFee` from the caller to `templ.target` before calling.
 - Variant `templ.joinForWithReferral(recipient, referrer)`: payer is the caller; approve `entryFee` from the caller to `templ.target` before calling.
 
-3) Claim Rewards (member pool and external)
+3) Claim Rewards (member pool)
 - Member pool (access token):
   - UI pre-read: `templ.getClaimableMemberRewards(user)`
   - Claim: `templ.claimMemberRewards()`
-- External rewards (ERC-20 or ETH):
-  - Enumerate tokens: `templ.getExternalRewardTokens()` (or paginated)
-  - Per token preview: `templ.getClaimableExternalReward(user, token)` (use `address(0)` for ETH)
-  - Claim: `templ.claimExternalReward(token)`
 - Note: Referral rewards are sent at join time to the referrer; there is no separate referral claim.
 
 4) Create a Governance Proposal
@@ -238,7 +227,6 @@ Complete proposal creators (scan in code for params)
 - `createProposalDisbandTreasury` (when proposed by the priest or a council member, the proposal is quorum-exempt but still must meet the YES vote threshold after voting ends)
 - `createProposalChangePriest`
 - `createProposalSetDictatorship`
-- `createProposalCleanupExternalRewardToken`
 - `createProposalSetQuorumBps`
 - `createProposalSetInstantQuorumBps`
 - `createProposalSetPostQuorumVotingPeriod`
@@ -258,7 +246,6 @@ Minimal flow snippets (ethers v6)
 - Join: read fee → approve(templ, fee) → `templ.join()`.
 - Join with referral: approve → `templ.joinWithReferral(referrer)`.
 - Claim member pool: preview → `templ.claimMemberRewards()`.
-- Claim external: list tokens → preview per token → `templ.claimExternalReward(token)`.
 - Create proposal (pause joins): maybe approve proposalFee → `templ.createProposalSetJoinPaused(true, 0, "Pause joins", "Reason")`.
 - Create proposal (external call): compute selector/params → `templ.createProposalCallExternal(target, value, selector, params, 0, title, desc)`.
 - Vote: `templ.vote(id, true|false)`.
@@ -279,9 +266,7 @@ Gotchas and validation checklist
 - Entry fee update constraints: new fee must be ≥10 and divisible by 10 (raw token units). Validate before proposing.
 - Curve config bounds: at most 8 total segments (primary + additional). Validate before proposing curve changes.
 - Batch external calls with ETH: when batching via `templ.batchDAO`, set `target = templ.getAddress()` and ensure the templ already holds sufficient ETH to cover the inner `values` (top-level `value` can be 0). Calls execute from the templ address, so any approve/transferFrom affects the templ's allowance/balance; any inner revert bubbles and reverts the whole batch.
-- Pagination limits: `getActiveProposalsPaginated` requires `1 ≤ limit ≤ 100`. `getExternalRewardTokensPaginated` has no on‑chain limit; pick a reasonable UI page size (e.g., 50–100) and respect `hasMore`.
-- Donations and enumeration: donated ERC‑20s are withdrawable immediately but only appear in `getExternalRewardTokens()` after the first disband for that token (or after a DAO `reconcileExternalRewardTokenDAO` call).
-- External reward cleanup: show “Cleanup token” only when `getExternalRewardState(token).poolBalance == 0` AND `remainder == 0`. Remainders are flushed as membership changes or on subsequent disbands.
+- Pagination limits: `getActiveProposalsPaginated` requires `1 ≤ limit ≤ 100`.
 - Join auto‑pause at cap: if `maxMembers` is set and reached, `joinPaused` flips true automatically. Always read `joinPaused` before enabling join UI.
 - Referral rules: referrer must be an existing member and not the recipient; otherwise referral pays 0. Consider checking `isMember(referrer)` pre‑submit.
 - Dictatorship mode: when `priestIsDictator()` is true, block proposal create/vote/execute in the UI (except the dictatorship toggle), and surface priest‑only controls for DAO actions (including `batchDAO`).
@@ -289,10 +274,9 @@ Gotchas and validation checklist
 - Action payload helper: call `TEMPL.getProposalActionData(id)` to fetch `(Action action, bytes payload)`. See README “Proposal Views” for payload shapes.
 
 8) Donate (ETH or ERC‑20)
-- Summary: Donations require no templ call. The templ accepts direct transfers of ETH or any ERC‑20; governance can later withdraw these funds to recipients or disband them into member‑claimable external rewards.
+- Summary: Donations require no templ call. The templ accepts direct transfers of ETH or any ERC‑20; governance can withdraw these funds to recipients. Disbanding the access token moves it into the member pool; disbanding other tokens sweeps the full balance to the protocol fee recipient.
 - ETH donation: present the templ address and let donors send ETH directly to `templ.target` (the contract address). This increases the templ’s ETH holdings immediately.
 - ERC‑20 donation: instruct donors to call the token’s `transfer(templ.target, amount)` from their wallet. No allowance is needed for a simple `transfer`.
 - Access‑token donations (the same token used for joins): they increase the templ’s on‑hand access‑token balance available to governance. UI display can reflect this via `getTreasuryInfo()` where `treasury = currentBalance(accessToken) − memberPoolBalance`.
-- External ERC‑20 donations (any other token): they become withdrawable by governance and disband‑able into external rewards (tracked per token). Tokens are auto‑registered for enumeration the first time governance disbands that token. Before the first disband, they won’t appear in `getExternalRewardTokens()` yet (they are still held and withdrawable).
-- Suggested UI copy: “Donate to this templ by sending ETH or any ERC‑20 directly to the templ address. Funds are controlled by governance (or the priest if dictatorship is enabled) and may be withdrawn or distributed to members according to on‑chain votes.”
+- Suggested UI copy: “Donate to this templ by sending ETH or any ERC‑20 directly to the templ address. Funds are controlled by governance (or the priest if dictatorship is enabled) and may be withdrawn or disbanded by on‑chain votes.”
 - Dictatorship behavior: when dictatorship is enabled, the priest can withdraw or disband donations immediately (no voting window); otherwise, movements happen through governance proposals.

@@ -29,8 +29,6 @@ abstract contract TemplBase is ReentrancyGuard {
     uint256 internal constant MIN_YES_VOTE_THRESHOLD_BPS = 100;
     /// @dev Default instant quorum threshold applied when deployers do not override it.
     uint256 internal constant DEFAULT_INSTANT_QUORUM_BPS = TemplDefaults.DEFAULT_INSTANT_QUORUM_BPS;
-    /// @dev Caps the number of external reward tokens tracked to keep join gas bounded.
-    uint256 internal constant MAX_EXTERNAL_REWARD_TOKENS = 256;
     /// @dev Maximum entry fee supported before arithmetic would overflow downstream accounting.
     uint256 internal constant MAX_ENTRY_FEE = type(uint128).max;
     /// @dev Maximum total number of curve segments (primary + additional) allowed.
@@ -116,8 +114,6 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 rewardSnapshot;
         /// @notice Monotonic join sequence assigned at the time of entry (0 when never joined).
         uint256 joinSequence;
-        /// @notice Reward event sequence captured when the member joined.
-        uint256 joinRewardEventSequence;
     }
 
     /// @notice Membership records keyed by wallet address.
@@ -135,17 +131,6 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @notice Incrementing counter tracking the order of member joins (starts at 1 for the priest).
     uint256 public joinSequence;
 
-    struct RewardCheckpoint {
-        /// @notice Block number when the checkpoint was recorded.
-        uint64 blockNumber;
-        /// @notice Timestamp at checkpoint creation.
-        uint64 timestamp;
-        /// @notice Cumulative rewards per member at that checkpoint.
-        uint256 cumulative;
-        /// @notice Monotonic sequence used to order checkpoints within a block.
-        uint256 eventSequence;
-    }
-
     enum Action {
         SetJoinPaused,
         UpdateConfig,
@@ -159,7 +144,6 @@ abstract contract TemplBase is ReentrancyGuard {
         SetReferralShare,
         CallExternal,
         SetEntryFeeCurve,
-        CleanupExternalRewardToken,
         SetQuorumBps,
         SetPostQuorumVotingPeriod,
         SetBurnAddress,
@@ -409,12 +393,12 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param newPriest New priest address.
 
     event PriestChanged(address indexed oldPriest, address indexed newPriest);
-    /// @notice Emitted when treasury balances are disbanded into a reward pool.
+    /// @notice Emitted when treasury balances are disbanded into the member pool or swept to protocol.
     /// @param proposalId Proposal id that authorized the disband (0 for direct DAO call).
     /// @param token Token disbanded (address(0) for ETH).
-    /// @param amount Total amount moved into the pool.
-    /// @param perMember Reward amount per member.
-    /// @param remainder Remainder carried forward to the next distribution.
+    /// @param amount Total amount moved out of treasury.
+    /// @param perMember Reward amount per member (access-token disband only).
+    /// @param remainder Remainder carried forward to the next distribution (access-token disband only).
 
     event TreasuryDisbanded(
         uint256 indexed proposalId,
@@ -423,12 +407,6 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 perMember,
         uint256 remainder
     );
-
-    /// @notice Emitted when a member claims external rewards.
-    /// @param token ERC-20 token address or address(0) for ETH.
-    /// @param member Recipient wallet.
-    /// @param amount Claimed amount.
-    event ExternalRewardClaimed(address indexed token, address indexed member, uint256 indexed amount);
 
     /// @notice Emitted when templ metadata is updated.
     /// @param name New templ name.
@@ -488,34 +466,11 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @notice Emitted when dictatorship mode is toggled.
     /// @param enabled True when dictatorship is enabled, false when disabled.
     event DictatorshipModeChanged(bool indexed enabled);
-    /// @notice Emitted when DAO sweeps an external reward remainder to a recipient.
-    /// @param token External reward token that was swept (address(0) for ETH).
-    /// @param recipient Wallet receiving the remainder.
-    /// @param amount Amount transferred to `recipient`.
-    event ExternalRewardRemainderSwept(address indexed token, address indexed recipient, uint256 indexed amount);
     /// @notice Emitted when DAO sweeps the member pool remainder to a recipient.
     /// @param recipient Wallet receiving the swept access-token amount.
     /// @param amount Amount transferred to `recipient`.
     event MemberPoolRemainderSwept(address indexed recipient, uint256 indexed amount);
 
-    struct ExternalRewardState {
-        uint256 poolBalance;
-        uint256 cumulativeRewards;
-        uint256 rewardRemainder;
-        bool exists;
-        RewardCheckpoint[] checkpoints;
-    }
-
-    /// @notice External reward accounting keyed by ERC-20/ETH address.
-    mapping(address => ExternalRewardState) internal externalRewards;
-    /// @notice List of external reward tokens for enumeration in UIs.
-    address[] internal externalRewardTokens;
-    /// @notice Tracks index positions for external reward tokens (index + 1).
-    mapping(address => uint256) internal externalRewardTokenIndex;
-    /// @notice Member snapshots for each external reward token.
-    mapping(address => mapping(address => uint256)) internal memberExternalRewardSnapshots;
-    /// @notice Monotonic sequence used to order joins vs external reward checkpoints.
-    uint256 public rewardEventSequence;
     /// @notice Monotonic epoch that advances when council membership changes.
     uint256 public councilEpoch;
     /// @notice Snapshot of council membership state at a given epoch.
@@ -553,114 +508,6 @@ abstract contract TemplBase is ReentrancyGuard {
         _;
     }
 
-    /// @notice Persists a new external reward checkpoint so future joins can baseline correctly.
-    /// @param rewards External reward state to record a checkpoint for.
-    function _recordExternalCheckpoint(ExternalRewardState storage rewards) internal {
-        uint256 nextSequence = ++rewardEventSequence;
-        rewards.checkpoints.push(
-            RewardCheckpoint({
-                blockNumber: uint64(block.number),
-                timestamp: uint64(block.timestamp),
-                cumulative: rewards.cumulativeRewards,
-                eventSequence: nextSequence
-            })
-        );
-    }
-
-    /// @notice Determines the cumulative rewards baseline for a member using join-time snapshots.
-    /// @param rewards External reward state that holds checkpoints.
-    /// @param memberInfo Membership record used to locate the baseline.
-    /// @return baseline Baseline cumulative reward value for the member.
-    function _externalBaselineForMember(
-        ExternalRewardState storage rewards,
-        Member storage memberInfo
-    ) internal view returns (uint256 baseline) {
-        RewardCheckpoint[] storage checkpoints = rewards.checkpoints;
-        uint256 len = checkpoints.length;
-        if (len == 0) {
-            return rewards.cumulativeRewards;
-        }
-        uint256 memberEventSequence = memberInfo.joinRewardEventSequence;
-        uint256 low = 0;
-        uint256 high = len;
-
-        while (low < high) {
-            uint256 mid = (low + high) >> 1;
-            RewardCheckpoint storage cp = checkpoints[mid];
-            if (memberEventSequence < cp.eventSequence) {
-                high = mid;
-            } else {
-                low = mid + 1;
-            }
-        }
-
-        if (low == 0) {
-            return 0;
-        }
-
-        return checkpoints[low - 1].cumulative;
-    }
-
-    /// @notice Clears an external reward token from enumeration once fully settled.
-    /// @param token External reward token to remove (address(0) for ETH allowed).
-    function _cleanupExternalRewardToken(address token) internal {
-        if (token == accessToken) revert TemplErrors.InvalidCallData();
-        ExternalRewardState storage rewards = externalRewards[token];
-        if (!rewards.exists) revert TemplErrors.InvalidCallData();
-        if (rewards.poolBalance != 0 || rewards.rewardRemainder != 0) {
-            revert TemplErrors.ExternalRewardsNotSettled();
-        }
-        rewards.poolBalance = 0;
-        rewards.rewardRemainder = 0;
-        rewards.exists = false;
-        _removeExternalToken(token);
-    }
-
-    /// @notice Distributes any outstanding external reward remainders to existing members before new joins.
-    function _flushExternalRemainders() internal {
-        uint256 currentMembers = memberCount;
-        if (currentMembers == 0) {
-            return;
-        }
-        uint256 tokenCount = externalRewardTokens.length;
-        for (uint256 i = 0; i < tokenCount; ++i) {
-            address token = externalRewardTokens[i];
-            ExternalRewardState storage rewards = externalRewards[token];
-            uint256 remainder = rewards.rewardRemainder;
-            if (remainder == 0) {
-                continue;
-            }
-            uint256 perMember = remainder / currentMembers;
-            if (perMember == 0) {
-                continue;
-            }
-            uint256 leftover = remainder % currentMembers;
-            rewards.rewardRemainder = leftover;
-            rewards.cumulativeRewards += perMember;
-            _recordExternalCheckpoint(rewards);
-        }
-    }
-
-    /// @notice Sends an external reward remainder to `recipient`, forfeiting dust that cannot be evenly split.
-    /// @param token External reward token whose remainder should be swept (address(0) for ETH).
-    /// @param recipient Destination wallet for the swept amount.
-    function _sweepExternalRewardRemainder(address token, address recipient) internal {
-        if (recipient == address(0)) revert TemplErrors.InvalidRecipient();
-        ExternalRewardState storage rewards = externalRewards[token];
-        if (!rewards.exists) revert TemplErrors.InvalidCallData();
-        uint256 remainder = rewards.rewardRemainder;
-        if (remainder == 0) revert TemplErrors.NoRewardsToClaim();
-        if (remainder > rewards.poolBalance) revert TemplErrors.InvalidCallData();
-        rewards.rewardRemainder = 0;
-        rewards.poolBalance -= remainder;
-        if (token == address(0)) {
-            (bool success, ) = payable(recipient).call{value: remainder}("");
-            if (!success) revert TemplErrors.ProposalExecutionFailed();
-        } else {
-            _safeTransfer(token, recipient, remainder);
-        }
-        emit ExternalRewardRemainderSwept(token, recipient, remainder);
-    }
 
     /// @notice Sends the member pool remainder (access token) to `recipient`.
     /// @param recipient Wallet receiving the leftover member pool amount.
@@ -1637,25 +1484,13 @@ abstract contract TemplBase is ReentrancyGuard {
 
             _safeTransfer(accessToken, recipient, amount);
         } else if (token == address(0)) {
-            ExternalRewardState storage rewards = externalRewards[address(0)];
-            if (!rewards.exists && (rewards.poolBalance != 0 || rewards.rewardRemainder != 0)) {
-                revert TemplErrors.ExternalRewardsNotSettled();
-            }
             uint256 currentBalance = address(this).balance;
-            uint256 reservedForMembers = rewards.exists ? rewards.poolBalance : 0;
-            uint256 availableBalance = currentBalance > reservedForMembers ? currentBalance - reservedForMembers : 0;
-            if (amount > availableBalance) revert TemplErrors.InsufficientTreasuryBalance();
+            if (amount > currentBalance) revert TemplErrors.InsufficientTreasuryBalance();
             (bool success, ) = payable(recipient).call{value: amount}("");
             if (!success) revert TemplErrors.ProposalExecutionFailed();
         } else {
-            ExternalRewardState storage rewards = externalRewards[token];
-            if (!rewards.exists && (rewards.poolBalance != 0 || rewards.rewardRemainder != 0)) {
-                revert TemplErrors.ExternalRewardsNotSettled();
-            }
             uint256 currentBalance = IERC20(token).balanceOf(address(this));
-            uint256 reservedForMembers = rewards.exists ? rewards.poolBalance : 0;
-            uint256 availableBalance = currentBalance > reservedForMembers ? currentBalance - reservedForMembers : 0;
-            if (amount > availableBalance) revert TemplErrors.InsufficientTreasuryBalance();
+            if (amount > currentBalance) revert TemplErrors.InsufficientTreasuryBalance();
             _safeTransfer(token, recipient, amount);
         }
         emit TreasuryAction(proposalId, token, recipient, amount);
@@ -1704,7 +1539,7 @@ abstract contract TemplBase is ReentrancyGuard {
         emit PriestChanged(old, newPriest);
     }
 
-    /// @notice Routes treasury balances into member or external pools so members can claim them evenly.
+    /// @notice Routes access-token treasury into the member pool; other tokens sweep to the protocol recipient.
     /// @param token Token to disband (`address(0)` for ETH or ERC-20 address).
     /// @param proposalId Proposal id authorizing the disband (0 for direct DAO call).
     function _disbandTreasury(address token, uint256 proposalId) internal {
@@ -1730,33 +1565,17 @@ abstract contract TemplBase is ReentrancyGuard {
             return;
         }
 
-        ExternalRewardState storage rewards = externalRewards[token];
-        if (!rewards.exists) {
-            _registerExternalToken(token);
-            rewards = externalRewards[token];
-        }
-        uint256 tokenBalance;
-        if (token == address(0)) {
-            tokenBalance = address(this).balance;
-        } else {
-            tokenBalance = IERC20(token).balanceOf(address(this));
-        }
+        uint256 tokenBalance = token == address(0)
+            ? address(this).balance
+            : IERC20(token).balanceOf(address(this));
         if (tokenBalance == 0) revert TemplErrors.NoTreasuryFunds();
-
-        uint256 poolBalance = rewards.poolBalance;
-        uint256 totalAmount = tokenBalance > poolBalance ? tokenBalance - poolBalance : 0;
-        if (totalAmount == 0) revert TemplErrors.NoTreasuryFunds();
-
-        uint256 toSplit = totalAmount + rewards.rewardRemainder;
-        uint256 perMember = toSplit / activeMembers;
-        uint256 newRemainder = toSplit % activeMembers;
-
-        rewards.poolBalance += totalAmount;
-        rewards.rewardRemainder = newRemainder;
-        rewards.cumulativeRewards += perMember;
-        _recordExternalCheckpoint(rewards);
-
-        emit TreasuryDisbanded(proposalId, token, totalAmount, perMember, newRemainder);
+        if (token == address(0)) {
+            (bool success, ) = payable(protocolFeeRecipient).call{value: tokenBalance}("");
+            if (!success) revert TemplErrors.ProposalExecutionFailed();
+        } else {
+            _safeTransfer(token, protocolFeeRecipient, tokenBalance);
+        }
+        emit TreasuryDisbanded(proposalId, token, tokenBalance, 0, 0);
     }
 
     /// @notice Tracks a newly active `proposalId` for enumeration by views.
@@ -1850,37 +1669,6 @@ abstract contract TemplBase is ReentrancyGuard {
         }
     }
 
-    /// @notice Registers `token` so external rewards can be enumerated in views.
-    /// @param token ERC-20 token address or address(0) for ETH.
-    function _registerExternalToken(address token) internal {
-        ExternalRewardState storage rewards = externalRewards[token];
-        if (!rewards.exists) {
-            if (externalRewardTokens.length > MAX_EXTERNAL_REWARD_TOKENS - 1) {
-                revert TemplErrors.ExternalRewardLimitReached();
-            }
-            rewards.exists = true;
-            externalRewardTokens.push(token);
-            externalRewardTokenIndex[token] = externalRewardTokens.length;
-        }
-    }
-
-    /// @notice Removes `token` from the external rewards enumeration set.
-    /// @param token ERC-20 token address or address(0) for ETH.
-    function _removeExternalToken(address token) internal {
-        uint256 indexPlusOne = externalRewardTokenIndex[token];
-        if (indexPlusOne == 0) {
-            return;
-        }
-        uint256 index = indexPlusOne - 1;
-        uint256 lastIndex = externalRewardTokens.length - 1;
-        if (index != lastIndex) {
-            address movedToken = externalRewardTokens[lastIndex];
-            externalRewardTokens[index] = movedToken;
-            externalRewardTokenIndex[movedToken] = index + 1;
-        }
-        externalRewardTokens.pop();
-        externalRewardTokenIndex[token] = 0;
-    }
 
     /// @notice Scales `amount` by `multiplier` (bps), saturating at `MAX_ENTRY_FEE`.
     /// @param amount Base value to scale.

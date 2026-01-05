@@ -65,41 +65,6 @@ describe("TemplTreasury onlyDAO exhaustive coverage", function () {
     await expect(templ.connect(priest).setEntryFeeCurveDAO(staticCurve, 0))
       .to.emit(templ, "EntryFeeCurveUpdated");
 
-    // Disband treasury to pool (access token), then cleanup external token after adding and settling pool
-    const Other = await ethers.getContractFactory("contracts/mocks/TestToken.sol:TestToken");
-    const other = await Other.deploy("Other", "OTH", 18);
-    await other.waitForDeployment();
-    // donate other token and disband -> external pool track
-    await other.mint(priest.address, ethers.parseUnits("10", 18));
-    await other.connect(priest).transfer(await templ.getAddress(), ethers.parseUnits("10", 18));
-    await templ.connect(priest).disbandTreasuryDAO(other.target);
-    // Claim external reward to reduce pool and then cleanup only after pool is 0
-    // We will zero pool by trying to cleanup and expect revert, then distribute remainder (if any) by adding a member then claim
-    await expect(templ.connect(priest).cleanupExternalRewardToken(other.target))
-      .to.be.revertedWithCustomError(templ, "ExternalRewardsNotSettled");
-    // Add another member to flush potential remainder paths and claim
-    const [, , , , joiner] = accounts;
-    await mintToUsers(token, [joiner], ENTRY_FEE * 2n);
-    await token.connect(joiner).approve(await templ.getAddress(), await templ.entryFee());
-    await templ.connect(joiner).join();
-    const claimablePriest = await templ.getClaimableExternalReward(priest.address, other.target);
-    if (claimablePriest > 0n) {
-      await templ.connect(priest).claimExternalReward(other.target);
-    }
-    const claimableJoiner = await templ.getClaimableExternalReward(joiner.address, other.target);
-    if (claimableJoiner > 0n) {
-      await templ.connect(joiner).claimExternalReward(other.target);
-    }
-    // Pool and remainder should now be minimal; sweep dust if needed, then cleanup.
-    const state = await templ.getExternalRewardState(other.target);
-    if (state.remainder > 0n) {
-      await templ.connect(priest).sweepExternalRewardRemainderDAO(other.target, priest.address);
-    }
-    const settled = await templ.getExternalRewardState(other.target);
-    if (settled.poolBalance === 0n && settled.remainder === 0n) {
-      await templ.connect(priest).cleanupExternalRewardToken(other.target);
-    }
-
     // Withdrawals
     // ERC20
     const beforeBal = await token.balanceOf(recipient.address);
