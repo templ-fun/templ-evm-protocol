@@ -561,7 +561,7 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
 
 ## Limits & Defaults
 - `BPS_DENOMINATOR = 10_000`.
-- Defaults via [`TemplDefaults`](contracts/TemplDefaults.sol): quorum bps, post‑quorum voting period, burn address.
+- Defaults via [`TemplDefaults`](contracts/TemplDefaults.sol): quorum bps, post‑quorum voting period, burn address, YES vote threshold, instant quorum.
 - `MAX_EXTERNAL_REWARD_TOKENS = 256` (UI enumeration bound).
 - `MAX_ENTRY_FEE = type(uint128).max` (entry fee safety guard).
 - `MAX_CURVE_SEGMENTS = 8` (primary + additional; prevents curve OOG griefing).
@@ -569,13 +569,13 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
 - Templ metadata caps: name ≤256 bytes; description ≤2048 bytes; logo URI ≤2048 bytes.
 - Pre‑quorum voting window: default 36 hours (min 36h, max 30 days); view `preQuorumVotingPeriod`; adjust via `setPreQuorumVotingPeriodDAO`.
 - Post-quorum voting window: default 36 hours (min 1h, max 30 days); view `postQuorumVotingPeriod`; adjust via `setPostQuorumVotingPeriodDAO`.
-- Factory defaults when using `createTempl` / `createTemplFor` (or when passing the `-1` sentinel in `createTemplWithConfig`):
+- Factory defaults when using `createTempl` / `createTemplFor` / `safeDeployFor`:
   - Fee split: burn 3_000 bps, treasury 3_000 bps, member pool 3_000 bps (plus protocol bps from factory).
   - Membership cap: 249.
   - Curve: exponential primary segment at 10_094 bps for 248 paid joins, then static tail (price holds if cap expands).
   - Proposal fee / referral share: defaults to 2_500 bps each only for `createTempl`; `createTemplFor`/`safeDeployFor` use caller-provided values, and `createTemplWithConfig` requires explicit values.
 - YES vote threshold: 5_100 bps (51%); valid range [100, 10_000] bps via governance or deploy config.
-  - `createTemplWithConfig` auto-fills quorum, execution delay, burn address, curve, YES threshold, and instant quorum when passed as 0/false; use `-1` for split fields to receive defaults.
+  - `createTemplWithConfig` auto-fills quorum, execution delay, burn address, curve, YES threshold, and instant quorum when passed as 0/false; use `-1` for split fields to receive defaults; `maxMembers` is never auto-filled (0 = uncapped).
 
 ## Indexing Notes
 - Track `ProposalCreated` then hydrate with `getProposal` + `getProposalSnapshots`.
