@@ -515,7 +515,7 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
   - Required: `PROTOCOL_FEE_RECIPIENT`
   - Optional: `PROTOCOL_BPS`, `FACTORY_ADDRESS` (reuse), `FACTORY_DEPLOYER` (defaults to signer address)
   - Deploys modules if not provided via env and wires them into the factory constructor.
-- [scripts/deploy-templ.cjs](scripts/deploy-templ.cjs): key envs are `FACTORY_ADDRESS` (or omit to auto‑deploy modules + factory locally), `TOKEN_ADDRESS`, `ENTRY_FEE`, plus optional metadata (`TEMPL_NAME`, `TEMPL_DESCRIPTION`, `TEMPL_LOGO_LINK`). Many toggles are supported (priest, quorum/post‑quorum voting periods, caps, fee splits, referral share, curve). Optional: `POST_QUORUM_VOTING_PERIOD_SECONDS`, `YES_VOTE_THRESHOLD_BPS` (1‑10,000 bps; defaults to 5,100), `INSTANT_QUORUM_BPS` (1‑10,000 bps; defaults to 10,000), and `COUNCIL_MODE`/`START_COUNCIL_MODE` (defaults to council mode when unset) to launch directly in council governance.
+- [scripts/deploy-templ.cjs](scripts/deploy-templ.cjs): key envs are `FACTORY_ADDRESS` (or omit to auto-deploy modules + factory on the configured Hardhat network), `TOKEN_ADDRESS`, `ENTRY_FEE`, plus optional metadata (`TEMPL_NAME`, `TEMPL_DESCRIPTION`, `TEMPL_LOGO_LINK`). Many toggles are supported (priest, quorum/post-quorum voting periods, caps, fee splits, referral share, curve). Optional: `POST_QUORUM_VOTING_PERIOD_SECONDS`, `YES_VOTE_THRESHOLD_BPS` (100-10,000 bps; defaults to 5,100), `INSTANT_QUORUM_BPS` (1-10,000 bps; defaults to 10,000), and `COUNCIL_MODE`/`START_COUNCIL_MODE` (defaults to council mode when unset) to launch directly in council governance.
 - Verify helpers (see [scripts/verify-templ.cjs](scripts/verify-templ.cjs), [scripts/verify-factory.cjs](scripts/verify-factory.cjs)):
   - `verify:templ` verifies a TEMPL instance, reconstructing constructor args from chain data. Provide `TEMPL_ADDRESS` or `--templ 0x...` and run with a configured Hardhat network.
   - `verify:factory` verifies a TemplFactory deployment using on‑chain getters. Provide `FACTORY_ADDRESS` or `--factory 0x...`.
@@ -630,7 +630,7 @@ When instant quorum is satisfied (default: 100% of eligible voters cast YES vote
 #### Proposal Fee Uniformity
 Proposal fees apply equally to council and non-council proposers:
 - **Rationale**: Keeps proposal-cost incentives consistent across governance modes.
-- **Implementation**: Fees are always charged when `proposalCreationFeeBps > 0` (see `TemplBase`).
+- **Implementation**: Fees are charged when `proposalCreationFeeBps > 0` and the computed `proposalFee` is non-zero (entryFee * bps / 10_000, integer math).
 
 #### Dictatorship Halts Normal Governance
 - **Behavior**: When `priestIsDictator == true`, all governance flows except toggling dictatorship revert. Proposal creation, voting, and execution are blocked for actions other than `SetDictatorship`. The priest can still call any `onlyDAO` function directly.

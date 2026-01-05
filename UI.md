@@ -23,7 +23,7 @@ Common preflight helpers
 
 Allowances and approvals
 - Joins (all variants): approve the access token to `templ.target` before calling the join. Recommend a buffer of `2 × entryFee` to absorb fee changes and cover the first proposal creation fee. Always make this adjustable and never default to unlimited.
-- Proposal creation fee: when `proposalCreationFeeBps > 0`, the proposer must approve `proposalFee = entryFee * proposalCreationFeeBps / 10_000` to `templ.target` prior to any `createProposal*` call.
+- Proposal creation fee: when `proposalCreationFeeBps > 0` and the computed `proposalFee = entryFee * proposalCreationFeeBps / 10_000` is non-zero, the proposer must approve `proposalFee` to `templ.target` prior to any `createProposal*` call.
 - Donations: no approvals are needed. Donors send ETH directly to the templ address, or call token `transfer(templ.target, amount)`.
 
 Donations: address and custody
@@ -260,7 +260,7 @@ Where to look in code
 
 Gotchas and validation checklist
 - One active proposal per proposer: `templ.hasActiveProposal(user)` blocks new proposals until the previous one is executed/expired. Disable create UI when true.
-- Voting window anchors at quorum: when quorum is reached, `endTime` resets to `block.timestamp + postQuorumVotingPeriod`. Always show the latest `endTime` from `getProposal(id)`; do not precompute.
+- Voting window anchors at quorum: when quorum is reached, `endTime` resets to `block.timestamp + postQuorumVotingPeriod`, unless instant quorum triggers and `endTime` is set to `block.timestamp`. Always show the latest `endTime` from `getProposal(id)` and check `instantQuorumMet`; do not precompute.
 - Pre‑quorum voting period bounds: enforce `[36h, 30d]`. Passing `0` applies the templ default.
 - Title/description caps: title ≤256 bytes, description ≤2048 bytes. Truncate or warn before submit.
 - Entry fee update constraints: new fee must be ≥10 and divisible by 10 (raw token units). Validate before proposing.
