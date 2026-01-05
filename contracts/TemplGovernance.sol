@@ -335,8 +335,9 @@ contract TemplGovernanceModule is TemplBase {
     /// @param _title On-chain title for the proposal.
     /// @param _description On-chain description for the proposal.
     /// @return proposalId Newly created proposal identifier.
-    /// @dev If the proposer is the `priest`, the proposal is quorum-exempt to allow an otherwise inactive
-    ///      templ (insufficient turnout) to unwind with a simple majority.
+    /// @dev If the proposer is the `priest`, or a council member while council mode is enabled, the
+    ///      proposal is quorum-exempt to allow an otherwise inactive templ (insufficient turnout)
+    ///      to unwind with a simple majority.
     function createProposalDisbandTreasury(
         address _token,
         uint256 _votingPeriod,
@@ -347,7 +348,7 @@ contract TemplGovernanceModule is TemplBase {
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
         p.action = Action.DisbandTreasury;
         p.token = _token;
-        if (msg.sender == priest) {
+        if (msg.sender == priest || (councilModeEnabled && councilMembers[msg.sender])) {
             p.quorumExempt = true;
         }
         return id;

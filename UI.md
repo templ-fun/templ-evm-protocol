@@ -224,7 +224,7 @@ Complete proposal creators (scan in code for params)
 - `createProposalSetEntryFeeCurve`
 - `createProposalCallExternal`
 - `createProposalWithdrawTreasury`
-- `createProposalDisbandTreasury` (when proposed by the priest, the proposal is quorum-exempt but still must meet the YES vote threshold after voting ends)
+- `createProposalDisbandTreasury` (when proposed by the priest or a council member while council mode is enabled, the proposal is quorum-exempt but still must meet the YES vote threshold after voting ends)
 - `createProposalChangePriest`
 - `createProposalSetDictatorship`
 - `createProposalSetQuorumBps`
