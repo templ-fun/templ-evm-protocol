@@ -905,6 +905,7 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @notice Returns true when `yesVotes` satisfies the configured YES threshold relative to total votes.
     /// @param yesVotes Count of YES ballots.
     /// @param noVotes Count of NO ballots.
+    /// @param thresholdBps YES threshold in basis points of total votes cast.
     /// @return meets True when the YES ratio clears the configured threshold.
     function _meetsYesVoteThreshold(
         uint256 yesVotes,
@@ -1065,11 +1066,7 @@ abstract contract TemplBase is ReentrancyGuard {
     function _proposalPassed(Proposal storage proposal) internal view returns (bool passed) {
         if (proposal.quorumExempt) {
             return (!(block.timestamp < proposal.endTime) &&
-                _meetsYesVoteThreshold(
-                    proposal.yesVotes,
-                    proposal.noVotes,
-                    proposal.yesVoteThresholdBpsSnapshot
-                ));
+                _meetsYesVoteThreshold(proposal.yesVotes, proposal.noVotes, proposal.yesVoteThresholdBpsSnapshot));
         }
         bool instant = proposal.instantQuorumMet;
         if (proposal.quorumReachedAt == 0 && !instant) {

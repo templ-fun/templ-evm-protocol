@@ -474,9 +474,7 @@ contract TemplGovernanceModule is TemplBase {
         if (!proposal.quorumExempt && proposal.quorumReachedAt == 0) {
             if (proposal.eligibleVoters != 0) {
                 unchecked {
-                    if (
-                        !(proposal.yesVotes * BPS_DENOMINATOR < proposal.quorumBpsSnapshot * proposal.eligibleVoters)
-                    ) {
+                    if (!(proposal.yesVotes * BPS_DENOMINATOR < proposal.quorumBpsSnapshot * proposal.eligibleVoters)) {
                         proposal.quorumReachedAt = block.timestamp;
                         proposal.quorumSnapshotBlock = block.number;
                         proposal.postQuorumEligibleVoters = councilSnapshotEpoch == 0
