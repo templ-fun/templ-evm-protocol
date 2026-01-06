@@ -7,7 +7,7 @@ Templ lets anyone create on-chain, token‑gated groups (“templs”) that accr
 Quick links: [At a Glance](#protocol-at-a-glance) · [Architecture](#architecture) · [Governance‑Controlled Upgrades](#governance-controlled-upgrades) · [Solidity Patterns](#solidity-patterns) · [Repo Map](#repo-map) · [Glossary](#glossary) · [Lifecycle](#lifecycle) · [Quickstart](#quickstart) · [Deploy](#deploy-locally) · [Safety Model](#safety-model) · [Security](#security) · [Constraints](#constraints) · [Limits](#limits--defaults) · [Indexing](#indexing-notes) · [Proposal Views](#proposal-views) · [Tests](#tests) · [FAQ](#faq) · [Troubleshooting](#troubleshooting) · [Gotchas](#gotchas)
 
 ## Protocol At a Glance
-- Create a templ tied to a vanilla ERC‑20 access token; members join by paying an entry fee in that token. The fee is split into burn, treasury, member‑pool, and protocol slices.
+- Create a templ tied to a vanilla ERC‑20 access token (assumed, not enforced); members join by paying an entry fee in that token. The fee is split into burn, treasury, member‑pool, and protocol slices.
 - Existing members accrue pro‑rata rewards from the member‑pool slice and can claim at any time. Templs can also hold ETH or other ERC‑20s as unaccounted treasury assets.
 - Donations (ETH or ERC‑20) sent directly to the templ address are held by the templ and governed: governance can withdraw these funds to recipients. Disbanding the access token moves treasury into the member pool; disbanding other tokens sweeps the full balance to the protocol fee recipient. ERC‑721 NFTs can also be custodied by a templ and later moved via governance (see NFT notes below).
 - Governance is member‑only: propose, vote, and execute actions to change parameters, move treasury, update curves/metadata, or call arbitrary external contracts.
@@ -36,7 +36,7 @@ At runtime a templ behaves like one contract with clean separation of concerns v
 - Council governance: [`TemplCouncilModule`](contracts/TemplCouncil.sol)
 - Shared storage: [`TemplBase`](contracts/TemplBase.sol)
 
-Deployers configure pricing curves, fee splits, referral rewards, proposal fees, quorum/delay, and membership caps. The access token is any vanilla ERC‑20 you choose.
+Deployers configure pricing curves, fee splits, referral rewards, proposal fees, quorum/delay, and membership caps. The access token is assumed to be a vanilla ERC‑20.
 
 ### Council governance
 - Factory-created templs start in council mode by default. The priest is the first council member; additional council members are added through proposals.
@@ -240,9 +240,10 @@ flowchart LR
 - Governance‑controlled upgrades: `setRoutingModuleDAO(address,bytes4[])` rewires selectors under `onlyDAO` (contracts/TEMPL.sol).
 
 ## Key Concepts
-- Fee split: burn / treasury / member pool / protocol; must sum to 10_000 bps.
+- Fee split: burn / treasury / member pool / protocol; must sum to 10_000 bps. No minimums apply to burn/treasury/member‑pool; only the protocol share is fixed per factory config.
 - Member pool: portion of each join streamed to existing members pro‑rata; optional referral share is paid from this slice.
 - Curves: entry fee evolves by static/linear/exponential segments; see [`TemplCurve`](contracts/TemplCurve.sol).
+- Base entry fee anchor: stored anchor for curve math; may be non-divisible after retargets while `entryFee` remains normalized.
 - Snapshots: eligibility is frozen by join sequence at proposal creation, then again at quorum; proposals also snapshot their voting mode and (if council-only) the council roster. For member-wide proposals, the post‑quorum eligible voter count snapshots `memberCount` at quorum even if council mode changes later.
 - Caps/pauses: optional `maxMembers` (auto‑pauses at cap) plus `joinPaused` toggle.
 - Governance access: proposing and voting require membership; proposers auto‑vote YES only when they are allowed to vote (i.e., not excluded by council mode).
@@ -517,7 +518,7 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
 
 ## Constraints
 - Entry fee: must be ≥10 and divisible by 10.
-- Entry fee (runtime): curve recomputes normalize to ≥10 and divisible by 10 (decaying curves floor at 10).
+- Entry fee (runtime): curve recomputes normalize to ≥10 and divisible by 10 (decaying curves floor at 10). Base anchors may be non-divisible.
 - Fee split: burn + treasury + member pool + protocol must sum to 10_000 bps.
 - Pre‑quorum voting window: bounded to [36 hours, 30 days].
 - Post-quorum voting window: bounded to [1 hour, 30 days].
@@ -528,6 +529,7 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
 - Defaults via [`TemplDefaults`](contracts/TemplDefaults.sol): quorum bps, post‑quorum voting period, burn address, YES vote threshold, instant quorum.
 - `MAX_ENTRY_FEE = type(uint128).max` (entry fee safety guard).
 - `MAX_CURVE_SEGMENTS = 8` (primary + additional; prevents curve OOG griefing).
+- `MAX_EXTERNAL_CALLDATA_BYTES = 4096` (selector + params cap for `CallExternal` proposals).
 - Proposal metadata caps: title ≤256 bytes; description ≤2048 bytes.
 - Templ metadata caps: name ≤256 bytes; description ≤2048 bytes; logo URI ≤2048 bytes.
 - Pre‑quorum voting window: default 36 hours (min 36h, max 30 days); view `preQuorumVotingPeriod`; adjust via `setPreQuorumVotingPeriodDAO`.
@@ -554,7 +556,7 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
 - SetMetadata → `abi.encode(string name, string description, string logoLink)`
 - SetProposalFee → `abi.encode(uint256 newProposalCreationFeeBps)`
 - SetReferralShare → `abi.encode(uint256 newReferralShareBps)`
-- SetEntryFeeCurve → `abi.encode(CurveConfig curve, uint256 baseEntryFee)`
+- SetEntryFeeCurve → `abi.encode(CurveConfig curve, uint256 baseEntryFee)` (base anchors may be non-divisible; `entryFee` is normalized on-chain)
 - CallExternal → `abi.encode(address target, uint256 value, bytes calldata)`
 - WithdrawTreasury → `abi.encode(address token, address recipient, uint256 amount)`
 - DisbandTreasury → `abi.encode(address token)`
@@ -568,7 +570,7 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
 - AddCouncilMember / RemoveCouncilMember → `abi.encode(address member)`
 
 ## Safety Model
-- Vanilla ERC‑20 only: the access token must not tax, rebase, or hook transfers; accounting assumes exact in/out.
+- Vanilla ERC‑20 assumption: the access token must not tax, rebase, or hook transfers; accounting assumes exact in/out and is not enforced on-chain.
 - Router‑only entry: modules can only be reached via `TEMPL` delegatecalls; direct module calls revert by design.
 - Reentrancy containment and snapshotting of eligibility at creation/quorum.
 - Anchored execution window post‑quorum; strict fee invariants; bounded enumeration.
@@ -577,7 +579,7 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
 See tests by topic in [test/](test/).
 
 ## Security
-- Access token must be vanilla ERC‑20 (no fee‑on‑transfer, no rebasing, no hooks). Accounting assumes exact transfer amounts.
+- Access token is assumed to be vanilla ERC‑20 (no fee‑on‑transfer, no rebasing, no hooks). Accounting assumes exact transfer amounts and does not enforce compatibility on-chain.
 - External‑call proposals can execute arbitrary logic; treat with the same caution as timelocked admin calls.
 - Reentrancy is guarded; modules are only reachable via the `TEMPL` router (direct module calls revert).
 - No external audit yet. Treat as experimental and keep treasury exposure conservative until audited.
@@ -587,7 +589,7 @@ Governance is powerful by design: it can upgrade modules and perform arbitrary e
 
 `batchDAO` is intended only for batching external contract calls (like a multisig) and is not meant for calling back into the templ itself.
 
-The access token is assumed to be vanilla ERC‑20 (no fee‑on‑transfer, rebasing, or hooks). Join/proposal‑fee transfers enforce exact balance deltas, so non‑vanilla tokens will revert; deployers must choose compatible tokens.
+The access token is assumed to be vanilla ERC‑20 (no fee‑on‑transfer, rebasing, or hooks). Non‑vanilla tokens can break accounting or liveness; deployers must choose compatible tokens.
 
 Council Mode is intended to be a stable governance configuration, but the protocol supports transitioning between governance modes.
 
@@ -637,7 +639,7 @@ For topic-specific suites, browse [test/](test/).
 CI runs on PRs when contracts, tests, package files, or `hardhat.config.cjs` change, keeping checks focused on relevant changes.
 
 ## Gotchas
-- Use a vanilla ERC‑20 for access token (no transfer fees/rebases/hooks).
+- Use a vanilla ERC‑20 for access token (no transfer fees/rebases/hooks); this is assumed and not enforced on-chain.
 - Entry fee must be ≥10 and divisible by 10; runtime curve outputs are floored to the nearest 10 with a minimum of 10, and there’s a `MAX_ENTRY_FEE` guard.
 - Entry fee can move with the curve between submission and mining; use `joinWithMaxEntryFee` variants to cap slippage.
 - Only one active proposal per proposer.

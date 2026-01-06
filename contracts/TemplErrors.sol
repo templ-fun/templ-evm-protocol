@@ -101,6 +101,4 @@ library TemplErrors {
     error PermissionlessUnchanged();
     /// @notice Thrown when a module function is called directly instead of via delegatecall through TEMPL.
     error DelegatecallOnly();
-    /// @notice Thrown when a token transfer violates vanilla ERC-20 balance delta expectations.
-    error NonVanillaToken();
 }

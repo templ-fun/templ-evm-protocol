@@ -232,11 +232,7 @@ describe("EntryFeeCurve", function () {
 
         const newCurrentFee = ENTRY_FEE * 2n;
         const paidJoins = await templ.totalJoins();
-        let recalibratedBase = solveBaseEntryFee(newCurrentFee, upgradedCurve, paidJoins);
-        const baseRemainder = recalibratedBase % 10n;
-        if (baseRemainder !== 0n) {
-            recalibratedBase = recalibratedBase - baseRemainder + 10n;
-        }
+        const recalibratedBase = solveBaseEntryFee(newCurrentFee, upgradedCurve, paidJoins);
 
         await templ
             .connect(voterA)
@@ -293,15 +289,8 @@ describe("EntryFeeCurve", function () {
         await joinMembers(templ, token, joiners);
 
         const paidJoins = await templ.totalJoins();
-        let targetEntryFee = 1240n;
-        let recalibratedBase = solveBaseEntryFee(targetEntryFee, curve, paidJoins);
-        let attempts = 0;
-        while (recalibratedBase % 10n !== 0n && attempts < 200) {
-            targetEntryFee += 10n;
-            recalibratedBase = solveBaseEntryFee(targetEntryFee, curve, paidJoins);
-            attempts += 1;
-        }
-        expect(recalibratedBase % 10n).to.equal(0n);
+        const targetEntryFee = 1240n;
+        const recalibratedBase = solveBaseEntryFee(targetEntryFee, curve, paidJoins);
 
         await templ
             .connect(joiners[0])
@@ -320,6 +309,47 @@ describe("EntryFeeCurve", function () {
         await token.connect(nextJoiner).approve(templAddress, targetEntryFee);
         await templ.connect(nextJoiner).join();
 
+        expect(await templ.entryFee()).to.equal(expectedNextFee);
+    });
+
+    it("retargets entry fees even when the solved base is not divisible by 10", async function () {
+        const linearCurve = {
+            primary: { style: CURVE_STYLE.Linear, rateBps: 123, length: 0 },
+            additionalSegments: []
+        };
+        const baseFee = 1000n;
+        const { templ, token, accounts } = await deployTempl({
+            entryFee: baseFee,
+            curve: linearCurve,
+        });
+
+        const [, priest, proposer, nextJoiner] = accounts;
+        await mintToUsers(token, [proposer, nextJoiner], baseFee * 20n);
+
+        const templAddress = await templ.getAddress();
+        await token.connect(proposer).approve(templAddress, baseFee);
+        await templ.connect(proposer).join();
+
+        const paidJoins = await templ.totalJoins();
+        const targetEntryFee = 100n;
+        const recalibratedBase = solveBaseEntryFee(targetEntryFee, linearCurve, paidJoins);
+        expect(recalibratedBase % 10n).to.not.equal(0n);
+
+        await templ
+            .connect(proposer)
+            .createProposalUpdateConfig(targetEntryFee, 0, 0, 0, false, 0, "Retarget fee", "");
+        const proposalId = (await templ.proposalCount()) - 1n;
+        await templ.connect(priest).vote(proposalId, true);
+        const delay = Number(await templ.postQuorumVotingPeriod());
+        await ethers.provider.send("evm_increaseTime", [delay + 1]);
+        await ethers.provider.send("evm_mine", []);
+        await templ.executeProposal(proposalId);
+
+        expect(await templ.entryFee()).to.equal(targetEntryFee);
+
+        const expectedNextFee = priceForPaidJoins(recalibratedBase, linearCurve, paidJoins + 1n);
+        await token.connect(nextJoiner).approve(templAddress, targetEntryFee);
+        await templ.connect(nextJoiner).join();
         expect(await templ.entryFee()).to.equal(expectedNextFee);
     });
 

@@ -43,6 +43,7 @@ Join slippage handling (race‑proof UX)
 - For on-chain slippage caps, use `joinWithMaxEntryFee` / `joinWithReferralMaxEntryFee` / `joinForWithMaxEntryFee` / `joinForWithReferralMaxEntryFee`.
 - Show a concise note explaining that the approval buffer both guarantees the join and pre‑funds the first proposal fee.
 - Runtime entry fees are normalized to ≥10 and divisible by 10; decaying curves floor at 10, so display the on-chain `entryFee` verbatim.
+- `baseEntryFee` anchors may be non-divisible by 10 after retargets; only `entryFee` is guaranteed divisible.
 
 0) Deploy From Factory
 - Surface factory deployment in the UI for creating new templs. UIs call the factory to create a templ, then switch to the `TEMPL` router for all runtime actions.
@@ -80,7 +81,7 @@ Complete custom deploy (full config)
 - Use `factory.createTemplWithConfig(CreateConfig)` to set all parameters. Recommended when your UI exposes fee splits, quorum/delay, cap, curve, and metadata.
 - Struct fields (sentinels apply defaults):
   - `priest`: EOA that becomes priest (zero uses `msg.sender`).
-  - `token`: ERC‑20 access token (must be vanilla; UIs should warn on known tax/rebase/hook tokens).
+  - `token`: ERC‑20 access token (assumed vanilla; contracts do not enforce this, so UIs should warn on known tax/rebase/hook tokens).
   - `entryFee`: ≥10 and divisible by 10 (raw token units).
   - `burnBps`, `treasuryBps`, `memberPoolBps`: `int256`; use `-1` to apply factory defaults; otherwise 0…10,000.
   - `quorumBps`: 0 applies default; otherwise 0…10,000.
@@ -98,6 +99,7 @@ Complete custom deploy (full config)
 - Constraints your UI must enforce:
   - Fee split must sum to 10,000 bps including protocol share (factory enforces `burn + treasury + memberPool + PROTOCOL_BPS == 10,000`).
   - Percent fields in [0, 10,000]; curve segment count ≤8.
+  - No minimums on burn/treasury/memberPool splits (0 is valid); only the protocol share is fixed by factory config.
   - `yesVoteThresholdBps` must be in [100, 10,000].
   - `instantQuorumBps` must be in [1, 10,000] and `instantQuorumBps >= quorumBps`.
   - Entry fee constraints as above; runtime curve recomputes normalize to ≥10 and divisible by 10.
@@ -208,7 +210,7 @@ if (proposalFee > 0n) {
 
 Create with defaults or custom
 - Voting window: pass `0` to any `createProposal*` to use the templ’s default pre‑quorum window; pass a custom number of seconds (within bounds) to override.
-- Entry fee curve proposals accept a full `CurveConfig` and optional `baseEntryFee` (0 keeps current anchor).
+- Entry fee curve proposals accept a full `CurveConfig` and optional `baseEntryFee` (0 keeps current anchor). Base anchors must be ≥10 but do not need to be divisible by 10.
 
 Complete proposal creators (scan in code for params)
 - `createProposalSetJoinPaused`
@@ -253,6 +255,7 @@ Minimal flow snippets (ethers v6)
 - Claim member pool: preview → `templ.claimMemberRewards()`.
 - Create proposal (pause joins): maybe approve proposalFee → `templ.createProposalSetJoinPaused(true, 0, "Pause joins", "Reason")`.
 - Create proposal (external call): compute selector/params → `templ.createProposalCallExternal(target, value, selector, params, 0, title, desc)`.
+  - Calldata size is capped at 4,096 bytes (selector + params); larger payloads must be moved off-chain or split via helper contracts.
 - Vote: `templ.vote(id, true|false)`.
 - Execute: `templ.executeProposal(id)`.
 

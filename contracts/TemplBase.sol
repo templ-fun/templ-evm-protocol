@@ -43,6 +43,8 @@ abstract contract TemplBase is ReentrancyGuard {
     uint256 internal constant MAX_TEMPL_DESCRIPTION_LENGTH = 2048;
     /// @dev Maximum allowed templ logo URI length in bytes.
     uint256 internal constant MAX_TEMPL_LOGO_URI_LENGTH = 2048;
+    /// @dev Maximum allowed calldata bytes for CallExternal proposals (selector + params).
+    uint256 internal constant MAX_EXTERNAL_CALLDATA_BYTES = 4096;
 
     /// @notice Basis points of the entry fee that are burned on every join.
     uint256 public burnBps;
@@ -60,7 +62,7 @@ abstract contract TemplBase is ReentrancyGuard {
     address public accessToken;
     /// @notice Current entry fee denominated in the access token.
     uint256 public entryFee;
-    /// @notice Entry fee recorded when zero paid joins have occurred.
+    /// @notice Entry fee anchor used for curve math (may be non-divisible by 10 after retargets).
     uint256 public baseEntryFee;
     /// @notice Treasury-held balance denominated in the access token.
     uint256 public treasuryBalance;
@@ -610,7 +612,7 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param newBaseEntryFee New base entry fee anchor to apply.
     /// @param newCurve Curve configuration to apply.
     function _configureEntryFeeCurve(uint256 newBaseEntryFee, CurveConfig memory newCurve) internal {
-        _validateEntryFeeAmount(newBaseEntryFee);
+        _validateBaseEntryFeeAmount(newBaseEntryFee);
         _validateCurveConfig(newCurve);
         baseEntryFee = newBaseEntryFee;
         entryFeeCurve = newCurve;
@@ -637,7 +639,7 @@ abstract contract TemplBase is ReentrancyGuard {
             baseEntryFee = targetEntryFee;
         } else {
             uint256 newBase = _solveBaseEntryFee(targetEntryFee, curve, paidJoins);
-            _validateEntryFeeAmount(newBase);
+            _validateBaseEntryFeeAmount(newBase);
             baseEntryFee = newBase;
         }
         entryFee = targetEntryFee;
@@ -1240,6 +1242,13 @@ abstract contract TemplBase is ReentrancyGuard {
         if (amount > MAX_ENTRY_FEE) revert TemplErrors.EntryFeeTooLarge();
     }
 
+    /// @notice Ensures base entry fee amounts satisfy templ invariants.
+    /// @param amount Base entry fee to validate.
+    function _validateBaseEntryFeeAmount(uint256 amount) internal pure {
+        if (amount < 10) revert TemplErrors.EntryFeeTooSmall();
+        if (amount > MAX_ENTRY_FEE) revert TemplErrors.EntryFeeTooLarge();
+    }
+
     /// @notice Emits the standardized curve update event with the current configuration.
     function _emitEntryFeeCurveUpdated() internal {
         CurveConfig storage cfg = entryFeeCurve;
@@ -1638,12 +1647,7 @@ abstract contract TemplBase is ReentrancyGuard {
         if (amount == 0) {
             return;
         }
-        uint256 beforeBalance = IERC20(token).balanceOf(to);
         IERC20(token).safeTransferFrom(from, to, amount);
-        uint256 afterBalance = IERC20(token).balanceOf(to);
-        if (afterBalance < beforeBalance || afterBalance - beforeBalance != amount) {
-            revert TemplErrors.NonVanillaToken();
-        }
     }
 
     /// @notice Scales `amount` by `multiplier` (bps), saturating at `MAX_ENTRY_FEE`.

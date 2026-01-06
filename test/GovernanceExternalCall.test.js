@@ -98,4 +98,23 @@ describe("Governance external call proposals", function () {
     expect(endingBalance).to.equal(callValue);
     expect(await target.storedValue()).to.equal(777n);
   });
+
+  it("rejects oversized external call calldata", async function () {
+    const selector = target.interface.getFunction("setNumber").selector;
+    const oversizedParams = `0x${"11".repeat(4093)}`;
+
+    await expect(
+      templ
+        .connect(memberA)
+        .createProposalCallExternal(
+          await target.getAddress(),
+          0,
+          selector,
+          oversizedParams,
+          VOTING_PERIOD,
+          "Oversized calldata",
+          ""
+        )
+    ).to.be.revertedWithCustomError(templ, "InvalidCallData");
+  });
 });

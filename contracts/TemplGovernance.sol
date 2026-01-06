@@ -262,7 +262,7 @@ contract TemplGovernanceModule is TemplBase {
         CurveConfig memory curve = _curve;
         _validateCurveConfig(curve);
         if (_baseEntryFee != 0) {
-            _validateEntryFeeAmount(_baseEntryFee);
+            _validateBaseEntryFeeAmount(_baseEntryFee);
         }
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
         p.action = Action.SetEntryFeeCurve;
@@ -272,7 +272,7 @@ contract TemplGovernanceModule is TemplBase {
     }
 
     /// @notice Opens a proposal to perform an arbitrary external call through the templ.
-    /// @dev Reverts if `_target` is zero or if no calldata is supplied. Any revert
+    /// @dev Reverts if `_target` is zero or if calldata exceeds the max size. Any revert
     ///      produced by the downstream call will be bubbled up during execution.
     ///      This is extremely dangerous; frontends surface prominent warnings clarifying that approving
     ///      these proposals grants arbitrary control and may allow the treasury to be drained.
@@ -295,6 +295,7 @@ contract TemplGovernanceModule is TemplBase {
     ) external nonReentrant returns (uint256 proposalId) {
         _requireDelegatecall();
         if (_target == address(0)) revert TemplErrors.InvalidRecipient();
+        if (_params.length > MAX_EXTERNAL_CALLDATA_BYTES - 4) revert TemplErrors.InvalidCallData();
         bytes memory callData = abi.encodePacked(_selector, _params);
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
         p.action = Action.CallExternal;
@@ -380,7 +381,7 @@ contract TemplGovernanceModule is TemplBase {
     /// @param _support True for YES, false for NO.
     /// @dev Prior to quorum, eligibility is locked to the join sequence captured at proposal creation.
     ///      Once quorum is reached, eligibility is re-snapshotted to prevent later joins from swinging the vote.
-    function vote(uint256 _proposalId, bool _support) external onlyMember {
+    function vote(uint256 _proposalId, bool _support) external nonReentrant onlyMember {
         _requireDelegatecall();
         if (!(_proposalId < proposalCount)) revert TemplErrors.InvalidProposal();
         Proposal storage proposal = proposals[_proposalId];
