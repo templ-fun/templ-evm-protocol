@@ -2,31 +2,19 @@
 pragma solidity ^0.8.23;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {TemplBase} from "./TemplBase.sol";
+import {TemplModuleBase} from "./TemplModuleBase.sol";
 import {TemplErrors} from "./TemplErrors.sol";
 
 /// @title Templ Membership Module
 /// @notice Handles joins, reward accounting, and member-facing views.
 /// @author templ.fun
-contract TemplMembershipModule is TemplBase {
-    /// @notice Sentinel used to detect direct calls to the module implementation.
-    address public immutable SELF;
-
-    /// @notice Initializes the module and captures its own address to enforce delegatecalls.
-    constructor() {
-        SELF = address(this);
-    }
+contract TemplMembershipModule is TemplModuleBase {
 
     /// @notice Emitted when a valid referral is credited during a join.
     /// @param referral The referrer wallet that receives the payout.
     /// @param newMember The wallet that just joined.
     /// @param amount Amount of access token paid to `referral`.
     event ReferralRewardPaid(address indexed referral, address indexed newMember, uint256 indexed amount);
-
-    modifier onlyDelegatecall() {
-        if (address(this) == SELF) revert TemplErrors.DelegatecallOnly();
-        _;
-    }
 
     /// @notice Join the templ by paying the configured entry fee on behalf of the caller.
     function join() external whenNotPaused notSelf nonReentrant onlyDelegatecall {
@@ -125,8 +113,6 @@ contract TemplMembershipModule is TemplBase {
         }
         uint256 protocolAmount = (price * protocolBps) / BPS_DENOMINATOR;
         uint256 treasuryAmount = price - burnAmount - memberPoolAmount - protocolAmount;
-        uint256 toContract = treasuryAmount + memberPoolAmount;
-
         if (IERC20(accessToken).balanceOf(payer) < price) revert TemplErrors.InsufficientBalance();
 
         joiningMember.joined = true;
@@ -153,9 +139,9 @@ contract TemplMembershipModule is TemplBase {
         if (burnAmount > 0) {
             totalBurned += burnAmount;
         }
-        _safeTransferFrom(accessToken, payer, burnAddress, burnAmount);
-        _safeTransferFrom(accessToken, payer, address(this), toContract);
-        _safeTransferFrom(accessToken, payer, protocolFeeRecipient, protocolAmount);
+        _safeTransferFrom(accessToken, payer, address(this), price);
+        _safeTransfer(accessToken, burnAddress, burnAmount);
+        _safeTransfer(accessToken, protocolFeeRecipient, protocolAmount);
 
         if (referralAmount > 0) {
             _safeTransfer(accessToken, referralTarget, referralAmount);

@@ -9,7 +9,6 @@
   "scripts": {
     "compile": "npx hardhat compile",
     "test": "npx hardhat test --grep '^(?!.*@(load)).*'",
-    "test:load": "npx hardhat test --grep @load",
     "test:fuzz": "docker run --rm -v \"$PWD\":/src -w /src trailofbits/echidna echidna-test contracts/echidna/EchidnaTemplHarness.sol --contract EchidnaTemplHarness --config ./echidna.yaml",
     "test:static": "npm run slither && npm run lint",
     "test:allwithload": "npx hardhat test",

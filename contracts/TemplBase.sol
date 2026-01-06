@@ -45,6 +45,10 @@ abstract contract TemplBase is ReentrancyGuard {
     uint256 internal constant MAX_TEMPL_LOGO_URI_LENGTH = 2048;
     /// @dev Maximum allowed calldata bytes for CallExternal proposals (selector + params).
     uint256 internal constant MAX_EXTERNAL_CALLDATA_BYTES = 4096;
+    /// @dev Vote state constants used in proposal voting.
+    uint8 internal constant VOTE_NONE = 0;
+    uint8 internal constant VOTE_YES = 1;
+    uint8 internal constant VOTE_NO = 2;
 
     /// @notice Basis points of the entry fee that are burned on every join.
     uint256 public burnBps;
@@ -156,8 +160,6 @@ abstract contract TemplBase is ReentrancyGuard {
 
     /// @notice Governance proposal payload and lifecycle state.
     struct Proposal {
-        /// @notice Unique, monotonic proposal id.
-        uint256 id;
         /// @notice Creator wallet that opened the proposal.
         address proposer;
         /// @notice Action type that will be executed if the proposal passes.
@@ -224,10 +226,8 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 createdAt;
         /// @notice True once the proposal has been executed.
         bool executed;
-        /// @notice Tracks whether each voter has cast a ballot.
-        mapping(address => bool) hasVoted;
-        /// @notice Voter's recorded choice (true = YES, false = NO).
-        mapping(address => bool) voteChoice;
+        /// @notice Voter state tracking (0 = none, 1 = YES, 2 = NO).
+        mapping(address => uint8) voteState;
         /// @notice Number of eligible voters at proposal creation.
         uint256 eligibleVoters;
         /// @notice Number of eligible voters when quorum was reached.
@@ -268,10 +268,8 @@ abstract contract TemplBase is ReentrancyGuard {
     uint256 public proposalCount;
     /// @notice Proposal storage mapping keyed by proposal id.
     mapping(uint256 => Proposal) public proposals;
-    /// @notice Tracks each proposer's active proposal id (0 when none active).
-    mapping(address => uint256) public activeProposalId;
-    /// @notice Flags whether a proposer currently has an active proposal.
-    mapping(address => bool) public hasActiveProposal;
+    /// @notice Tracks each proposer's active proposal id + 1 (0 when none active).
+    mapping(address => uint256) internal _activeProposalIdPlusOne;
     /// @dev Dense set of currently active proposal ids for enumeration.
     uint256[] internal activeProposalIds;
     /// @dev Index (id -> position+1) for O(1) removals from `activeProposalIds`.
@@ -286,6 +284,19 @@ abstract contract TemplBase is ReentrancyGuard {
     uint256 public constant MAX_POST_QUORUM_VOTING_PERIOD = 30 days;
     /// @notice Default pre-quorum voting period applied when proposal creators pass zero.
     uint256 public preQuorumVotingPeriod;
+
+    /// @notice Returns the active proposal id for a proposer (0 when none active).
+    /// @param proposer Wallet address to inspect.
+    function activeProposalId(address proposer) public view returns (uint256 proposalId) {
+        uint256 stored = _activeProposalIdPlusOne[proposer];
+        return stored == 0 ? 0 : stored - 1;
+    }
+
+    /// @notice Returns whether a proposer currently has an active proposal.
+    /// @param proposer Wallet address to inspect.
+    function hasActiveProposal(address proposer) public view returns (bool active) {
+        return _activeProposalIdPlusOne[proposer] != 0;
+    }
 
     /// @notice Emitted after a successful join.
     /// @param payer Wallet that paid the entry fee.
@@ -818,14 +829,14 @@ abstract contract TemplBase is ReentrancyGuard {
         if (bytes(_title).length > MAX_PROPOSAL_TITLE_LENGTH) revert TemplErrors.InvalidCallData();
         if (bytes(_description).length > MAX_PROPOSAL_DESCRIPTION_LENGTH) revert TemplErrors.InvalidCallData();
         if (!members[msg.sender].joined) revert TemplErrors.NotMember();
-        if (hasActiveProposal[msg.sender]) {
-            uint256 existingId = activeProposalId[msg.sender];
+        uint256 existingPlusOne = _activeProposalIdPlusOne[msg.sender];
+        if (existingPlusOne != 0) {
+            uint256 existingId = existingPlusOne - 1;
             Proposal storage existingProposal = proposals[existingId];
             if (!existingProposal.executed && block.timestamp < existingProposal.endTime) {
                 revert TemplErrors.ActiveProposalExists();
             } else {
-                hasActiveProposal[msg.sender] = false;
-                activeProposalId[msg.sender] = 0;
+                _activeProposalIdPlusOne[msg.sender] = 0;
             }
         }
         uint256 period = _votingPeriod == 0 ? preQuorumVotingPeriod : _votingPeriod;
@@ -850,7 +861,6 @@ abstract contract TemplBase is ReentrancyGuard {
             proposalCount = proposalId + 1;
         }
         proposal = proposals[proposalId];
-        proposal.id = proposalId;
         proposal.proposer = msg.sender;
         unchecked {
             proposal.endTime = block.timestamp + period;
@@ -869,8 +879,7 @@ abstract contract TemplBase is ReentrancyGuard {
         proposal.instantQuorumBpsSnapshot = instantQuorumBps;
         bool proposerCanVote = councilSnapshotEpoch == 0 || _isCouncilMemberAtEpoch(msg.sender, councilSnapshotEpoch);
         if (proposerCanVote) {
-            proposal.hasVoted[msg.sender] = true;
-            proposal.voteChoice[msg.sender] = true;
+            proposal.voteState[msg.sender] = VOTE_YES;
             proposal.yesVotes = 1;
         } else {
             proposal.yesVotes = 0;
@@ -893,8 +902,7 @@ abstract contract TemplBase is ReentrancyGuard {
         }
         _maybeTriggerInstantQuorum(proposal);
         _addActiveProposal(proposalId);
-        hasActiveProposal[msg.sender] = true;
-        activeProposalId[msg.sender] = proposalId;
+        _activeProposalIdPlusOne[msg.sender] = proposalId + 1;
         emit ProposalCreated(proposalId, msg.sender, proposal.endTime, _title, _description);
     }
 

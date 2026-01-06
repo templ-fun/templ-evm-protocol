@@ -1,25 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import {TemplBase} from "./TemplBase.sol";
+import {TemplModuleBase} from "./TemplModuleBase.sol";
 import {TemplErrors} from "./TemplErrors.sol";
 
 /// @title Templ Council Governance Module
 /// @notice Hosts council-specific proposal creation flows to keep the primary governance module lean.
 /// @author templ.fun
-contract TemplCouncilModule is TemplBase {
-    /// @notice Sentinel used to detect direct calls to the module implementation.
-    address public immutable SELF;
-
-    /// @notice Initializes the module and captures its own address to enforce delegatecalls.
-    constructor() {
-        SELF = address(this);
-    }
-
-    modifier onlyDelegatecall() {
-        if (address(this) == SELF) revert TemplErrors.DelegatecallOnly();
-        _;
-    }
+contract TemplCouncilModule is TemplModuleBase {
 
     /// @notice Opens a proposal to update the YES vote threshold (bps of votes cast).
     /// @param _newThresholdBps Target YES threshold expressed in basis points.

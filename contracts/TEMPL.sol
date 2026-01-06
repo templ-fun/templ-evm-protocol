@@ -418,7 +418,8 @@ contract TEMPL is TemplBase {
         if (!(_proposalId < proposalCount)) revert TemplErrors.InvalidProposal();
         Proposal storage proposal = proposals[_proposalId];
 
-        return (proposal.hasVoted[_voter], proposal.voteChoice[_voter]);
+        uint8 state = proposal.voteState[_voter];
+        return (state != VOTE_NONE, state == VOTE_YES);
     }
 
     /// @notice Lists proposal ids that are still within their active voting/execution window.
@@ -454,20 +455,10 @@ contract TEMPL is TemplBase {
         if (limit == 0 || limit > 100) revert TemplErrors.LimitOutOfRange();
         uint256 currentTime = block.timestamp;
         uint256 len = activeProposalIds.length;
-        uint256 totalActive = 0;
-        for (uint256 i = 0; i < len; ++i) {
-            if (_isActiveProposal(proposals[activeProposalIds[i]], currentTime)) {
-                ++totalActive;
-            }
-        }
-        if (!(offset < totalActive)) {
-            return (new uint256[](0), false);
-        }
-
         uint256[] memory tempIds = new uint256[](limit);
         uint256 count = 0;
         uint256 activeSeen = 0;
-        for (uint256 i = 0; i < len && count < limit; ++i) {
+        for (uint256 i = 0; i < len; ++i) {
             uint256 id = activeProposalIds[i];
             if (!_isActiveProposal(proposals[id], currentTime)) {
                 continue;
@@ -476,11 +467,16 @@ contract TEMPL is TemplBase {
                 ++activeSeen;
                 continue;
             }
-            tempIds[count] = id;
-            ++count;
+            if (count < limit) {
+                tempIds[count] = id;
+                ++count;
+            }
+            ++activeSeen;
         }
-
-        hasMore = (offset + count) < totalActive;
+        if (activeSeen <= offset) {
+            return (new uint256[](0), false);
+        }
+        hasMore = activeSeen > offset + count;
 
         proposalIds = new uint256[](count);
         for (uint256 i = 0; i < count; ++i) {

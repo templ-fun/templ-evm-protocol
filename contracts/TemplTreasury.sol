@@ -1,26 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import {TemplBase} from "./TemplBase.sol";
+import {TemplModuleBase} from "./TemplModuleBase.sol";
 import {TemplErrors} from "./TemplErrors.sol";
 import {CurveConfig} from "./TemplCurve.sol";
 
 /// @title Templ Treasury Module
 /// @notice Adds treasury controls and fee configuration.
 /// @author templ.fun
-contract TemplTreasuryModule is TemplBase {
-    /// @notice Sentinel used to detect direct calls to the module implementation.
-    address public immutable SELF;
-
-    /// @notice Initializes the module and captures its own address to enforce delegatecalls.
-    constructor() {
-        SELF = address(this);
-    }
-
-    modifier onlyDelegatecall() {
-        if (address(this) == SELF) revert TemplErrors.DelegatecallOnly();
-        _;
-    }
+contract TemplTreasuryModule is TemplModuleBase {
 
     /// @notice Governance action that transfers available treasury or external funds to a recipient.
     /// @param token Token to withdraw (`address(0)` for ETH, access token, or arbitrary ERC-20).
