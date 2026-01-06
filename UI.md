@@ -11,7 +11,6 @@ Router-first rule
 
 Governance-controlled upgrades
 - No protocol admin: there is no owner or protocol dev key that can change behavior for a templ. Routing changes are only possible via that templ’s own governance.
-- Priest caveat: the priest can change routing only when dictatorship is explicitly enabled for the templ. Otherwise, only governance proposals can reach `setRoutingModuleDAO`.
 - Introspection: `getRegisteredSelectors()` is a static helper for the shipped modules; the live mapping is authoritative and can be read via `getModuleForSelector(bytes4)` per selector.
 - How to upgrade via UI: build a `createProposalCallExternal` targeting the templ address with the `setRoutingModuleDAO(address,bytes4[])` selector and ABI‑encoded params. After the proposal passes and executes, calls to those selectors will route to the new module.
 - Module access guard: module implementations revert on direct calls; all interactions must flow through `TEMPL` (delegatecall) to share storage and enforce guards.
@@ -23,7 +22,7 @@ Common preflight helpers
 
 Allowances and approvals
 - Joins (all variants): approve the access token to `templ.target` before calling the join. Recommend a buffer of `2 × entryFee` to absorb fee changes and cover the first proposal creation fee. Always make this adjustable and never default to unlimited.
-- Proposal creation fee: when `proposalCreationFeeBps > 0` and the computed `proposalFee = entryFee * proposalCreationFeeBps / 10_000` is non-zero, the proposer must approve `proposalFee` to `templ.target` prior to any `createProposal*` call.
+- Proposal creation fee: when `proposalCreationFeeBps > 0` and the computed `proposalFee = entryFee * proposalCreationFeeBps / 10_000` is non-zero, non-council proposers must approve `proposalFee` to `templ.target` prior to any `createProposal*` call (council proposers are fee‑exempt while council mode is active).
 - Donations: no approvals are needed. Donors send ETH directly to the templ address, or call token `transfer(templ.target, amount)`.
 
 Donations: address and custody
@@ -35,9 +34,9 @@ Donations: address and custody
 
 Allowance checklist (TL;DR)
 - join / joinWithReferral / joinFor / joinForWithReferral / joinWithMaxEntryFee / joinWithReferralMaxEntryFee / joinForWithMaxEntryFee / joinForWithReferralMaxEntryFee → approve access token to `templ.target` (payer = `msg.sender`).
-- createProposal* (if fee > 0) → approve access token to `templ.target` for `proposalFee`.
+- createProposal* (if fee > 0) → approve access token to `templ.target` for `proposalFee` unless the proposer is a council member and council mode is active.
 - claimMemberRewards → no approvals.
-- batchDAO / external calls (proposals or dictatorship) → no user approvals; if tokens need templ approvals, include them inside the batch.
+- batchDAO / external calls (proposals) → no user approvals; if tokens need templ approvals, include them inside the batch.
 
 Join slippage handling (race‑proof UX)
 - On submit, re‑read `entryFee` from `getConfig()` and check current allowance. If `allowance < entryFee`, prompt to top‑up approval. With the recommended 2× buffer, this should be rare.
@@ -78,7 +77,7 @@ const templAddress = await factory.createTempl.staticCall(
 ```
 
 Complete custom deploy (full config)
-- Use `factory.createTemplWithConfig(CreateConfig)` to set all parameters. Recommended when your UI exposes fee splits, quorum/delay, cap, dictatorship, curve, and metadata.
+- Use `factory.createTemplWithConfig(CreateConfig)` to set all parameters. Recommended when your UI exposes fee splits, quorum/delay, cap, curve, and metadata.
 - Struct fields (sentinels apply defaults):
   - `priest`: EOA that becomes priest (zero uses `msg.sender`).
   - `token`: ERC‑20 access token (must be vanilla; UIs should warn on known tax/rebase/hook tokens).
@@ -87,7 +86,6 @@ Complete custom deploy (full config)
   - `quorumBps`: 0 applies default; otherwise 0…10,000.
   - `executionDelaySeconds`: 0 applies default; otherwise within [1 hour, 30 days].
   - `burnAddress`: zero applies default.
-  - `priestIsDictator`: boolean (true enables dictatorship at genesis).
   - `maxMembers`: 0 for uncapped; otherwise positive cap. Auto‑pause at cap.
   - `curveProvided`: false applies factory default curve.
   - `curve`: `{ primary: {style, rateBps, length}, additionalSegments: CurveSegment[] }` (max 8 segments total).
@@ -102,7 +100,6 @@ Complete custom deploy (full config)
   - Percent fields in [0, 10,000]; curve segment count ≤8.
   - `yesVoteThresholdBps` must be in [100, 10,000].
   - `instantQuorumBps` must be in [1, 10,000] and `instantQuorumBps >= quorumBps`.
-  - `councilMode` cannot be true when `priestIsDictator` is true.
   - Entry fee constraints as above; runtime curve recomputes normalize to ≥10 and divisible by 10.
 - Ethers v6 example (full config):
 ```js
@@ -117,7 +114,6 @@ const config = {
   quorumBps: 3300,               // or 0 for default
   executionDelaySeconds: 36*60*60, // or 0 for default
   burnAddress: ethers.ZeroAddress, // zero for default
-  priestIsDictator: false,
   maxMembers: 249,
   curveProvided: true,
   curve: {
@@ -226,7 +222,6 @@ Complete proposal creators (scan in code for params)
 - `createProposalWithdrawTreasury`
 - `createProposalDisbandTreasury` (when proposed by the priest or a council member while council mode is enabled, the proposal is quorum-exempt but still must meet the YES vote threshold after voting ends)
 - `createProposalChangePriest`
-- `createProposalSetDictatorship`
 - `createProposalSetQuorumBps`
 - `createProposalSetInstantQuorumBps`
 - `createProposalSetPostQuorumVotingPeriod`
@@ -240,7 +235,7 @@ Security notes for UIs
 - Default to a bounded buffer, not unlimited. Approve `~2× entryFee` for joins (adjustable) and avoid unlimited approvals.
 - External call proposals are as powerful as timelocked admin calls; surface clear warnings. If batching is needed, use an executor contract like `contracts/tools/BatchExecutor.sol` and target it via `createProposalCallExternal`.
 - Only call the router. Modules revert on direct calls to prevent bypassing safety checks.
-- Governance-only upgrades: there is no protocol-level upgrade authority. Routing and external-call abilities are controlled by each templ’s governance (or the priest only when dictatorship is enabled). Reflect this in copy to avoid confusing users about admin powers.
+- Governance-only upgrades: there is no protocol-level upgrade authority. Routing and external-call abilities are controlled by each templ’s governance. Reflect this in copy to avoid confusing users about admin powers.
 
 Minimal flow snippets (ethers v6)
 - Join: read fee → approve(templ, fee) → `templ.join()`.
@@ -269,7 +264,6 @@ Gotchas and validation checklist
 - Pagination limits: `getActiveProposalsPaginated` requires `1 ≤ limit ≤ 100`.
 - Join auto‑pause at cap: if `maxMembers` is set and reached, `joinPaused` flips true automatically. Always read `joinPaused` before enabling join UI.
 - Referral rules: referrer must be an existing member and not the recipient; otherwise referral pays 0. Consider checking `isMember(referrer)` pre‑submit.
-- Dictatorship mode: when `priestIsDictator()` is true, block proposal create/vote/execute in the UI (except the dictatorship toggle), and surface priest‑only controls for DAO actions (including `batchDAO`).
 - ETH recipients: treasury ETH withdrawals call `recipient.call{value: amount}("")`. If the recipient is a non‑payable contract or reverts in `receive()`, the withdrawal reverts. Prefer EOA or payable targets.
 - Action payload helper: call `TEMPL.getProposalActionData(id)` to fetch `(Action action, bytes payload)`. See README “Proposal Views” for payload shapes.
 
@@ -278,5 +272,4 @@ Gotchas and validation checklist
 - ETH donation: present the templ address and let donors send ETH directly to `templ.target` (the contract address). This increases the templ’s ETH holdings immediately.
 - ERC‑20 donation: instruct donors to call the token’s `transfer(templ.target, amount)` from their wallet. No allowance is needed for a simple `transfer`.
 - Access‑token donations (the same token used for joins): they increase the templ’s on‑hand access‑token balance available to governance. UI display can reflect this via `getTreasuryInfo()` where `treasury = currentBalance(accessToken) − memberPoolBalance`.
-- Suggested UI copy: “Donate to this templ by sending ETH or any ERC‑20 directly to the templ address. Funds are controlled by governance (or the priest if dictatorship is enabled) and may be withdrawn or disbanded by on‑chain votes.”
-- Dictatorship behavior: when dictatorship is enabled, the priest can withdraw or disband donations immediately (no voting window); otherwise, movements happen through governance proposals.
+- Suggested UI copy: “Donate to this templ by sending ETH or any ERC‑20 directly to the templ address. Funds are controlled by governance and may be withdrawn or disbanded by on‑chain votes.”

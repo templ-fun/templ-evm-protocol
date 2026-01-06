@@ -59,7 +59,6 @@ contract EchidnaTemplHarness {
             3300, // quorum bps
             MIN_POST_QUORUM_VOTING_PERIOD, // execution delay (min allowed)
             0x000000000000000000000000000000000000dEaD, // burn sink
-            false, // dictatorship off
             0, // no member cap
             "Echidna Templ", // name
             "", // description

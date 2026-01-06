@@ -59,7 +59,6 @@ contract TemplFactory {
     /// @param quorumBps Quorum threshold (bps).
     /// @param executionDelaySeconds Seconds to wait after quorum before execution.
     /// @param burnAddress Burn sink address.
-    /// @param priestIsDictator Whether dictatorship is enabled at deploy.
     /// @param maxMembers Membership cap (0 = uncapped).
     /// @param curveStyles Segment styles applied to the templ's join curve.
     /// @param curveRateBps Rate parameters for each segment (basis points).
@@ -84,7 +83,6 @@ contract TemplFactory {
         uint256 quorumBps,
         uint256 executionDelaySeconds,
         address burnAddress,
-        bool priestIsDictator,
         uint256 maxMembers,
         uint8[] curveStyles,
         uint32[] curveRateBps,
@@ -241,7 +239,6 @@ contract TemplFactory {
             quorumBps: DEFAULT_QUORUM_BPS,
             executionDelaySeconds: DEFAULT_EXECUTION_DELAY,
             burnAddress: DEFAULT_BURN_ADDRESS,
-            priestIsDictator: false,
             maxMembers: DEFAULT_MAX_MEMBERS,
             curveProvided: true,
             curve: _defaultCurveConfig(),
@@ -304,7 +301,6 @@ contract TemplFactory {
         if (cfg.yesVoteThresholdBps < 100 || cfg.yesVoteThresholdBps > BPS_DENOMINATOR) {
             revert TemplErrors.InvalidPercentage();
         }
-        if (cfg.councilMode && cfg.priestIsDictator) revert TemplErrors.CouncilModeActive();
         if (cfg.instantQuorumBps == 0 || cfg.instantQuorumBps > BPS_DENOMINATOR) {
             revert TemplErrors.InvalidPercentage();
         }
@@ -352,7 +348,6 @@ contract TemplFactory {
             cfg.quorumBps,
             cfg.executionDelaySeconds,
             cfg.burnAddress,
-            cfg.priestIsDictator,
             cfg.maxMembers,
             curveStyles,
             curveRates,

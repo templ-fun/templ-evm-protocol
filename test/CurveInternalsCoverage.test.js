@@ -23,7 +23,6 @@ describe("Curve internals coverage via harness", function () {
       3300,
       36 * 60 * 60,
       "0x000000000000000000000000000000000000dEaD",
-      false,
       0,
       "Harness",
       "Harness",

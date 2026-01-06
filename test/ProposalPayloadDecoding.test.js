@@ -156,7 +156,7 @@ describe("Proposal payload decode coverage (getProposalActionData)", function ()
     expect(refBps).to.equal(1250n);
   });
 
-  it("decodes DisbandTreasury and SetDictatorship", async function () {
+  it("decodes DisbandTreasury", async function () {
     const tokenAddr = await token.getAddress();
 
     // Disband treasury (token payload)
@@ -165,12 +165,5 @@ describe("Proposal payload decode coverage (getProposalActionData)", function ()
     let [, payload] = await templ.getProposalActionData(id);
     let [addr] = ethers.AbiCoder.defaultAbiCoder().decode(["address"], payload);
     expect(addr).to.equal(tokenAddr);
-
-    // Set dictatorship (bool payload)
-    await templ.connect(m3).createProposalSetDictatorship(true, VOTING_PERIOD, "Dictatorship", "");
-    id = (await templ.proposalCount()) - 1n;
-    ;[, payload] = await templ.getProposalActionData(id);
-    const [enable] = ethers.AbiCoder.defaultAbiCoder().decode(["bool"], payload);
-    expect(enable).to.equal(true);
   });
 });

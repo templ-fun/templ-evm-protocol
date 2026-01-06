@@ -74,13 +74,6 @@ contract TemplTreasuryModule is TemplBase {
         _changePriest(newPriest);
     }
 
-    /// @notice Governance action that enables or disables dictatorship mode.
-    /// @dev Reverts when the requested state equals the current `priestIsDictator` value.
-    /// @param enabled Target dictatorship state.
-    function setDictatorshipDAO(bool enabled) external onlyDAO onlyDelegatecall {
-        _updateDictatorship(enabled);
-    }
-
     /// @notice Governance action that updates templ metadata.
     /// @param newName New templ name to persist.
     /// @param newDescription New templ description to persist.

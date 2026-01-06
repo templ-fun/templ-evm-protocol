@@ -284,7 +284,6 @@ describe("Member Pool Distribution - Exhaustive Tests", function () {
                 QUORUM_BPS,
                 7 * 24 * 60 * 60,
                 "0x000000000000000000000000000000000000dEaD",
-                false,
                 0,
                 METADATA.name,
                 METADATA.description,

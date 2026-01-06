@@ -18,7 +18,7 @@ function resolveNetworkName(network) {
 const FACTORY_EVENT_VARIANTS = [
   {
     id: 'current',
-    abi: 'event TemplCreated(address indexed templ, address indexed creator, address indexed priest, address token, uint256 entryFee, uint256 burnBps, uint256 treasuryBps, uint256 memberPoolBps, uint256 quorumBps, uint256 executionDelaySeconds, address burnAddress, bool priestIsDictator, uint256 maxMembers, uint8[] curveStyles, uint32[] curveRateBps, uint32[] curveLengths, string name, string description, string logoLink, uint256 proposalFeeBps, uint256 referralShareBps, uint256 yesVoteThresholdBps, uint256 instantQuorumBps, bool councilMode)'
+    abi: 'event TemplCreated(address indexed templ, address indexed creator, address indexed priest, address token, uint256 entryFee, uint256 burnBps, uint256 treasuryBps, uint256 memberPoolBps, uint256 quorumBps, uint256 executionDelaySeconds, address burnAddress, uint256 maxMembers, uint8[] curveStyles, uint32[] curveRateBps, uint32[] curveLengths, string name, string description, string logoLink, uint256 proposalFeeBps, uint256 referralShareBps, uint256 yesVoteThresholdBps, uint256 instantQuorumBps, bool councilMode)'
   }
 ].map((variant) => {
   const iface = new hre.ethers.Interface([variant.abi]);
@@ -235,7 +235,6 @@ async function fetchContractSnapshot(contract) {
     instantQuorumBps: await safeCall(contract, 'instantQuorumBps'),
     councilModeEnabled: await safeCall(contract, 'councilModeEnabled', (value) => Boolean(value)),
     burnAddress: await safeCall(contract, 'burnAddress'),
-    priestIsDictator: await safeCall(contract, 'priestIsDictator', (value) => Boolean(value)),
     maxMembers: await safeCall(contract, 'maxMembers'),
     templName: await safeCall(contract, 'templName'),
     templDescription: await safeCall(contract, 'templDescription'),
@@ -310,7 +309,6 @@ async function fetchEventSnapshot({ provider, factoryAddress, templAddress, from
           quorumBps: toSerializable(args.quorumBps),
           postQuorumVotingPeriod: toSerializable(args.executionDelaySeconds),
           burnAddress: args.burnAddress,
-          priestIsDictator: Boolean(args.priestIsDictator),
           maxMembers: toSerializable(args.maxMembers),
           templName: args.name ?? '',
           templDescription: args.description ?? '',
@@ -386,7 +384,6 @@ async function main() {
     quorumBps: readCliOption(process.argv, ['--quorum-bps']),
     postQuorum: readCliOption(process.argv, ['--post-quorum-voting-period', '--post-quorum-seconds', '--post-quorum']),
     burnAddress: readCliOption(process.argv, ['--burn-address']),
-    priestIsDictator: readCliOption(process.argv, ['--dictator', '--priest-is-dictator']),
     maxMembers: readCliOption(process.argv, ['--max-members']),
     templName: readCliOption(process.argv, ['--templ-name', '--name']),
     templDescription: readCliOption(process.argv, ['--templ-description', '--description']),
@@ -419,10 +416,6 @@ async function main() {
     quorumBps: resolveBpsLike({ bpsValues: [cliOverrides.quorumBps, process.env.QUORUM_BPS] }),
     postQuorumVotingPeriod: firstDefined([cliOverrides.postQuorum, process.env.POST_QUORUM_VOTING_PERIOD_SECONDS]),
     burnAddress: firstDefined([cliOverrides.burnAddress, process.env.BURN_ADDRESS]),
-    priestIsDictator: firstDefined([
-      resolveBoolean(cliOverrides.priestIsDictator),
-      resolveBoolean(process.env.PRIEST_IS_DICTATOR)
-    ]),
     maxMembers: firstDefined([cliOverrides.maxMembers, process.env.MAX_MEMBERS]),
     templName: firstDefined([cliOverrides.templName, process.env.TEMPL_NAME]),
     templDescription: firstDefined([cliOverrides.templDescription, process.env.TEMPL_DESCRIPTION]),
@@ -515,13 +508,6 @@ async function main() {
       eventValue: eventSnapshot?.burnAddress,
       overrideValue: envOverrides.burnAddress,
       normalizer: (value) => normalizeAddress(value, 'burnAddress')
-    }),
-    priestIsDictator: resolveField({
-      label: 'priestIsDictator',
-      contractValue: contractSnapshot.priestIsDictator,
-      eventValue: eventSnapshot?.priestIsDictator,
-      overrideValue: envOverrides.priestIsDictator,
-      normalizer: (value) => Boolean(value)
     }),
     maxMembers: resolveField({
       label: 'maxMembers',
@@ -692,7 +678,6 @@ async function main() {
     constructorArgs.quorumBps,
     constructorArgs.postQuorumVotingPeriod,
     constructorArgs.burnAddress,
-    constructorArgs.priestIsDictator,
     constructorArgs.maxMembers,
     constructorArgs.templName,
     constructorArgs.templDescription,

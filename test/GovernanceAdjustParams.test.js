@@ -7,39 +7,6 @@ describe("Governance adjustable params (quorum, delay, burn)", function () {
   const ENTRY_FEE = ethers.parseUnits("100", 18);
   const TOKEN_SUPPLY = ethers.parseUnits("10000", 18);
 
-  it("priest (dictatorship) can update quorum, delay, burn via onlyDAO", async function () {
-    const { templ, token, accounts, priest } = await deployTempl({ entryFee: ENTRY_FEE });
-    const [owner, , member1, member2] = accounts;
-    await mintToUsers(token, [member1, member2], TOKEN_SUPPLY);
-    await joinMembers(templ, token, [member1, member2]);
-
-    // Enable dictatorship via proposal first
-    await templ.connect(member1).createProposalSetDictatorship(true, 7 * 24 * 60 * 60, "Enable dictatorship", "");
-    await templ.connect(member2).vote(0, true);
-    await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
-    await ethers.provider.send("evm_mine");
-    await templ.executeProposal(0);
-
-    // Quorum
-    await expect(templ.connect(priest).setQuorumBpsDAO(4000))
-      .to.emit(templ, "QuorumBpsUpdated").withArgs(3300n, 4000n);
-    expect(await templ.quorumBps()).to.equal(4000n);
-
-    // Delay
-    await expect(templ.connect(priest).setPostQuorumVotingPeriodDAO(3 * 24 * 60 * 60))
-      .to.emit(templ, "PostQuorumVotingPeriodUpdated");
-    expect(await templ.postQuorumVotingPeriod()).to.equal(3n * 24n * 60n * 60n);
-
-    // Burn address
-    const newBurn = "0x0000000000000000000000000000000000000001";
-    await expect(templ.connect(priest).setBurnAddressDAO(newBurn))
-      .to.emit(templ, "BurnAddressUpdated");
-    expect(await templ.burnAddress()).to.equal(newBurn);
-
-    // Disable dictatorship again
-    await templ.connect(priest).setDictatorshipDAO(false);
-  });
-
   it("proposals can update quorum, delay, burn and getters expose payloads", async function () {
     const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE });
     const [owner, priest, member1, member2, member3] = accounts;

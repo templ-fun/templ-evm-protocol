@@ -34,7 +34,6 @@ describe('Anchored execution delay after quorum', function () {
       3300,
       60 * 60,
       '0x000000000000000000000000000000000000dEaD',
-      false,
       0,
       'Anchored',
       'Delay test',

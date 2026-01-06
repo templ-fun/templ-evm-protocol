@@ -46,7 +46,6 @@ describe("Proposal creation fee reentrancy", function () {
       QUORUM_BPS,
       7 * 24 * 60 * 60,
       "0x000000000000000000000000000000000000dEaD",
-      false,
       0,
       "Reentrancy templ",
       "Testing proposal fee reentrancy",

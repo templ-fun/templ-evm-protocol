@@ -2,6 +2,8 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
 const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
+const { deployTemplModules } = require("./utils/modules");
+const { attachTemplInterface } = require("./utils/templ");
 
 describe("Pre‑quorum voting period controls", function () {
   const ENTRY_FEE = ethers.parseUnits("100", 18);
@@ -9,38 +11,43 @@ describe("Pre‑quorum voting period controls", function () {
   const MIN = 36 * 60 * 60; // 36 hours
   const MAX = 30 * DAY;     // 30 days
 
-  it("dictatorship (onlyDAO) can set default pre‑quorum period within bounds", async function () {
-    const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE });
-    const [, priest, member] = accounts;
-
-    await mintToUsers(token, [member], ENTRY_FEE * 3n);
-    await joinMembers(templ, token, [member]);
-
-    // Enable dictatorship via proposal
-    await templ
-      .connect(member)
-      .createProposalSetDictatorship(true, 7 * DAY, "Enable", "Dictatorship on");
-    await templ.connect(member).vote(0, true);
-    await ethers.provider.send("evm_increaseTime", [7 * DAY + 1]);
-    await ethers.provider.send("evm_mine", []);
-    await templ.executeProposal(0);
-    expect(await templ.priestIsDictator()).to.equal(true);
+  it("onlyDAO self-call can set default pre‑quorum period within bounds", async function () {
+    const [, priest, protocol] = await ethers.getSigners();
+    const AccessToken = await ethers.getContractFactory("contracts/mocks/TestToken.sol:TestToken");
+    const accessToken = await AccessToken.deploy("Access", "ACC", 18);
+    await accessToken.waitForDeployment();
+    const Harness = await ethers.getContractFactory(
+      "contracts/mocks/DaoCallerHarness.sol:DaoCallerHarness"
+    );
+    const modules = await deployTemplModules();
+    let templ = await Harness.deploy(
+      priest.address,
+      protocol.address,
+      accessToken.target,
+      ENTRY_FEE,
+      modules.membershipModule,
+      modules.treasuryModule,
+      modules.governanceModule,
+      modules.councilModule
+    );
+    await templ.waitForDeployment();
+    templ = await attachTemplInterface(templ);
 
     const before = await templ.preQuorumVotingPeriod();
     const newPeriod = 2 * DAY;
-    await expect(templ.connect(priest).setPreQuorumVotingPeriodDAO(newPeriod))
+    await expect(templ.daoSetPreQuorumVotingPeriod(newPeriod))
       .to.emit(templ, "PreQuorumVotingPeriodUpdated")
       .withArgs(before, BigInt(newPeriod));
     expect(await templ.preQuorumVotingPeriod()).to.equal(BigInt(newPeriod));
 
     // Out of range: too small
     await expect(
-      templ.connect(priest).setPreQuorumVotingPeriodDAO(MIN - 1)
+      templ.daoSetPreQuorumVotingPeriod(MIN - 1)
     ).to.be.revertedWithCustomError(templ, "InvalidCallData");
 
     // Out of range: too large
     await expect(
-      templ.connect(priest).setPreQuorumVotingPeriodDAO(MAX + 1)
+      templ.daoSetPreQuorumVotingPeriod(MAX + 1)
     ).to.be.revertedWithCustomError(templ, "InvalidCallData");
   });
 

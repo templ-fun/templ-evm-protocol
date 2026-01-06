@@ -11,10 +11,9 @@ Quick links: [At a Glance](#protocol-at-a-glance) · [Architecture](#architectur
 - Existing members accrue pro‑rata rewards from the member‑pool slice and can claim at any time. Templs can also hold ETH or other ERC‑20s as unaccounted treasury assets.
 - Donations (ETH or ERC‑20) sent directly to the templ address are held by the templ and governed: governance can withdraw these funds to recipients. Disbanding the access token moves treasury into the member pool; disbanding other tokens sweeps the full balance to the protocol fee recipient. ERC‑721 NFTs can also be custodied by a templ and later moved via governance (see NFT notes below).
 - Governance is member‑only: propose, vote, and execute actions to change parameters, move treasury, update curves/metadata, or call arbitrary external contracts.
-- Council mode (default for `createTempl` / `createTemplFor` deployments) narrows voting power to a curated council while still letting any member open proposals. Council composition changes via governance. Council mode cannot be active while dictatorship is enabled; templs must return to member voting (or never enable dictatorship) before re-entering council mode.
+- Council mode (default for `createTempl` / `createTemplFor` deployments) narrows voting power to a curated council while still letting any member open proposals. Council composition changes via governance. Council members are fee‑exempt while council mode is active.
 - The YES vote threshold (bps of votes cast) is configurable per templ (default 5,100 bps, i.e. 51%) and can be changed via governance alongside quorum/post‑quorum windows.
 - Instant quorum (bps of eligible voters, default 10,000 bps) lets proposals bypass the post‑quorum execution delay when a higher approval ratio—never lower than the normal quorum threshold—is satisfied.
-- Optional dictatorship lets a designated “priest” directly execute DAO‑only actions when enabled; when active it blocks normal proposal create/vote/execute flows (except toggling dictatorship). Dictatorship and council governance are mutually exclusive.
 - Pricing curves define how the entry fee evolves with membership growth (static, linear, exponential segments; see `CurveConfig` in `TemplCurve`).
 - Everything is modular: `TEMPL` is a router that delegatecalls membership, treasury, and governance modules over a shared storage layout, keeping concerns clean.
 - Deploy many templs via `TemplFactory`; run permissionless or with a gated deployer.
@@ -37,22 +36,21 @@ At runtime a templ behaves like one contract with clean separation of concerns v
 - Council governance: [`TemplCouncilModule`](contracts/TemplCouncil.sol)
 - Shared storage: [`TemplBase`](contracts/TemplBase.sol)
 
-Deployers configure pricing curves, fee splits, referral rewards, proposal fees, quorum/delay, membership caps, and an optional dictatorship (priest) override. The access token is any vanilla ERC‑20 you choose.
+Deployers configure pricing curves, fee splits, referral rewards, proposal fees, quorum/delay, and membership caps. The access token is any vanilla ERC‑20 you choose.
 
 ### Council governance
-- Factory-created templs start in council mode by default. The priest is the first council member; additional council members are added through proposals (or DAO calls while dictatorship is enabled and council mode is off).
-- Council mode restricts voting to the council set but any member can still pay the proposal fee to open a proposal.
+- Factory-created templs start in council mode by default. The priest is the first council member; additional council members are added through proposals.
+- Council mode restricts voting to the council set but any member can still open proposals.
 - Proposal voting mode and council roster are snapshotted at creation; later council toggles or roster changes do not affect eligibility for that proposal (see `getProposalVotingMode`).
-- Proposal fees apply equally to council and non-council proposers (no council fee waiver).
-- Council mode and dictatorship are mutually exclusive. Enabling dictatorship requires council mode to be disabled, and attempts to toggle council mode on while dictatorship is active revert.
-- Disable council mode via the `SetCouncilMode` proposal type (or the corresponding DAO call while dictatorship is enabled) to return to member-wide voting.
+- Proposal fees apply to non-council proposers; council members are fee‑exempt while council mode is active.
+- With default instant quorum, a one‑member council can pass proposals immediately after voting, so the priest can add the next council member without delay.
+- Disable council mode via the `SetCouncilMode` proposal type to return to member-wide voting.
 
 #### Migrating Existing Templs to Council Governance
 Templs deployed with `councilMode=false` can adopt council governance through the following process:
 
 **Prerequisites**:
 - Priest must already be a member (true for all templs) so `councilMemberCount > 0`
-- Dictatorship mode must be disabled (`priestIsDictator == false`)
 
 **Migration Steps**:
 
@@ -81,8 +79,8 @@ Templs deployed with `councilMode=false` can adopt council governance through th
    This proposal requires member-wide voting (the last vote before council mode activates).
 
 3. **Post-Migration Governance**:
-   - After council mode is enabled, only council members can vote on proposals (non-council members cannot vote)
-   - Any member can still create proposals (fees apply to all proposers)
+- After council mode is enabled, only council members can vote on proposals (non-council members cannot vote)
+- Any member can still create proposals (council proposers are fee‑exempt)
    - Council composition changes via `createProposalAddCouncilMember` / `createProposalRemoveCouncilMember`
    - Only council members may propose removals; additions remain open to all members
 
@@ -101,27 +99,26 @@ This proposal requires council approval while council mode is active. Once disab
 
 **Important Notes**:
 - Ensure you maintain at least one active council member; removals that would leave the council empty are blocked. For resilience, add additional council members when possible.
-- Council mode cannot be enabled while dictatorship is active. Disable dictatorship first if needed.
 - For new templs deployed with `councilMode=true`, the priest is automatically added as the first council member.
 
 ## Governance‑Controlled Upgrades
 
-Templ supports governance‑controlled routing updates. There is no protocol admin key and no owner that can change behavior out from under a templ. The only way to change routing is via that templ’s own on‑chain governance. The priest can perform these actions only when dictatorship is explicitly enabled for that templ.
+Templ supports governance‑controlled routing updates. There is no protocol admin key and no owner that can change behavior out from under a templ. The only way to change routing is via that templ’s own on‑chain governance.
 
 What is fixed vs dynamic
 - Dynamic routing table: The authoritative mapping is internal (`_moduleForSelector[bytes4] → address`) and can be changed at runtime.
 - Static helper: `getRegisteredSelectors()` returns static, canonical selector sets for the shipped modules (membership/treasury/governance/council) for tooling and quick introspection. It does not change when you update routing. To inspect the live mapping for any selector, call `getModuleForSelector(bytes4)`.
 
 Permissions and safety
-- Only by governance (no protocol admin): `setRoutingModuleDAO(address,bytes4[])` is `onlyDAO`. With dictatorship disabled, direct calls from EOAs (including protocol devs) revert; it is only reachable during execution of a passed governance proposal targeting the router. With dictatorship enabled, the priest may call it directly.
+- Only by governance (no protocol admin): `setRoutingModuleDAO(address,bytes4[])` is `onlyDAO` and only reachable during execution of a passed governance proposal targeting the router; direct calls from EOAs (including protocol devs) revert.
 - Direct module calls revert: Modules enforce delegatecall‑only access; always call the `TEMPL` router.
-- Arbitrary calls are powerful: `createProposalCallExternal` and `batchDAO` execute from the templ address and can move funds or rewire routing. Only governance (or the priest in dictatorship) can execute them. Frontends must surface strong warnings and quorum requirements protect abuse.
+- Arbitrary calls are powerful: `createProposalCallExternal` and `batchDAO` execute from the templ address and can move funds or rewire routing. Only governance can execute them. Frontends must surface strong warnings and quorum requirements protect abuse.
 - Evented: `setRoutingModuleDAO` emits `RoutingUpdated(module, selectors)` on success.
 
 Add or replace modules
 1) Deploy your module implementation (recommended: inherit `TemplBase` and do not declare new storage variables).
 2) Choose the function selectors to route to it.
-3) Update routing via governance (or priest in dictatorship mode).
+3) Update routing via governance.
 
 Inspect current routing
 
@@ -177,13 +174,6 @@ const params = ethers.AbiCoder.defaultAbiCoder().encode([
 // Propose via createProposalCallExternal targeting templ.setRoutingModuleDAO as above
 ```
 
-Dictatorship (priest‑only) path
-
-```js
-// When dictatorship is enabled, the priest can call directly
-await templ.setRoutingModuleDAO(await newModule.getAddress(), [selector]);
-```
-
 Add a brand‑new module
 - You are not limited to the three shipped modules. Any new selectors you map will be routed by the fallback and execute via `delegatecall` with the templ’s storage.
 - Best practice: implement your module as `contract MyModule is TemplBase { ... }` and avoid declaring new storage variables to prevent slot collisions. If you need bespoke storage, use a dedicated diamond‑storage pattern under a unique slot hash.
@@ -196,7 +186,6 @@ Rollbacks and verification
 Security notes
 - There is no protocol‑level upgrade authority. Routing and external calls are controlled by each templ’s governance.
 - Treat `setRoutingModuleDAO` and `CallExternal` as highly privileged. A malicious routing change can brick functions or drain funds through arbitrary calls. Use conservative quorum and clear UI warnings for proposals that target the router.
-- In dictatorship mode, the priest (a templ‑specific address chosen at deploy time or by governance) can perform any `onlyDAO` action (including `batchDAO`). Keep dictatorship disabled for decentralized control.
 
 Storage/layout policy
 - Modules share a single storage layout via `TemplBase`. Keep layout compatible across upgrades. For changes to storage‑backed structs, preserve slot order or introduce reserved/deprecated fields to avoid state corruption on upgrade.
@@ -232,14 +221,14 @@ flowchart LR
 
 - `TEMPL` routes calls to modules via delegatecall and exposes selector→module lookup.
 - Membership: joins, fee‑split accounting, member reward accrual and claims, eligibility snapshots.
-- Treasury: governance/priests manage pause/cap/config/curve, change the priest or dictatorship state, adjust referral/proposal fees, quorum/post‑quorum windows, burn address, withdraw/disband assets, and run atomic multi‑call batches via `batchDAO`.
-- Governance: create/vote/execute/cancel proposals covering all treasury setters (including quorum/burn/curve metadata), safe external calls (single or batched), dictatorship toggle, and opportunistic tail‑pruning of inactive proposals on execution to keep the active index compact.
+- Treasury: governance manages pause/cap/config/curve, change the priest, adjust referral/proposal fees, quorum/post‑quorum windows, burn address, withdraw/disband assets, and run atomic multi‑call batches via `batchDAO`.
+- Governance: create/vote/execute/cancel proposals covering all treasury setters (including quorum/burn/curve metadata), safe external calls (single or batched), and opportunistic tail‑pruning of inactive proposals on execution to keep the active index compact.
 - Shared storage: all persistent state lives in [`TemplBase`](contracts/TemplBase.sol).
 
 ## Solidity Patterns
 - Delegatecall router: `TEMPL` fallback maps `selector → module` and uses `delegatecall` to execute in shared storage (contracts/TEMPL.sol).
 - Delegatecall‑only modules: Each module stores an immutable `SELF` and reverts when called directly, enforcing router‑only entry (contracts/TemplMembership.sol, contracts/TemplTreasury.sol, contracts/TemplGovernance.sol).
-- Only‑DAO guard: `onlyDAO` in `TemplBase` gates actions to either the router itself (when dictatorship is disabled) or the router/priest (when enabled) (contracts/TemplBase.sol).
+- Only‑DAO guard: `onlyDAO` in `TemplBase` gates actions to the router itself (contracts/TemplBase.sol).
 - Reentrancy guards: User‑facing mutators like joins, claims, proposal creation/execution, and withdrawals use `nonReentrant` (contracts/TemplMembership.sol, contracts/TemplGovernance.sol, contracts/TemplTreasury.sol).
 - Snapshotting by join sequence: Proposals capture `preQuorumJoinSequence`; at quorum, a second snapshot anchors eligibility (`quorumJoinSequence`) (contracts/TemplBase.sol, contracts/TemplGovernance.sol).
 - Bounded enumeration: active proposals support paginated reads with a 1..100 `limit` (contracts/TemplBase.sol, contracts/TEMPL.sol).
@@ -251,7 +240,6 @@ flowchart LR
 - Fee split: burn / treasury / member pool / protocol; must sum to 10_000 bps.
 - Member pool: portion of each join streamed to existing members pro‑rata; optional referral share is paid from this slice.
 - Curves: entry fee evolves by static/linear/exponential segments; see [`TemplCurve`](contracts/TemplCurve.sol).
-- Dictatorship: when enabled, the priest may call `onlyDAO` actions directly with no voting window or timelock. The priest can exercise the full DAO surface, including `batchDAO` for arbitrary external calls executed from the templ address. When dictatorship is disabled, all `onlyDAO` actions execute via governance.
 - Snapshots: eligibility is frozen by join sequence at proposal creation, then again at quorum; proposals also snapshot their voting mode and (if council-only) the council roster. For member-wide proposals, the post‑quorum eligible voter count snapshots `memberCount` at quorum even if council mode changes later.
 - Caps/pauses: optional `maxMembers` (auto‑pauses at cap) plus `joinPaused` toggle.
 - Governance access: proposing and voting require membership; proposers auto‑vote YES only when they are allowed to vote (i.e., not excluded by council mode).
@@ -267,8 +255,7 @@ flowchart LR
 ## Glossary
 - templ: One deployed instance wired by `TEMPL` with membership, treasury, and governance modules.
 - access token: The ERC‑20 used for joins, fees, and accounting. Must be vanilla (no fees/rebases/hooks).
-- priest: A designated address with optional dictatorship powers when enabled.
-- dictatorship: Mode where the priest may execute DAO‑only actions directly.
+- priest: The designated address set at deployment (governance can update it); auto‑enrolled and the initial council member.
 - member pool: Accounting bucket that streams join fees to existing members, claimable pro‑rata.
 - entry fee curve: Growth schedule for the next join price (see `CurveConfig` in `TemplCurve`).
 - quorum bps: Percent of eligible members whose YES votes are required to reach quorum.
@@ -567,7 +554,6 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
 - WithdrawTreasury → `abi.encode(address token, address recipient, uint256 amount)`
 - DisbandTreasury → `abi.encode(address token)`
 - ChangePriest → `abi.encode(address newPriest)`
-- SetDictatorship → `abi.encode(bool enabled)`
 - SetQuorumBps → `abi.encode(uint256 newQuorumBps)`
 - SetInstantQuorumBps → `abi.encode(uint256 newInstantQuorumBps)`
 - SetPostQuorumVotingPeriod → `abi.encode(uint256 newPostQuorumVotingPeriod)`
@@ -582,7 +568,6 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
 - Reentrancy containment and snapshotting of eligibility at creation/quorum.
 - Anchored execution window post‑quorum; strict fee invariants; bounded enumeration.
 - External call proposals are powerful; treat like timelocked admin calls.
-- Dictatorship mode is explicit and governed.
 
 See tests by topic in [test/](test/).
 
@@ -603,14 +588,6 @@ Council Mode is intended to be a stable governance configuration, but the protoc
 
 ### Security Considerations
 
-#### Council Governance & Dictatorship Mutual Exclusion
-Council mode and dictatorship are **mutually exclusive** to prevent governance centralization attacks:
-- **Why**: Allowing both simultaneously would let a dictator priest unilaterally control a council-only templ, bypassing the council's governance entirely.
-- **Enforcement**: The contract enforces this at multiple layers:
-  - Deploy-time validation in the `TEMPL` constructor and `TemplFactory` (see `contracts/TEMPL.sol`, `contracts/TemplFactory.sol`).
-  - Runtime checks when enabling dictatorship or council mode (see `contracts/TemplBase.sol`).
-- **To switch modes**: A templ must first disable one mode via governance before enabling the other.
-
 #### Council Member Minimum (1 Member)
 Removing council members is blocked when it would leave the council empty (`councilMemberCount < 2`):
 - **Why**: Council mode requires at least one eligible voter; a zero-member council deadlocks all council voting.
@@ -627,14 +604,10 @@ When instant quorum is satisfied (default: 100% of eligible voters cast YES vote
 - **Security guarantee**: Instant quorum threshold (`instantQuorumBps`) must always be ≥ normal quorum (`quorumBps`) to prevent weakening quorum requirements. This invariant is enforced in the constructor and DAO setters (see `contracts/TemplBase.sol`).
 - **Example**: With `instantQuorumBps = 7_500` (75%), a proposal receiving 75%+ YES votes from eligible voters can execute immediately without waiting for the post-quorum delay.
 
-#### Proposal Fee Uniformity
-Proposal fees apply equally to council and non-council proposers:
-- **Rationale**: Keeps proposal-cost incentives consistent across governance modes.
-- **Implementation**: Fees are charged when `proposalCreationFeeBps > 0` and the computed `proposalFee` is non-zero (entryFee * bps / 10_000, integer math).
-
-#### Dictatorship Halts Normal Governance
-- **Behavior**: When `priestIsDictator == true`, all governance flows except toggling dictatorship revert. Proposal creation, voting, and execution are blocked for actions other than `SetDictatorship`. The priest can still call any `onlyDAO` function directly.
-- **Implication**: Enabling dictatorship pauses member/council governance until it is disabled again. Use carefully and surface clear UI warnings.
+#### Proposal Fee Behavior
+Proposal fees apply to non-council proposers; council proposers are fee‑exempt while council mode is active:
+- **Rationale**: Council governance is intended to be fast to operate while preserving fee signals for non-council members.
+- **Implementation**: Fees are charged when `proposalCreationFeeBps > 0` and the proposer is not a council member while council mode is enabled (entryFee * bps / 10_000, integer math).
 
 ## Troubleshooting
 - `InvalidEntryFee` / `EntryFeeTooSmall`: fee must be ≥10 and divisible by 10.

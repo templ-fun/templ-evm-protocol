@@ -55,16 +55,6 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
 
     await templ.daoChangePriest(member.address);
     expect(await templ.priest()).to.equal(member.address);
-
-    expect(await templ.priestIsDictator()).to.equal(false);
-    await templ.daoSetDictatorship(true);
-    expect(await templ.priestIsDictator()).to.equal(true);
-    await templ.daoSetDictatorship(false);
-    expect(await templ.priestIsDictator()).to.equal(false);
-    await expect(templ.daoSetDictatorship(false)).to.be.revertedWithCustomError(
-      templ,
-      "DictatorshipUnchanged"
-    );
   });
 
   it("covers update + pause + disband wrappers via self-call", async function () {
@@ -199,37 +189,6 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
     expect(await templ.templLogoLink()).to.equal(metadata.logo);
   });
 
-  it("permits dictator priests to call DAO functions directly", async function () {
-    const { accounts, token, templ } = await deployHarness();
-    const [, priest, member, newPriest] = accounts;
-
-    await templ.daoSetDictatorship(true);
-
-    await expect(templ.connect(priest).setJoinPausedDAO(true)).to.not.be.reverted;
-    await expect(templ.connect(priest).setJoinPausedDAO(false)).to.not.be.reverted;
-
-    await expect(templ.connect(priest).setMaxMembersDAO(5)).to.not.be.reverted;
-    await expect(
-      templ.connect(priest).setTemplMetadataDAO(
-        "Dictator Templ",
-        "Dictator description",
-        "https://dictator.templ/logo.png"
-      )
-    ).to.emit(templ, "TemplMetadataUpdated");
-
-    await token.mint(member.address, ENTRY_FEE);
-    await token.connect(member).approve(templ.target, ENTRY_FEE);
-    await templ.connect(member).join();
-
-    await expect(templ.connect(priest).disbandTreasuryDAO(token.target)).to.not.be.reverted;
-
-    await token.mint(newPriest.address, ENTRY_FEE);
-    await token.connect(newPriest).approve(templ.target, ENTRY_FEE);
-    await templ.connect(newPriest).join();
-
-    await expect(templ.connect(priest).changePriestDAO(newPriest.address)).to.not.be.reverted;
-  });
-
   it("covers proposal fee and referral wrappers via self-call", async function () {
     const { templ } = await deployHarness();
 
@@ -245,16 +204,12 @@ describe("WrapperCoverage (onlyDAO externals)", function () {
   });
 
   it("covers curve wrappers (DAO calls)", async function () {
-    const { templ, accounts } = await deployHarness();
-    const [, priest] = accounts;
-
-    // Enable dictatorship so priest can call onlyDAO externals
-    await templ.daoSetDictatorship(true);
+    const { templ } = await deployHarness();
 
     // setEntryFeeCurveDAO via direct call
     const newCurve = { primary: { style: 2, rateBps: 12000, length: 0 }, additionalSegments: [] };
     const baseBefore = await templ.baseEntryFee();
-    await expect(templ.connect(priest).setEntryFeeCurveDAO(newCurve, 0)).to.emit(templ, "EntryFeeCurveUpdated");
+    await expect(templ.daoSetEntryFeeCurve(newCurve, 0)).to.emit(templ, "EntryFeeCurveUpdated");
     // base remains unchanged when baseEntryFee is zero
     expect(await templ.baseEntryFee()).to.equal(baseBefore);
 

@@ -112,7 +112,6 @@ describe("TemplFactory", function () {
             quorumBps,
             executionDelaySeconds,
             burnAddress: customBurnAddress,
-            priestIsDictator: false,
             maxMembers: 0,
             curveProvided: true,
             curve: defaultCurve(),
@@ -236,7 +235,6 @@ describe("TemplFactory", function () {
             quorumBps: pct(35),
             executionDelaySeconds: 2 * 24 * 60 * 60,
             burnAddress: "0x00000000000000000000000000000000000000BB",
-            priestIsDictator: false,
             maxMembers: 0,
             curveProvided: true,
             curve: zeroCurve(),
@@ -274,78 +272,6 @@ describe("TemplFactory", function () {
         expect(templCreated.args.councilMode).to.equal(true);
     });
 
-    it("enables priest dictatorship when requested in config", async function () {
-        const [, priest, protocolRecipient] = await ethers.getSigners();
-        const token = await deployToken("Dict", "DICT");
-
-        const Factory = await ethers.getContractFactory("TemplFactory");
-        const protocolBps = pct(10);
-        const factory = await Factory.deploy(
-            (await ethers.getSigners())[0].address,
-            protocolRecipient.address,
-            protocolBps,
-            modules.membershipModule,
-            modules.treasuryModule,
-            modules.governanceModule,
-            modules.councilModule,
-            templDeployer
-        );
-        await factory.waitForDeployment();
-
-        const config = withCouncilDefaults({
-            priest: priest.address,
-            token: await token.getAddress(),
-            entryFee: ENTRY_FEE,
-            burnBps: pct(30),
-            treasuryBps: pct(30),
-            memberPoolBps: pct(30),
-            quorumBps: pct(33),
-            executionDelaySeconds: 7 * 24 * 60 * 60,
-            burnAddress: ethers.ZeroAddress,
-            priestIsDictator: true,
-            maxMembers: 0,
-            curveProvided: true,
-            curve: defaultCurve(),
-            name: DEFAULT_METADATA.name,
-            description: DEFAULT_METADATA.description,
-            logoLink: DEFAULT_METADATA.logoLink,
-            proposalFeeBps: 0,
-            referralShareBps: 0,
-        });
-
-        const templAddress = await factory.createTemplWithConfig.staticCall(config);
-        const tx = await factory.createTemplWithConfig(config);
-        const receipt = await tx.wait();
-
-        const templ = await getTemplAt(templAddress, ethers.provider);
-        expect(await templ.priestIsDictator()).to.equal(true);
-
-        const templCreated = receipt.logs
-            .map((log) => {
-                try {
-                    return factory.interface.parseLog(log);
-                } catch (_) {
-                    return null;
-                }
-            })
-            .find((log) => log && log.name === "TemplCreated");
-
-        expect(templCreated).to.not.equal(undefined);
-        expect(templCreated.args.priestIsDictator).to.equal(true);
-        expect(templCreated.args.maxMembers).to.equal(0n);
-        const curveStyles = templCreated.args.curveStyles.map((value) => Number(value));
-        const curveRates = templCreated.args.curveRateBps.map((value) => Number(value));
-        const curveLengths = templCreated.args.curveLengths.map((value) => Number(value));
-        expect(curveStyles).to.deep.equal([CURVE_STYLE.Exponential]);
-        expect(curveRates).to.deep.equal([11_000]);
-        expect(curveLengths).to.deep.equal([0]);
-        expect(templCreated.args.name).to.equal(DEFAULT_METADATA.name);
-        expect(templCreated.args.description).to.equal(DEFAULT_METADATA.description);
-        expect(templCreated.args.logoLink).to.equal(DEFAULT_METADATA.logoLink);
-        expect(templCreated.args.proposalFeeBps).to.equal(0n);
-        expect(templCreated.args.referralShareBps).to.equal(0n);
-    });
-
   it("sets and emits the member limit when provided", async function () {
     const [, priest, protocolRecipient] = await ethers.getSigners();
     const token = await deployToken("Limit", "LIM");
@@ -364,7 +290,6 @@ describe("TemplFactory", function () {
             quorumBps: pct(33),
             executionDelaySeconds: 7 * 24 * 60 * 60,
             burnAddress: ethers.ZeroAddress,
-            priestIsDictator: false,
             maxMembers: 5,
             curveProvided: true,
             curve: defaultCurve(),
@@ -421,7 +346,6 @@ describe("TemplFactory", function () {
       quorumBps: 0,
       executionDelaySeconds: 0,
       burnAddress: ethers.ZeroAddress,
-      priestIsDictator: false,
       maxMembers: 0,
       curveProvided: false,
       curve: zeroCurve(),
@@ -466,7 +390,6 @@ describe("TemplFactory", function () {
                     quorumBps: pct(33),
                     executionDelaySeconds: 7 * 24 * 60 * 60,
                     burnAddress: ethers.ZeroAddress,
-                    priestIsDictator: false,
                     maxMembers: 0,
                     curveProvided: true,
                     curve: defaultCurve(),
@@ -498,7 +421,6 @@ describe("TemplFactory", function () {
             quorumBps: pct(33),
             executionDelaySeconds: 7 * 24 * 60 * 60,
             burnAddress: ethers.ZeroAddress,
-            priestIsDictator: false,
             maxMembers: 0,
             curveProvided: true,
             curve: defaultCurve(),
@@ -538,7 +460,6 @@ describe("TemplFactory", function () {
                 quorumBps: pct(33),
                 executionDelaySeconds: 7 * 24 * 60 * 60,
                 burnAddress: ethers.ZeroAddress,
-                priestIsDictator: false,
                 maxMembers: 0,
                 curveProvided: true,
                 curve: defaultCurve(),
@@ -692,7 +613,6 @@ describe("TemplFactory", function () {
       quorumBps: pct(40),
       executionDelaySeconds: 5 * 24 * 60 * 60,
       burnAddress: ethers.ZeroAddress,
-      priestIsDictator: false,
       maxMembers: 0,
       curveProvided: true,
       curve: defaultCurve(),
@@ -713,7 +633,6 @@ describe("TemplFactory", function () {
       quorumBps: pct(35),
       executionDelaySeconds: 9 * 24 * 60 * 60,
       burnAddress: ethers.ZeroAddress,
-      priestIsDictator: true,
       maxMembers: 50,
       curveProvided: true,
       curve: defaultCurve(),
@@ -759,7 +678,6 @@ describe("TemplFactory", function () {
       quorumBps: 0,
       executionDelaySeconds: 0,
       burnAddress: ethers.ZeroAddress,
-      priestIsDictator: false,
       maxMembers: 0,
       curveProvided: false,
       curve: defaultCurve(),
@@ -915,7 +833,6 @@ describe("TemplFactory", function () {
                     quorumBps: pct(101),
                     executionDelaySeconds: 7 * 24 * 60 * 60,
                     burnAddress: ethers.ZeroAddress,
-                    priestIsDictator: false,
                     maxMembers: 0,
                     curveProvided: true,
                     curve: defaultCurve(),
@@ -949,7 +866,6 @@ describe("TemplFactory", function () {
                     instantQuorumBps: pct(30),
                     executionDelaySeconds: 7 * 24 * 60 * 60,
                     burnAddress: ethers.ZeroAddress,
-                    priestIsDictator: false,
                     maxMembers: 0,
                     curveProvided: true,
                     curve: defaultCurve(),
@@ -980,7 +896,6 @@ describe("TemplFactory", function () {
             quorumBps: 0,
             executionDelaySeconds: 0,
             burnAddress: ethers.ZeroAddress,
-            priestIsDictator: false,
             maxMembers: 0,
             curveProvided: false,
             curve: zeroCurve(),
@@ -1022,7 +937,6 @@ describe("TemplFactory", function () {
             quorumBps: 0,
             executionDelaySeconds: 0,
             burnAddress: ethers.ZeroAddress,
-            priestIsDictator: false,
             maxMembers: 0,
             curveProvided: false,
             curve: zeroCurve(),
@@ -1072,7 +986,6 @@ describe("TemplFactory", function () {
             quorumBps: pct(33),
             executionDelaySeconds: 7 * 24 * 60 * 60,
             burnAddress: ethers.ZeroAddress,
-            priestIsDictator: false,
             maxMembers: 0,
             curveProvided: true,
             curve: defaultCurve(),

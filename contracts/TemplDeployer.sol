@@ -59,7 +59,6 @@ contract TemplDeployer is ITemplDeployer {
             cfg.quorumBps,
             cfg.executionDelaySeconds,
             cfg.burnAddress,
-            cfg.priestIsDictator,
             cfg.maxMembers,
             cfg.name,
             cfg.description,

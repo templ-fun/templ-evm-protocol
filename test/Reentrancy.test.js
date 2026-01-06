@@ -49,7 +49,6 @@ const METADATA = {
         QUORUM_BPS,
         7 * 24 * 60 * 60,
         "0x000000000000000000000000000000000000dEaD",
-        false,
         0,
       METADATA.name,
       METADATA.description,
@@ -127,7 +126,6 @@ const METADATA = {
         QUORUM_BPS,
         7 * 24 * 60 * 60,
         "0x000000000000000000000000000000000000dEaD",
-        false,
         0,
       METADATA.name,
       METADATA.description,
@@ -184,34 +182,16 @@ const METADATA = {
       const { membershipModule, treasuryModule, governanceModule, councilModule } = await deployTemplModules();
       const entryFee = 1010n;
 
-      const TemplFactory = await ethers.getContractFactory("TEMPL");
-      templ = await TemplFactory.deploy(
+      const DaoCallerHarness = await ethers.getContractFactory("DaoCallerHarness");
+      templ = await DaoCallerHarness.deploy(
         priest.address,
         priest.address,
         await token.getAddress(),
         entryFee,
-        2900,
-        2900,
-        3200,
-        PROTOCOL_BPS,
-        QUORUM_BPS,
-        7 * 24 * 60 * 60,
-        "0x000000000000000000000000000000000000dEaD",
-        true,
-        0,
-        METADATA.name,
-        METADATA.description,
-        METADATA.logo,
-        0,
-        0,
-        5_100,
-        10_000,
-        false,
         membershipModule,
         treasuryModule,
         governanceModule,
         councilModule,
-        STATIC_CURVE
       );
       await templ.waitForDeployment();
       templ = await attachTemplInterface(templ);
@@ -221,12 +201,12 @@ const METADATA = {
 
     it("reverts when sweeping member pool reenters claimMemberRewards", async function () {
       const entryFee = 1010n;
-      const [, , member1, member2, member3, recipient] = accounts;
+      const [, , member1, member2, , recipient] = accounts;
 
       await token.joinTempl(entryFee);
 
-      await mintToUsers(token, [member1, member2, member3], entryFee * 10n);
-      await joinMembers(templ, token, [member1, member2, member3]);
+      await mintToUsers(token, [member1, member2], entryFee * 10n);
+      await joinMembers(templ, token, [member1, member2]);
 
       const remainder = await templ.memberRewardRemainder();
       expect(remainder).to.be.gt(0n);
@@ -234,7 +214,7 @@ const METADATA = {
       await token.setCallback(2);
 
       await expect(
-        templ.connect(priest).sweepMemberPoolRemainderDAO(recipient.address)
+        templ.connect(priest).daoSweepMemberPoolRemainder(recipient.address)
       ).to.be.revertedWithCustomError(templ, "ReentrancyGuardReentrantCall");
     });
   });

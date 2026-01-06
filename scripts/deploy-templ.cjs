@@ -311,10 +311,6 @@ async function main() {
         : parseBoolean(rawCouncilMode);
   const BACKEND_URL = (process.env.BACKEND_URL || process.env.TEMPL_BACKEND_URL || '').trim();
   const TELEGRAM_CHAT_ID = (process.env.TELEGRAM_CHAT_ID || process.env.CHAT_ID || '').trim();
-  const PRIEST_IS_DICTATOR = /^(?:1|true)$/i.test((process.env.PRIEST_IS_DICTATOR || '').trim());
-  if (START_COUNCIL_MODE && PRIEST_IS_DICTATOR) {
-    throw new Error('Council mode cannot be enabled while PRIEST_IS_DICTATOR is true');
-  }
   const curveConfigEnv = resolveCurveConfigFromEnv();
 
   if (!TOKEN_ADDRESS) {
@@ -443,7 +439,6 @@ async function main() {
   console.log("Quorum Bps:", resolvedQuorumBps);
   console.log("Post‑Quorum Voting Period (seconds):", POST_QUORUM_VOTING_PERIOD_SECONDS ?? 36 * 60 * 60);
   console.log("Burn Address:", effectiveBurnAddress);
-  console.log("Priest Dictatorship:", PRIEST_IS_DICTATOR ? 'enabled' : 'disabled');
   console.log("Council Mode:", START_COUNCIL_MODE ? 'enabled' : 'disabled');
   console.log("YES Vote Threshold (bps):", yesVoteThresholdBps);
   console.log("Instant Quorum (bps):", instantQuorumBps);
@@ -556,7 +551,6 @@ async function main() {
     quorumBps: quorumPercentBps,
     executionDelaySeconds: POST_QUORUM_VOTING_PERIOD_SECONDS ?? 0,
     burnAddress: BURN_ADDRESS || hre.ethers.ZeroAddress,
-    priestIsDictator: PRIEST_IS_DICTATOR,
     maxMembers: MAX_MEMBERS,
     curveProvided: curveConfigEnv.curveProvided,
     curve: curveConfigEnv.curve,
@@ -710,7 +704,6 @@ async function main() {
     quorumBps: quorumPercentBps,
     executionDelaySeconds: POST_QUORUM_VOTING_PERIOD_SECONDS ?? 36 * 60 * 60,
     burnAddress: effectiveBurnAddress,
-    priestIsDictator: PRIEST_IS_DICTATOR,
     tokenAddress: TOKEN_ADDRESS,
     entryFee: ENTRY_FEE,
     templName: NAME,
@@ -758,7 +751,7 @@ async function main() {
       `npx hardhat verify --contract contracts/TemplFactory.sol:TemplFactory --network base ${factoryAddress} ${(process.env.FACTORY_DEPLOYER || deployer.address).trim()} ${PROTOCOL_FEE_RECIPIENT} ${protocolPercentBps} ${membershipModuleAddress} ${treasuryModuleAddress} ${governanceModuleAddress} ${councilModuleAddress} ${templDeployerAddress}`
     );
     console.log(
-      `npx hardhat verify --contract contracts/TEMPL.sol:TEMPL --network base ${contractAddress} ${PRIEST_ADDRESS} ${PROTOCOL_FEE_RECIPIENT} ${TOKEN_ADDRESS} ${ENTRY_FEE} ${burnSplit.resolvedBps} ${treasurySplit.resolvedBps} ${memberPoolSplit.resolvedBps} ${protocolPercentBps} ${quorumPercentBps} ${(POST_QUORUM_VOTING_PERIOD_SECONDS ?? 36 * 60 * 60)} ${(BURN_ADDRESS || hre.ethers.ZeroAddress)} ${PRIEST_IS_DICTATOR} ${MAX_MEMBERS} "${NAME}" "${DESCRIPTION}" "${LOGO_LINK}" ${PROPOSAL_FEE_BPS} ${REFERRAL_SHARE_BPS} ${yesVoteThresholdBps} ${instantQuorumBps} ${START_COUNCIL_MODE} ${membershipModuleAddress} ${treasuryModuleAddress} ${governanceModuleAddress} ${councilModuleAddress} [[[curve argument omitted; use scripts/verify-templ.cjs for templ verification]]]`
+      `npx hardhat verify --contract contracts/TEMPL.sol:TEMPL --network base ${contractAddress} ${PRIEST_ADDRESS} ${PROTOCOL_FEE_RECIPIENT} ${TOKEN_ADDRESS} ${ENTRY_FEE} ${burnSplit.resolvedBps} ${treasurySplit.resolvedBps} ${memberPoolSplit.resolvedBps} ${protocolPercentBps} ${quorumPercentBps} ${(POST_QUORUM_VOTING_PERIOD_SECONDS ?? 36 * 60 * 60)} ${(BURN_ADDRESS || hre.ethers.ZeroAddress)} ${MAX_MEMBERS} "${NAME}" "${DESCRIPTION}" "${LOGO_LINK}" ${PROPOSAL_FEE_BPS} ${REFERRAL_SHARE_BPS} ${yesVoteThresholdBps} ${instantQuorumBps} ${START_COUNCIL_MODE} ${membershipModuleAddress} ${treasuryModuleAddress} ${governanceModuleAddress} ${councilModuleAddress} [[[curve argument omitted; use scripts/verify-templ.cjs for templ verification]]]`
     );
     console.log("Tip: prefer npm run verify:factory and npm run verify:templ which auto-discover constructor args.");
   }
@@ -775,7 +768,7 @@ async function main() {
   console.log("- One member = one vote (proposer auto‑YES; votes changeable until deadline)");
   console.log("\n🔒 Security Features:");
   console.log("- No backdoor functions");
-  console.log("- Treasury/token moves via DAO votes (or priest in dictatorship mode)");
+  console.log("- Treasury/token moves via DAO votes");
   console.log("- One join per wallet");
   console.log("- Vote gaming prevention");
 }

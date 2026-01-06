@@ -24,8 +24,6 @@ struct CreateConfig {
     uint256 executionDelaySeconds;
     /// @notice Burn address (zero applies default dead address).
     address burnAddress;
-    /// @notice Start in dictatorship mode (priest may call onlyDAO actions directly).
-    bool priestIsDictator;
     /// @notice Optional membership cap (0 = uncapped).
     uint256 maxMembers;
     /// @notice Whether a custom curve is provided (false uses factory default curve).

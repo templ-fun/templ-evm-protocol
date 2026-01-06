@@ -280,26 +280,40 @@ describe("EntryFeeCurve", function () {
         };
 
         const baseFee = 1000n;
-        const { templ, token, accounts, priest } = await deployTempl({
+        const { templ, token, accounts } = await deployTempl({
             entryFee: baseFee,
             curve,
-            priestIsDictator: true,
         });
 
         const [, , ...rest] = accounts;
-        const joiners = rest.slice(0, 7);
-        const nextJoiner = rest[7];
+        const joiners = rest.slice(0, 3);
+        const nextJoiner = rest[3];
 
         await mintToUsers(token, [...joiners, nextJoiner], baseFee * 1000n);
         await joinMembers(templ, token, joiners);
 
         const paidJoins = await templ.totalJoins();
-        const targetEntryFee = 1240n;
+        let targetEntryFee = 1240n;
+        let recalibratedBase = solveBaseEntryFee(targetEntryFee, curve, paidJoins);
+        let attempts = 0;
+        while (recalibratedBase % 10n !== 0n && attempts < 200) {
+            targetEntryFee += 10n;
+            recalibratedBase = solveBaseEntryFee(targetEntryFee, curve, paidJoins);
+            attempts += 1;
+        }
+        expect(recalibratedBase % 10n).to.equal(0n);
 
-        await templ.connect(priest).updateConfigDAO(targetEntryFee, false, 0, 0, 0);
+        await templ
+            .connect(joiners[0])
+            .createProposalUpdateConfig(targetEntryFee, 0, 0, 0, false, 0, "Retarget fee", "");
+        const proposalId = (await templ.proposalCount()) - 1n;
+        await templ.connect(joiners[1]).vote(proposalId, true);
+        const delay = Number(await templ.postQuorumVotingPeriod());
+        await ethers.provider.send("evm_increaseTime", [delay + 1]);
+        await ethers.provider.send("evm_mine", []);
+        await templ.executeProposal(proposalId);
         expect(await templ.entryFee()).to.equal(targetEntryFee);
 
-        const recalibratedBase = solveBaseEntryFee(targetEntryFee, curve, paidJoins);
         const expectedNextFee = priceForPaidJoins(recalibratedBase, curve, paidJoins + 1n);
 
         const templAddress = await templ.getAddress();
@@ -349,10 +363,9 @@ describe("EntryFeeCurve", function () {
     it("reverts when retargeting the entry fee floor would push the base below the minimum", async function () {
         const RAW_ENTRY_FEE = 100n;
         const MIN_ENTRY_FEE = 10n;
-        const { templ, token, accounts, priest } = await deployTempl({
+        const { templ, token, accounts } = await deployTempl({
             entryFee: RAW_ENTRY_FEE,
             curve: EXPONENTIAL_CURVE,
-            priestIsDictator: true,
         });
 
         const [, , ...rest] = accounts;
@@ -368,11 +381,16 @@ describe("EntryFeeCurve", function () {
 
         expect(await templ.entryFee()).to.be.gt(MIN_ENTRY_FEE);
 
-        await expect(
-            templ
-                .connect(priest)
-                .updateConfigDAO(MIN_ENTRY_FEE, false, 0, 0, 0)
-        ).to.be.revertedWithCustomError(templ, "EntryFeeTooSmall");
+        await templ
+            .connect(joiners[0])
+            .createProposalUpdateConfig(MIN_ENTRY_FEE, 0, 0, 0, false, 0, "Floor", "");
+        const proposalId = (await templ.proposalCount()) - 1n;
+        await templ.connect(joiners[1]).vote(proposalId, true);
+        const delay = Number(await templ.postQuorumVotingPeriod());
+        await ethers.provider.send("evm_increaseTime", [delay + 1]);
+        await ethers.provider.send("evm_mine", []);
+        await expect(templ.executeProposal(proposalId))
+            .to.be.revertedWithCustomError(templ, "EntryFeeTooSmall");
 
         expect(await templ.baseEntryFee()).to.be.gte(RAW_ENTRY_FEE);
         expect(await templ.entryFee()).to.be.gte(MIN_ENTRY_FEE);

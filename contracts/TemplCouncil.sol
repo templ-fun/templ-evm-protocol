@@ -33,7 +33,6 @@ contract TemplCouncilModule is TemplBase {
         string calldata _title,
         string calldata _description
     ) external nonReentrant onlyDelegatecall returns (uint256 proposalId) {
-        if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         if (_newThresholdBps < MIN_YES_VOTE_THRESHOLD_BPS || _newThresholdBps > BPS_DENOMINATOR) {
             revert TemplErrors.InvalidPercentage();
         }
@@ -55,7 +54,6 @@ contract TemplCouncilModule is TemplBase {
         string calldata _title,
         string calldata _description
     ) external nonReentrant onlyDelegatecall returns (uint256 proposalId) {
-        if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         if (_enable && councilMemberCount == 0) revert TemplErrors.NoMembers();
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
         p.action = Action.SetCouncilMode;
@@ -108,7 +106,6 @@ contract TemplCouncilModule is TemplBase {
         string calldata title,
         string calldata description
     ) internal returns (uint256 proposalId) {
-        if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         if (member == address(0)) revert TemplErrors.InvalidRecipient();
         if (!members[member].joined) revert TemplErrors.NotMember();
         if (add) {

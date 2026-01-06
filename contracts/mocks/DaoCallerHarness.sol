@@ -30,7 +30,6 @@ contract DaoCallerHarness is TEMPL {
             3300,
             7 days,
             0x000000000000000000000000000000000000dEaD,
-            false,
             0,
             "Test Templ",
             "Harness",
@@ -77,11 +76,6 @@ contract DaoCallerHarness is TEMPL {
     function daoChangePriest(address newPriest) external {
         TemplTreasuryModule(address(this)).changePriestDAO(newPriest);
     }
-    /// @notice Wrapper to call setDictatorshipDAO via contract self-call
-    function daoSetDictatorship(bool enabled) external {
-        TemplTreasuryModule(address(this)).setDictatorshipDAO(enabled);
-    }
-
     /// @notice Wrapper to call setMaxMembersDAO via contract self-call
     function daoSetMaxMembers(uint256 newMax) external {
         TemplTreasuryModule(address(this)).setMaxMembersDAO(newMax);
@@ -100,6 +94,71 @@ contract DaoCallerHarness is TEMPL {
     /// @notice Wrapper to call setReferralShareBpsDAO via contract self-call
     function daoSetReferralShare(uint256 newReferralBps) external {
         TemplTreasuryModule(address(this)).setReferralShareBpsDAO(newReferralBps);
+    }
+
+    /// @notice Wrapper to call setEntryFeeCurveDAO via contract self-call
+    function daoSetEntryFeeCurve(CurveConfig calldata curve, uint256 baseEntryFee) external {
+        CurveConfig memory config = curve;
+        TemplTreasuryModule(address(this)).setEntryFeeCurveDAO(config, baseEntryFee);
+    }
+
+    /// @notice Wrapper to call setQuorumBpsDAO via contract self-call
+    function daoSetQuorum(uint256 newQuorumBps) external {
+        TemplTreasuryModule(address(this)).setQuorumBpsDAO(newQuorumBps);
+    }
+
+    /// @notice Wrapper to call setPostQuorumVotingPeriodDAO via contract self-call
+    function daoSetPostQuorumVotingPeriod(uint256 newPeriod) external {
+        TemplTreasuryModule(address(this)).setPostQuorumVotingPeriodDAO(newPeriod);
+    }
+
+    /// @notice Wrapper to call setBurnAddressDAO via contract self-call
+    function daoSetBurnAddress(address newBurn) external {
+        TemplTreasuryModule(address(this)).setBurnAddressDAO(newBurn);
+    }
+
+    /// @notice Wrapper to call setPreQuorumVotingPeriodDAO via contract self-call
+    function daoSetPreQuorumVotingPeriod(uint256 newPeriod) external {
+        TemplTreasuryModule(address(this)).setPreQuorumVotingPeriodDAO(newPeriod);
+    }
+
+    /// @notice Wrapper to call setYesVoteThresholdBpsDAO via contract self-call
+    function daoSetYesVoteThreshold(uint256 newThresholdBps) external {
+        TemplTreasuryModule(address(this)).setYesVoteThresholdBpsDAO(newThresholdBps);
+    }
+
+    /// @notice Wrapper to call setInstantQuorumBpsDAO via contract self-call
+    function daoSetInstantQuorum(uint256 newThresholdBps) external {
+        TemplTreasuryModule(address(this)).setInstantQuorumBpsDAO(newThresholdBps);
+    }
+
+    /// @notice Wrapper to call setCouncilModeDAO via contract self-call
+    function daoSetCouncilMode(bool enabled) external {
+        TemplTreasuryModule(address(this)).setCouncilModeDAO(enabled);
+    }
+
+    /// @notice Wrapper to call addCouncilMemberDAO via contract self-call
+    function daoAddCouncilMember(address member) external {
+        TemplTreasuryModule(address(this)).addCouncilMemberDAO(member);
+    }
+
+    /// @notice Wrapper to call removeCouncilMemberDAO via contract self-call
+    function daoRemoveCouncilMember(address member) external {
+        TemplTreasuryModule(address(this)).removeCouncilMemberDAO(member);
+    }
+
+    /// @notice Wrapper to call sweepMemberPoolRemainderDAO via contract self-call
+    function daoSweepMemberPoolRemainder(address recipient) external {
+        TemplTreasuryModule(address(this)).sweepMemberPoolRemainderDAO(recipient);
+    }
+
+    /// @notice Wrapper to call batchDAO via contract self-call
+    function daoBatch(
+        address[] calldata targets,
+        uint256[] calldata values,
+        bytes[] calldata calldatas
+    ) external returns (bytes[] memory results) {
+        return TemplTreasuryModule(address(this)).batchDAO(targets, values, calldatas);
     }
 
     /// @dev Test helper to set action to an undefined value (testing only)

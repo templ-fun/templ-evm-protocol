@@ -95,34 +95,6 @@ describe("Instant quorum execution", function () {
     expect(await templ.burnAddress()).to.equal(councilBurn);
   });
 
-  it("allows dictatorship proposals to execute instantly when the threshold is met", async function () {
-    const { templ, token, accounts } = await deployTempl({
-      entryFee: ENTRY_FEE,
-      proposalFeeBps: 0,
-      councilMode: false,
-      instantQuorumBps: 10_000,
-    });
-    const [, priest, member1] = accounts;
-    await mintToUsers(token, [member1], TOKEN_SUPPLY);
-    await joinMembers(templ, token, [member1]);
-
-    await templ
-      .connect(member1)
-      .createProposalSetDictatorship(true, WEEK, "enable dictatorship", "");
-    let proposalId = (await templ.proposalCount()) - 1n;
-    await templ.connect(priest).vote(proposalId, true);
-    await expect(templ.connect(member1).executeProposal(proposalId)).to.not.be.reverted;
-    expect(await templ.priestIsDictator()).to.equal(true);
-
-    await templ
-      .connect(member1)
-      .createProposalSetDictatorship(false, WEEK, "disable dictatorship", "");
-    proposalId = (await templ.proposalCount()) - 1n;
-    await templ.connect(priest).vote(proposalId, true);
-    await expect(templ.connect(member1).executeProposal(proposalId)).to.not.be.reverted;
-    expect(await templ.priestIsDictator()).to.equal(false);
-  });
-
   it("reverts on deploy when instant quorum is below the quorum threshold", async function () {
     const [, priest, protocol] = await ethers.getSigners();
     const modules = await deployTemplModules();
@@ -143,7 +115,6 @@ describe("Instant quorum execution", function () {
         6_000,
         WEEK,
         "0x000000000000000000000000000000000000dEaD",
-        false,
         0,
         "Bad Instant",
         "",
@@ -162,25 +133,41 @@ describe("Instant quorum execution", function () {
     ).to.be.revertedWithCustomError(Templ, "InstantQuorumBelowQuorum");
   });
 
-  it("blocks dictatorship setters from lowering instant quorum below the normal quorum", async function () {
-    const { templ, priest } = await deployTempl({
+  it("blocks instant quorum updates below the normal quorum threshold", async function () {
+    const { templ, token, accounts } = await deployTempl({
       quorumBps: 5_000,
       instantQuorumBps: 6_000,
-      priestIsDictator: true,
+      proposalFeeBps: 0,
     });
-    await expect(templ.connect(priest).setInstantQuorumBpsDAO(4_000)).to.be.revertedWithCustomError(
+    const [, , member1, member2] = accounts;
+    await mintToUsers(token, [member1, member2], TOKEN_SUPPLY);
+    await joinMembers(templ, token, [member1, member2]);
+
+    await templ
+      .connect(member1)
+      .createProposalSetInstantQuorumBps(4_000, WEEK, "lower instant quorum", "");
+    const proposalId = (await templ.proposalCount()) - 1n;
+    await templ.connect(member2).vote(proposalId, true);
+    await expect(templ.executeProposal(proposalId)).to.be.revertedWithCustomError(
       templ,
       "InstantQuorumBelowQuorum"
     );
   });
 
   it("blocks quorum updates that would exceed the instant quorum threshold", async function () {
-    const { templ, priest } = await deployTempl({
+    const { templ, token, accounts } = await deployTempl({
       quorumBps: 4_000,
       instantQuorumBps: 6_000,
-      priestIsDictator: true,
+      proposalFeeBps: 0,
     });
-    await expect(templ.connect(priest).setQuorumBpsDAO(7_000)).to.be.revertedWithCustomError(
+    const [, , member1, member2] = accounts;
+    await mintToUsers(token, [member1, member2], TOKEN_SUPPLY);
+    await joinMembers(templ, token, [member1, member2]);
+
+    await templ.connect(member1).createProposalSetQuorumBps(7_000, WEEK, "raise quorum", "");
+    const proposalId = (await templ.proposalCount()) - 1n;
+    await templ.connect(member2).vote(proposalId, true);
+    await expect(templ.executeProposal(proposalId)).to.be.revertedWithCustomError(
       templ,
       "InstantQuorumBelowQuorum"
     );

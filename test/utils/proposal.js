@@ -103,7 +103,6 @@ module.exports.attachProposalMetadataShim = function(templ) {
     ['createProposalWithdrawTreasury', 6],
     ['createProposalDisbandTreasury', 4],
     ['createProposalChangePriest', 4],
-    ['createProposalSetDictatorship', 4],
     ['createProposalSetMaxMembers', 4],
     ['createProposalUpdateMetadata', 6],
     ['createProposalSetProposalFeeBps', 4],

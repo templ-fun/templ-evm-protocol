@@ -52,14 +52,12 @@ abstract contract TemplBase is ReentrancyGuard {
     uint256 public memberPoolBps;
     /// @notice Basis points of the entry fee forwarded to the protocol on every join.
     uint256 public protocolBps;
-    /// @notice Address empowered to act as the priest (and temporary dictator).
+    /// @notice Address empowered to act as the priest.
     address public priest;
     /// @notice Address that receives the protocol share during joins and distributions.
     address public protocolFeeRecipient;
     /// @notice ERC-20 token required to join the templ.
     address public accessToken;
-    /// @notice Tracks whether dictatorship mode is enabled.
-    bool public priestIsDictator;
     /// @notice Current entry fee denominated in the access token.
     uint256 public entryFee;
     /// @notice Entry fee recorded when zero paid joins have occurred.
@@ -137,7 +135,6 @@ abstract contract TemplBase is ReentrancyGuard {
         WithdrawTreasury,
         DisbandTreasury,
         ChangePriest,
-        SetDictatorship,
         SetMaxMembers,
         SetMetadata,
         SetProposalFee,
@@ -247,8 +244,6 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 preQuorumJoinSequence;
         /// @notice Join sequence recorded when quorum was reached (0 if quorum never satisfied).
         uint256 quorumJoinSequence;
-        /// @notice Desired dictatorship state when the action is SetDictatorship.
-        bool setDictatorship;
         /// @notice Desired council mode state when the action is SetCouncilMode.
         bool setCouncilMode;
         /// @notice True once instant quorum threshold has been satisfied.
@@ -463,9 +458,6 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param account Wallet that left the council.
     /// @param removedBy Caller that initiated the removal.
     event CouncilMemberRemoved(address indexed account, address indexed removedBy);
-    /// @notice Emitted when dictatorship mode is toggled.
-    /// @param enabled True when dictatorship is enabled, false when disabled.
-    event DictatorshipModeChanged(bool indexed enabled);
     /// @notice Emitted when DAO sweeps the member pool remainder to a recipient.
     /// @param recipient Wallet receiving the swept access-token amount.
     /// @param amount Amount transferred to `recipient`.
@@ -486,11 +478,9 @@ abstract contract TemplBase is ReentrancyGuard {
         _;
     }
 
-    /// @dev Permits calls from the contract (governance) or the priest when dictatorship mode is enabled.
+    /// @dev Permits calls from the contract (governance) only.
     modifier onlyDAO() {
-        if (priestIsDictator) {
-            if (msg.sender != address(this) && msg.sender != priest) revert TemplErrors.PriestOnly();
-        } else if (msg.sender != address(this)) {
+        if (msg.sender != address(this)) {
             revert TemplErrors.NotDAO();
         }
         _;
@@ -531,7 +521,6 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param _quorumBps YES vote threshold (basis points) required to reach quorum (defaults when zero).
     /// @param _executionDelay Seconds to wait after quorum before execution (defaults when zero).
     /// @param _burnAddress Address receiving burn allocations (fallbacks to the dead address).
-    /// @param _priestIsDictator Whether the templ starts in dictatorship mode.
     /// @param _name Initial templ name surfaced off-chain.
     /// @param _description Initial templ description.
     /// @param _logoLink Initial templ logo link.
@@ -550,7 +539,6 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 _quorumBps,
         uint256 _executionDelay,
         address _burnAddress,
-        bool _priestIsDictator,
         string memory _name,
         string memory _description,
         string memory _logoLink,
@@ -564,7 +552,6 @@ abstract contract TemplBase is ReentrancyGuard {
         }
         protocolFeeRecipient = _protocolFeeRecipient;
         accessToken = _accessToken;
-        priestIsDictator = _priestIsDictator;
 
         uint256 rawTotal = _burnBps + _treasuryBps + _memberPoolBps + _protocolBps;
         if (rawTotal != BPS_DENOMINATOR) revert TemplErrors.InvalidPercentageSplit();
@@ -842,15 +829,18 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 period = _votingPeriod == 0 ? preQuorumVotingPeriod : _votingPeriod;
         if (period < MIN_PRE_QUORUM_VOTING_PERIOD) revert TemplErrors.VotingPeriodTooShort();
         if (period > MAX_PRE_QUORUM_VOTING_PERIOD) revert TemplErrors.VotingPeriodTooLong();
-        uint256 feeBps = proposalCreationFeeBps;
-        if (feeBps > 0) {
-            uint256 proposalFee;
-            unchecked {
-                proposalFee = (entryFee * feeBps) / BPS_DENOMINATOR;
-            }
-            if (proposalFee > 0) {
-                _safeTransferFrom(accessToken, msg.sender, address(this), proposalFee);
-                treasuryBalance += proposalFee;
+        bool waiveFee = councilModeEnabled && councilMembers[msg.sender];
+        if (!waiveFee) {
+            uint256 feeBps = proposalCreationFeeBps;
+            if (feeBps > 0) {
+                uint256 proposalFee;
+                unchecked {
+                    proposalFee = (entryFee * feeBps) / BPS_DENOMINATOR;
+                }
+                if (proposalFee > 0) {
+                    _safeTransferFrom(accessToken, msg.sender, address(this), proposalFee);
+                    treasuryBalance += proposalFee;
+                }
             }
         }
         proposalId = proposalCount;
@@ -1270,15 +1260,6 @@ abstract contract TemplBase is ReentrancyGuard {
         emit EntryFeeCurveUpdated(styles, rates, lengths);
     }
 
-    /// @notice Toggles dictatorship governance mode, emitting an event when the state changes.
-    /// @param _enabled New dictatorship state (true to enable).
-    function _updateDictatorship(bool _enabled) internal {
-        if (priestIsDictator == _enabled) revert TemplErrors.DictatorshipUnchanged();
-        if (_enabled && councilModeEnabled) revert TemplErrors.CouncilModeActive();
-        priestIsDictator = _enabled;
-        emit DictatorshipModeChanged(_enabled);
-    }
-
     /// @notice Sets or clears the membership cap and auto-pauses if the new cap is already met.
     /// @param newMaxMembers New membership cap (0 removes the cap).
     function _setMaxMembers(uint256 newMaxMembers) internal {
@@ -1414,7 +1395,6 @@ abstract contract TemplBase is ReentrancyGuard {
     function _setCouncilMode(bool enabled) internal {
         if (councilModeEnabled == enabled) revert TemplErrors.InvalidCallData();
         if (enabled) {
-            if (priestIsDictator) revert TemplErrors.CouncilModeActive();
             if (councilMemberCount == 0) revert TemplErrors.NoMembers();
         }
         councilModeEnabled = enabled;
