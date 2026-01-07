@@ -53,16 +53,10 @@ describe("Post-quorum voting period bounds", function () {
     await mintToUsers(token, [proposer, voter], ENTRY_FEE * 3n);
     await joinMembers(templ, token, [proposer, voter], ENTRY_FEE);
 
-    await templ
-      .connect(proposer)
-      .createProposalSetPostQuorumVotingPeriod(MIN_POST_QUORUM - 1, 7 * DAY, "Bad delay", "");
-    const proposalId = (await templ.proposalCount()) - 1n;
-
-    await templ.connect(voter).vote(proposalId, true);
-    await ethers.provider.send("evm_increaseTime", [8 * DAY]);
-    await ethers.provider.send("evm_mine", []);
-
-    await expect(templ.executeProposal(proposalId))
-      .to.be.revertedWithCustomError(templ, "InvalidCallData");
+    await expect(
+      templ
+        .connect(proposer)
+        .createProposalSetPostQuorumVotingPeriod(MIN_POST_QUORUM - 1, 7 * DAY, "Bad delay", "")
+    ).to.be.revertedWithCustomError(templ, "InvalidCallData");
   });
 });

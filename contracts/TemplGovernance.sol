@@ -170,6 +170,7 @@ contract TemplGovernanceModule is TemplModuleBase {
         string calldata _description
     ) external nonReentrant returns (uint256 proposalId) {
         _requireDelegatecall();
+        _validatePostQuorumVotingPeriod(_newPeriodSeconds);
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
         p.action = Action.SetPostQuorumVotingPeriod;
         p.newPostQuorumVotingPeriod = _newPeriodSeconds;
