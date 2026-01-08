@@ -10,7 +10,7 @@ Quick links: [At a Glance](#protocol-at-a-glance) · [Architecture](#architectur
 - Create a templ tied to a vanilla ERC‑20 access token (assumed, not enforced); members join by paying an entry fee in that token. The fee is split into burn, treasury, member‑pool, and protocol slices.
 - Existing members accrue pro‑rata rewards from the member‑pool slice and can claim at any time. Templs can also hold ETH or other ERC‑20s as unaccounted treasury assets.
 - Donations (ETH or ERC‑20) sent directly to the templ address are held by the templ and governed: governance can withdraw these funds to recipients. Disbanding the access token moves treasury into the member pool; disbanding other tokens sweeps the full balance to the protocol fee recipient. ERC‑721 NFTs can also be custodied by a templ and later moved via governance (see NFT notes below).
-- Governance is member‑gated for proposing and voting; execution is permissionless once a proposal passes. Actions can change parameters, move treasury, update curves/metadata, or call arbitrary external contracts.
+- Governance is member-gated for proposing; voting is member-wide or council-only depending on mode. Execution is permissionless once a proposal passes. Actions can change parameters, move treasury, update curves/metadata, or call arbitrary external contracts.
 - Council mode (default for `createTempl` / `createTemplFor` deployments) narrows voting power to a curated council while still letting any member open most proposals (council‑member removals require a council proposer). Council composition changes via governance. Council members are fee‑exempt while council mode is active.
 - The YES vote threshold (bps of votes cast) is configurable per templ (default 5,100 bps, i.e. 51%) and can be changed via governance alongside quorum/post‑quorum windows.
 - Instant quorum (bps of eligible voters, default 10,000 bps) lets proposals bypass the post‑quorum execution delay when a higher approval ratio—never lower than the normal quorum threshold—is satisfied.
@@ -235,7 +235,7 @@ flowchart LR
 - Reentrancy guards: User‑facing mutators like joins, claims, proposal creation/execution, and withdrawals use `nonReentrant` (contracts/TemplMembership.sol, contracts/TemplGovernance.sol, contracts/TemplTreasury.sol, contracts/TemplCouncil.sol).
 - Snapshotting by join sequence: Proposals capture `preQuorumJoinSequence`; at quorum, a second snapshot anchors eligibility (`quorumJoinSequence`) (contracts/TemplBase.sol, contracts/TemplGovernance.sol).
 - Bounded enumeration: active proposals support paginated reads with a 1..100 `limit` (contracts/TemplBase.sol, contracts/TEMPL.sol).
-- Safe token ops: Uses OpenZeppelin `SafeERC20` for ERC‑20 transfers and explicit ETH forwarding with revert bubbling (contracts/TemplBase.sol, contracts/TemplGovernance.sol).
+- Safe token ops: Uses OpenZeppelin `SafeERC20` for ERC‑20 transfers; ETH treasury sends revert on failure (no reason bubbling), while `CallExternal`/`batchDAO` bubble downstream reverts (contracts/TemplBase.sol, contracts/TemplGovernance.sol, contracts/TemplTreasury.sol).
 - Saturating math for curves: Price growth saturates at `MAX_ENTRY_FEE`; recomputed `entryFee` values are normalized to ≥10 and divisible by 10 (contracts/TemplBase.sol).
 - Governance‑controlled upgrades: `setRoutingModuleDAO(address,bytes4[])` rewires selectors under `onlyDAO` (contracts/TEMPL.sol).
 
@@ -246,7 +246,7 @@ flowchart LR
 - Base entry fee anchor: stored anchor for curve math; may be non-divisible after retargets while `entryFee` remains normalized.
 - Snapshots: eligibility is frozen by join sequence at proposal creation, then again at quorum; proposals also snapshot their voting mode and (if council-only) the council roster. For member-wide proposals, the post‑quorum eligible voter count snapshots `memberCount` at quorum even if council mode changes later.
 - Caps/pauses: optional `maxMembers` (auto‑pauses at cap) plus `joinPaused` toggle.
-- Governance access: proposing and voting require membership; proposers auto‑vote YES only when they are allowed to vote (i.e., not excluded by council mode).
+- Governance access: proposing requires membership; voting is member-wide or council-only depending on mode; proposers auto-vote YES only when they are allowed to vote (i.e., not excluded by council mode).
 
 ### Donations: Address and Custody
 - Donation address: Send donations to the templ contract address (the TEMPL/router address). There is no separate “treasury address”. “Treasury” is an accounting bucket inside the templ that tracks how much of the templ’s on-chain balance is available for governance withdrawals versus reserved for member rewards.
@@ -271,7 +271,7 @@ flowchart LR
 1) Deploy modules + factory or use an existing factory (`TemplFactory`).
 2) Create a templ providing the access token, base entry fee, fee split, curve, governance params, and metadata (`createTemplWithConfig`).
 3) Members join by paying the current entry fee in the access token (optionally with a referrer); fees split to burn/treasury/member‑pool/protocol. The next entry fee advances by the curve.
-4) Members propose, vote, cancel (before other votes); any address can execute once conditions are met: configuration changes, metadata updates, treasury withdrawals/disband, and arbitrary external calls.
+4) Members propose; voting is member-wide or council-only depending on mode; proposers can cancel before other votes; any address can execute once conditions are met: configuration changes, metadata updates, treasury withdrawals/disband, and arbitrary external calls.
 5) Members claim accumulated member‑pool rewards.
 6) Templs can evolve via governance—adjusting caps, curves, fees, and parameters—or be wound down by disbanding the treasury.
 
@@ -500,7 +500,7 @@ sequenceDiagram
   M-->>User: emit MemberJoined(...)
 ```
 
-Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, and exponential segments. A final segment with `length=0` creates an infinite tail.
+Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, and exponential segments. Valid configs must end with a `length=0` tail (the primary segment when no extras exist, or the last additional segment when extras exist); intermediate segments must have `length > 0`.
 
 ## Scripts & Env Vars
 - Scripts: `deploy:factory`, `deploy:factory:local`, `deploy:local`, `coverage`, `slither`, `verify:templ`, `verify:factory`.
@@ -520,6 +520,7 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
 - Entry fee target: must be ≥10 and divisible by 10 (base anchors may be non-divisible and are normalized on join).
 - Entry fee (runtime): curve recomputes normalize to ≥10 and divisible by 10 (decaying curves floor at 10). Base anchors may be non-divisible.
 - Fee split: burn + treasury + member pool + protocol must sum to 10_000 bps.
+- Curve config: ≤8 total segments; if `additionalSegments` is empty, `primary.length` must be 0 (infinite tail). If `additionalSegments` is non-empty, `primary.length` must be >0, intermediate additional segments must have `length > 0`, and the final additional segment must have `length = 0`. Static segments require `rateBps = 0`; exponential segments require `rateBps > 0` (linear allows any `rateBps`, including 0 for no growth).
 - Pre‑quorum voting window: bounded to [36 hours, 30 days].
 - Post-quorum voting window: bounded to [1 hour, 30 days].
 - Pagination: `getActiveProposalsPaginated` requires `1 ≤ limit ≤ 100`.

@@ -166,6 +166,24 @@ describe("Council governance", function () {
     expect(await templ.burnAddress()).to.equal(newBurn);
   });
 
+  it("does not auto-YES for non-council proposers in council mode", async function () {
+    const { templ, priest, member1 } = await setupTempl({ councilMode: true });
+
+    await templ
+      .connect(member1)
+      .createProposalSetBurnAddress("0x0000000000000000000000000000000000000033", WEEK, "burn", "");
+    const proposalId = (await templ.proposalCount()) - 1n;
+
+    const proposal = await templ.getProposal(proposalId);
+    expect(proposal.yesVotes).to.equal(0n);
+    const [voted] = await templ.hasVoted(proposalId, member1.address);
+    expect(voted).to.equal(false);
+
+    await templ.connect(priest).vote(proposalId, true);
+    const proposalAfter = await templ.getProposal(proposalId);
+    expect(proposalAfter.yesVotes).to.equal(1n);
+  });
+
   it("rejects priest bootstrap council additions after deploy", async function () {
     const { templ, priest, member1 } = await setupTempl({ councilMode: true });
     const iface = new ethers.Interface(["function bootstrapCouncilMember(address)"]);

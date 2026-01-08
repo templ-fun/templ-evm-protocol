@@ -57,7 +57,7 @@ Minimal/default deploy (no custom splits)
 - Defaults applied by the factory:
   - Splits: burn 3,000 bps; treasury 3,000 bps; memberPool 3,000 bps; protocol `PROTOCOL_BPS`.
   - Governance: quorum 3,300 bps; post‑quorum voting window 36 hours; burn address dead address.
-  - Caps/curve: `maxMembers = 249`; curve is exponential until member 249, then static.
+  - Caps/curve: `maxMembers = 249`; curve is exponential for 248 paid joins (through member #249 including the priest), then static tail if the cap is raised.
   - Metadata caps: name ≤256 bytes; description ≤2048 bytes; logo URI ≤2048 bytes.
 - Ethers v6 example (default deploy):
 ```js
@@ -89,7 +89,7 @@ Complete custom deploy (full config)
   - `burnAddress`: zero applies default.
   - `maxMembers`: 0 for uncapped; otherwise positive cap. Auto‑pause at cap.
   - `curveProvided`: false applies factory default curve.
-  - `curve`: `{ primary: {style, rateBps, length}, additionalSegments: CurveSegment[] }` (max 8 segments total).
+  - `curve`: `{ primary: {style, rateBps, length}, additionalSegments: CurveSegment[] }` (≤8 segments total; if `additionalSegments` is empty, `primary.length` must be 0; otherwise `primary.length` must be >0 and the last additional segment must have `length = 0`).
   - `name`, `description`, `logoLink`: UI metadata.
   - `proposalFeeBps`: bps of entry fee charged to proposers.
   - `referralShareBps`: bps share taken from member‑pool slice for referrers.
@@ -98,10 +98,12 @@ Complete custom deploy (full config)
   - `instantQuorumBps`: bps of eligible voters required for instant quorum (0 applies default).
 - Constraints your UI must enforce:
   - Fee split must sum to 10,000 bps including protocol share (factory enforces `burn + treasury + memberPool + PROTOCOL_BPS == 10,000`).
-  - Percent fields in [0, 10,000]; curve segment count ≤8.
+  - Percent fields in [0, 10,000].
+  - Curve config: ≤8 total segments; if `additionalSegments` is empty, `primary.length` must be 0. If `additionalSegments` is non-empty, `primary.length` must be >0, intermediate additional segments must have `length > 0`, and the final additional segment must have `length = 0`.
+  - Curve segment rates: static requires `rateBps = 0`; exponential requires `rateBps > 0` (linear allows any `rateBps`, including 0).
   - No minimums on burn/treasury/memberPool splits (0 is valid); only the protocol share is fixed by factory config.
-  - `yesVoteThresholdBps` must be in [100, 10,000].
-  - `instantQuorumBps` must be in [1, 10,000] and `instantQuorumBps >= quorumBps`.
+  - `yesVoteThresholdBps`: 0 applies default; otherwise must be in [100, 10,000].
+  - `instantQuorumBps`: 0 applies default; otherwise must be in [1, 10,000] and `instantQuorumBps >= effectiveQuorumBps` (the default quorum when `quorumBps == 0`).
   - Entry fee constraints as above; runtime curve recomputes normalize to ≥10 and divisible by 10.
 - Ethers v6 example (full config):
 ```js
@@ -274,7 +276,7 @@ Gotchas and validation checklist
 - Pre‑quorum voting period bounds: enforce `[36h, 30d]`. Passing `0` applies the templ default.
 - Title/description caps: title ≤256 bytes, description ≤2048 bytes. Truncate or warn before submit.
 - Entry fee update constraints: new fee must be ≥10 and divisible by 10 (raw token units). Validate before proposing.
-- Curve config bounds: at most 8 total segments (primary + additional). Validate before proposing curve changes.
+- Curve config bounds: ≤8 total segments; if `additionalSegments` is empty, `primary.length` must be 0. If `additionalSegments` is non-empty, `primary.length` must be >0, intermediate additional segments must have `length > 0`, and the final additional segment must have `length = 0`. Static segments require `rateBps = 0`; exponential segments require `rateBps > 0` (linear allows any `rateBps`, including 0).
 - Batch external calls with ETH: when batching via `templ.batchDAO`, set `target = templ.getAddress()` and ensure the templ already holds sufficient ETH to cover the inner `values` (top-level `value` can be 0). Calls execute from the templ address, so any approve/transferFrom affects the templ's allowance/balance; any inner revert bubbles and reverts the whole batch.
 - Pagination limits: `getActiveProposalsPaginated` requires `1 ≤ limit ≤ 100`.
 - Join auto‑pause at cap: if `maxMembers` is set and reached, `joinPaused` flips true automatically. Always read `joinPaused` before enabling join UI.
