@@ -557,7 +557,7 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
 - SetReferralShare → `abi.encode(uint256 newReferralShareBps)`
 - SetEntryFeeCurve → `abi.encode(CurveConfig curve, uint256 baseEntryFee)` (base anchors may be non-divisible; `entryFee` is normalized on-chain)
 - CallExternal → `abi.encode(address target, uint256 value, bytes calldata)`
-- WithdrawTreasury → `abi.encode(address token, address recipient, uint256 amount)`
+- WithdrawTreasury → `abi.encode(address token, address recipient, uint256 amount)` (recipient must be non-zero; amount > 0)
 - DisbandTreasury → `abi.encode(address token)`
 - SweepMemberPoolRemainder → `abi.encode(address recipient)`
 - ChangePriest → `abi.encode(address newPriest)` (new priest must be an active member)

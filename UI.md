@@ -168,7 +168,7 @@ Post‑deploy handoff
 - Common creators (see full list below):
   - Pause/resume joins: `templ.createProposalSetJoinPaused(bool paused, uint256 votingPeriod, string title, string description)`
   - Update entry fee / split: `templ.createProposalUpdateConfig(uint256 newFee, uint256 newBurnBps, uint256 newTreasuryBps, uint256 newMemberPoolBps, bool updateSplit, uint256 votingPeriod, string title, string description)` (`newFee=0` keeps current; `updateSplit=false` ignores split fields)
-  - Withdraw treasury/external funds: `templ.createProposalWithdrawTreasury(address tokenOrZero, address recipient, uint256 amount, uint256 votingPeriod, string title, string description)`
+  - Withdraw treasury/external funds: `templ.createProposalWithdrawTreasury(address tokenOrZero, address recipient, uint256 amount, uint256 votingPeriod, string title, string description)` (recipient must be non-zero; amount > 0)
   - Sweep member pool remainder: `templ.createProposalSweepMemberPoolRemainder(address recipient, uint256 votingPeriod, string title, string description)`
   - Arbitrary external call: `templ.createProposalCallExternal(address target, uint256 value, bytes4 selector, bytes params, uint256 votingPeriod, string title, string description)`
 - Building CallExternal params (ethers v6 style):
@@ -250,7 +250,7 @@ DAO-only actions via `createProposalCallExternal` (target = templ)
 
 Security notes for UIs
 - Default to a bounded buffer, not unlimited. Approve `~2× entryFee` for joins (adjustable) and avoid unlimited approvals.
-- External call proposals are as powerful as timelocked admin calls; surface clear warnings. For batching, prefer `batchDAO` (via `createProposalCallExternal`) or an executor contract like `contracts/tools/BatchExecutor.sol`.
+- External call proposals are as powerful as timelocked admin calls; surface clear warnings. For batching, prefer `batchDAO` (via `createProposalCallExternal`) or an executor contract like `contracts/tools/BatchExecutor.sol` (requires `msg.value == sum(values)`).
 - `CallExternal` and `batchDAO` can bypass access-token accounting; keep inner targets explicit and external, and only target the templ for DAO-only maintenance actions (e.g., `setPreQuorumVotingPeriodDAO`, `batchDAO`, `setRoutingModuleDAO`).
 - Only call the router. Modules revert on direct calls to prevent bypassing safety checks.
 - Governance-only upgrades: there is no protocol-level upgrade authority. Routing and external-call abilities are controlled by each templ’s governance. Reflect this in copy to avoid confusing users about admin powers.

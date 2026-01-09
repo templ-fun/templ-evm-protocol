@@ -117,29 +117,35 @@ describe("Oversized inputs are rejected", function () {
     ).to.be.revertedWithCustomError(templ, "InvalidCallData");
   });
 
-  it("reverts when proposal metadata exceeds limits on execution", async function () {
+  it("reverts when proposal metadata exceeds limits at creation", async function () {
     const { templ, token, accounts } = await deployTempl();
-    const [, , proposer, voter] = accounts;
+    const [, , proposer] = accounts;
     const ENTRY_FEE = ethers.parseUnits("100", 18);
     const VOTING_PERIOD = 7 * 24 * 60 * 60;
 
-    await mintToUsers(token, [proposer, voter], ENTRY_FEE * 5n);
-    await joinMembers(templ, token, [proposer, voter]);
+    await mintToUsers(token, [proposer], ENTRY_FEE * 5n);
+    await joinMembers(templ, token, [proposer]);
 
     const longName = "N".repeat(MAX_TEMPL_NAME_LENGTH + 1);
-    await templ
-      .connect(proposer)
-      .createProposalUpdateMetadata(longName, "ok", "ok", VOTING_PERIOD, "Meta", "");
-    const id = (await templ.proposalCount()) - 1n;
-    await templ.connect(voter).vote(id, true);
+    const longDescription = "D".repeat(MAX_TEMPL_DESCRIPTION_LENGTH + 1);
+    const longLogo = "L".repeat(MAX_TEMPL_LOGO_URI_LENGTH + 1);
 
-    const delay = Number(await templ.postQuorumVotingPeriod());
-    await ethers.provider.send("evm_increaseTime", [delay + 1]);
-    await ethers.provider.send("evm_mine", []);
+    await expect(
+      templ
+        .connect(proposer)
+        .createProposalUpdateMetadata(longName, "ok", "ok", VOTING_PERIOD, "Meta", "")
+    ).to.be.revertedWithCustomError(templ, "InvalidCallData");
 
-    await expect(templ.executeProposal(id)).to.be.revertedWithCustomError(
-      templ,
-      "InvalidCallData"
-    );
+    await expect(
+      templ
+        .connect(proposer)
+        .createProposalUpdateMetadata("ok", longDescription, "ok", VOTING_PERIOD, "Meta", "")
+    ).to.be.revertedWithCustomError(templ, "InvalidCallData");
+
+    await expect(
+      templ
+        .connect(proposer)
+        .createProposalUpdateMetadata("ok", "ok", longLogo, VOTING_PERIOD, "Meta", "")
+    ).to.be.revertedWithCustomError(templ, "InvalidCallData");
   });
 });

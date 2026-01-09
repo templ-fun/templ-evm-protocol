@@ -1300,6 +1300,20 @@ abstract contract TemplBase is ReentrancyGuard {
         _autoPauseIfLimitReached();
     }
 
+    /// @notice Ensures templ metadata fields fit within size bounds.
+    /// @param newName Proposed templ name.
+    /// @param newDescription Proposed templ description.
+    /// @param newLogoLink Proposed templ logo link.
+    function _validateTemplMetadata(
+        string memory newName,
+        string memory newDescription,
+        string memory newLogoLink
+    ) internal pure {
+        if (bytes(newName).length > MAX_TEMPL_NAME_LENGTH) revert TemplErrors.InvalidCallData();
+        if (bytes(newDescription).length > MAX_TEMPL_DESCRIPTION_LENGTH) revert TemplErrors.InvalidCallData();
+        if (bytes(newLogoLink).length > MAX_TEMPL_LOGO_URI_LENGTH) revert TemplErrors.InvalidCallData();
+    }
+
     /// @notice Writes new templ metadata and emits an event when it changes.
     /// @param newName New templ name.
     /// @param newDescription New templ description.
@@ -1309,9 +1323,7 @@ abstract contract TemplBase is ReentrancyGuard {
         string memory newDescription,
         string memory newLogoLink
     ) internal {
-        if (bytes(newName).length > MAX_TEMPL_NAME_LENGTH) revert TemplErrors.InvalidCallData();
-        if (bytes(newDescription).length > MAX_TEMPL_DESCRIPTION_LENGTH) revert TemplErrors.InvalidCallData();
-        if (bytes(newLogoLink).length > MAX_TEMPL_LOGO_URI_LENGTH) revert TemplErrors.InvalidCallData();
+        _validateTemplMetadata(newName, newDescription, newLogoLink);
         templName = newName;
         templDescription = newDescription;
         templLogoLink = newLogoLink;

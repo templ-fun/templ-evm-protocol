@@ -112,6 +112,7 @@ contract TemplGovernanceModule is TemplModuleBase {
         string calldata _description
     ) external nonReentrant returns (uint256 proposalId) {
         _requireDelegatecall();
+        _validateTemplMetadata(_newName, _newDescription, _newLogoLink);
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
         p.action = Action.SetMetadata;
         p.newTemplName = _newName;
@@ -319,6 +320,8 @@ contract TemplGovernanceModule is TemplModuleBase {
         string calldata _description
     ) external nonReentrant returns (uint256 proposalId) {
         _requireDelegatecall();
+        if (_recipient == address(0)) revert TemplErrors.InvalidRecipient();
+        if (_amount == 0) revert TemplErrors.AmountZero();
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
         p.action = Action.WithdrawTreasury;
         p.token = _token;

@@ -29,6 +29,14 @@ describe("BatchExecutor", function () {
     await expect(batch.execute([ethers.ZeroAddress], [0], ["0x"])).to.be.reverted;
   });
 
+  it("reverts when msg.value does not equal the sum of values", async function () {
+    const addr = await target.getAddress();
+    const call = target.interface.encodeFunctionData("setNumberPayable", [1]);
+
+    await expect(batch.execute([addr], [1], [call], { value: 0 })).to.be.reverted;
+    await expect(batch.execute([addr], [1], [call], { value: 2 })).to.be.reverted;
+  });
+
   it("executes calls in order, forwards value, and returns data", async function () {
     const addr = await target.getAddress();
     const call1 = target.interface.encodeFunctionData("setNumber", [10]);
