@@ -314,6 +314,39 @@ describe("Council governance", function () {
     expect(councilBalanceBefore - (await token.balanceOf(member1.address))).to.equal(0n);
   });
 
+  it("charges proposal fees again after council mode is disabled", async function () {
+    const { templ, token, priest, member1, member2 } = await setupTempl({ proposalFeeBps: 1_000 });
+
+    const templAddress = await templ.getAddress();
+    await token.connect(member1).approve(templAddress, ethers.MaxUint256);
+    await token.connect(member2).approve(templAddress, ethers.MaxUint256);
+    await token.connect(priest).approve(templAddress, ethers.MaxUint256);
+
+    await enableCouncilMode(templ, member1, [member2]);
+    await templ.connect(member1).createProposalAddCouncilMember(member1.address, WEEK, "Add member1", "");
+    const addId = (await templ.proposalCount()) - 1n;
+    await templ.connect(priest).vote(addId, true);
+    await advanceTime();
+    await templ.executeProposal(addId);
+
+    await templ.connect(member1).createProposalSetCouncilMode(false, WEEK, "Disable council", "");
+    const disableId = (await templ.proposalCount()) - 1n;
+    await templ.connect(priest).vote(disableId, true);
+    await advanceTime();
+    await templ.executeProposal(disableId);
+    expect(await templ.councilModeEnabled()).to.equal(false);
+
+    const fee = (await templ.entryFee()) * (await templ.proposalCreationFeeBps()) / 10_000n;
+    const balanceBefore = await token.balanceOf(member1.address);
+    const treasuryBefore = await templ.treasuryBalance();
+
+    await templ
+      .connect(member1)
+      .createProposalSetBurnAddress("0x00000000000000000000000000000000000000CC", WEEK, "Fee returns", "");
+    expect(await templ.treasuryBalance()).to.equal(treasuryBefore + fee);
+    expect(balanceBefore - (await token.balanceOf(member1.address))).to.equal(fee);
+  });
+
   it("rejects invalid council proposal inputs", async function () {
     const { templ, priest, member1 } = await setupTempl();
     const outsider = (await ethers.getSigners())[7];

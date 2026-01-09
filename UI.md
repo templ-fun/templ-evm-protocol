@@ -7,7 +7,7 @@ Router-first rule
 - Discover module mapping if needed via:
   - `TEMPL.getRegisteredSelectors()` to see the canonical ABI surface per module.
   - `TEMPL.getModuleForSelector(bytes4)` to sanity-check routing for a selector.
-  - `TEMPL.MEMBERSHIP_MODULE()`, `TEMPL.TREASURY_MODULE()`, `TEMPL.GOVERNANCE_MODULE()`, `TEMPL.COUNCIL_MODULE()` return implementation addresses (do not call them directly).
+  - `TEMPL.MEMBERSHIP_MODULE()`, `TEMPL.TREASURY_MODULE()`, `TEMPL.GOVERNANCE_MODULE()`, `TEMPL.COUNCIL_MODULE()` return the original module addresses (do not call them directly); routing updates do not change these immutables, so use `getModuleForSelector` for live routing.
 
 Governance-controlled upgrades
 - No protocol admin: there is no owner or protocol dev key that can change behavior for a templ. Routing changes are only possible via that templ’s own governance.
@@ -152,7 +152,7 @@ Post‑deploy handoff
 2) Join With Referral
 - Same as join, but call `templ.joinWithReferral(referrer)`.
 - Explicit allowance: the payer (`msg.sender`) must approve the access token to `templ.target` for at least `entryFee` (recommended `2 × entryFee`).
-- A valid referrer is a member and not the recipient; otherwise the referral payout is 0. Referral rewards are paid immediately from the member‑pool slice and emitted via `ReferralRewardPaid(referral, newMember, amount)`.
+- A valid referrer is a member and not the recipient; referral rewards are only paid when `referralShareBps > 0`, otherwise the referral payout is 0. Referral rewards are paid immediately from the member‑pool slice and emitted via `ReferralRewardPaid(referral, newMember, amount)`.
 - Variant `templ.joinFor(recipient)`: payer is the caller; approve `entryFee` from the caller to `templ.target` before calling.
 - Variant `templ.joinForWithReferral(recipient, referrer)`: payer is the caller; approve `entryFee` from the caller to `templ.target` before calling.
 
@@ -225,7 +225,7 @@ Complete proposal creators (scan in code for params)
 - `createProposalSetEntryFeeCurve`
 - `createProposalCallExternal`
 - `createProposalWithdrawTreasury`
-- `createProposalDisbandTreasury` (when proposed by the priest or a council member while council mode is enabled, the proposal is quorum-exempt but still must meet the YES vote threshold after voting ends)
+- `createProposalDisbandTreasury` (quorum‑exempt when proposed by the priest, or by a council member while council mode is enabled; still must meet the YES vote threshold after voting ends)
 - `createProposalSweepMemberPoolRemainder`
 - `createProposalChangePriest` (new priest must already be a member)
 - `createProposalSetQuorumBps`
@@ -250,7 +250,7 @@ DAO-only actions via `createProposalCallExternal` (target = templ)
 Security notes for UIs
 - Default to a bounded buffer, not unlimited. Approve `~2× entryFee` for joins (adjustable) and avoid unlimited approvals.
 - External call proposals are as powerful as timelocked admin calls; surface clear warnings. For batching, prefer `batchDAO` (via `createProposalCallExternal`) or an executor contract like `contracts/tools/BatchExecutor.sol`.
-- `CallExternal` and `batchDAO` can bypass access-token accounting; avoid targeting the templ or its modules and keep batch targets explicit and external.
+- `CallExternal` and `batchDAO` can bypass access-token accounting; keep inner targets explicit and external, and only target the templ for DAO-only maintenance actions (e.g., `setPreQuorumVotingPeriodDAO`, `batchDAO`, `setRoutingModuleDAO`).
 - Only call the router. Modules revert on direct calls to prevent bypassing safety checks.
 - Governance-only upgrades: there is no protocol-level upgrade authority. Routing and external-call abilities are controlled by each templ’s governance. Reflect this in copy to avoid confusing users about admin powers.
 

@@ -29,6 +29,102 @@ describe("Join max-entry-fee variants", function () {
     }
   });
 
+  it("joins with max entry fee and charges the caller", async function () {
+    const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE });
+    const [, , payer] = accounts;
+
+    await mintToUsers(token, [payer], ENTRY_FEE * 5n);
+    await token.connect(payer).approve(await templ.getAddress(), ENTRY_FEE);
+
+    const burnBps = await templ.burnBps();
+    const memberPoolBps = await templ.memberPoolBps();
+    const protocolBps = await templ.protocolBps();
+
+    const burnAmount = (ENTRY_FEE * burnBps) / 10_000n;
+    const memberPoolAmount = (ENTRY_FEE * memberPoolBps) / 10_000n;
+    const protocolAmount = (ENTRY_FEE * protocolBps) / 10_000n;
+    const treasuryAmount = ENTRY_FEE - burnAmount - memberPoolAmount - protocolAmount;
+
+    const payerBefore = await token.balanceOf(payer.address);
+    const poolBefore = await templ.memberPoolBalance();
+
+    const tx = await templ.connect(payer).joinWithMaxEntryFee(ENTRY_FEE);
+    await expect(tx)
+      .to.emit(templ, "MemberJoined")
+      .withArgs(
+        payer.address,
+        payer.address,
+        ENTRY_FEE,
+        burnAmount,
+        treasuryAmount,
+        memberPoolAmount,
+        protocolAmount,
+        anyValue,
+        anyValue,
+        anyValue
+      );
+
+    expect(await token.balanceOf(payer.address)).to.equal(payerBefore - ENTRY_FEE);
+    expect(await templ.isMember(payer.address)).to.equal(true);
+    expect(await templ.memberPoolBalance()).to.equal(poolBefore + memberPoolAmount);
+  });
+
+  it("pays a referral on joinWithReferralMaxEntryFee when referrer is a member", async function () {
+    const referralShareBps = 2_000;
+    const { templ, token, accounts } = await deployTempl({
+      entryFee: ENTRY_FEE,
+      referralShareBps,
+    });
+    const [, , joiner, referrer] = accounts;
+
+    await mintToUsers(token, [joiner, referrer], ENTRY_FEE * 10n);
+
+    await token.connect(referrer).approve(await templ.getAddress(), ENTRY_FEE);
+    await templ.connect(referrer).join();
+
+    const burnBps = await templ.burnBps();
+    const memberPoolBps = await templ.memberPoolBps();
+    const protocolBps = await templ.protocolBps();
+
+    const burnAmount = (ENTRY_FEE * burnBps) / 10_000n;
+    const memberPoolAmount = (ENTRY_FEE * memberPoolBps) / 10_000n;
+    const protocolAmount = (ENTRY_FEE * protocolBps) / 10_000n;
+    const treasuryAmount = ENTRY_FEE - burnAmount - memberPoolAmount - protocolAmount;
+    const referralAmount = (memberPoolAmount * BigInt(referralShareBps)) / 10_000n;
+
+    const poolBefore = await templ.memberPoolBalance();
+    const joinerBefore = await token.balanceOf(joiner.address);
+    const referrerBefore = await token.balanceOf(referrer.address);
+
+    await token.connect(joiner).approve(await templ.getAddress(), ENTRY_FEE);
+
+    const tx = await templ
+      .connect(joiner)
+      .joinWithReferralMaxEntryFee(referrer.address, ENTRY_FEE);
+
+    await expect(tx)
+      .to.emit(templ, "MemberJoined")
+      .withArgs(
+        joiner.address,
+        joiner.address,
+        ENTRY_FEE,
+        burnAmount,
+        treasuryAmount,
+        memberPoolAmount,
+        protocolAmount,
+        anyValue,
+        anyValue,
+        anyValue
+      )
+      .and.to.emit(templ, "ReferralRewardPaid")
+      .withArgs(referrer.address, joiner.address, referralAmount);
+
+    expect(await templ.isMember(joiner.address)).to.equal(true);
+    expect(await token.balanceOf(joiner.address)).to.equal(joinerBefore - ENTRY_FEE);
+    expect(await token.balanceOf(referrer.address)).to.equal(referrerBefore + referralAmount);
+    expect(await templ.memberPoolBalance()).to.equal(poolBefore + (memberPoolAmount - referralAmount));
+  });
+
   it("charges payer, credits recipient, and pays referral on joinForWithReferralMaxEntryFee", async function () {
     const referralShareBps = 2000;
     const { templ, token, accounts } = await deployTempl({

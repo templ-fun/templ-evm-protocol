@@ -39,7 +39,7 @@ At runtime a templ behaves like one contract with clean separation of concerns v
 Deployers configure pricing curves, fee splits, referral rewards, proposal fees, quorum/delay, and membership caps. The access token is assumed to be a vanilla ERC‑20.
 
 ### Council governance
-- Factory-created templs start in council mode by default. The priest is the first council member; additional council members are added through proposals.
+- Templs deployed via `createTempl` / `createTemplFor` start in council mode by default; `createTemplWithConfig` honors the supplied `councilMode` flag. The priest is the first council member; additional council members are added through proposals.
 - Council mode restricts voting to the council set but any member can still open most proposals (council‑member removals require a council proposer).
 - Proposal voting mode and council roster are snapshotted at creation; later council toggles or roster changes do not affect eligibility for that proposal (see `getProposalVotingMode`).
 - Proposal fees apply to non-council proposers; council members are fee‑exempt while council mode is active.
@@ -512,9 +512,7 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
 - Verify helpers (see [scripts/verify-templ.cjs](scripts/verify-templ.cjs), [scripts/verify-factory.cjs](scripts/verify-factory.cjs)):
   - `verify:templ` verifies a TEMPL instance, reconstructing constructor args from chain data. Provide `TEMPL_ADDRESS` or `--templ 0x...` and run with a configured Hardhat network.
   - `verify:factory` verifies a TemplFactory deployment using on‑chain getters. Provide `FACTORY_ADDRESS` or `--factory 0x...`.
-- Permissioning:
-- `TemplFactory.setPermissionless(true)` allows anyone to create templs.
-- `TemplFactory.transferDeployer(newAddr)` hands off deployer rights when permissionless is disabled.
+- Permissioning: `TemplFactory.setPermissionless(true)` allows anyone to create templs; `TemplFactory.transferDeployer(newAddr)` updates the factory deployer role (relevant when permissionless is disabled).
 
 ## Constraints
 - Entry fee target: must be ≥10 and divisible by 10 (base anchors may be non-divisible and are normalized on join).
@@ -631,7 +629,7 @@ Proposal fees apply to non-council proposers; council proposers are fee‑exempt
 ## FAQ
 - Can the access token change later? No — deploy a new templ.
 - Why divisible by 10? It is an on‑chain invariant enforced by `_validateEntryFeeAmount`; updates that don’t meet it revert.
-- How do referrals work? Paid from the member‑pool slice when the referrer is a member and not the joiner.
+- How do referrals work? Paid from the member‑pool slice when `referralShareBps > 0` and the referrer is a member and not the joiner.
 
 ## Tests
 - Default: `npm test` (heavy `@load` suite is excluded).
