@@ -13,7 +13,12 @@ describe("getProposal passed status coverage", function () {
 
     await templ
       .connect(priest)
-      .createProposalDisbandTreasury(accessToken, VOTING_PERIOD);
+      .createProposalDisbandTreasury(
+        accessToken,
+        VOTING_PERIOD,
+        "Disband treasury",
+        "Quorum-exempt disband"
+      );
 
     await ethers.provider.send("evm_increaseTime", [VOTING_PERIOD + 1]);
     await ethers.provider.send("evm_mine", []);
@@ -38,7 +43,12 @@ describe("getProposal passed status coverage", function () {
     await ethers.provider.send("evm_mine", []);
     await templ.executeProposal(proposalId);
 
-    await templ.connect(member1).createProposalDisbandTreasury(accessToken, VOTING_PERIOD);
+    await templ.connect(member1).createProposalDisbandTreasury(
+      accessToken,
+      VOTING_PERIOD,
+      "Disband treasury",
+      "Council mode disabled"
+    );
     proposalId = (await templ.proposalCount()) - 1n;
     const disbandProposal = await templ.proposals(proposalId);
     expect(disbandProposal.quorumExempt).to.equal(false);
@@ -68,7 +78,12 @@ describe("getProposal passed status coverage", function () {
     await ethers.provider.send("evm_mine", []);
     await templ.executeProposal(proposalId);
 
-    await templ.connect(member1).createProposalDisbandTreasury(accessToken, VOTING_PERIOD);
+    await templ.connect(member1).createProposalDisbandTreasury(
+      accessToken,
+      VOTING_PERIOD,
+      "Disband treasury",
+      "Council mode enabled"
+    );
     proposalId = (await templ.proposalCount()) - 1n;
     const disbandProposal = await templ.proposals(proposalId);
     expect(disbandProposal.quorumExempt).to.equal(true);
@@ -89,7 +104,7 @@ describe("getProposal passed status coverage", function () {
 
     await templ
       .connect(m1)
-      .createProposalSetJoinPaused(false, VOTING_PERIOD);
+      .createProposalSetJoinPaused(false, VOTING_PERIOD, "Pause joins", "No quorum yet");
 
     const proposal = await templ.getProposal(0);
     expect(proposal.passed).to.equal(false);
@@ -104,7 +119,7 @@ describe("getProposal passed status coverage", function () {
 
     await templ
       .connect(m1)
-      .createProposalSetJoinPaused(false, VOTING_PERIOD);
+      .createProposalSetJoinPaused(false, VOTING_PERIOD, "Pause joins", "Quorum reached");
     await templ.connect(m2).vote(0, true);
 
   const delay = Number(await templ.postQuorumVotingPeriod());

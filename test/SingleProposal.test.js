@@ -80,7 +80,8 @@ describe("Single Active Proposal Restriction", function () {
                 token.target,
                 member1.address,
                 ethers.parseUnits("10", 18),
-                7 * 24 * 60 * 60
+                7 * 24 * 60 * 60,
+                ...META
             );
 
             // Member 2 creates proposal - should succeed
@@ -88,7 +89,8 @@ describe("Single Active Proposal Restriction", function () {
                 token.target,
                 member1.address,
                 ethers.parseUnits("10", 18),
-                7 * 24 * 60 * 60
+                7 * 24 * 60 * 60,
+                ...META
             );
 
             // Member 3 creates proposal - should succeed
@@ -96,7 +98,8 @@ describe("Single Active Proposal Restriction", function () {
                 token.target,
                 member1.address,
                 ethers.parseUnits("10", 18),
-                7 * 24 * 60 * 60
+                7 * 24 * 60 * 60,
+                ...META
             );
 
             expect(await templ.hasActiveProposal(member1.address)).to.be.true;
@@ -115,7 +118,8 @@ describe("Single Active Proposal Restriction", function () {
             // Create and execute first proposal
             await templ.connect(member1).createProposalSetJoinPaused(
                 true,
-                7 * 24 * 60 * 60
+                7 * 24 * 60 * 60,
+                ...META
             );
 
             // Vote to pass
@@ -135,7 +139,8 @@ describe("Single Active Proposal Restriction", function () {
             // At this point member1 can create a new proposal
             await expect(templ.connect(member1).createProposalSetJoinPaused(
                 false,
-                7 * 24 * 60 * 60
+                7 * 24 * 60 * 60,
+                ...META
             )).to.emit(templ, "ProposalCreated");
 
             expect(await templ.hasActiveProposal(member1.address)).to.be.true;
@@ -154,7 +159,8 @@ describe("Single Active Proposal Restriction", function () {
                 token.target,
                 member1.address,
                 ethers.parseUnits("10", 18),
-                7 * 24 * 60 * 60 // 7 days
+                7 * 24 * 60 * 60, // 7 days
+                ...META
             );
 
             // Don't vote, let it expire
@@ -166,7 +172,8 @@ describe("Single Active Proposal Restriction", function () {
                 token.target,
                 member1.address,
                 ethers.parseUnits("10", 18),
-                7 * 24 * 60 * 60
+                7 * 24 * 60 * 60,
+                ...META
             )).to.emit(templ, "ProposalCreated");
 
             expect(await templ.hasActiveProposal(member1.address)).to.be.true;
@@ -185,7 +192,8 @@ describe("Single Active Proposal Restriction", function () {
                 token.target,
                 member1.address,
                 ethers.parseUnits("10", 18),
-                7 * 24 * 60 * 60
+                7 * 24 * 60 * 60,
+                ...META
             );
 
             // Vote no to make it fail
@@ -258,7 +266,8 @@ describe("Single Active Proposal Restriction", function () {
                 token.target,
                 member1.address,
                 ethers.parseUnits("10", 18),
-                7 * 24 * 60 * 60
+                7 * 24 * 60 * 60,
+                ...META
             )).to.emit(templ, "ProposalCreated");
         });
     });
@@ -270,7 +279,8 @@ describe("Single Active Proposal Restriction", function () {
             // First proposal gets ID 0
             await templ.connect(member1).createProposalSetJoinPaused(
                 true,
-                7 * 24 * 60 * 60
+                7 * 24 * 60 * 60,
+                ...META
             );
 
             expect(await templ.hasActiveProposal(member1.address)).to.be.true;
@@ -296,7 +306,8 @@ describe("Single Active Proposal Restriction", function () {
             // Cycle 1: Create, pass, execute
             await templ.connect(member1).createProposalSetJoinPaused(
                 true,
-                7 * 24 * 60 * 60
+                7 * 24 * 60 * 60,
+                ...META
             );
             
             await templ.connect(member1).vote(0, true);
@@ -308,7 +319,8 @@ describe("Single Active Proposal Restriction", function () {
             // Cycle 2: Create, let expire
             await templ.connect(member1).createProposalSetJoinPaused(
                 false,
-                7 * 24 * 60 * 60
+                7 * 24 * 60 * 60,
+                ...META
             );
             
             await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
@@ -317,7 +329,8 @@ describe("Single Active Proposal Restriction", function () {
             // Cycle 3: Create new one after expiry
             await templ.connect(member1).createProposalSetJoinPaused(
                 true,
-                7 * 24 * 60 * 60
+                7 * 24 * 60 * 60,
+                ...META
             );
 
             expect(await templ.hasActiveProposal(member1.address)).to.be.true;

@@ -25,20 +25,15 @@ describe("Governance coverage gaps", function () {
     ]);
 
     await expect(
-      templ.connect(outsider).createProposalSetJoinPaused(true, VOTING_PERIOD)
+      templ
+        .connect(outsider)
+        .createProposalSetJoinPaused(true, VOTING_PERIOD, "Pause joins", "Require membership")
     ).to.be.revertedWithCustomError(templ, "NotMember");
 
     await expect(
       templ
         .connect(outsider)
-      .createProposalUpdateConfig(
-        0,
-        0,
-        0,
-        0,
-        false,
-        VOTING_PERIOD
-      )
+      .createProposalUpdateConfig(0, 0, 0, 0, false, VOTING_PERIOD, "Update config", "Require membership")
     ).to.be.revertedWithCustomError(templ, "NotMember");
 
     await expect(
@@ -48,45 +43,54 @@ describe("Governance coverage gaps", function () {
           await token.getAddress(),
           outsider.address,
           1n,
-          VOTING_PERIOD
+          VOTING_PERIOD,
+          "Withdraw treasury",
+          "Require membership"
         )
     ).to.be.revertedWithCustomError(templ, "NotMember");
 
     await expect(
       templ
         .connect(outsider)
-        .createProposalDisbandTreasury(await token.getAddress(), VOTING_PERIOD)
+        .createProposalDisbandTreasury(
+          await token.getAddress(),
+          VOTING_PERIOD,
+          "Disband treasury",
+          "Require membership"
+        )
     ).to.be.revertedWithCustomError(templ, "NotMember");
 
     await expect(
       templ
         .connect(outsider)
-        .createProposalChangePriest(member.address, VOTING_PERIOD)
+        .createProposalChangePriest(member.address, VOTING_PERIOD, "Change priest", "Require membership")
     ).to.be.revertedWithCustomError(templ, "NotMember");
 
     await templ
       .connect(priest)
-      .createProposalDisbandTreasury(await token.getAddress(), VOTING_PERIOD);
+      .createProposalDisbandTreasury(
+        await token.getAddress(),
+        VOTING_PERIOD,
+        "Disband treasury",
+        "Quorum-exempt priest action"
+      );
     const priestId = (await templ.proposalCount()) - 1n;
     const priestProposal = await templ.proposals(priestId);
     expect(priestProposal.quorumExempt).to.equal(true);
 
     // Successful creation with zero entry fee and updateFeeSplit false exercises the skipped branches
-    await templ.connect(member).createProposalSetJoinPaused(false, VOTING_PERIOD);
+    await templ
+      .connect(member)
+      .createProposalSetJoinPaused(false, VOTING_PERIOD, "Pause joins", "Exercise branches");
     await expect(
-      templ.connect(member).createProposalSetJoinPaused(true, VOTING_PERIOD)
+      templ
+        .connect(member)
+        .createProposalSetJoinPaused(true, VOTING_PERIOD, "Pause joins", "Active proposal exists")
     ).to.be.revertedWithCustomError(templ, "ActiveProposalExists");
 
     await templ
       .connect(secondMember)
-      .createProposalUpdateConfig(
-        0,
-        0,
-        0,
-        0,
-        false,
-        VOTING_PERIOD
-      );
+      .createProposalUpdateConfig(0, 0, 0, 0, false, VOTING_PERIOD, "Update config", "No split");
 
     const createdAfterUpdate = (await templ.proposalCount()) - 1n;
     const stored = await templ.proposals(createdAfterUpdate);
@@ -101,12 +105,19 @@ describe("Governance coverage gaps", function () {
         2000,
         5000,
         true,
-        VOTING_PERIOD
+        VOTING_PERIOD,
+        "Update config",
+        "Update fee split"
       );
 
     await templ
       .connect(fourthMember)
-      .createProposalDisbandTreasury(await token.getAddress(), VOTING_PERIOD);
+      .createProposalDisbandTreasury(
+        await token.getAddress(),
+        VOTING_PERIOD,
+        "Disband treasury",
+        "Member proposal"
+      );
     const disbandId = (await templ.proposalCount()) - 1n;
     const disbandProposal = await templ.proposals(disbandId);
     expect(disbandProposal.quorumExempt).to.equal(false);
@@ -114,7 +125,7 @@ describe("Governance coverage gaps", function () {
     await expect(
       templ
         .connect(member)
-        .createProposalChangePriest(ethers.ZeroAddress, VOTING_PERIOD)
+        .createProposalChangePriest(ethers.ZeroAddress, VOTING_PERIOD, "Change priest", "Invalid recipient")
     ).to.be.revertedWithCustomError(templ, "InvalidRecipient");
   });
 
@@ -126,14 +137,20 @@ describe("Governance coverage gaps", function () {
     await joinMembers(templ, token, [memberA, memberB]);
 
     await expect(
-      templ.connect(outsider).createProposalSetMaxMembers(4, VOTING_PERIOD)
+      templ
+        .connect(outsider)
+        .createProposalSetMaxMembers(4, VOTING_PERIOD, "Set max members", "Require membership")
     ).to.be.revertedWithCustomError(templ, "NotMember");
 
     await expect(
-      templ.connect(memberA).createProposalSetMaxMembers(1, VOTING_PERIOD)
+      templ
+        .connect(memberA)
+        .createProposalSetMaxMembers(1, VOTING_PERIOD, "Set max members", "Too low")
     ).to.be.revertedWithCustomError(templ, "MemberLimitTooLow");
 
-    await templ.connect(memberA).createProposalSetMaxMembers(4, VOTING_PERIOD);
+    await templ
+      .connect(memberA)
+      .createProposalSetMaxMembers(4, VOTING_PERIOD, "Set max members", "Raise cap");
     const proposalId = (await templ.proposalCount()) - 1n;
 
     await templ.connect(memberB).vote(proposalId, true);
@@ -236,7 +253,9 @@ describe("Governance coverage gaps", function () {
     await mintToUsers(token, [member], ENTRY_FEE * 3n);
     await joinMembers(templ, token, [member]);
 
-    await templ.connect(member).createProposalSetJoinPaused(false, VOTING_PERIOD);
+    await templ
+      .connect(member)
+      .createProposalSetJoinPaused(false, VOTING_PERIOD, "Pause joins", "Expire active window");
     const firstId = await templ.activeProposalId(member.address);
     expect(firstId).to.equal(0n);
 
@@ -251,7 +270,9 @@ describe("Governance coverage gaps", function () {
         0,
         0,
         false,
-        VOTING_PERIOD
+        VOTING_PERIOD,
+        "Update config",
+        "New proposal after expiry"
       );
     const secondId = await templ.activeProposalId(member.address);
     expect(secondId).to.equal(1n);
@@ -264,7 +285,9 @@ describe("Governance coverage gaps", function () {
     await mintToUsers(token, [priest, memberA, memberB, memberC, lateJoiner], ENTRY_FEE * 5n);
     await joinMembers(templ, token, [memberA, memberB, memberC]);
 
-    await templ.connect(memberA).createProposalSetJoinPaused(true, VOTING_PERIOD);
+    await templ
+      .connect(memberA)
+      .createProposalSetJoinPaused(true, VOTING_PERIOD, "Pause joins", "Vote transitions");
 
     await templ.connect(memberB).vote(0, false);
     await templ.connect(memberC).vote(0, true);
@@ -288,7 +311,12 @@ describe("Governance coverage gaps", function () {
 
     await templ
       .connect(priest)
-      .createProposalDisbandTreasury(await token.getAddress(), VOTING_PERIOD);
+      .createProposalDisbandTreasury(
+        await token.getAddress(),
+        VOTING_PERIOD,
+        "Disband treasury",
+        "Quorum-exempt timer"
+      );
 
     await expect(templ.executeProposal(0)).to.be.revertedWithCustomError(
       templ,
@@ -310,12 +338,19 @@ describe("Governance coverage gaps", function () {
 
     await templ
       .connect(priest)
-      .createProposalDisbandTreasury(await token.getAddress(), VOTING_PERIOD);
+      .createProposalDisbandTreasury(
+        await token.getAddress(),
+        VOTING_PERIOD,
+        "Disband treasury",
+        "Cleanup edge cases"
+      );
 
     await ethers.provider.send("evm_increaseTime", [VOTING_PERIOD + 1]);
     await ethers.provider.send("evm_mine", []);
 
-    await templ.connect(priest).createProposalSetJoinPaused(false, VOTING_PERIOD);
+    await templ
+      .connect(priest)
+      .createProposalSetJoinPaused(false, VOTING_PERIOD, "Pause joins", "Active proposal cleanup");
 
     await templ.executeProposal(0);
     expect(await templ.hasActiveProposal(priest.address)).to.equal(true);
@@ -350,7 +385,9 @@ describe("Governance coverage gaps", function () {
     await mintToUsers(token, [member], ENTRY_FEE * 2n);
     await joinMembers(templ, token, [member]);
 
-    await templ.connect(member).createProposalSetJoinPaused(false, VOTING_PERIOD);
+    await templ
+      .connect(member)
+      .createProposalSetJoinPaused(false, VOTING_PERIOD, "Pause joins", "Pagination guard");
 
     await expect(templ.getActiveProposalsPaginated(0, 0)).to.be.revertedWithCustomError(
       templ,
@@ -370,7 +407,9 @@ describe("Governance coverage gaps", function () {
     await mintToUsers(token, [member, voter], ENTRY_FEE * 4n);
     await joinMembers(templ, token, [member, voter]);
 
-    await templ.connect(member).createProposalSetJoinPaused(false, VOTING_PERIOD);
+    await templ
+      .connect(member)
+      .createProposalSetJoinPaused(false, VOTING_PERIOD, "Pause joins", "HasMore false");
     await templ.connect(voter).vote(0, true);
     const delay = Number(await templ.postQuorumVotingPeriod());
     await ethers.provider.send("evm_increaseTime", [delay + 1]);

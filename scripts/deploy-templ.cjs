@@ -10,6 +10,7 @@ const DEFAULT_QUORUM_BPS = 3_300;
 const DEFAULT_CURVE_EXP_RATE_BPS = 10_094;
 const DEFAULT_MAX_MEMBERS = 249;
 const USE_DEFAULT_SENTINEL = -1;
+const MAX_ENTRY_FEE = (1n << 128n) - 1n;
 const CURVE_STYLE_INDEX = {
   static: 0,
   linear: 1,
@@ -405,10 +406,13 @@ async function main() {
 
   const entryFee = BigInt(ENTRY_FEE);
   if (entryFee < 10n) {
-    throw new Error("ENTRY_FEE must be at least 10 wei for proper distribution");
+    throw new Error("ENTRY_FEE must be at least 10 (raw token units)");
   }
   if (entryFee % 10n !== 0n) {
     throw new Error("ENTRY_FEE must be divisible by 10 to satisfy contract constraints");
+  }
+  if (entryFee > MAX_ENTRY_FEE) {
+    throw new Error("ENTRY_FEE exceeds MAX_ENTRY_FEE (uint128 max)");
   }
 
   console.log("========================================");
@@ -773,11 +777,11 @@ async function main() {
   console.log("========================================");
   console.log("\nContract Address:", contractAddress);
   console.log("\n🗳️ DAO Governance:");
-  console.log("- Treasury controlled by member voting");
-  console.log("- Proposals pass when YES > NO and quorum/time checks are met");
-  console.log("- Voting period: ≥36h (max 30 days)");
-  console.log("- Post-quorum delay: 1h-30d");
-  console.log("- One member = one vote (proposer auto‑YES; votes changeable until deadline)");
+  console.log("- Treasury controlled by on-chain governance (member-wide or council-only)");
+  console.log("- Proposals pass when YES ratio meets the configured threshold and quorum/time checks are met");
+  console.log("- Voting period (pre-quorum): ≥36h (max 30 days)");
+  console.log("- Post-quorum delay: 1h-30d (unless instant quorum triggers)");
+  console.log("- One eligible voter = one vote (proposer auto‑YES; votes changeable until deadline)");
   console.log("\n🔒 Security Features:");
   console.log("- No backdoor functions");
   console.log("- Treasury/token moves via DAO votes");

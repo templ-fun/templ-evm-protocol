@@ -25,7 +25,9 @@ describe("Disband non-access treasury assets", function () {
 
     const protocolBefore = await other.balanceOf(priest.address);
 
-    await templ.connect(member1).createProposalDisbandTreasury(other.target, VOTING_PERIOD);
+    await templ
+      .connect(member1)
+      .createProposalDisbandTreasury(other.target, VOTING_PERIOD, "Disband treasury", "Sweep ERC20");
     const proposalId = (await templ.proposalCount()) - 1n;
     await templ.connect(member2).vote(proposalId, true);
 
@@ -52,7 +54,9 @@ describe("Disband non-access treasury assets", function () {
 
     const protocolBefore = await ethers.provider.getBalance(priest.address);
 
-    await templ.connect(member1).createProposalDisbandTreasury(ethers.ZeroAddress, VOTING_PERIOD);
+    await templ
+      .connect(member1)
+      .createProposalDisbandTreasury(ethers.ZeroAddress, VOTING_PERIOD, "Disband treasury", "Sweep ETH");
     const proposalId = (await templ.proposalCount()) - 1n;
     await templ.connect(member2).vote(proposalId, true);
 

@@ -17,7 +17,7 @@ describe("Treasury coverage extras", function () {
 
     await templ
       .connect(member)
-      .createProposalChangePriest(priest.address, VOTING_PERIOD);
+      .createProposalChangePriest(priest.address, VOTING_PERIOD, "Change priest", "Reject no-op");
     await templ.connect(member).vote(0, true);
     await ethers.provider.send("evm_increaseTime", [VOTING_PERIOD + DAY]);
     await ethers.provider.send("evm_mine", []);
@@ -64,7 +64,9 @@ describe("Treasury coverage extras", function () {
         ethers.ZeroAddress,
         recipient,
         donation,
-        VOTING_PERIOD
+        VOTING_PERIOD,
+        "Withdraw ETH",
+        "Recipient reverts"
       );
     await templ.connect(member).vote(0, true);
     await templ.connect(voter).vote(0, true);
@@ -98,7 +100,9 @@ describe("Treasury coverage extras", function () {
         await token.getAddress(),
         priest.address,
         available + 1n,
-        VOTING_PERIOD
+        VOTING_PERIOD,
+        "Withdraw access token",
+        "Exceeds available balance"
       );
     await templ.connect(member).vote(0, true);
     await templ.connect(voter).vote(0, true);

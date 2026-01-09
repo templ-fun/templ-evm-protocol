@@ -30,7 +30,9 @@ describe("Vote reverts", function () {
             token.target,
             member1.address,
             ethers.parseUnits("10", 18),
-            7 * 24 * 60 * 60
+            7 * 24 * 60 * 60,
+            "Withdraw treasury",
+            "Vote after endTime"
         );
 
         await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60 + 1]);
@@ -49,7 +51,9 @@ describe("Vote reverts", function () {
             token.target,
             member1.address,
             ethers.parseUnits("10", 18),
-            7 * 24 * 60 * 60
+            7 * 24 * 60 * 60,
+            "Withdraw treasury",
+            "Count yes vote"
         );
 
         await templ.connect(member2).vote(0, true);

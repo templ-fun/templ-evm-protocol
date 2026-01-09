@@ -38,7 +38,9 @@ describe("Uniform vote weight (no priest bonus)", function () {
 
     await templ.connect(priest).createProposalSetJoinPaused(
       true,
-      7 * 24 * 60 * 60
+      7 * 24 * 60 * 60,
+      "Pause joins",
+      "Tie vote should fail"
     );
 
     await ethers.provider.send("evm_increaseTime", [10]);

@@ -8,6 +8,7 @@ describe("Disband Treasury", function () {
   const ENTRY_FEE = ethers.parseUnits("100", 18);
   const TOKEN_SUPPLY = ethers.parseUnits("10000", 18);
   const VOTING_PERIOD = 7 * 24 * 60 * 60;
+  const DISBAND_META = ["Disband treasury", "Move treasury into member pool"];
 
   let templ;
   let token;
@@ -40,7 +41,7 @@ describe("Disband Treasury", function () {
 
     await templ
       .connect(m1)
-      .createProposalDisbandTreasury(accessToken, VOTING_PERIOD);
+      .createProposalDisbandTreasury(accessToken, VOTING_PERIOD, ...DISBAND_META);
     await templ.connect(m1).vote(0, true);
     await templ.connect(m2).vote(0, true);
 
@@ -69,7 +70,7 @@ describe("Disband Treasury", function () {
     const accessToken = await templ.accessToken();
     await templ
       .connect(m1)
-      .createProposalDisbandTreasury(accessToken, VOTING_PERIOD);
+      .createProposalDisbandTreasury(accessToken, VOTING_PERIOD, ...DISBAND_META);
     await templ.connect(m2).vote(0, true);
     await templ.connect(m3).vote(0, true);
 
@@ -89,7 +90,7 @@ describe("Disband Treasury", function () {
     const accessToken = await templ.accessToken();
     await templ
       .connect(m1)
-      .createProposalDisbandTreasury(accessToken, VOTING_PERIOD);
+      .createProposalDisbandTreasury(accessToken, VOTING_PERIOD, ...DISBAND_META);
     let proposal = await templ.proposals(0);
     expect(proposal.token).to.equal(accessToken);
 
@@ -100,14 +101,14 @@ describe("Disband Treasury", function () {
 
     await templ
       .connect(m2)
-      .createProposalDisbandTreasury(otherToken.target, VOTING_PERIOD);
+      .createProposalDisbandTreasury(otherToken.target, VOTING_PERIOD, ...DISBAND_META);
     proposal = await templ.proposals(1);
     expect(proposal.token).to.equal(otherToken.target);
   });
 
   it("allows priest quorum-exempt disband after voting window", async function () {
     const accessToken = await templ.accessToken();
-    await templ.connect(priest).createProposalDisbandTreasury(accessToken, VOTING_PERIOD);
+    await templ.connect(priest).createProposalDisbandTreasury(accessToken, VOTING_PERIOD, ...DISBAND_META);
     const proposal = await templ.proposals(0);
     expect(proposal.quorumExempt).to.equal(true);
 
@@ -126,7 +127,7 @@ describe("Disband Treasury", function () {
 
     await mintToUsers(token, [joiner], ENTRY_FEE);
 
-    await templ.connect(priest).createProposalDisbandTreasury(accessToken, VOTING_PERIOD);
+    await templ.connect(priest).createProposalDisbandTreasury(accessToken, VOTING_PERIOD, ...DISBAND_META);
 
     await token.connect(joiner).approve(await templ.getAddress(), ENTRY_FEE);
     await expect(templ.connect(joiner).join()).to.not.be.reverted;
@@ -141,7 +142,7 @@ describe("Disband Treasury", function () {
 
     await templ
       .connect(m1)
-      .createProposalDisbandTreasury(accessToken, VOTING_PERIOD);
+      .createProposalDisbandTreasury(accessToken, VOTING_PERIOD, ...DISBAND_META);
     await templ.connect(m2).vote(0, true);
 
     await token.connect(lateJoiner).approve(await templ.getAddress(), ENTRY_FEE);
@@ -154,7 +155,7 @@ describe("Disband Treasury", function () {
 
     await templ
       .connect(m1)
-      .createProposalDisbandTreasury(accessToken, VOTING_PERIOD);
+      .createProposalDisbandTreasury(accessToken, VOTING_PERIOD, ...DISBAND_META);
     await templ.connect(m1).vote(0, true);
     await templ.connect(m2).vote(0, true);
     await advanceTimeBeyondVoting();
@@ -162,7 +163,7 @@ describe("Disband Treasury", function () {
 
     await templ
       .connect(m1)
-      .createProposalDisbandTreasury(accessToken, VOTING_PERIOD);
+      .createProposalDisbandTreasury(accessToken, VOTING_PERIOD, ...DISBAND_META);
     await templ.connect(m1).vote(1, true);
     await templ.connect(m2).vote(1, true);
     await advanceTimeBeyondVoting();
@@ -181,7 +182,7 @@ describe("Disband Treasury", function () {
 
     await templ
       .connect(m1)
-      .createProposalDisbandTreasury(accessToken, VOTING_PERIOD);
+      .createProposalDisbandTreasury(accessToken, VOTING_PERIOD, ...DISBAND_META);
     await templ.connect(m1).vote(0, true);
     await templ.connect(m2).vote(0, true);
     await advanceTimeBeyondVoting();
@@ -189,7 +190,7 @@ describe("Disband Treasury", function () {
 
     await templ
       .connect(m1)
-      .createProposalDisbandTreasury(accessToken, VOTING_PERIOD);
+      .createProposalDisbandTreasury(accessToken, VOTING_PERIOD, ...DISBAND_META);
     await templ.connect(m1).vote(1, true);
     await templ.connect(m2).vote(1, true);
 
@@ -214,7 +215,7 @@ describe("Disband Treasury", function () {
 
     await templ
       .connect(m1)
-      .createProposalDisbandTreasury(accessToken, VOTING_PERIOD);
+      .createProposalDisbandTreasury(accessToken, VOTING_PERIOD, ...DISBAND_META);
     await templ.connect(m2).vote(0, true);
 
     await advanceTimeBeyondVoting();
@@ -237,7 +238,7 @@ describe("Disband Treasury", function () {
 
     await templ
       .connect(m1)
-      .createProposalDisbandTreasury(accessToken, VOTING_PERIOD);
+      .createProposalDisbandTreasury(accessToken, VOTING_PERIOD, ...DISBAND_META);
     await templ.connect(m2).vote(0, true);
 
     await templ.connect(m3).vote(0, false);

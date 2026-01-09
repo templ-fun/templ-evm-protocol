@@ -16,8 +16,8 @@ Governance-controlled upgrades
 - Module access guard: module implementations revert on direct calls; all interactions must flow through `TEMPL` (delegatecall) to share storage and enforce guards.
 
 Common preflight helpers
-- Access token and entry fee: `TEMPL.getConfig()` → `(token, fee, joinPaused, joins, treasury, pool, burnBps, treasuryBps, memberPoolBps, protocolBps)`
-- Treasury/burn display: `TEMPL.getTreasuryInfo()` → `(treasury, memberPool, protocolRecipient, burned)`
+- Access token and entry fee (access-token balances): `TEMPL.getConfig()` → `(token, fee, joinPaused, joins, treasury, pool, burnBps, treasuryBps, memberPoolBps, protocolBps)`
+- Treasury/burn display (access token only): `TEMPL.getTreasuryInfo()` → `(treasury, memberPool, protocolRecipient, burned)`
 - Member status: `TEMPL.isMember(address)`; count: `TEMPL.getMemberCount()`
 
 Allowances and approvals
@@ -167,7 +167,7 @@ Post‑deploy handoff
 - Voting period: pass `0` to use the templ’s default pre‑quorum window, or a custom number of seconds within the allowed range.
 - Common creators (see full list below):
   - Pause/resume joins: `templ.createProposalSetJoinPaused(bool paused, uint256 votingPeriod, string title, string description)`
-  - Update entry fee / split: `templ.createProposalUpdateConfig(uint256 newFee, uint256 newBurnBps, uint256 newTreasuryBps, uint256 newMemberPoolBps, bool updateSplit, uint256 votingPeriod, string title, string description)`
+  - Update entry fee / split: `templ.createProposalUpdateConfig(uint256 newFee, uint256 newBurnBps, uint256 newTreasuryBps, uint256 newMemberPoolBps, bool updateSplit, uint256 votingPeriod, string title, string description)` (`newFee=0` keeps current; `updateSplit=false` ignores split fields)
   - Withdraw treasury/external funds: `templ.createProposalWithdrawTreasury(address tokenOrZero, address recipient, uint256 amount, uint256 votingPeriod, string title, string description)`
   - Sweep member pool remainder: `templ.createProposalSweepMemberPoolRemainder(address recipient, uint256 votingPeriod, string title, string description)`
   - Arbitrary external call: `templ.createProposalCallExternal(address target, uint256 value, bytes4 selector, bytes params, uint256 votingPeriod, string title, string description)`
@@ -209,6 +209,7 @@ if (proposalFee > 0n) {
 7) Read Balances for UI
 - Treasury and burned totals for group header:
   - `const [treasury, memberPool, protocolRecipient, burned] = await templ.getTreasuryInfo();`
+- Note: `getTreasuryInfo()` / `getConfig()` only report access-token balances; read ETH or other ERC‑20 balances directly from the token or provider.
 - Additional config for context: `templ.getConfig()`; member counts: `templ.getMemberCount()`, total joins: `templ.totalJoins()`.
 
 Create with defaults or custom
@@ -277,7 +278,8 @@ Gotchas and validation checklist
 - Voting window anchors at quorum: when quorum is reached, `endTime` resets to `block.timestamp + postQuorumVotingPeriodSnapshot` (captured at creation), unless instant quorum triggers and `endTime` is set to `block.timestamp`. `postQuorumVotingPeriodSnapshot` lives in `templ.proposals(id)`. Always show the latest `endTime` from `getProposal(id)` and check `instantQuorumMet` via `templ.proposals(id)`; do not precompute.
 - Pre‑quorum voting period bounds: enforce `[36h, 30d]`. Passing `0` applies the templ default.
 - Title/description caps: title ≤256 bytes, description ≤2048 bytes. Truncate or warn before submit.
-- Entry fee update constraints: new fee must be ≥10 and divisible by 10 (raw token units). Validate before proposing.
+- Entry fee update constraints: new fee must be ≥10, divisible by 10, and ≤ `MAX_ENTRY_FEE` (uint128 max). Validate before proposing.
+- Quorum/instant quorum constraints: `newQuorumBps` must be ≤ current `instantQuorumBps`; `newInstantQuorumBps` must be ≥ current `quorumBps`.
 - Curve config bounds: ≤8 total segments; if `additionalSegments` is empty, `primary.length` must be 0. If `additionalSegments` is non-empty, `primary.length` must be >0, intermediate additional segments must have `length > 0`, and the final additional segment must have `length = 0`. Static segments require `rateBps = 0`; exponential segments require `rateBps > 0` (linear allows any `rateBps`, including 0).
 - Batch external calls with ETH: when batching via `templ.batchDAO`, set `target = templ.getAddress()` and ensure the templ already holds sufficient ETH to cover the inner `values` (top-level `value` can be 0). Calls execute from the templ address, so any approve/transferFrom affects the templ's allowance/balance; any inner revert bubbles and reverts the whole batch.
 - Pagination limits: `getActiveProposalsPaginated` requires `1 ≤ limit ≤ 100`.

@@ -515,8 +515,8 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
 - Permissioning: `TemplFactory.setPermissionless(true)` allows anyone to create templs; `TemplFactory.transferDeployer(newAddr)` updates the factory deployer role (relevant when permissionless is disabled).
 
 ## Constraints
-- Entry fee target: must be ≥10 and divisible by 10 (base anchors may be non-divisible and are normalized on join).
-- Entry fee (runtime): curve recomputes normalize to ≥10 and divisible by 10 (decaying curves floor at 10). Base anchors may be non-divisible.
+- Entry fee target: must be ≥10, divisible by 10, and ≤ `MAX_ENTRY_FEE` (base anchors may be non-divisible but must stay within the same bounds).
+- Entry fee (runtime): curve recomputes normalize to ≥10 and divisible by 10 (decaying curves floor at 10) and saturate at `MAX_ENTRY_FEE`. Base anchors may be non-divisible.
 - Fee split: burn + treasury + member pool + protocol must sum to 10_000 bps.
 - Curve config: ≤8 total segments; if `additionalSegments` is empty, `primary.length` must be 0 (infinite tail). If `additionalSegments` is non-empty, `primary.length` must be >0, intermediate additional segments must have `length > 0`, and the final additional segment must have `length = 0`. Static segments require `rateBps = 0`; exponential segments require `rateBps > 0` (linear allows any `rateBps`, including 0 for no growth).
 - Pre‑quorum voting window: bounded to [36 hours, 30 days].
@@ -544,13 +544,13 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
 ## Indexing Notes
 - Track `ProposalCreated` then hydrate with `getProposal` + `getProposalSnapshots`.
 - Use `getActiveProposals()` for lists; `getActiveProposalsPaginated(offset,limit)` for pagination.
-- Treasury views: `getTreasuryInfo()` and/or `TreasuryAction`/`TreasuryDisbanded` deltas.
+- Treasury views (access token): `getTreasuryInfo()` and/or `TreasuryAction`/`TreasuryDisbanded` deltas; read ETH/other ERC‑20 balances directly.
 - Curves: consume `EntryFeeCurveUpdated` for UI refresh.
 
 ## Proposal Views
 - For any proposal id, `TEMPL.getProposalActionData(id)` returns `(Action action, bytes payload)`. Decode `payload` using the shapes below:
 - SetJoinPaused → `abi.encode(bool joinPaused)`
-- UpdateConfig → `abi.encode(uint256 newEntryFee, bool updateFeeSplit, uint256 newBurnBps, uint256 newTreasuryBps, uint256 newMemberPoolBps)`
+- UpdateConfig → `abi.encode(uint256 newEntryFee, bool updateFeeSplit, uint256 newBurnBps, uint256 newTreasuryBps, uint256 newMemberPoolBps)` (`newEntryFee=0` keeps current; `updateFeeSplit=false` ignores split fields)
 - SetMaxMembers → `abi.encode(uint256 newMaxMembers)`
 - SetMetadata → `abi.encode(string name, string description, string logoLink)`
 - SetProposalFee → `abi.encode(uint256 newProposalCreationFeeBps)`
@@ -621,6 +621,7 @@ Proposal fees apply to non-council proposers; council proposers are fee‑exempt
 
 ## Troubleshooting
 - `InvalidEntryFee` / `EntryFeeTooSmall`: fee must be ≥10 and divisible by 10.
+- `EntryFeeTooLarge`: fee exceeds `MAX_ENTRY_FEE` (uint128 max).
 - `InvalidPercentageSplit`: burn + treasury + member + protocol must sum to 10_000 bps.
 - `ActiveProposalExists`: one active proposal per proposer.
 - `QuorumNotReached` / `ExecutionDelayActive`: execution preconditions not satisfied.

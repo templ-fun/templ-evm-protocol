@@ -18,7 +18,9 @@ describe("ChangePriest governance action", function () {
     expect(await templ.priest()).to.equal(oldPriest.address);
 
     // Propose change to new priest
-    await templ.connect(member1).createProposalChangePriest(newPriest.address, 7 * 24 * 60 * 60);
+    await templ
+      .connect(member1)
+      .createProposalChangePriest(newPriest.address, 7 * 24 * 60 * 60, "Change priest", "Rotate leader");
 
     // Vote yes by both members
     await templ.connect(member1).vote(0, true);
@@ -41,7 +43,9 @@ describe("ChangePriest governance action", function () {
     await joinMembers(templ, token, [member]);
 
     await expect(
-      templ.connect(member).createProposalChangePriest(outsider.address, 7 * 24 * 60 * 60)
+      templ
+        .connect(member)
+        .createProposalChangePriest(outsider.address, 7 * 24 * 60 * 60, "Change priest", "Require member")
     ).to.be.revertedWithCustomError(templ, "NotMember");
   });
 

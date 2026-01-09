@@ -29,7 +29,9 @@ describe("Treasury Withdrawal Reverts", function () {
                 token.target,
                 ethers.ZeroAddress,
                 ethers.parseUnits("1", 18),
-                7 * 24 * 60 * 60
+                7 * 24 * 60 * 60,
+                "Withdraw treasury",
+                "Invalid recipient"
             );
 
             await templ.connect(user1).vote(0, true);
@@ -47,7 +49,9 @@ describe("Treasury Withdrawal Reverts", function () {
                 token.target,
                 user1.address,
                 0,
-                7 * 24 * 60 * 60
+                7 * 24 * 60 * 60,
+                "Withdraw treasury",
+                "Zero amount"
             );
 
             await templ.connect(user1).vote(0, true);
@@ -66,7 +70,9 @@ describe("Treasury Withdrawal Reverts", function () {
                 token.target,
                 user1.address,
                 treasury + 1n,
-                7 * 24 * 60 * 60
+                7 * 24 * 60 * 60,
+                "Withdraw treasury",
+                "Insufficient balance"
             );
 
             await templ.connect(user1).vote(0, true);
@@ -87,7 +93,9 @@ describe("Treasury Withdrawal Reverts", function () {
                 otherToken.target,
                 user1.address,
                 1n,
-                7 * 24 * 60 * 60
+                7 * 24 * 60 * 60,
+                "Withdraw treasury",
+                "Token not held"
             );
 
             await templ.connect(user1).vote(0, true);

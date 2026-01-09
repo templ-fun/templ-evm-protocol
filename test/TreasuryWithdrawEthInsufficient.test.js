@@ -18,7 +18,9 @@ describe("Treasury ETH insufficient balance reverts", function () {
       ethers.ZeroAddress,
       member.address,
       1n,
-      VOTING_PERIOD
+      VOTING_PERIOD,
+      "Withdraw ETH",
+      "Empty balance"
     );
     await templ.connect(voter).vote(0, true);
     await ethers.provider.send("evm_increaseTime", [VOTING_PERIOD + DAY]);

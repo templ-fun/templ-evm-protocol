@@ -34,7 +34,12 @@ describe("Max Members Pause Handling", function () {
   });
 
   it("retains the membership cap when unpausing after reaching the limit", async function () {
-    await templ.connect(m1).createProposalSetJoinPaused(false, VOTING_PERIOD);
+    await templ.connect(m1).createProposalSetJoinPaused(
+      false,
+      VOTING_PERIOD,
+      "Unpause joins",
+      "Stay capped"
+    );
     await templ.connect(priest).vote(0, true);
 
     const delay = Number(await templ.postQuorumVotingPeriod());
@@ -49,7 +54,12 @@ describe("Max Members Pause Handling", function () {
 
   it("auto-unpauses when the cap is raised above the current member count", async function () {
     const newMax = MAX_MEMBERS + 1n;
-    await templ.connect(m1).createProposalSetMaxMembers(Number(newMax), VOTING_PERIOD);
+    await templ.connect(m1).createProposalSetMaxMembers(
+      Number(newMax),
+      VOTING_PERIOD,
+      "Raise cap",
+      "Auto-unpause joins"
+    );
     await templ.connect(priest).vote(0, true);
 
     const delay = Number(await templ.postQuorumVotingPeriod());
