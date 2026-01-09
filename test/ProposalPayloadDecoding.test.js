@@ -166,4 +166,57 @@ describe("Proposal payload decode coverage (getProposalActionData)", function ()
     let [addr] = ethers.AbiCoder.defaultAbiCoder().decode(["address"], payload);
     expect(addr).to.equal(tokenAddr);
   });
+
+  it("decodes ChangePriest", async function () {
+    await templ.connect(m1).createProposalChangePriest(m2.address, VOTING_PERIOD, "Priest", "");
+    const id = (await templ.proposalCount()) - 1n;
+    const [, payload] = await templ.getProposalActionData(id);
+    const [addr] = ethers.AbiCoder.defaultAbiCoder().decode(["address"], payload);
+    expect(addr).to.equal(m2.address);
+  });
+
+  it("decodes SetInstantQuorumBps", async function () {
+    await templ.connect(m1).createProposalSetInstantQuorumBps(9_000, VOTING_PERIOD, "Instant", "");
+    const id = (await templ.proposalCount()) - 1n;
+    const [, payload] = await templ.getProposalActionData(id);
+    const [bps] = ethers.AbiCoder.defaultAbiCoder().decode(["uint256"], payload);
+    expect(bps).to.equal(9_000n);
+  });
+
+  it("decodes SetCouncilMode", async function () {
+    await templ.connect(m2).createProposalSetCouncilMode(true, VOTING_PERIOD, "Council", "");
+    const id = (await templ.proposalCount()) - 1n;
+    const [, payload] = await templ.getProposalActionData(id);
+    const [enabled] = ethers.AbiCoder.defaultAbiCoder().decode(["bool"], payload);
+    expect(enabled).to.equal(true);
+  });
+
+  it("decodes SetYesVoteThreshold", async function () {
+    await templ.connect(m2).createProposalSetYesVoteThreshold(6_000, VOTING_PERIOD, "Threshold", "");
+    const id = (await templ.proposalCount()) - 1n;
+    const [, payload] = await templ.getProposalActionData(id);
+    const [bps] = ethers.AbiCoder.defaultAbiCoder().decode(["uint256"], payload);
+    expect(bps).to.equal(6_000n);
+  });
+
+  it("decodes AddCouncilMember and RemoveCouncilMember", async function () {
+    await templ.connect(m1).createProposalAddCouncilMember(m1.address, VOTING_PERIOD, "Add council", "");
+    const addId = (await templ.proposalCount()) - 1n;
+    let [, payload] = await templ.getProposalActionData(addId);
+    let [member] = ethers.AbiCoder.defaultAbiCoder().decode(["address"], payload);
+    expect(member).to.equal(m1.address);
+
+    await templ.connect(m2).vote(addId, true);
+    const delay = Number(await templ.postQuorumVotingPeriod());
+    await ethers.provider.send("evm_increaseTime", [delay + 1]);
+    await ethers.provider.send("evm_mine", []);
+    await templ.executeProposal(addId);
+    expect(await templ.councilMemberCount()).to.equal(2n);
+
+    await templ.connect(priest).createProposalRemoveCouncilMember(m1.address, VOTING_PERIOD, "Remove council", "");
+    const removeId = (await templ.proposalCount()) - 1n;
+    [, payload] = await templ.getProposalActionData(removeId);
+    [member] = ethers.AbiCoder.defaultAbiCoder().decode(["address"], payload);
+    expect(member).to.equal(m1.address);
+  });
 });

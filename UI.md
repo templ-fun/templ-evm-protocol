@@ -55,7 +55,7 @@ Minimal/default deploy (no custom splits)
 - Use `factory.createTempl(token, entryFee, name, description, logoLink)` when the deployer is also the priest.
 - Use `factory.createTemplFor(priest, token, entryFee, name, description, logoLink, proposalFeeBps, referralShareBps)` to set an explicit priest and fee knobs. Other parameters use factory defaults.
 - Defaults applied by the factory:
-  - Splits: burn 3,000 bps; treasury 3,000 bps; memberPool 3,000 bps; protocol `PROTOCOL_BPS`.
+  - Splits: burn 3,000 bps; treasury 3,000 bps; memberPool 3,000 bps; protocol `PROTOCOL_BPS` (these defaults only sum to 10,000 when `PROTOCOL_BPS == 1,000`; otherwise use `createTemplWithConfig` with explicit splits).
   - Governance: quorum 3,300 bps; post‑quorum voting window 36 hours; burn address dead address.
   - Caps/curve: `maxMembers = 249`; curve is exponential for 248 paid joins (through member #249 including the priest), then static tail if the cap is raised.
   - Metadata caps: name ≤256 bytes; description ≤2048 bytes; logo URI ≤2048 bytes.
@@ -83,7 +83,7 @@ Complete custom deploy (full config)
   - `priest`: EOA that becomes priest (zero uses `msg.sender`).
   - `token`: ERC‑20 access token (assumed vanilla; contracts do not enforce this, so UIs should warn on known tax/rebase/hook tokens).
   - `entryFee`: ≥10 and divisible by 10 (raw token units).
-  - `burnBps`, `treasuryBps`, `memberPoolBps`: `int256`; use `-1` to apply factory defaults; otherwise 0…10,000.
+  - `burnBps`, `treasuryBps`, `memberPoolBps`: `int256`; use `-1` to apply factory defaults (valid only when `PROTOCOL_BPS == 1,000`); otherwise 0…10,000.
   - `quorumBps`: 0 applies default; otherwise 0…10,000.
   - `executionDelaySeconds`: 0 applies default; otherwise within [1 hour, 30 days].
   - `burnAddress`: zero applies default.
@@ -203,7 +203,7 @@ if (proposalFee > 0n) {
 
 6) Execute a Proposal
 - Call: `templ.executeProposal(uint256 proposalId)` once it has passed and delay/quorum rules are satisfied.
-- UI can precompute executability via `templ.getProposal(id)` (see `passed` field) and show countdowns from `endTime` and `getProposalSnapshots(id)`.
+- UI can precompute executability via `templ.getProposal(id)` by checking `passed` and `executed == false`, then show countdowns from `endTime` and `getProposalSnapshots(id)`.
 
 7) Read Balances for UI
 - Treasury and burned totals for group header:
@@ -272,7 +272,7 @@ Where to look in code
 
 Gotchas and validation checklist
 - One active proposal per proposer: `templ.hasActiveProposal(user)` can be stale after expiry; if true, read `templ.activeProposalId(user)` and `templ.getProposal(id)` and only block creation when `executed == false` and `endTime` is still in the future.
-- Voting window anchors at quorum: when quorum is reached, `endTime` resets to `block.timestamp + postQuorumVotingPeriod`, unless instant quorum triggers and `endTime` is set to `block.timestamp`. Always show the latest `endTime` from `getProposal(id)` and check `instantQuorumMet` via `templ.proposals(id)`; do not precompute.
+- Voting window anchors at quorum: when quorum is reached, `endTime` resets to `block.timestamp + postQuorumVotingPeriodSnapshot` (captured at creation), unless instant quorum triggers and `endTime` is set to `block.timestamp`. `postQuorumVotingPeriodSnapshot` lives in `templ.proposals(id)`. Always show the latest `endTime` from `getProposal(id)` and check `instantQuorumMet` via `templ.proposals(id)`; do not precompute.
 - Pre‑quorum voting period bounds: enforce `[36h, 30d]`. Passing `0` applies the templ default.
 - Title/description caps: title ≤256 bytes, description ≤2048 bytes. Truncate or warn before submit.
 - Entry fee update constraints: new fee must be ≥10 and divisible by 10 (raw token units). Validate before proposing.

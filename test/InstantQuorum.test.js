@@ -24,7 +24,15 @@ describe("Instant quorum execution", function () {
     await templ.connect(member1).createProposalSetBurnAddress(immediateBurn, WEEK, "instant burn", "");
     const proposalId = (await templ.proposalCount()) - 1n;
 
+    const proposalBefore = await templ.proposals(proposalId);
     await templ.connect(member2).vote(proposalId, true);
+    const proposalAfter = await templ.proposals(proposalId);
+    expect(proposalAfter.instantQuorumMet).to.equal(true);
+    expect(proposalAfter.instantQuorumReachedAt).to.be.gt(0n);
+    expect(proposalAfter.endTime).to.equal(proposalAfter.instantQuorumReachedAt);
+    expect(proposalAfter.endTime).to.be.at.most(proposalBefore.endTime);
+    expect(proposalAfter.instantQuorumReachedAt).to.be.at.least(proposalAfter.quorumReachedAt);
+
     await expect(templ.connect(member2).executeProposal(proposalId)).to.not.be.reverted;
     expect(await templ.burnAddress()).to.equal(immediateBurn);
 

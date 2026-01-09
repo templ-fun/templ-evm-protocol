@@ -1,10 +1,16 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
+const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
+const { deployTemplModules } = require("./utils/modules");
+const { attachTemplInterface } = require("./utils/templ");
 
 const MAX_CURVE_SEGMENTS = 8;
 const MAX_PROPOSAL_TITLE_LENGTH = 256;
 const MAX_PROPOSAL_DESCRIPTION_LENGTH = 2048;
+const MAX_TEMPL_NAME_LENGTH = 256;
+const MAX_TEMPL_DESCRIPTION_LENGTH = 2048;
+const MAX_TEMPL_LOGO_URI_LENGTH = 2048;
 
 // Helper to build a curve that violates the max segment limit.
 function buildTooManySegmentsCurve(extraSegments) {
@@ -70,5 +76,70 @@ describe("Oversized inputs are rejected", function () {
           hugeDescription
         )
     ).to.be.revertedWithCustomError(templ, "InvalidCallData");
+  });
+
+  it("reverts when templ metadata fields exceed the max length (onlyDAO)", async function () {
+    const [, priest, protocol] = await ethers.getSigners();
+    const AccessToken = await ethers.getContractFactory("contracts/mocks/TestToken.sol:TestToken");
+    const accessToken = await AccessToken.deploy("Access", "ACC", 18);
+    await accessToken.waitForDeployment();
+    const Harness = await ethers.getContractFactory(
+      "contracts/mocks/DaoCallerHarness.sol:DaoCallerHarness"
+    );
+    const modules = await deployTemplModules();
+    let templ = await Harness.deploy(
+      priest.address,
+      protocol.address,
+      accessToken.target,
+      ethers.parseUnits("100", 18),
+      modules.membershipModule,
+      modules.treasuryModule,
+      modules.governanceModule,
+      modules.councilModule
+    );
+    await templ.waitForDeployment();
+    templ = await attachTemplInterface(templ);
+
+    const longName = "N".repeat(MAX_TEMPL_NAME_LENGTH + 1);
+    const longDescription = "D".repeat(MAX_TEMPL_DESCRIPTION_LENGTH + 1);
+    const longLogo = "L".repeat(MAX_TEMPL_LOGO_URI_LENGTH + 1);
+
+    await expect(
+      templ.daoSetMetadata(longName, "ok", "ok")
+    ).to.be.revertedWithCustomError(templ, "InvalidCallData");
+
+    await expect(
+      templ.daoSetMetadata("ok", longDescription, "ok")
+    ).to.be.revertedWithCustomError(templ, "InvalidCallData");
+
+    await expect(
+      templ.daoSetMetadata("ok", "ok", longLogo)
+    ).to.be.revertedWithCustomError(templ, "InvalidCallData");
+  });
+
+  it("reverts when proposal metadata exceeds limits on execution", async function () {
+    const { templ, token, accounts } = await deployTempl();
+    const [, , proposer, voter] = accounts;
+    const ENTRY_FEE = ethers.parseUnits("100", 18);
+    const VOTING_PERIOD = 7 * 24 * 60 * 60;
+
+    await mintToUsers(token, [proposer, voter], ENTRY_FEE * 5n);
+    await joinMembers(templ, token, [proposer, voter]);
+
+    const longName = "N".repeat(MAX_TEMPL_NAME_LENGTH + 1);
+    await templ
+      .connect(proposer)
+      .createProposalUpdateMetadata(longName, "ok", "ok", VOTING_PERIOD, "Meta", "");
+    const id = (await templ.proposalCount()) - 1n;
+    await templ.connect(voter).vote(id, true);
+
+    const delay = Number(await templ.postQuorumVotingPeriod());
+    await ethers.provider.send("evm_increaseTime", [delay + 1]);
+    await ethers.provider.send("evm_mine", []);
+
+    await expect(templ.executeProposal(id)).to.be.revertedWithCustomError(
+      templ,
+      "InvalidCallData"
+    );
   });
 });
