@@ -6,7 +6,7 @@ const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 describe("Active proposal indexing", function () {
   it("prunes inactive proposals to keep the active set small", async function () {
     const votingPeriod = 7 * 24 * 60 * 60;
-    const { templ, token, accounts } = await deployTempl({ executionDelay: 60 });
+    const { templ, token, accounts } = await deployTempl({ executionDelay: 60 * 60 });
     const entryFee = await templ.entryFee();
     const members = accounts.slice(2, 6);
 
@@ -40,7 +40,7 @@ describe("Active proposal indexing", function () {
 
   it("stops pruning when the latest proposal is still active", async function () {
     const votingPeriod = 7 * 24 * 60 * 60;
-    const { templ, token, accounts } = await deployTempl({ executionDelay: 60 });
+    const { templ, token, accounts } = await deployTempl({ executionDelay: 60 * 60 });
     const entryFee = await templ.entryFee();
     const members = accounts.slice(2, 4);
 

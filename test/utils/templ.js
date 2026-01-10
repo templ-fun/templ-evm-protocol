@@ -5,6 +5,9 @@ let cachedTemplAbi;
 function abiKey(item) {
   if (!item) return "";
   const { type } = item;
+  if (type === "constructor") {
+    return "constructor";
+  }
   if (type === "function" || type === "event" || type === "error") {
     const args = (item.inputs || []).map((input) => input.type).join(",");
     return `${type}:${item.name || ""}(${args})`;

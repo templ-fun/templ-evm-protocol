@@ -8,7 +8,6 @@ interface ITempl {
     function join() external;
     function joinFor(address recipient) external;
     function claimMemberRewards() external;
-    function claimExternalReward(address token) external;
 }
 
 /// @dev ERC20 token that can reenter TEMPL during token transfers
@@ -16,13 +15,11 @@ contract ReentrantToken is ERC20 {
     enum Callback {
         None,
         Purchase,
-        Claim,
-        ClaimExternal
+        Claim
     }
 
     address public templ;
     Callback public callback;
-    address public callbackToken;
 
     /// @dev Construct reentrant test token
     constructor(string memory name_, string memory symbol_) ERC20(name_, symbol_) {}
@@ -33,10 +30,6 @@ contract ReentrantToken is ERC20 {
     /// @notice Configure which callback (if any) to trigger
     function setCallback(Callback _callback) external {
         callback = _callback;
-    }
-    /// @notice Configure which token address to use for claimExternal reentrancy
-    function setCallbackToken(address tokenAddress) external {
-        callbackToken = tokenAddress;
     }
     /// @notice Mint tokens for testing
     function mint(address to, uint256 amount) external {
@@ -66,9 +59,6 @@ contract ReentrantToken is ERC20 {
         bool success = super.transfer(to, value);
         if (callback == Callback.Claim) {
             ITempl(templ).claimMemberRewards();
-        } else if (callback == Callback.ClaimExternal) {
-            address tokenAddress = callbackToken == address(0) ? address(this) : callbackToken;
-            ITempl(templ).claimExternalReward(tokenAddress);
         }
         return success;
     }

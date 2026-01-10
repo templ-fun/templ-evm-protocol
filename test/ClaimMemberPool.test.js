@@ -22,12 +22,7 @@ describe("ClaimMemberPool access control", function () {
   });
 
   it("enforces member-only access and lets members claim accumulated rewards", async function () {
-    const [, , memberA, memberB, outsider] = accounts;
-
-    await expect(templ.connect(outsider).claimExternalReward(ethers.ZeroAddress)).to.be.revertedWithCustomError(
-      templ,
-      "NotMember"
-    );
+    const [, , memberA, memberB] = accounts;
 
     await token.mint(memberA.address, ENTRY_FEE * 2n);
     await token.connect(memberA).approve(templ.target, ENTRY_FEE * 2n);
@@ -45,9 +40,5 @@ describe("ClaimMemberPool access control", function () {
     const after = await token.balanceOf(memberA.address);
     expect(after - before).to.equal(expectedShare);
 
-    await expect(templ.connect(memberA).claimExternalReward(token.target)).to.be.revertedWithCustomError(
-      templ,
-      "InvalidCallData"
-    );
   });
 });

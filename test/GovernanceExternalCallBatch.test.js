@@ -84,6 +84,96 @@ describe("Governance external call batching via executor", function () {
     expect(balBefore - balAfter).to.equal(amount);
   });
 
+  it("forwards ETH values to batchDAO targets", async function () {
+    const Target = await ethers.getContractFactory("contracts/mocks/ExternalCallTarget.sol:ExternalCallTarget");
+    const target = await Target.deploy();
+    await target.waitForDeployment();
+
+    const value1 = ethers.parseEther("0.1");
+    const value2 = ethers.parseEther("0.2");
+    const totalValue = value1 + value2;
+
+    await owner.sendTransaction({ to: await templ.getAddress(), value: totalValue });
+
+    const setSel = target.interface.getFunction("setNumberPayable").selector;
+    const data1 = ethers.concat([setSel, abi.encode(["uint256"], [1n])]);
+    const data2 = ethers.concat([setSel, abi.encode(["uint256"], [2n])]);
+    const execSel = templ.interface.getFunction("batchDAO").selector;
+    const execParams = abi.encode(
+      ["address[]","uint256[]","bytes[]"],
+      [[await target.getAddress(), await target.getAddress()], [value1, value2], [data1, data2]]
+    );
+
+    const tx = await templ
+      .connect(m1)
+      .createProposalCallExternal(
+        await templ.getAddress(),
+        0n,
+        execSel,
+        execParams,
+        VOTING_PERIOD,
+        "Batch ETH",
+        "Forward ETH in batch"
+      );
+    await tx.wait();
+    const proposalId = (await templ.proposalCount()) - 1n;
+    await pass(proposalId);
+
+    const targetBefore = await ethers.provider.getBalance(await target.getAddress());
+    const templBefore = await ethers.provider.getBalance(await templ.getAddress());
+
+    await expect(templ.executeProposal(Number(proposalId)))
+      .to.emit(templ, "ProposalExecuted");
+
+    const targetAfter = await ethers.provider.getBalance(await target.getAddress());
+    const templAfter = await ethers.provider.getBalance(await templ.getAddress());
+
+    expect(targetAfter - targetBefore).to.equal(totalValue);
+    expect(templBefore - templAfter).to.equal(totalValue);
+    expect(await target.storedValue()).to.equal(2n);
+  });
+
+  it("reverts when batchDAO forwards more ETH than the templ holds", async function () {
+    const Target = await ethers.getContractFactory("contracts/mocks/ExternalCallTarget.sol:ExternalCallTarget");
+    const target = await Target.deploy();
+    await target.waitForDeployment();
+
+    const value1 = ethers.parseEther("0.25");
+    const value2 = ethers.parseEther("0.35");
+    const totalValue = value1 + value2;
+    await owner.sendTransaction({ to: await templ.getAddress(), value: value1 });
+
+    const setSel = target.interface.getFunction("setNumberPayable").selector;
+    const data1 = ethers.concat([setSel, abi.encode(["uint256"], [11n])]);
+    const data2 = ethers.concat([setSel, abi.encode(["uint256"], [22n])]);
+    const execSel = templ.interface.getFunction("batchDAO").selector;
+    const execParams = abi.encode(
+      ["address[]","uint256[]","bytes[]"],
+      [[await target.getAddress(), await target.getAddress()], [value1, value2], [data1, data2]]
+    );
+
+    const tx = await templ
+      .connect(m1)
+      .createProposalCallExternal(
+        await templ.getAddress(),
+        0n,
+        execSel,
+        execParams,
+        VOTING_PERIOD,
+        "Batch insufficient ETH",
+        "Should revert"
+      );
+    await tx.wait();
+    const proposalId = (await templ.proposalCount()) - 1n;
+    await pass(proposalId);
+
+    await expect(templ.executeProposal(Number(proposalId))).to.be.reverted;
+
+    const targetBalance = await ethers.provider.getBalance(await target.getAddress());
+    expect(targetBalance).to.equal(0n);
+    expect(totalValue).to.be.gt(value1);
+  });
+
   it("reverts atomically when a later call fails via TEMPL batchDAO", async function () {
     const Target = await ethers.getContractFactory("contracts/mocks/ExternalCallTarget.sol:ExternalCallTarget");
     const target = await Target.deploy();

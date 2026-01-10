@@ -5,6 +5,7 @@ const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 const { encodeSetJoinPausedDAO, encodeWithdrawTreasuryDAO, encodeUpdateConfigDAO } = require("./utils/callDataBuilders");
 const { deployTemplModules } = require("./utils/modules");
 const { attachTemplInterface } = require("./utils/templ");
+const { expectProposalBasics } = require("./utils/assertions");
 
 describe("TEMPL Contract with DAO Governance", function () {
     let templ;
@@ -64,14 +65,13 @@ describe("TEMPL Contract with DAO Governance", function () {
                 3500,
                 12_345,
                 customBurnAddress,
-                false,
                 0,
                 METADATA.name,
                 METADATA.description,
                 "https://templ.direct",
                 0,
                 0,
-                5_000,
+                5_100,
                  10_000,
                 false,
                 membershipModule,
@@ -109,14 +109,13 @@ describe("TEMPL Contract with DAO Governance", function () {
                     QUORUM_BPS,
                     7 * 24 * 60 * 60,
                     "0x000000000000000000000000000000000000dEaD",
-                    false,
                     0,
                     METADATA.name,
                     METADATA.description,
                     METADATA.logo,
                     0,
                     0,
-                    5_000,
+                    5_100,
                      10_000,
                     false,
                     membershipModule,
@@ -144,14 +143,13 @@ describe("TEMPL Contract with DAO Governance", function () {
                     QUORUM_BPS,
                     7 * 24 * 60 * 60,
                     "0x000000000000000000000000000000000000dEaD",
-                    false,
                     0,
                     METADATA.name,
                     METADATA.description,
                     METADATA.logo,
                     0,
                     0,
-                    5_000,
+                    5_100,
                      10_000,
                     false,
                     membershipModule,
@@ -161,6 +159,40 @@ describe("TEMPL Contract with DAO Governance", function () {
                     STATIC_CURVE
                 )
             ).to.be.revertedWithCustomError(TEMPL, "InvalidRecipient");
+        });
+
+        it("Should revert when a module address has no code", async function () {
+            const { treasuryModule, governanceModule, councilModule } = await deployTemplModules();
+            const TEMPL = await ethers.getContractFactory("TEMPL");
+            await expect(
+                TEMPL.deploy(
+                    priest.address,
+                    priest.address,
+                    await token.getAddress(),
+                    ENTRY_FEE,
+                    BURN_BPS,
+                    TREASURY_BPS,
+                    MEMBER_BPS,
+                    PROTOCOL_BPS,
+                    QUORUM_BPS,
+                    7 * 24 * 60 * 60,
+                    "0x000000000000000000000000000000000000dEaD",
+                    0,
+                    METADATA.name,
+                    METADATA.description,
+                    METADATA.logo,
+                    0,
+                    0,
+                    5_100,
+                     10_000,
+                    false,
+                    owner.address,
+                    treasuryModule,
+                    governanceModule,
+                    councilModule,
+                    STATIC_CURVE
+                )
+            ).to.be.revertedWithCustomError(TEMPL, "InvalidCallData");
         });
 
         it("Should revert when protocol fee recipient is zero", async function () {
@@ -179,14 +211,13 @@ describe("TEMPL Contract with DAO Governance", function () {
                     QUORUM_BPS,
                     7 * 24 * 60 * 60,
                     "0x000000000000000000000000000000000000dEaD",
-                    false,
                     0,
                     METADATA.name,
                     METADATA.description,
                     METADATA.logo,
                     0,
                     0,
-                    5_000,
+                    5_100,
                      10_000,
                     false,
                     membershipModule,
@@ -213,14 +244,13 @@ describe("TEMPL Contract with DAO Governance", function () {
                 0,
                 0,
                 ethers.ZeroAddress,
-                false,
                 0,
                 METADATA.name,
                 METADATA.description,
                 METADATA.logo,
                 0,
                 0,
-                5_000,
+                5_100,
                  10_000,
                 false,
                 membershipModule,
@@ -253,14 +283,13 @@ describe("TEMPL Contract with DAO Governance", function () {
                     12_000,
                     7 * 24 * 60 * 60,
                     "0x000000000000000000000000000000000000dEaD",
-                    false,
                     0,
                     METADATA.name,
                     METADATA.description,
                     METADATA.logo,
                     0,
                     0,
-                    5_000,
+                    5_100,
                      10_000,
                     false,
                     membershipModule,
@@ -281,21 +310,20 @@ describe("TEMPL Contract with DAO Governance", function () {
                     priest.address,
                     await token.getAddress(),
                     ENTRY_FEE,
-                    5_000,
+                    5_100,
                     4_000,
                     3_000,
                     PROTOCOL_BPS,
                     QUORUM_BPS,
                     7 * 24 * 60 * 60,
                     "0x000000000000000000000000000000000000dEaD",
-                    false,
                     0,
                     METADATA.name,
                     METADATA.description,
                     METADATA.logo,
                     0,
                     0,
-                    5_000,
+                    5_100,
                      10_000,
                     false,
                     membershipModule,
@@ -323,14 +351,13 @@ describe("TEMPL Contract with DAO Governance", function () {
                     QUORUM_BPS,
                     7 * 24 * 60 * 60,
                     "0x000000000000000000000000000000000000dEaD",
-                    false,
                     0,
                     METADATA.name,
                     METADATA.description,
                     METADATA.logo,
                     0,
                     0,
-                    5_000,
+                    5_100,
                      10_000,
                     false,
                     membershipModule,
@@ -358,14 +385,13 @@ describe("TEMPL Contract with DAO Governance", function () {
                     3300,
                     7 * 24 * 60 * 60,
                     "0x000000000000000000000000000000000000dEaD",
-                    false,
                     0,
                     METADATA.name,
                     METADATA.description,
                     METADATA.logo,
                     0,
                     0,
-                    5_000,
+                    5_100,
                      10_000,
                     false,
                     membershipModule,
@@ -454,19 +480,28 @@ describe("TEMPL Contract with DAO Governance", function () {
 
             await expect(templ.connect(user1).createProposalSetJoinPaused(
                 false,
-                votingPeriod
+                votingPeriod,
+                title,
+                description
             )).to.emit(templ, "ProposalCreated");
 
             expect(await templ.proposalCount()).to.equal(1);
             
-            const proposal = await templ.getProposal(0);
-            expect(proposal.proposer).to.equal(user1.address);
+            await expectProposalBasics({
+                templ,
+                id: 0,
+                proposer: user1.address,
+                title,
+                description
+            });
         });
 
         it("Should prevent non-members from creating proposals", async function () {
             await expect(templ.connect(user2).createProposalSetJoinPaused(
                 false,
-                7 * 24 * 60 * 60
+                7 * 24 * 60 * 60,
+                "Pause joins",
+                "Require membership"
             )).to.be.revertedWithCustomError(templ, "NotMember");
         });
 
@@ -476,9 +511,22 @@ describe("TEMPL Contract with DAO Governance", function () {
                     token.target,
                     treasury.address,
                     ethers.parseUnits("1", 18),
-                    7 * 24 * 60 * 60
+                    7 * 24 * 60 * 60,
+                    "Withdraw treasury",
+                    "Test withdrawal"
                 )
             ).to.emit(templ, "ProposalCreated");
+            const id = (await templ.proposalCount()) - 1n;
+            const proposal = await expectProposalBasics({
+                templ,
+                id,
+                proposer: user1.address,
+                title: "Withdraw treasury",
+                description: "Test withdrawal"
+            });
+            expect(proposal.token).to.equal(token.target);
+            expect(proposal.recipient).to.equal(treasury.address);
+            expect(proposal.amount).to.equal(ethers.parseUnits("1", 18));
         });
 
         
@@ -486,14 +534,18 @@ describe("TEMPL Contract with DAO Governance", function () {
         it("Should enforce minimum voting period", async function () {
             await expect(templ.connect(user1).createProposalSetJoinPaused(
                 false,
-                35 * 60 * 60
+                35 * 60 * 60,
+                "Pause joins",
+                "Too short"
             )).to.be.revertedWithCustomError(templ, "VotingPeriodTooShort");
         });
 
         it("Should enforce maximum voting period", async function () {
             await expect(templ.connect(user1).createProposalSetJoinPaused(
                 false,
-                31 * 24 * 60 * 60
+                31 * 24 * 60 * 60,
+                "Pause joins",
+                "Too long"
             )).to.be.revertedWithCustomError(templ, "VotingPeriodTooLong");
         });
 
@@ -501,8 +553,16 @@ describe("TEMPL Contract with DAO Governance", function () {
             await templ.connect(user1).createProposalSetJoinPaused(
                 false,
                 0,
-                    ""
+                "Pause joins",
+                "Use default voting period"
             );
+            await expectProposalBasics({
+                templ,
+                id: 0,
+                proposer: user1.address,
+                title: "Pause joins",
+                description: "Use default voting period"
+            });
             const proposal = await templ.proposals(0);
             const defaultPeriod = await templ.preQuorumVotingPeriod();
             expect(proposal.endTime - proposal.createdAt).to.equal(defaultPeriod);
@@ -930,6 +990,14 @@ describe("TEMPL Contract with DAO Governance", function () {
                     7 * 24 * 60 * 60
                 )
             ).to.emit(templ, "ProposalCreated");
+            const id = (await templ.proposalCount()) - 1n;
+            await expectProposalBasics({
+                templ,
+                id,
+                proposer: user2.address,
+                title: "New",
+                description: "New proposal"
+            });
         });
 
         it("Should allow vote when paused", async function () {
@@ -983,6 +1051,20 @@ describe("TEMPL Contract with DAO Governance", function () {
                 cd2,
                 10 * 24 * 60 * 60
             );
+            await expectProposalBasics({
+                templ,
+                id: 0,
+                proposer: user1.address,
+                title: "Active 1",
+                description: "First active"
+            });
+            await expectProposalBasics({
+                templ,
+                id: 1,
+                proposer: user2.address,
+                title: "Active 2",
+                description: "Second active"
+            });
 
             const activeProposals = await templ.getActiveProposals();
             expect(activeProposals.length).to.equal(2);
@@ -1006,6 +1088,20 @@ describe("TEMPL Contract with DAO Governance", function () {
                 cd4,
                 14 * 24 * 60 * 60 // 14 days
             );
+            await expectProposalBasics({
+                templ,
+                id: 0,
+                proposer: user1.address,
+                title: "Short",
+                description: "Expires soon"
+            });
+            await expectProposalBasics({
+                templ,
+                id: 1,
+                proposer: user2.address,
+                title: "Long",
+                description: "Active longer"
+            });
 
             // Fast forward 8 days (first proposal expires, second still active)
             await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
@@ -1033,6 +1129,20 @@ describe("TEMPL Contract with DAO Governance", function () {
                 cd5,
                 14 * 24 * 60 * 60
             );
+            await expectProposalBasics({
+                templ,
+                id: 0,
+                proposer: user1.address,
+                title: "Execute Me",
+                description: "Will be executed"
+            });
+            await expectProposalBasics({
+                templ,
+                id: 1,
+                proposer: user2.address,
+                title: "Still Active",
+                description: "Not executed"
+            });
 
             // Need to wait a bit for voting timestamps
             await ethers.provider.send("evm_increaseTime", [10]);
@@ -1144,14 +1254,13 @@ describe("TEMPL Contract with DAO Governance", function () {
                 3300,
                 7 * 24 * 60 * 60,
                 "0x000000000000000000000000000000000000dEaD",
-                false,
                 0,
                 METADATA.name,
                 METADATA.description,
                 METADATA.logo,
                 0,
                 0,
-                5_000,
+                5_100,
                  10_000,
                 false,
                 membershipModule,
@@ -1163,11 +1272,45 @@ describe("TEMPL Contract with DAO Governance", function () {
             await minTempl.waitForDeployment();
             minTempl = await attachTemplInterface(minTempl);
 
-            await token.connect(user1).approve(await minTempl.getAddress(), 10);
-            await minTempl.connect(user1).join();
+            const fee = 10n;
+            const burnBps = await minTempl.burnBps();
+            const memberPoolBps = await minTempl.memberPoolBps();
+            const protocolBps = await minTempl.protocolBps();
+            const burnAmount = (fee * burnBps) / 10_000n;
+            const memberPoolAmount = (fee * memberPoolBps) / 10_000n;
+            const protocolAmount = (fee * protocolBps) / 10_000n;
+            const treasuryAmount = fee - burnAmount - memberPoolAmount - protocolAmount;
 
-            // Should still split correctly even with rounding
-            expect(await minTempl.treasuryBalance()).to.be.gte(0);
+            const burnAddress = await minTempl.burnAddress();
+            const protocolRecipient = await minTempl.protocolFeeRecipient();
+            const burnBefore = await token.balanceOf(burnAddress);
+            const protocolBefore = await token.balanceOf(protocolRecipient);
+
+            const templAddress = await minTempl.getAddress();
+            await token.connect(user1).approve(templAddress, fee);
+            const tx = await minTempl.connect(user1).join();
+            const receipt = await tx.wait();
+
+            const joinEvent = receipt.logs
+                .map((log) => {
+                    try {
+                        return minTempl.interface.parseLog(log);
+                    } catch (_) {
+                        return null;
+                    }
+                })
+                .find((log) => log && log.name === "MemberJoined");
+
+            expect(joinEvent, "MemberJoined event").to.not.equal(undefined);
+            expect(joinEvent.args.burnedAmount).to.equal(burnAmount);
+            expect(joinEvent.args.treasuryAmount).to.equal(treasuryAmount);
+            expect(joinEvent.args.memberPoolAmount).to.equal(memberPoolAmount);
+            expect(joinEvent.args.protocolAmount).to.equal(protocolAmount);
+
+            expect(await minTempl.treasuryBalance()).to.equal(treasuryAmount);
+            expect(await minTempl.memberPoolBalance()).to.equal(memberPoolAmount);
+            expect(await token.balanceOf(burnAddress)).to.equal(burnBefore + burnAmount);
+            expect(await token.balanceOf(protocolRecipient)).to.equal(protocolBefore + protocolAmount);
         });
 
         it("Should reject entry fee below minimum", async function () {
@@ -1185,14 +1328,13 @@ describe("TEMPL Contract with DAO Governance", function () {
                 3300,
                 7 * 24 * 60 * 60,
                 "0x000000000000000000000000000000000000dEaD",
-                false,
                 0,
                 METADATA.name,
                 METADATA.description,
                 METADATA.logo,
                 0,
                 0,
-                5_000,
+                5_100,
                  10_000,
                 false,
                 membershipModule,

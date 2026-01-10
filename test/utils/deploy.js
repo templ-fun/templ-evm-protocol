@@ -48,14 +48,13 @@ async function deployTemplContracts({
   executionDelay = 36 * 60 * 60,
   burnAddress = "0x000000000000000000000000000000000000dEaD",
   protocolFeeRecipient,
-  priestIsDictator = false,
   maxMembers = 0,
   name = "Templ",
   description = "",
   logoLink = "",
   proposalFeeBps = 0,
   referralShareBps = 0,
-  yesVoteThresholdBps = 5000,
+  yesVoteThresholdBps = 5100,
   instantQuorumBps = 10_000,
   councilMode = false,
   curve = STATIC_CURVE,
@@ -101,7 +100,6 @@ async function deployTemplContracts({
     quorumBps,
     executionDelay,
     burnAddress,
-    priestIsDictator,
     maxMembers,
     name,
     description,
@@ -120,9 +118,8 @@ async function deployTemplContracts({
   await templ.waitForDeployment();
   templ = await attachTemplInterface(templ);
   try {
-    const { attachCreateProposal, attachProposalMetadataShim } = require("./proposal");
+    const { attachCreateProposal } = require("./proposal");
     attachCreateProposal(templ);
-    attachProposalMetadataShim(templ);
   } catch {}
 
   return {

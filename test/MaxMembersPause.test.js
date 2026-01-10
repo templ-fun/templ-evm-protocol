@@ -15,7 +15,7 @@ describe("Max Members Pause Handling", function () {
   let m1;
   let m2;
 
-  const EXECUTION_DELAY = 2;
+  const EXECUTION_DELAY = 60 * 60;
 
   beforeEach(async function () {
     ({ templ, token, accounts } = await deployTempl({
@@ -34,15 +34,41 @@ describe("Max Members Pause Handling", function () {
   });
 
   it("retains the membership cap when unpausing after reaching the limit", async function () {
-    await templ.connect(m1).createProposalSetJoinPaused(false, VOTING_PERIOD);
+    await templ.connect(m1).createProposalSetJoinPaused(
+      false,
+      VOTING_PERIOD,
+      "Unpause joins",
+      "Stay capped"
+    );
     await templ.connect(priest).vote(0, true);
 
-    await ethers.provider.send("evm_increaseTime", [EXECUTION_DELAY + 1]);
+    const delay = Number(await templ.postQuorumVotingPeriod());
+    await ethers.provider.send("evm_increaseTime", [delay + 1]);
     await ethers.provider.send("evm_mine", []);
 
     await templ.executeProposal(0);
 
     expect(await templ.joinPaused()).to.equal(false);
     expect(await templ.maxMembers()).to.equal(MAX_MEMBERS);
+  });
+
+  it("auto-unpauses when the cap is raised above the current member count", async function () {
+    const newMax = MAX_MEMBERS + 1n;
+    await templ.connect(m1).createProposalSetMaxMembers(
+      Number(newMax),
+      VOTING_PERIOD,
+      "Raise cap",
+      "Auto-unpause joins"
+    );
+    await templ.connect(priest).vote(0, true);
+
+    const delay = Number(await templ.postQuorumVotingPeriod());
+    await ethers.provider.send("evm_increaseTime", [delay + 1]);
+    await ethers.provider.send("evm_mine", []);
+
+    await templ.executeProposal(0);
+
+    expect(await templ.maxMembers()).to.equal(newMax);
+    expect(await templ.joinPaused()).to.equal(false);
   });
 });

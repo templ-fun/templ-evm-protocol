@@ -14,6 +14,8 @@ import {TestToken} from "../mocks/TestToken.sol";
 /// - Exposes safe state-changing targets: joinFor and joinForWithReferral
 /// - Asserts invariants over fee split and entry fee bounds
 contract EchidnaTemplHarness {
+    uint256 private constant MIN_POST_QUORUM_VOTING_PERIOD = 1 hours;
+
     // System under test
     TEMPL public templ;
     TestToken public token;
@@ -55,16 +57,15 @@ contract EchidnaTemplHarness {
             3000, // member pool bps
             1000, // protocol bps
             3300, // quorum bps
-            1, // execution delay (short so Echidna can pass time if needed)
+            MIN_POST_QUORUM_VOTING_PERIOD, // execution delay (min allowed)
             0x000000000000000000000000000000000000dEaD, // burn sink
-            false, // dictatorship off
             0, // no member cap
             "Echidna Templ", // name
             "", // description
             "", // logo
             0, // proposal fee bps
             0, // referral share bps
-            5_000, // yes vote threshold bps
+            5_100, // yes vote threshold bps
             10_000, // instant quorum bps
             false, // start in council mode
             address(membership),

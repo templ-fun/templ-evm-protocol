@@ -37,7 +37,9 @@ describe("Treasury withdrawals for arbitrary assets", function () {
         otherToken.target,
         member1.address,
         DONATED_AMOUNT,
-        7 * 24 * 60 * 60
+        7 * 24 * 60 * 60,
+        "Withdraw ERC20",
+        "Withdraw donated tokens"
       );
 
     await templ.connect(member1).vote(0, true);
@@ -58,7 +60,9 @@ describe("Treasury withdrawals for arbitrary assets", function () {
         ethers.ZeroAddress,
         member2.address,
         DONATED_AMOUNT,
-        7 * 24 * 60 * 60
+        7 * 24 * 60 * 60,
+        "Withdraw ETH",
+        "Withdraw donated ETH"
       );
 
     await templ.connect(member1).vote(0, true);
@@ -107,7 +111,9 @@ describe("Treasury withdrawals for arbitrary assets", function () {
         token.target,
         member1.address,
         withdrawAmount,
-        7 * 24 * 60 * 60
+        7 * 24 * 60 * 60,
+        "Withdraw access token",
+        "Use donated balance"
       );
 
     await templ.connect(member1).vote(0, true);

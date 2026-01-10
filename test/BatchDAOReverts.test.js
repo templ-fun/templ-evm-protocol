@@ -2,47 +2,53 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
 const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
+const { deployTemplModules } = require("./utils/modules");
+const { attachTemplInterface } = require("./utils/templ");
 
 describe("batchDAO invalid input handling", function () {
   const ENTRY_FEE = ethers.parseUnits("100", 18);
-  const DAY = 24 * 60 * 60;
 
   it("onlyDAO direct calls: rejects empty/mismatched arrays and zero targets", async function () {
-    const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE });
-    const [, priest, member] = accounts;
-
-    await mintToUsers(token, [member], ENTRY_FEE * 3n);
-    await joinMembers(templ, token, [member]);
-
-    // Enable dictatorship to access onlyDAO APIs directly
-    await templ
-      .connect(member)
-      .createProposalSetDictatorship(true, 7 * DAY, "Enable", "Dictatorship on");
-    await templ.connect(member).vote(0, true);
-    await ethers.provider.send("evm_increaseTime", [7 * DAY + 1]);
-    await ethers.provider.send("evm_mine", []);
-    await templ.executeProposal(0);
-    expect(await templ.priestIsDictator()).to.equal(true);
+    const [, priest, protocol] = await ethers.getSigners();
+    const AccessToken = await ethers.getContractFactory("contracts/mocks/TestToken.sol:TestToken");
+    const accessToken = await AccessToken.deploy("Access", "ACC", 18);
+    await accessToken.waitForDeployment();
+    const Harness = await ethers.getContractFactory(
+      "contracts/mocks/DaoCallerHarness.sol:DaoCallerHarness"
+    );
+    const modules = await deployTemplModules();
+    let templ = await Harness.deploy(
+      priest.address,
+      protocol.address,
+      accessToken.target,
+      ENTRY_FEE,
+      modules.membershipModule,
+      modules.treasuryModule,
+      modules.governanceModule,
+      modules.councilModule
+    );
+    await templ.waitForDeployment();
+    templ = await attachTemplInterface(templ);
 
     // Empty arrays
     await expect(
-      templ.connect(priest).batchDAO([], [], [])
+      templ.daoBatch([], [], [])
     ).to.be.revertedWithCustomError(templ, "InvalidCallData");
 
     // Mismatched lengths
     const router = await templ.getAddress();
     await expect(
-      templ.connect(priest).batchDAO([router], [], [])
+      templ.daoBatch([router], [], [])
     ).to.be.revertedWithCustomError(templ, "InvalidCallData");
 
     // Zero target
     await expect(
-      templ.connect(priest).batchDAO([ethers.ZeroAddress], [0], ["0x"])
+      templ.daoBatch([ethers.ZeroAddress], [0], ["0x"])
     ).to.be.revertedWithCustomError(templ, "InvalidRecipient");
   });
 
   it("governance CallExternal path: bubbles InvalidCallData/InvalidRecipient from batchDAO", async function () {
-    const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE, executionDelay: 2 });
+    const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE, executionDelay: 60 * 60 });
     const [, , m1, m2] = accounts;
     await mintToUsers(token, [m1, m2], ENTRY_FEE * 4n);
     await joinMembers(templ, token, [m1, m2]);
@@ -59,7 +65,8 @@ describe("batchDAO invalid input handling", function () {
       .createProposalCallExternal(router, 0, batchSel, enc([router], [], []), 0, "batch bad lens", "");
     let id = (await templ.proposalCount()) - 1n;
     await templ.connect(m2).vote(id, true);
-    await ethers.provider.send("evm_increaseTime", [3]);
+    const delay = Number(await templ.postQuorumVotingPeriod());
+    await ethers.provider.send("evm_increaseTime", [delay + 1]);
     await ethers.provider.send("evm_mine", []);
     await expect(templ.executeProposal(id)).to.be.revertedWithCustomError(templ, "InvalidCallData");
 
@@ -69,23 +76,32 @@ describe("batchDAO invalid input handling", function () {
       .createProposalCallExternal(router, 0, batchSel, enc([ethers.ZeroAddress], [0], ["0x"]), 0, "batch zero", "");
     id = (await templ.proposalCount()) - 1n;
     await templ.connect(m2).vote(id, true);
-    await ethers.provider.send("evm_increaseTime", [3]);
+    await ethers.provider.send("evm_increaseTime", [delay + 1]);
     await ethers.provider.send("evm_mine", []);
     await expect(templ.executeProposal(id)).to.be.revertedWithCustomError(templ, "InvalidRecipient");
   });
 
   it("onlyDAO batch bubbles revert from a later call", async function () {
-    const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE });
-    const [, priest, m] = accounts;
-    await mintToUsers(token, [m], ENTRY_FEE * 3n);
-    await joinMembers(templ, token, [m]);
-
-    // Enable dictatorship -> onlyDAO allowed
-    await templ.connect(m).createProposalSetDictatorship(true, 7 * DAY, "Enable", "");
-    await templ.connect(m).vote(0, true);
-    await ethers.provider.send("evm_increaseTime", [7 * DAY + 1]);
-    await ethers.provider.send("evm_mine", []);
-    await templ.executeProposal(0);
+    const [, priest, protocol] = await ethers.getSigners();
+    const AccessToken = await ethers.getContractFactory("contracts/mocks/TestToken.sol:TestToken");
+    const accessToken = await AccessToken.deploy("Access", "ACC", 18);
+    await accessToken.waitForDeployment();
+    const Harness = await ethers.getContractFactory(
+      "contracts/mocks/DaoCallerHarness.sol:DaoCallerHarness"
+    );
+    const modules = await deployTemplModules();
+    let templ = await Harness.deploy(
+      priest.address,
+      protocol.address,
+      accessToken.target,
+      ENTRY_FEE,
+      modules.membershipModule,
+      modules.treasuryModule,
+      modules.governanceModule,
+      modules.councilModule
+    );
+    await templ.waitForDeployment();
+    templ = await attachTemplInterface(templ);
 
     const Target = await ethers.getContractFactory("contracts/mocks/ExternalCallTarget.sol:ExternalCallTarget");
     const target = await Target.deploy();
@@ -96,9 +112,7 @@ describe("batchDAO invalid input handling", function () {
 
     // First call succeeds, second reverts -> whole batch reverts bubbling child error
     await expect(
-      templ
-        .connect(priest)
-        .batchDAO([target.target, target.target], [0, 0], [ok, bad])
+      templ.daoBatch([target.target, target.target], [0, 0], [ok, bad])
     ).to.be.revertedWithCustomError(target, "ExternalCallFailure");
   });
 });

@@ -2,9 +2,6 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl } = require("./utils/deploy");
 const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
-const {
-    encodeWithdrawTreasuryDAO,
-} = require("./utils/callDataBuilders");
 
 describe("Treasury Withdrawal Reverts", function () {
     let templ;
@@ -25,39 +22,29 @@ describe("Treasury Withdrawal Reverts", function () {
 
     describe("withdrawTreasuryDAO", function () {
         it("should revert with InvalidRecipient", async function () {
-            await templ.connect(user1).createProposalWithdrawTreasury(
-                token.target,
-                ethers.ZeroAddress,
-                ethers.parseUnits("1", 18),
-                7 * 24 * 60 * 60
-            );
-
-            await templ.connect(user1).vote(0, true);
-            await templ.connect(user2).vote(0, true);
-
-            await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
-            await ethers.provider.send("evm_mine");
-
-            await expect(templ.executeProposal(0))
-                .to.be.revertedWithCustomError(templ, "InvalidRecipient");
+            await expect(
+                templ.connect(user1).createProposalWithdrawTreasury(
+                    token.target,
+                    ethers.ZeroAddress,
+                    ethers.parseUnits("1", 18),
+                    7 * 24 * 60 * 60,
+                    "Withdraw treasury",
+                    "Invalid recipient"
+                )
+            ).to.be.revertedWithCustomError(templ, "InvalidRecipient");
         });
 
         it("should revert with AmountZero", async function () {
-            await templ.connect(user1).createProposalWithdrawTreasury(
-                token.target,
-                user1.address,
-                0,
-                7 * 24 * 60 * 60
-            );
-
-            await templ.connect(user1).vote(0, true);
-            await templ.connect(user2).vote(0, true);
-
-            await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
-            await ethers.provider.send("evm_mine");
-
-            await expect(templ.executeProposal(0))
-                .to.be.revertedWithCustomError(templ, "AmountZero");
+            await expect(
+                templ.connect(user1).createProposalWithdrawTreasury(
+                    token.target,
+                    user1.address,
+                    0,
+                    7 * 24 * 60 * 60,
+                    "Withdraw treasury",
+                    "Zero amount"
+                )
+            ).to.be.revertedWithCustomError(templ, "AmountZero");
         });
 
         it("should revert with InsufficientTreasuryBalance", async function () {
@@ -66,7 +53,9 @@ describe("Treasury Withdrawal Reverts", function () {
                 token.target,
                 user1.address,
                 treasury + 1n,
-                7 * 24 * 60 * 60
+                7 * 24 * 60 * 60,
+                "Withdraw treasury",
+                "Insufficient balance"
             );
 
             await templ.connect(user1).vote(0, true);
@@ -75,8 +64,8 @@ describe("Treasury Withdrawal Reverts", function () {
             await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
             await ethers.provider.send("evm_mine");
 
-        await expect(templ.executeProposal(0))
-            .to.be.revertedWithCustomError(templ, "InsufficientTreasuryBalance");
+            await expect(templ.executeProposal(0))
+                .to.be.revertedWithCustomError(templ, "InsufficientTreasuryBalance");
         });
 
         it("should revert for non-held token balance", async function () {
@@ -87,7 +76,9 @@ describe("Treasury Withdrawal Reverts", function () {
                 otherToken.target,
                 user1.address,
                 1n,
-                7 * 24 * 60 * 60
+                7 * 24 * 60 * 60,
+                "Withdraw treasury",
+                "Token not held"
             );
 
             await templ.connect(user1).vote(0, true);

@@ -10,15 +10,17 @@ describe("ChangePriest governance action", function () {
     const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE });
     const [, oldPriest, member1, member2, newPriest] = accounts;
 
-    // Fund and onboard two members
-    await mintToUsers(token, [member1, member2], ENTRY_FEE * 10n);
-    await joinMembers(templ, token, [member1, member2]);
+    // Fund and onboard members (new priest must be a member)
+    await mintToUsers(token, [member1, member2, newPriest], ENTRY_FEE * 10n);
+    await joinMembers(templ, token, [member1, member2, newPriest]);
 
     // Sanity: initial priest is deploy-time arg
     expect(await templ.priest()).to.equal(oldPriest.address);
 
     // Propose change to new priest
-    await templ.connect(member1).createProposalChangePriest(newPriest.address, 7 * 24 * 60 * 60);
+    await templ
+      .connect(member1)
+      .createProposalChangePriest(newPriest.address, 7 * 24 * 60 * 60, "Change priest", "Rotate leader");
 
     // Vote yes by both members
     await templ.connect(member1).vote(0, true);
@@ -31,6 +33,20 @@ describe("ChangePriest governance action", function () {
 
     // Priest updated
     expect(await templ.priest()).to.equal(newPriest.address);
+  });
+
+  it("reverts when proposing a non-member as priest", async function () {
+    const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE });
+    const [, , member, outsider] = accounts;
+
+    await mintToUsers(token, [member], ENTRY_FEE * 2n);
+    await joinMembers(templ, token, [member]);
+
+    await expect(
+      templ
+        .connect(member)
+        .createProposalChangePriest(outsider.address, 7 * 24 * 60 * 60, "Change priest", "Require member")
+    ).to.be.revertedWithCustomError(templ, "NotMember");
   });
 
   it("reverts when changePriestDAO is called externally", async function () {

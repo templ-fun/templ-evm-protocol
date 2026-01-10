@@ -29,8 +29,6 @@ abstract contract TemplBase is ReentrancyGuard {
     uint256 internal constant MIN_YES_VOTE_THRESHOLD_BPS = 100;
     /// @dev Default instant quorum threshold applied when deployers do not override it.
     uint256 internal constant DEFAULT_INSTANT_QUORUM_BPS = TemplDefaults.DEFAULT_INSTANT_QUORUM_BPS;
-    /// @dev Caps the number of external reward tokens tracked to keep join gas bounded.
-    uint256 internal constant MAX_EXTERNAL_REWARD_TOKENS = 256;
     /// @dev Maximum entry fee supported before arithmetic would overflow downstream accounting.
     uint256 internal constant MAX_ENTRY_FEE = type(uint128).max;
     /// @dev Maximum total number of curve segments (primary + additional) allowed.
@@ -45,6 +43,12 @@ abstract contract TemplBase is ReentrancyGuard {
     uint256 internal constant MAX_TEMPL_DESCRIPTION_LENGTH = 2048;
     /// @dev Maximum allowed templ logo URI length in bytes.
     uint256 internal constant MAX_TEMPL_LOGO_URI_LENGTH = 2048;
+    /// @dev Maximum allowed calldata bytes for CallExternal proposals (selector + params).
+    uint256 internal constant MAX_EXTERNAL_CALLDATA_BYTES = 4096;
+    /// @dev Vote state constants used in proposal voting.
+    uint8 internal constant VOTE_NONE = 0;
+    uint8 internal constant VOTE_YES = 1;
+    uint8 internal constant VOTE_NO = 2;
 
     /// @notice Basis points of the entry fee that are burned on every join.
     uint256 public burnBps;
@@ -54,17 +58,15 @@ abstract contract TemplBase is ReentrancyGuard {
     uint256 public memberPoolBps;
     /// @notice Basis points of the entry fee forwarded to the protocol on every join.
     uint256 public protocolBps;
-    /// @notice Address empowered to act as the priest (and temporary dictator).
+    /// @notice Address empowered to act as the priest.
     address public priest;
     /// @notice Address that receives the protocol share during joins and distributions.
     address public protocolFeeRecipient;
     /// @notice ERC-20 token required to join the templ.
     address public accessToken;
-    /// @notice Tracks whether dictatorship mode is enabled.
-    bool public priestIsDictator;
     /// @notice Current entry fee denominated in the access token.
     uint256 public entryFee;
-    /// @notice Entry fee recorded when zero paid joins have occurred.
+    /// @notice Entry fee anchor used for curve math (may be non-divisible by 10 after retargets).
     uint256 public baseEntryFee;
     /// @notice Treasury-held balance denominated in the access token.
     uint256 public treasuryBalance;
@@ -72,6 +74,8 @@ abstract contract TemplBase is ReentrancyGuard {
     uint256 public memberPoolBalance;
     /// @notice Whether new member joins are currently paused.
     bool public joinPaused;
+    /// @notice Whether joins are paused because the membership cap was reached.
+    bool public joinPausedByLimit;
     /// @notice Maximum allowed members when greater than zero (0 = uncapped).
     uint256 public maxMembers;
     /// @notice Minimum participation threshold (bps of eligible voters) required to reach quorum.
@@ -96,8 +100,6 @@ abstract contract TemplBase is ReentrancyGuard {
     uint256 public instantQuorumBps;
     /// @notice When true, only council members may vote on proposals.
     bool public councilModeEnabled;
-    /// @notice True once the priest-consumed bootstrap council seat has been used.
-    bool public councilBootstrapConsumed;
     /// @notice Tracks whether an address currently sits on the council.
     mapping(address => bool) public councilMembers;
     /// @notice Number of active council members.
@@ -133,29 +135,18 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @notice Incrementing counter tracking the order of member joins (starts at 1 for the priest).
     uint256 public joinSequence;
 
-    struct RewardCheckpoint {
-        /// @notice Block number when the checkpoint was recorded.
-        uint64 blockNumber;
-        /// @notice Timestamp at checkpoint creation.
-        uint64 timestamp;
-        /// @notice Cumulative rewards per member at that checkpoint.
-        uint256 cumulative;
-    }
-
     enum Action {
         SetJoinPaused,
         UpdateConfig,
         WithdrawTreasury,
         DisbandTreasury,
         ChangePriest,
-        SetDictatorship,
         SetMaxMembers,
         SetMetadata,
         SetProposalFee,
         SetReferralShare,
         CallExternal,
         SetEntryFeeCurve,
-        CleanupExternalRewardToken,
         SetQuorumBps,
         SetPostQuorumVotingPeriod,
         SetBurnAddress,
@@ -164,13 +155,12 @@ abstract contract TemplBase is ReentrancyGuard {
         SetCouncilMode,
         AddCouncilMember,
         RemoveCouncilMember,
-        Undefined
+        Undefined,
+        SweepMemberPoolRemainder
     }
 
     /// @notice Governance proposal payload and lifecycle state.
     struct Proposal {
-        /// @notice Unique, monotonic proposal id.
-        uint256 id;
         /// @notice Creator wallet that opened the proposal.
         address proposer;
         /// @notice Action type that will be executed if the proposal passes.
@@ -209,7 +199,7 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 newMaxMembers;
         /// @notice Quorum threshold proposed (bps).
         uint256 newQuorumBps;
-        /// @notice Post‑quorum voting period proposed (seconds) after quorum is reached.
+        /// @notice Post-quorum voting period proposed (seconds) after quorum is reached.
         uint256 newPostQuorumVotingPeriod;
         /// @notice Burn address proposed to receive burn allocations.
         address newBurnAddress;
@@ -237,10 +227,8 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 createdAt;
         /// @notice True once the proposal has been executed.
         bool executed;
-        /// @notice Tracks whether each voter has cast a ballot.
-        mapping(address => bool) hasVoted;
-        /// @notice Voter's recorded choice (true = YES, false = NO).
-        mapping(address => bool) voteChoice;
+        /// @notice Voter state tracking (0 = none, 1 = YES, 2 = NO).
+        mapping(address => uint8) voteState;
         /// @notice Number of eligible voters at proposal creation.
         uint256 eligibleVoters;
         /// @notice Number of eligible voters when quorum was reached.
@@ -259,34 +247,59 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 preQuorumJoinSequence;
         /// @notice Join sequence recorded when quorum was reached (0 if quorum never satisfied).
         uint256 quorumJoinSequence;
-        /// @notice Desired dictatorship state when the action is SetDictatorship.
-        bool setDictatorship;
         /// @notice Desired council mode state when the action is SetCouncilMode.
         bool setCouncilMode;
         /// @notice True once instant quorum threshold has been satisfied.
         bool instantQuorumMet;
         /// @notice Timestamp when instant quorum was satisfied.
         uint256 instantQuorumReachedAt;
+        /// @notice Council membership epoch snapshot captured at proposal creation (0 = member-wide voting).
+        uint256 councilSnapshotEpoch;
+        /// @notice Quorum threshold snapshot (bps) captured at proposal creation.
+        uint256 quorumBpsSnapshot;
+        /// @notice YES vote threshold snapshot (bps) captured at proposal creation.
+        uint256 yesVoteThresholdBpsSnapshot;
+        /// @notice Post-quorum voting period snapshot (seconds) captured at proposal creation.
+        uint256 postQuorumVotingPeriodSnapshot;
+        /// @notice Instant quorum threshold snapshot (bps) captured at proposal creation.
+        uint256 instantQuorumBpsSnapshot;
     }
 
     /// @notice Total proposals ever created.
     uint256 public proposalCount;
     /// @notice Proposal storage mapping keyed by proposal id.
     mapping(uint256 => Proposal) public proposals;
-    /// @notice Tracks each proposer's active proposal id (0 when none active).
-    mapping(address => uint256) public activeProposalId;
-    /// @notice Flags whether a proposer currently has an active proposal.
-    mapping(address => bool) public hasActiveProposal;
+    /// @notice Tracks each proposer's active proposal id + 1 (0 when none active).
+    mapping(address => uint256) internal _activeProposalIdPlusOne;
     /// @dev Dense set of currently active proposal ids for enumeration.
     uint256[] internal activeProposalIds;
     /// @dev Index (id -> position+1) for O(1) removals from `activeProposalIds`.
     mapping(uint256 => uint256) internal activeProposalIndex;
-    /// @notice Minimum allowed pre‑quorum voting period.
+    /// @notice Minimum allowed pre-quorum voting period.
     uint256 public constant MIN_PRE_QUORUM_VOTING_PERIOD = 36 hours;
-    /// @notice Maximum allowed pre‑quorum voting period.
+    /// @notice Maximum allowed pre-quorum voting period.
     uint256 public constant MAX_PRE_QUORUM_VOTING_PERIOD = 30 days;
-    /// @notice Default pre‑quorum voting period applied when proposal creators pass zero.
+    /// @notice Minimum allowed post-quorum voting period.
+    uint256 public constant MIN_POST_QUORUM_VOTING_PERIOD = 1 hours;
+    /// @notice Maximum allowed post-quorum voting period.
+    uint256 public constant MAX_POST_QUORUM_VOTING_PERIOD = 30 days;
+    /// @notice Default pre-quorum voting period applied when proposal creators pass zero.
     uint256 public preQuorumVotingPeriod;
+
+    /// @notice Returns the active proposal id for a proposer (0 when none active).
+    /// @param proposer Wallet address to inspect.
+    /// @return proposalId Active proposal id or 0 when none active.
+    function activeProposalId(address proposer) public view returns (uint256 proposalId) {
+        uint256 stored = _activeProposalIdPlusOne[proposer];
+        return stored == 0 ? 0 : stored - 1;
+    }
+
+    /// @notice Returns whether a proposer currently has an active proposal.
+    /// @param proposer Wallet address to inspect.
+    /// @return active True when the proposer has an active proposal.
+    function hasActiveProposal(address proposer) public view returns (bool active) {
+        return _activeProposalIdPlusOne[proposer] != 0;
+    }
 
     /// @notice Emitted after a successful join.
     /// @param payer Wallet that paid the entry fee.
@@ -298,7 +311,7 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param protocolAmount Portion forwarded to the protocol fee recipient.
     /// @param timestamp Block timestamp when the join completed.
     /// @param blockNumber Block number when the join completed.
-    /// @param joinId Monotonic index for non‑priest joins, starting at 0 for the first non‑priest member.
+    /// @param joinId Monotonic index for non-priest joins, starting at 0 for the first non-priest member.
     event MemberJoined(
         address indexed payer,
         address indexed member,
@@ -345,6 +358,11 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param returnDataHash Keccak256 hash of returned bytes (or empty).
     event ProposalExecuted(uint256 indexed proposalId, bool indexed success, bytes32 returnDataHash);
 
+    /// @notice Emitted when a proposer cancels their own proposal.
+    /// @param proposalId Proposal id that was cancelled.
+    /// @param proposer Wallet that cancelled the proposal.
+    event ProposalCancelled(uint256 indexed proposalId, address indexed proposer);
+
     /// @notice Emitted when a treasury withdrawal is executed.
     /// @param proposalId Proposal id that authorized the withdrawal (0 for direct DAO call).
     /// @param token Token withdrawn (address(0) for ETH).
@@ -386,12 +404,12 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param newPriest New priest address.
 
     event PriestChanged(address indexed oldPriest, address indexed newPriest);
-    /// @notice Emitted when treasury balances are disbanded into a reward pool.
+    /// @notice Emitted when treasury balances are disbanded into the member pool or swept to protocol.
     /// @param proposalId Proposal id that authorized the disband (0 for direct DAO call).
     /// @param token Token disbanded (address(0) for ETH).
-    /// @param amount Total amount moved into the pool.
-    /// @param perMember Reward amount per member.
-    /// @param remainder Remainder carried forward to the next distribution.
+    /// @param amount Total amount moved out of treasury.
+    /// @param perMember Reward amount per member (access-token disband only).
+    /// @param remainder Remainder carried forward to the next distribution (access-token disband only).
 
     event TreasuryDisbanded(
         uint256 indexed proposalId,
@@ -400,12 +418,6 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 perMember,
         uint256 remainder
     );
-
-    /// @notice Emitted when a member claims external rewards.
-    /// @param token ERC-20 token address or address(0) for ETH.
-    /// @param member Recipient wallet.
-    /// @param amount Claimed amount.
-    event ExternalRewardClaimed(address indexed token, address indexed member, uint256 indexed amount);
 
     /// @notice Emitted when templ metadata is updated.
     /// @param name New templ name.
@@ -428,7 +440,7 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param newBps New quorum threshold (bps).
 
     event QuorumBpsUpdated(uint256 indexed previousBps, uint256 indexed newBps);
-    /// @notice Emitted when the post‑quorum voting period is updated via governance.
+    /// @notice Emitted when the post-quorum voting period is updated via governance.
     /// @param previousPeriod Previous period (seconds).
     /// @param newPeriod New period (seconds).
 
@@ -438,9 +450,9 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param newBurn New burn sink address.
 
     event BurnAddressUpdated(address indexed previousBurn, address indexed newBurn);
-    /// @notice Emitted when the default pre‑quorum voting period is updated.
-    /// @param previousPeriod Previous default pre‑quorum voting period (seconds).
-    /// @param newPeriod New default pre‑quorum voting period (seconds).
+    /// @notice Emitted when the default pre-quorum voting period is updated.
+    /// @param previousPeriod Previous default pre-quorum voting period (seconds).
+    /// @param newPeriod New default pre-quorum voting period (seconds).
 
     event PreQuorumVotingPeriodUpdated(uint256 indexed previousPeriod, uint256 indexed newPeriod);
     /// @notice Emitted when the YES vote threshold changes.
@@ -462,46 +474,29 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param account Wallet that left the council.
     /// @param removedBy Caller that initiated the removal.
     event CouncilMemberRemoved(address indexed account, address indexed removedBy);
-    /// @notice Emitted when dictatorship mode is toggled.
-    /// @param enabled True when dictatorship is enabled, false when disabled.
-    event DictatorshipModeChanged(bool indexed enabled);
-    /// @notice Emitted when DAO sweeps an external reward remainder to a recipient.
-    /// @param token External reward token that was swept (address(0) for ETH).
-    /// @param recipient Wallet receiving the remainder.
-    /// @param amount Amount transferred to `recipient`.
-    event ExternalRewardRemainderSwept(address indexed token, address indexed recipient, uint256 indexed amount);
     /// @notice Emitted when DAO sweeps the member pool remainder to a recipient.
     /// @param recipient Wallet receiving the swept access-token amount.
     /// @param amount Amount transferred to `recipient`.
     event MemberPoolRemainderSwept(address indexed recipient, uint256 indexed amount);
 
-    struct ExternalRewardState {
-        uint256 poolBalance;
-        uint256 cumulativeRewards;
-        uint256 rewardRemainder;
-        bool exists;
-        RewardCheckpoint[] checkpoints;
+    /// @notice Monotonic epoch that advances when council membership changes.
+    uint256 public councilEpoch;
+    /// @notice Snapshot of council membership state at a given epoch.
+    struct CouncilCheckpoint {
+        uint256 epoch;
+        bool isMember;
     }
-
-    /// @notice External reward accounting keyed by ERC-20/ETH address.
-    mapping(address => ExternalRewardState) internal externalRewards;
-    /// @notice List of external reward tokens for enumeration in UIs.
-    address[] internal externalRewardTokens;
-    /// @notice Tracks index positions for external reward tokens (index + 1).
-    mapping(address => uint256) internal externalRewardTokenIndex;
-    /// @notice Member snapshots for each external reward token.
-    mapping(address => mapping(address => uint256)) internal memberExternalRewardSnapshots;
+    /// @notice Council membership checkpoints keyed by wallet.
+    mapping(address => CouncilCheckpoint[]) internal councilCheckpoints;
     /// @dev Restricts a function so only wallets that successfully joined may call it.
     modifier onlyMember() {
         if (!members[msg.sender].joined) revert TemplErrors.NotMember();
         _;
     }
 
-    /// @dev Permits calls from the contract (governance) or the priest when dictatorship mode is enabled.
+    /// @dev Permits calls from the contract (governance) only.
     modifier onlyDAO() {
-        if (priestIsDictator) {
-            if (msg.sender != address(this) && msg.sender != priest) revert TemplErrors.PriestOnly();
-        } else if (msg.sender != address(this)) {
+        if (msg.sender != address(this)) {
             revert TemplErrors.NotDAO();
         }
         _;
@@ -517,129 +512,6 @@ abstract contract TemplBase is ReentrancyGuard {
     modifier whenNotPaused() {
         if (joinPaused) revert TemplErrors.JoinIntakePaused();
         _;
-    }
-
-    /// @notice Persists a new external reward checkpoint so future joins can baseline correctly.
-    /// @param rewards External reward state to record a checkpoint for.
-    function _recordExternalCheckpoint(ExternalRewardState storage rewards) internal {
-        RewardCheckpoint memory checkpoint = RewardCheckpoint({
-            blockNumber: uint64(block.number),
-            timestamp: uint64(block.timestamp),
-            cumulative: rewards.cumulativeRewards
-        });
-        uint256 len = rewards.checkpoints.length;
-        if (len == 0) {
-            rewards.checkpoints.push(checkpoint);
-            return;
-        }
-        RewardCheckpoint storage last = rewards.checkpoints[len - 1];
-        if (last.blockNumber == checkpoint.blockNumber) {
-            last.timestamp = checkpoint.timestamp;
-            last.cumulative = checkpoint.cumulative;
-        } else {
-            rewards.checkpoints.push(checkpoint);
-        }
-    }
-
-    /// @notice Determines the cumulative rewards baseline for a member using join-time snapshots.
-    /// @param rewards External reward state that holds checkpoints.
-    /// @param memberInfo Membership record used to locate the baseline.
-    /// @return baseline Baseline cumulative reward value for the member.
-    function _externalBaselineForMember(
-        ExternalRewardState storage rewards,
-        Member storage memberInfo
-    ) internal view returns (uint256 baseline) {
-        RewardCheckpoint[] storage checkpoints = rewards.checkpoints;
-        uint256 len = checkpoints.length;
-        if (len == 0) {
-            return rewards.cumulativeRewards;
-        }
-
-        uint256 memberBlockNumber = memberInfo.blockNumber;
-        uint256 memberTimestamp = memberInfo.timestamp;
-        uint256 low = 0;
-        uint256 high = len;
-
-        while (low < high) {
-            uint256 mid = (low + high) >> 1;
-            RewardCheckpoint storage cp = checkpoints[mid];
-            if (memberBlockNumber < cp.blockNumber) {
-                high = mid;
-            } else if (memberBlockNumber > cp.blockNumber) {
-                low = mid + 1;
-            } else if (memberTimestamp < cp.timestamp) {
-                high = mid;
-            } else {
-                low = mid + 1;
-            }
-        }
-
-        if (low == 0) {
-            return 0;
-        }
-
-        return checkpoints[low - 1].cumulative;
-    }
-
-    /// @notice Clears an external reward token from enumeration once fully settled.
-    /// @param token External reward token to remove (address(0) for ETH allowed).
-    function _cleanupExternalRewardToken(address token) internal {
-        if (token == accessToken) revert TemplErrors.InvalidCallData();
-        ExternalRewardState storage rewards = externalRewards[token];
-        if (!rewards.exists) revert TemplErrors.InvalidCallData();
-        if (rewards.poolBalance != 0 || rewards.rewardRemainder != 0) {
-            revert TemplErrors.ExternalRewardsNotSettled();
-        }
-        rewards.poolBalance = 0;
-        rewards.rewardRemainder = 0;
-        rewards.exists = false;
-        _removeExternalToken(token);
-    }
-
-    /// @notice Distributes any outstanding external reward remainders to existing members before new joins.
-    function _flushExternalRemainders() internal {
-        uint256 currentMembers = memberCount;
-        if (currentMembers == 0) {
-            return;
-        }
-        uint256 tokenCount = externalRewardTokens.length;
-        for (uint256 i = 0; i < tokenCount; ++i) {
-            address token = externalRewardTokens[i];
-            ExternalRewardState storage rewards = externalRewards[token];
-            uint256 remainder = rewards.rewardRemainder;
-            if (remainder == 0) {
-                continue;
-            }
-            uint256 perMember = remainder / currentMembers;
-            if (perMember == 0) {
-                continue;
-            }
-            uint256 leftover = remainder % currentMembers;
-            rewards.rewardRemainder = leftover;
-            rewards.cumulativeRewards += perMember;
-            _recordExternalCheckpoint(rewards);
-        }
-    }
-
-    /// @notice Sends an external reward remainder to `recipient`, forfeiting dust that cannot be evenly split.
-    /// @param token External reward token whose remainder should be swept (address(0) for ETH).
-    /// @param recipient Destination wallet for the swept amount.
-    function _sweepExternalRewardRemainder(address token, address recipient) internal {
-        if (recipient == address(0)) revert TemplErrors.InvalidRecipient();
-        ExternalRewardState storage rewards = externalRewards[token];
-        if (!rewards.exists) revert TemplErrors.InvalidCallData();
-        uint256 remainder = rewards.rewardRemainder;
-        if (remainder == 0) revert TemplErrors.NoRewardsToClaim();
-        if (remainder > rewards.poolBalance) revert TemplErrors.InvalidCallData();
-        rewards.rewardRemainder = 0;
-        rewards.poolBalance -= remainder;
-        if (token == address(0)) {
-            (bool success, ) = payable(recipient).call{value: remainder}("");
-            if (!success) revert TemplErrors.ProposalExecutionFailed();
-        } else {
-            _safeTransfer(token, recipient, remainder);
-        }
-        emit ExternalRewardRemainderSwept(token, recipient, remainder);
     }
 
     /// @notice Sends the member pool remainder (access token) to `recipient`.
@@ -665,7 +537,6 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param _quorumBps YES vote threshold (basis points) required to reach quorum (defaults when zero).
     /// @param _executionDelay Seconds to wait after quorum before execution (defaults when zero).
     /// @param _burnAddress Address receiving burn allocations (fallbacks to the dead address).
-    /// @param _priestIsDictator Whether the templ starts in dictatorship mode.
     /// @param _name Initial templ name surfaced off-chain.
     /// @param _description Initial templ description.
     /// @param _logoLink Initial templ logo link.
@@ -684,7 +555,6 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 _quorumBps,
         uint256 _executionDelay,
         address _burnAddress,
-        bool _priestIsDictator,
         string memory _name,
         string memory _description,
         string memory _logoLink,
@@ -698,7 +568,6 @@ abstract contract TemplBase is ReentrancyGuard {
         }
         protocolFeeRecipient = _protocolFeeRecipient;
         accessToken = _accessToken;
-        priestIsDictator = _priestIsDictator;
 
         uint256 rawTotal = _burnBps + _treasuryBps + _memberPoolBps + _protocolBps;
         if (rawTotal != BPS_DENOMINATOR) revert TemplErrors.InvalidPercentageSplit();
@@ -714,6 +583,7 @@ abstract contract TemplBase is ReentrancyGuard {
         }
 
         postQuorumVotingPeriod = _executionDelay == 0 ? DEFAULT_POST_QUORUM_VOTING_PERIOD : _executionDelay;
+        _validatePostQuorumVotingPeriod(postQuorumVotingPeriod);
         burnAddress = _burnAddress == address(0) ? DEFAULT_BURN_ADDRESS : _burnAddress;
         _setTemplMetadata(_name, _description, _logoLink);
         _setProposalCreationFee(_proposalCreationFeeBps);
@@ -756,7 +626,7 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param newBaseEntryFee New base entry fee anchor to apply.
     /// @param newCurve Curve configuration to apply.
     function _configureEntryFeeCurve(uint256 newBaseEntryFee, CurveConfig memory newCurve) internal {
-        _validateEntryFeeAmount(newBaseEntryFee);
+        _validateBaseEntryFeeAmount(newBaseEntryFee);
         _validateCurveConfig(newCurve);
         baseEntryFee = newBaseEntryFee;
         entryFeeCurve = newCurve;
@@ -783,7 +653,7 @@ abstract contract TemplBase is ReentrancyGuard {
             baseEntryFee = targetEntryFee;
         } else {
             uint256 newBase = _solveBaseEntryFee(targetEntryFee, curve, paidJoins);
-            _validateEntryFeeAmount(newBase);
+            _validateBaseEntryFeeAmount(newBase);
             baseEntryFee = newBase;
         }
         entryFee = targetEntryFee;
@@ -825,7 +695,19 @@ abstract contract TemplBase is ReentrancyGuard {
         if (baseEntryFee == 0) {
             return;
         }
-        entryFee = _priceForPaidJoinsFromStorage(baseEntryFee, entryFeeCurve, _currentPaidJoins());
+        entryFee = _normalizeEntryFee(_priceForPaidJoinsFromStorage(baseEntryFee, entryFeeCurve, _currentPaidJoins()));
+    }
+
+    /// @notice Normalizes entry fees to match minimum and divisibility invariants.
+    /// @param amount Entry fee value to normalize.
+    /// @return normalized Entry fee clamped to the minimum and rounded down to a multiple of 10.
+    function _normalizeEntryFee(uint256 amount) internal pure returns (uint256 normalized) {
+        if (amount < 10) {
+            return 10;
+        }
+        unchecked {
+            return amount - (amount % 10);
+        }
     }
 
     /// @notice Returns the number of paid joins that have occurred (excludes the auto-enrolled priest).
@@ -843,17 +725,55 @@ abstract contract TemplBase is ReentrancyGuard {
         return councilModeEnabled ? councilMemberCount : memberCount;
     }
 
+    /// @notice Checks whether `account` was a council member at `snapshotEpoch`.
+    /// @param account Wallet to evaluate.
+    /// @param snapshotEpoch Council membership epoch captured by a proposal.
+    /// @return isMember True when the account was on the council at the snapshot epoch.
+    function _isCouncilMemberAtEpoch(address account, uint256 snapshotEpoch) internal view returns (bool isMember) {
+        CouncilCheckpoint[] storage checkpoints = councilCheckpoints[account];
+        uint256 len = checkpoints.length;
+        if (len == 0) {
+            return false;
+        }
+        if (snapshotEpoch < checkpoints[0].epoch) {
+            return false;
+        }
+        uint256 low = 0;
+        uint256 high = len;
+        while (low < high) {
+            uint256 mid = (low + high) / 2;
+            if (checkpoints[mid].epoch > snapshotEpoch) {
+                high = mid;
+            } else {
+                low = mid + 1;
+            }
+        }
+        return checkpoints[low - 1].isMember;
+    }
+
     /// @notice Returns true when `yesVotes` satisfies the configured YES threshold relative to total votes.
     /// @param yesVotes Count of YES ballots.
     /// @param noVotes Count of NO ballots.
+    /// @param thresholdBps YES threshold in basis points of total votes cast.
     /// @return meets True when the YES ratio clears the configured threshold.
-    function _meetsYesVoteThreshold(uint256 yesVotes, uint256 noVotes) internal view returns (bool meets) {
-        uint256 totalVotes = yesVotes + noVotes;
+    function _meetsYesVoteThreshold(
+        uint256 yesVotes,
+        uint256 noVotes,
+        uint256 thresholdBps
+    ) internal pure returns (bool meets) {
+        uint256 totalVotes;
+        unchecked {
+            totalVotes = yesVotes + noVotes;
+        }
         if (totalVotes == 0) {
             return false;
         }
-        uint256 lhs = yesVotes * BPS_DENOMINATOR;
-        uint256 rhs = yesVoteThresholdBps * totalVotes;
+        uint256 lhs;
+        uint256 rhs;
+        unchecked {
+            lhs = yesVotes * BPS_DENOMINATOR;
+            rhs = thresholdBps * totalVotes;
+        }
         if (lhs == rhs) {
             return true;
         }
@@ -870,7 +790,7 @@ abstract contract TemplBase is ReentrancyGuard {
         if (proposal.instantQuorumMet) {
             return;
         }
-        uint256 threshold = instantQuorumBps;
+        uint256 threshold = proposal.instantQuorumBpsSnapshot;
         if (threshold == 0) {
             return;
         }
@@ -878,13 +798,17 @@ abstract contract TemplBase is ReentrancyGuard {
         if (basis == 0) {
             return;
         }
-        if (proposal.yesVotes * BPS_DENOMINATOR < threshold * basis) {
-            return;
+        unchecked {
+            if (proposal.yesVotes * BPS_DENOMINATOR < threshold * basis) {
+                return;
+            }
         }
         if (proposal.quorumReachedAt == 0) {
             proposal.quorumReachedAt = block.timestamp;
             proposal.quorumSnapshotBlock = block.number;
-            proposal.postQuorumEligibleVoters = _eligibleVoterCount();
+            proposal.postQuorumEligibleVoters = proposal.councilSnapshotEpoch == 0
+                ? memberCount
+                : proposal.eligibleVoters;
             proposal.quorumJoinSequence = joinSequence;
         }
         proposal.instantQuorumMet = true;
@@ -908,65 +832,80 @@ abstract contract TemplBase is ReentrancyGuard {
         if (bytes(_title).length > MAX_PROPOSAL_TITLE_LENGTH) revert TemplErrors.InvalidCallData();
         if (bytes(_description).length > MAX_PROPOSAL_DESCRIPTION_LENGTH) revert TemplErrors.InvalidCallData();
         if (!members[msg.sender].joined) revert TemplErrors.NotMember();
-        if (hasActiveProposal[msg.sender]) {
-            uint256 existingId = activeProposalId[msg.sender];
+        uint256 existingPlusOne = _activeProposalIdPlusOne[msg.sender];
+        if (existingPlusOne != 0) {
+            uint256 existingId = existingPlusOne - 1;
             Proposal storage existingProposal = proposals[existingId];
             if (!existingProposal.executed && block.timestamp < existingProposal.endTime) {
                 revert TemplErrors.ActiveProposalExists();
             } else {
-                hasActiveProposal[msg.sender] = false;
-                activeProposalId[msg.sender] = 0;
+                _activeProposalIdPlusOne[msg.sender] = 0;
             }
         }
         uint256 period = _votingPeriod == 0 ? preQuorumVotingPeriod : _votingPeriod;
         if (period < MIN_PRE_QUORUM_VOTING_PERIOD) revert TemplErrors.VotingPeriodTooShort();
         if (period > MAX_PRE_QUORUM_VOTING_PERIOD) revert TemplErrors.VotingPeriodTooLong();
-        uint256 feeBps = proposalCreationFeeBps;
-        bool proposerIsCouncil = councilModeEnabled && councilMembers[msg.sender];
-        if (feeBps > 0 && !proposerIsCouncil) {
-            uint256 proposalFee = (entryFee * feeBps) / BPS_DENOMINATOR;
-            if (proposalFee > 0) {
-                _safeTransferFrom(accessToken, msg.sender, address(this), proposalFee);
-                treasuryBalance += proposalFee;
+        bool waiveFee = councilModeEnabled && councilMembers[msg.sender];
+        if (!waiveFee) {
+            uint256 feeBps = proposalCreationFeeBps;
+            if (feeBps > 0) {
+                uint256 proposalFee;
+                unchecked {
+                    proposalFee = (entryFee * feeBps) / BPS_DENOMINATOR;
+                }
+                if (proposalFee > 0) {
+                    _safeTransferFrom(accessToken, msg.sender, address(this), proposalFee);
+                    treasuryBalance += proposalFee;
+                }
             }
         }
         proposalId = proposalCount;
-        ++proposalCount;
+        unchecked {
+            proposalCount = proposalId + 1;
+        }
         proposal = proposals[proposalId];
-        proposal.id = proposalId;
         proposal.proposer = msg.sender;
-        proposal.endTime = block.timestamp + period;
+        unchecked {
+            proposal.endTime = block.timestamp + period;
+        }
         proposal.createdAt = block.timestamp;
         proposal.title = _title;
         proposal.description = _description;
         proposal.preQuorumSnapshotBlock = block.number;
         proposal.preQuorumJoinSequence = joinSequence;
         proposal.executed = false;
-        bool proposerCanVote = !councilModeEnabled || councilMembers[msg.sender];
+        uint256 councilSnapshotEpoch = councilModeEnabled ? councilEpoch : 0;
+        proposal.councilSnapshotEpoch = councilSnapshotEpoch;
+        proposal.quorumBpsSnapshot = quorumBps;
+        proposal.yesVoteThresholdBpsSnapshot = yesVoteThresholdBps;
+        proposal.postQuorumVotingPeriodSnapshot = postQuorumVotingPeriod;
+        proposal.instantQuorumBpsSnapshot = instantQuorumBps;
+        bool proposerCanVote = councilSnapshotEpoch == 0 || _isCouncilMemberAtEpoch(msg.sender, councilSnapshotEpoch);
         if (proposerCanVote) {
-            proposal.hasVoted[msg.sender] = true;
-            proposal.voteChoice[msg.sender] = true;
+            proposal.voteState[msg.sender] = VOTE_YES;
             proposal.yesVotes = 1;
         } else {
             proposal.yesVotes = 0;
         }
         proposal.noVotes = 0;
-        proposal.eligibleVoters = _eligibleVoterCount();
+        proposal.eligibleVoters = councilSnapshotEpoch == 0 ? memberCount : councilMemberCount;
         proposal.quorumReachedAt = 0;
         proposal.quorumExempt = false;
         if (
-            proposal.eligibleVoters != 0 && !(proposal.yesVotes * BPS_DENOMINATOR < quorumBps * proposal.eligibleVoters)
+            proposal.eligibleVoters != 0 &&
+            !(proposal.yesVotes * BPS_DENOMINATOR < proposal.quorumBpsSnapshot * proposal.eligibleVoters)
         ) {
             proposal.quorumReachedAt = block.timestamp;
             proposal.quorumSnapshotBlock = block.number;
             proposal.postQuorumEligibleVoters = proposal.eligibleVoters;
             proposal.quorumJoinSequence = proposal.preQuorumJoinSequence;
-            proposal.endTime = block.timestamp + postQuorumVotingPeriod;
+            unchecked {
+                proposal.endTime = block.timestamp + proposal.postQuorumVotingPeriodSnapshot;
+            }
         }
         _maybeTriggerInstantQuorum(proposal);
         _addActiveProposal(proposalId);
-        hasActiveProposal[msg.sender] = true;
-        activeProposalId[msg.sender] = proposalId;
+        _activeProposalIdPlusOne[msg.sender] = proposalId + 1;
         emit ProposalCreated(proposalId, msg.sender, proposal.endTime, _title, _description);
     }
 
@@ -976,7 +915,7 @@ abstract contract TemplBase is ReentrancyGuard {
     function _proposalPassed(Proposal storage proposal) internal view returns (bool passed) {
         if (proposal.quorumExempt) {
             return (!(block.timestamp < proposal.endTime) &&
-                _meetsYesVoteThreshold(proposal.yesVotes, proposal.noVotes));
+                _meetsYesVoteThreshold(proposal.yesVotes, proposal.noVotes, proposal.yesVoteThresholdBpsSnapshot));
         }
         bool instant = proposal.instantQuorumMet;
         if (proposal.quorumReachedAt == 0 && !instant) {
@@ -984,14 +923,22 @@ abstract contract TemplBase is ReentrancyGuard {
         }
         uint256 denom = proposal.postQuorumEligibleVoters;
         if (denom != 0 && !instant) {
-            if (proposal.yesVotes * BPS_DENOMINATOR < quorumBps * denom) {
+            unchecked {
+                if (proposal.yesVotes * BPS_DENOMINATOR < proposal.quorumBpsSnapshot * denom) {
+                    return false;
+                }
+            }
+        }
+        if (!instant) {
+            uint256 quorumEnd;
+            unchecked {
+                quorumEnd = proposal.quorumReachedAt + proposal.postQuorumVotingPeriodSnapshot;
+            }
+            if (block.timestamp < quorumEnd) {
                 return false;
             }
         }
-        if (!instant && block.timestamp < proposal.quorumReachedAt + postQuorumVotingPeriod) {
-            return false;
-        }
-        return _meetsYesVoteThreshold(proposal.yesVotes, proposal.noVotes);
+        return _meetsYesVoteThreshold(proposal.yesVotes, proposal.noVotes, proposal.yesVoteThresholdBpsSnapshot);
     }
 
     /// @notice Reports whether any curve segment introduces dynamic pricing.
@@ -1080,18 +1027,44 @@ abstract contract TemplBase is ReentrancyGuard {
         if (paidJoins == 0) {
             return targetPrice;
         }
-        uint256 remaining = paidJoins;
-        uint256 amount = targetPrice;
-        (amount, remaining) = _consumeSegment(amount, curve.primary, remaining, false);
-        if (remaining == 0) {
-            return amount;
-        }
         CurveSegment[] memory extras = curve.additionalSegments;
         uint256 len = extras.length;
+        if (len == 0) {
+            return _applySegment(targetPrice, curve.primary, paidJoins, false);
+        }
+
+        uint256 remaining = paidJoins;
+        uint256 primarySteps = _min(remaining, uint256(curve.primary.length));
+        unchecked {
+            remaining -= primarySteps;
+        }
+
+        uint256[] memory extraSteps = new uint256[](len);
         for (uint256 i = 0; i < len && remaining > 0; ++i) {
-            (amount, remaining) = _consumeSegment(amount, extras[i], remaining, false);
+            uint256 segmentLength = uint256(extras[i].length);
+            uint256 steps = segmentLength == 0 ? remaining : _min(remaining, segmentLength);
+            extraSteps[i] = steps;
+            if (segmentLength == 0) {
+                remaining = 0;
+            } else {
+                unchecked {
+                    remaining -= steps;
+                }
+            }
         }
         if (remaining > 0) revert TemplErrors.InvalidCurveConfig();
+
+        uint256 amount = targetPrice;
+        for (uint256 i = len; i > 0; --i) {
+            uint256 steps = extraSteps[i - 1];
+            if (steps == 0) {
+                continue;
+            }
+            amount = _applySegment(amount, extras[i - 1], steps, false);
+        }
+        if (primarySteps > 0) {
+            amount = _applySegment(amount, curve.primary, primarySteps, false);
+        }
         return amount;
     }
 
@@ -1115,7 +1088,9 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 steps = segmentLength == 0 ? remaining : _min(remaining, segmentLength);
         if (steps > 0) {
             amount = _applySegment(amount, segment, steps, forward);
-            remaining -= steps;
+            unchecked {
+                remaining -= steps;
+            }
         }
         if (segmentLength == 0) {
             remaining = 0;
@@ -1278,6 +1253,13 @@ abstract contract TemplBase is ReentrancyGuard {
         if (amount > MAX_ENTRY_FEE) revert TemplErrors.EntryFeeTooLarge();
     }
 
+    /// @notice Ensures base entry fee amounts satisfy templ invariants.
+    /// @param amount Base entry fee to validate.
+    function _validateBaseEntryFeeAmount(uint256 amount) internal pure {
+        if (amount < 10) revert TemplErrors.EntryFeeTooSmall();
+        if (amount > MAX_ENTRY_FEE) revert TemplErrors.EntryFeeTooLarge();
+    }
+
     /// @notice Emits the standardized curve update event with the current configuration.
     function _emitEntryFeeCurveUpdated() internal {
         CurveConfig storage cfg = entryFeeCurve;
@@ -1298,15 +1280,6 @@ abstract contract TemplBase is ReentrancyGuard {
         emit EntryFeeCurveUpdated(styles, rates, lengths);
     }
 
-    /// @notice Toggles dictatorship governance mode, emitting an event when the state changes.
-    /// @param _enabled New dictatorship state (true to enable).
-    function _updateDictatorship(bool _enabled) internal {
-        if (priestIsDictator == _enabled) revert TemplErrors.DictatorshipUnchanged();
-        if (_enabled && councilModeEnabled) revert TemplErrors.CouncilModeActive();
-        priestIsDictator = _enabled;
-        emit DictatorshipModeChanged(_enabled);
-    }
-
     /// @notice Sets or clears the membership cap and auto-pauses if the new cap is already met.
     /// @param newMaxMembers New membership cap (0 removes the cap).
     function _setMaxMembers(uint256 newMaxMembers) internal {
@@ -1317,7 +1290,28 @@ abstract contract TemplBase is ReentrancyGuard {
         maxMembers = newMaxMembers;
         emit MaxMembersUpdated(newMaxMembers);
         _refreshEntryFeeFromState();
+        if (joinPausedByLimit && (newMaxMembers == 0 || newMaxMembers > currentMembers)) {
+            joinPausedByLimit = false;
+            if (joinPaused) {
+                joinPaused = false;
+                emit JoinPauseUpdated(false);
+            }
+        }
         _autoPauseIfLimitReached();
+    }
+
+    /// @notice Ensures templ metadata fields fit within size bounds.
+    /// @param newName Proposed templ name.
+    /// @param newDescription Proposed templ description.
+    /// @param newLogoLink Proposed templ logo link.
+    function _validateTemplMetadata(
+        string memory newName,
+        string memory newDescription,
+        string memory newLogoLink
+    ) internal pure {
+        if (bytes(newName).length > MAX_TEMPL_NAME_LENGTH) revert TemplErrors.InvalidCallData();
+        if (bytes(newDescription).length > MAX_TEMPL_DESCRIPTION_LENGTH) revert TemplErrors.InvalidCallData();
+        if (bytes(newLogoLink).length > MAX_TEMPL_LOGO_URI_LENGTH) revert TemplErrors.InvalidCallData();
     }
 
     /// @notice Writes new templ metadata and emits an event when it changes.
@@ -1329,9 +1323,7 @@ abstract contract TemplBase is ReentrancyGuard {
         string memory newDescription,
         string memory newLogoLink
     ) internal {
-        if (bytes(newName).length > MAX_TEMPL_NAME_LENGTH) revert TemplErrors.InvalidCallData();
-        if (bytes(newDescription).length > MAX_TEMPL_DESCRIPTION_LENGTH) revert TemplErrors.InvalidCallData();
-        if (bytes(newLogoLink).length > MAX_TEMPL_LOGO_URI_LENGTH) revert TemplErrors.InvalidCallData();
+        _validateTemplMetadata(newName, newDescription, newLogoLink);
         templName = newName;
         templDescription = newDescription;
         templLogoLink = newLogoLink;
@@ -1368,9 +1360,18 @@ abstract contract TemplBase is ReentrancyGuard {
         emit QuorumBpsUpdated(previous, newQuorumBps);
     }
 
-    /// @notice Updates the post‑quorum voting period in seconds.
+    /// @notice Ensures the post-quorum voting period is within the allowed bounds.
+    /// @param newPeriod New period (seconds) applied after quorum before execution.
+    function _validatePostQuorumVotingPeriod(uint256 newPeriod) internal pure {
+        if (newPeriod < MIN_POST_QUORUM_VOTING_PERIOD || newPeriod > MAX_POST_QUORUM_VOTING_PERIOD) {
+            revert TemplErrors.InvalidCallData();
+        }
+    }
+
+    /// @notice Updates the post-quorum voting period in seconds.
     /// @param newPeriod New period (seconds) applied after quorum before execution.
     function _setPostQuorumVotingPeriod(uint256 newPeriod) internal {
+        _validatePostQuorumVotingPeriod(newPeriod);
         uint256 previous = postQuorumVotingPeriod;
         postQuorumVotingPeriod = newPeriod;
         emit PostQuorumVotingPeriodUpdated(previous, newPeriod);
@@ -1385,8 +1386,8 @@ abstract contract TemplBase is ReentrancyGuard {
         emit BurnAddressUpdated(previous, newBurn);
     }
 
-    /// @notice Updates the default pre‑quorum voting period used when proposals do not supply one.
-    /// @param newPeriod New default pre‑quorum voting period (seconds).
+    /// @notice Updates the default pre-quorum voting period used when proposals do not supply one.
+    /// @param newPeriod New default pre-quorum voting period (seconds).
     function _setPreQuorumVotingPeriod(uint256 newPeriod) internal {
         if (newPeriod < MIN_PRE_QUORUM_VOTING_PERIOD || newPeriod > MAX_PRE_QUORUM_VOTING_PERIOD) {
             revert TemplErrors.InvalidCallData();
@@ -1426,7 +1427,6 @@ abstract contract TemplBase is ReentrancyGuard {
     function _setCouncilMode(bool enabled) internal {
         if (councilModeEnabled == enabled) revert TemplErrors.InvalidCallData();
         if (enabled) {
-            if (priestIsDictator) revert TemplErrors.CouncilModeActive();
             if (councilMemberCount == 0) revert TemplErrors.NoMembers();
         }
         councilModeEnabled = enabled;
@@ -1442,6 +1442,9 @@ abstract contract TemplBase is ReentrancyGuard {
         if (councilMembers[account]) revert TemplErrors.CouncilMemberExists();
         councilMembers[account] = true;
         ++councilMemberCount;
+        uint256 nextEpoch = councilEpoch + 1;
+        councilEpoch = nextEpoch;
+        _writeCouncilCheckpoint(account, true);
         emit CouncilMemberAdded(account, addedBy);
     }
 
@@ -1450,24 +1453,27 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param removedBy Caller initiating the removal (used for events).
     function _removeCouncilMember(address account, address removedBy) internal {
         if (!councilMembers[account]) revert TemplErrors.CouncilMemberMissing();
-        if (councilMemberCount < 3) revert TemplErrors.CouncilMemberMinimum();
+        if (councilMemberCount < 2) revert TemplErrors.CouncilMemberMinimum();
         councilMembers[account] = false;
         --councilMemberCount;
+        uint256 nextEpoch = councilEpoch + 1;
+        councilEpoch = nextEpoch;
+        _writeCouncilCheckpoint(account, false);
         emit CouncilMemberRemoved(account, removedBy);
     }
 
-    /// @notice Allows the priest to add a single bootstrap council member outside of governance.
-    /// @dev This is a single-use seat available only to the priest. Requires `councilModeEnabled == true`
-    ///      to prevent the bootstrap from being consumed before council governance is active. After one use,
-    ///      `councilBootstrapConsumed` is set permanently and further bootstrap attempts revert.
-    /// @param account Wallet receiving the bootstrap council seat.
-    /// @param caller Original msg.sender forwarded for event context.
-    function _bootstrapCouncilMember(address account, address caller) internal {
-        if (!councilModeEnabled) revert TemplErrors.CouncilModeInactive();
-        if (councilBootstrapConsumed) revert TemplErrors.CouncilBootstrapConsumed();
-        if (caller != priest) revert TemplErrors.PriestOnly();
-        councilBootstrapConsumed = true;
-        _addCouncilMember(account, caller);
+    /// @notice Records a council membership checkpoint for `account` at the current epoch.
+    /// @param account Wallet whose membership state changed.
+    /// @param isMember True when the account is a council member.
+    function _writeCouncilCheckpoint(address account, bool isMember) internal {
+        CouncilCheckpoint[] storage checkpoints = councilCheckpoints[account];
+        uint256 len = checkpoints.length;
+        uint256 epoch = councilEpoch;
+        if (len != 0 && checkpoints[len - 1].epoch == epoch) {
+            checkpoints[len - 1].isMember = isMember;
+        } else {
+            checkpoints.push(CouncilCheckpoint({epoch: epoch, isMember: isMember}));
+        }
     }
 
     /// @notice Executes a treasury withdrawal and emits the corresponding event.
@@ -1489,19 +1495,13 @@ abstract contract TemplBase is ReentrancyGuard {
 
             _safeTransfer(accessToken, recipient, amount);
         } else if (token == address(0)) {
-            ExternalRewardState storage rewards = externalRewards[address(0)];
             uint256 currentBalance = address(this).balance;
-            uint256 reservedForMembers = rewards.poolBalance;
-            uint256 availableBalance = currentBalance > reservedForMembers ? currentBalance - reservedForMembers : 0;
-            if (amount > availableBalance) revert TemplErrors.InsufficientTreasuryBalance();
+            if (amount > currentBalance) revert TemplErrors.InsufficientTreasuryBalance();
             (bool success, ) = payable(recipient).call{value: amount}("");
             if (!success) revert TemplErrors.ProposalExecutionFailed();
         } else {
-            ExternalRewardState storage rewards = externalRewards[token];
             uint256 currentBalance = IERC20(token).balanceOf(address(this));
-            uint256 reservedForMembers = rewards.poolBalance;
-            uint256 availableBalance = currentBalance > reservedForMembers ? currentBalance - reservedForMembers : 0;
-            if (amount > availableBalance) revert TemplErrors.InsufficientTreasuryBalance();
+            if (amount > currentBalance) revert TemplErrors.InsufficientTreasuryBalance();
             _safeTransfer(token, recipient, amount);
         }
         emit TreasuryAction(proposalId, token, recipient, amount);
@@ -1535,6 +1535,7 @@ abstract contract TemplBase is ReentrancyGuard {
     /// @param _paused Desired pause state.
     function _setJoinPaused(bool _paused) internal {
         joinPaused = _paused;
+        joinPausedByLimit = false;
         emit JoinPauseUpdated(_paused);
     }
 
@@ -1544,11 +1545,12 @@ abstract contract TemplBase is ReentrancyGuard {
         if (newPriest == address(0)) revert TemplErrors.InvalidRecipient();
         address old = priest;
         if (newPriest == old) revert TemplErrors.InvalidCallData();
+        if (!members[newPriest].joined) revert TemplErrors.NotMember();
         priest = newPriest;
         emit PriestChanged(old, newPriest);
     }
 
-    /// @notice Routes treasury balances into member or external pools so members can claim them evenly.
+    /// @notice Routes access-token treasury into the member pool; other tokens sweep to the protocol recipient.
     /// @param token Token to disband (`address(0)` for ETH or ERC-20 address).
     /// @param proposalId Proposal id authorizing the disband (0 for direct DAO call).
     function _disbandTreasury(address token, uint256 proposalId) internal {
@@ -1574,34 +1576,15 @@ abstract contract TemplBase is ReentrancyGuard {
             return;
         }
 
-        ExternalRewardState storage rewards = externalRewards[token];
-        if (!rewards.exists) {
-            _registerExternalToken(token);
-            rewards = externalRewards[token];
-        }
-        uint256 tokenBalance;
-        if (token == address(0)) {
-            tokenBalance = address(this).balance;
-        } else {
-            tokenBalance = IERC20(token).balanceOf(address(this));
-        }
+        uint256 tokenBalance = token == address(0) ? address(this).balance : IERC20(token).balanceOf(address(this));
         if (tokenBalance == 0) revert TemplErrors.NoTreasuryFunds();
-
-        uint256 poolBalance = rewards.poolBalance;
-        uint256 totalAmount = tokenBalance > poolBalance ? tokenBalance - poolBalance : 0;
-        if (totalAmount == 0) revert TemplErrors.NoTreasuryFunds();
-
-        uint256 carry = rewards.rewardRemainder;
-        uint256 toSplit = totalAmount + carry;
-        uint256 perMember = toSplit / activeMembers;
-        uint256 newRemainder = toSplit % activeMembers;
-
-        rewards.poolBalance += totalAmount;
-        rewards.rewardRemainder = newRemainder;
-        rewards.cumulativeRewards += perMember;
-        _recordExternalCheckpoint(rewards);
-
-        emit TreasuryDisbanded(proposalId, token, totalAmount, perMember, newRemainder);
+        if (token == address(0)) {
+            (bool success, ) = payable(protocolFeeRecipient).call{value: tokenBalance}("");
+            if (!success) revert TemplErrors.ProposalExecutionFailed();
+        } else {
+            _safeTransfer(token, protocolFeeRecipient, tokenBalance);
+        }
+        emit TreasuryDisbanded(proposalId, token, tokenBalance, 0, 0);
     }
 
     /// @notice Tracks a newly active `proposalId` for enumeration by views.
@@ -1662,6 +1645,7 @@ abstract contract TemplBase is ReentrancyGuard {
         uint256 limit = maxMembers;
         if (limit > 0 && memberCount == limit && !joinPaused) {
             joinPaused = true;
+            joinPausedByLimit = true;
             emit JoinPauseUpdated(true);
         }
     }
@@ -1687,38 +1671,6 @@ abstract contract TemplBase is ReentrancyGuard {
             return;
         }
         IERC20(token).safeTransferFrom(from, to, amount);
-    }
-
-    /// @notice Registers `token` so external rewards can be enumerated in views.
-    /// @param token ERC-20 token address or address(0) for ETH.
-    function _registerExternalToken(address token) internal {
-        ExternalRewardState storage rewards = externalRewards[token];
-        if (!rewards.exists) {
-            if (externalRewardTokens.length > MAX_EXTERNAL_REWARD_TOKENS - 1) {
-                revert TemplErrors.ExternalRewardLimitReached();
-            }
-            rewards.exists = true;
-            externalRewardTokens.push(token);
-            externalRewardTokenIndex[token] = externalRewardTokens.length;
-        }
-    }
-
-    /// @notice Removes `token` from the external rewards enumeration set.
-    /// @param token ERC-20 token address or address(0) for ETH.
-    function _removeExternalToken(address token) internal {
-        uint256 indexPlusOne = externalRewardTokenIndex[token];
-        if (indexPlusOne == 0) {
-            return;
-        }
-        uint256 index = indexPlusOne - 1;
-        uint256 lastIndex = externalRewardTokens.length - 1;
-        if (index != lastIndex) {
-            address movedToken = externalRewardTokens[lastIndex];
-            externalRewardTokens[index] = movedToken;
-            externalRewardTokenIndex[movedToken] = index + 1;
-        }
-        externalRewardTokens.pop();
-        externalRewardTokenIndex[token] = 0;
     }
 
     /// @notice Scales `amount` by `multiplier` (bps), saturating at `MAX_ENTRY_FEE`.

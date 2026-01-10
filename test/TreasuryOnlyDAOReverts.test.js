@@ -3,12 +3,9 @@ const { ethers } = require("hardhat");
 const { deployTempl, STATIC_CURVE } = require("./utils/deploy");
 
 describe("Treasury onlyDAO reverts per function", function () {
-  it("EOA calls to DAO functions revert NotDAO when dictatorship is disabled", async function () {
+  it("EOA calls to DAO functions revert NotDAO", async function () {
     const { templ, token, accounts } = await deployTempl();
     const [, , eoa] = accounts;
-
-    // Ensure dictatorship disabled
-    expect(await templ.priestIsDictator()).to.equal(false);
 
     // Call every treasury DAO function directly from an EOA and expect NotDAO
     await expect(templ.connect(eoa).withdrawTreasuryDAO(await token.getAddress(), eoa.address, 1))
@@ -29,9 +26,6 @@ describe("Treasury onlyDAO reverts per function", function () {
     await expect(templ.connect(eoa).changePriestDAO(eoa.address))
       .to.be.revertedWithCustomError(templ, "NotDAO");
 
-    await expect(templ.connect(eoa).setDictatorshipDAO(true))
-      .to.be.revertedWithCustomError(templ, "NotDAO");
-
     await expect(templ.connect(eoa).setTemplMetadataDAO("A", "B", "C"))
       .to.be.revertedWithCustomError(templ, "NotDAO");
 
@@ -42,9 +36,6 @@ describe("Treasury onlyDAO reverts per function", function () {
       .to.be.revertedWithCustomError(templ, "NotDAO");
 
     await expect(templ.connect(eoa).setEntryFeeCurveDAO(STATIC_CURVE, 0))
-      .to.be.revertedWithCustomError(templ, "NotDAO");
-
-    await expect(templ.connect(eoa).cleanupExternalRewardToken(ethers.ZeroAddress))
       .to.be.revertedWithCustomError(templ, "NotDAO");
 
     await expect(templ.connect(eoa).setQuorumBpsDAO(4000))

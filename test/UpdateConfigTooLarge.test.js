@@ -19,7 +19,9 @@ describe("updateConfigDAO entry fee too large", function () {
       0,
       0,
       false,
-      7 * 24 * 60 * 60
+      7 * 24 * 60 * 60,
+      "Update config",
+      "Exceeds max entry fee"
     );
     await templ.connect(voter).vote(0, true);
     await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);

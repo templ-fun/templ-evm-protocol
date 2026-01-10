@@ -32,7 +32,9 @@ describe("updateConfigDAO", function () {
                 0,
                 0,
                 false,
-                7 * 24 * 60 * 60
+                7 * 24 * 60 * 60,
+                "Update config",
+                "Invalid entry fee"
             )
         ).to.be.revertedWithCustomError(templ, "EntryFeeTooSmall");
     });
@@ -45,7 +47,9 @@ describe("updateConfigDAO", function () {
                 0,
                 0,
                 false,
-                7 * 24 * 60 * 60
+                7 * 24 * 60 * 60,
+                "Update config",
+                "Invalid entry fee"
             )
         ).to.be.revertedWithCustomError(templ, "InvalidEntryFee");
     });
@@ -57,12 +61,15 @@ describe("updateConfigDAO", function () {
             0,
             0,
             false,
-            7 * 24 * 60 * 60
+            7 * 24 * 60 * 60,
+            "Update config",
+            "Adjust entry fee"
         );
         await templ.connect(member).vote(0, true);
         await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
         await ethers.provider.send("evm_mine");
-        await expect(templ.executeProposal(0)).to.not.be.reverted;
+        await templ.executeProposal(0);
+        expect(await templ.entryFee()).to.equal(ENTRY_FEE + 10n);
     });
 
     it("reverts when fee split values are invalid", async function () {
@@ -73,7 +80,9 @@ describe("updateConfigDAO", function () {
                 pct(60),
                 pct(10),
                 true,
-                7 * 24 * 60 * 60
+                7 * 24 * 60 * 60,
+                "Update config",
+                "Invalid fee split"
             )
         ).to.be.revertedWithCustomError(templ, "InvalidPercentageSplit");
     });
@@ -89,7 +98,9 @@ describe("updateConfigDAO", function () {
             NEW_TREASURY,
             NEW_MEMBER,
             true,
-            7 * 24 * 60 * 60
+            7 * 24 * 60 * 60,
+            "Update config",
+            "Update fee split"
         );
         await templ.connect(member).vote(0, true);
         await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);

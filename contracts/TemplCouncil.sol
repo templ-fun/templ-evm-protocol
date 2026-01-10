@@ -1,26 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import {TemplBase} from "./TemplBase.sol";
+import {TemplModuleBase} from "./TemplModuleBase.sol";
 import {TemplErrors} from "./TemplErrors.sol";
 
 /// @title Templ Council Governance Module
 /// @notice Hosts council-specific proposal creation flows to keep the primary governance module lean.
 /// @author templ.fun
-contract TemplCouncilModule is TemplBase {
-    /// @notice Sentinel used to detect direct calls to the module implementation.
-    address public immutable SELF;
-
-    /// @notice Initializes the module and captures its own address to enforce delegatecalls.
-    constructor() {
-        SELF = address(this);
-    }
-
-    modifier onlyDelegatecall() {
-        if (address(this) == SELF) revert TemplErrors.DelegatecallOnly();
-        _;
-    }
-
+contract TemplCouncilModule is TemplModuleBase {
     /// @notice Opens a proposal to update the YES vote threshold (bps of votes cast).
     /// @param _newThresholdBps Target YES threshold expressed in basis points.
     /// @param _votingPeriod Optional custom voting duration (seconds).
@@ -33,7 +20,6 @@ contract TemplCouncilModule is TemplBase {
         string calldata _title,
         string calldata _description
     ) external nonReentrant onlyDelegatecall returns (uint256 proposalId) {
-        if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         if (_newThresholdBps < MIN_YES_VOTE_THRESHOLD_BPS || _newThresholdBps > BPS_DENOMINATOR) {
             revert TemplErrors.InvalidPercentage();
         }
@@ -55,7 +41,6 @@ contract TemplCouncilModule is TemplBase {
         string calldata _title,
         string calldata _description
     ) external nonReentrant onlyDelegatecall returns (uint256 proposalId) {
-        if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         if (_enable && councilMemberCount == 0) revert TemplErrors.NoMembers();
         (uint256 id, Proposal storage p) = _createBaseProposal(_votingPeriod, _title, _description);
         p.action = Action.SetCouncilMode;
@@ -108,14 +93,13 @@ contract TemplCouncilModule is TemplBase {
         string calldata title,
         string calldata description
     ) internal returns (uint256 proposalId) {
-        if (priestIsDictator) revert TemplErrors.DictatorshipEnabled();
         if (member == address(0)) revert TemplErrors.InvalidRecipient();
         if (!members[member].joined) revert TemplErrors.NotMember();
         if (add) {
             if (councilMembers[member]) revert TemplErrors.CouncilMemberExists();
         } else {
             if (!councilMembers[member]) revert TemplErrors.CouncilMemberMissing();
-            if (councilMemberCount < 3) revert TemplErrors.CouncilMemberMinimum();
+            if (councilMemberCount < 2) revert TemplErrors.CouncilMemberMinimum();
         }
         (uint256 id, Proposal storage p) = _createBaseProposal(votingPeriod, title, description);
         p.action = add ? Action.AddCouncilMember : Action.RemoveCouncilMember;

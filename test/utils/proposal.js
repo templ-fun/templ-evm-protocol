@@ -6,6 +6,7 @@ const IF_UC = new ethers.Interface([
   "function updateConfigDAO(uint256,bool,uint256,uint256,uint256)"
 ]);
 const IF_DISBAND = new ethers.Interface(["function disbandTreasuryDAO(address)"]);
+const IF_SWEEP = new ethers.Interface(["function sweepMemberPoolRemainderDAO(address)"]);
 const IF_SET_METADATA = new ethers.Interface(["function setTemplMetadataDAO(string,string,string)"]);
 const IF_SET_PROPOSAL_FEE = new ethers.Interface(["function setProposalCreationFeeBpsDAO(uint256)"]);
 const IF_SET_REFERRAL_SHARE = new ethers.Interface(["function setReferralShareBpsDAO(uint256)"]);
@@ -48,6 +49,16 @@ async function createProposal({ templ, signer, title, description: proposalDescr
   try {
     const [token] = IF_DISBAND.decodeFunctionData("disbandTreasuryDAO", callData);
     const tx = await conn.createProposalDisbandTreasury(token, votingPeriod, title, proposalDescription);
+    return await tx.wait();
+  } catch {}
+  try {
+    const [recipient] = IF_SWEEP.decodeFunctionData("sweepMemberPoolRemainderDAO", callData);
+    const tx = await conn.createProposalSweepMemberPoolRemainder(
+      recipient,
+      votingPeriod,
+      title,
+      proposalDescription
+    );
     return await tx.wait();
   } catch {}
   try {
@@ -102,8 +113,8 @@ module.exports.attachProposalMetadataShim = function(templ) {
     ['createProposalUpdateConfig', 8],
     ['createProposalWithdrawTreasury', 6],
     ['createProposalDisbandTreasury', 4],
+    ['createProposalSweepMemberPoolRemainder', 4],
     ['createProposalChangePriest', 4],
-    ['createProposalSetDictatorship', 4],
     ['createProposalSetMaxMembers', 4],
     ['createProposalUpdateMetadata', 6],
     ['createProposalSetProposalFeeBps', 4],

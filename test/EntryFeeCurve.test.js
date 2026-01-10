@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { deployTempl, deployTemplContracts, EXPONENTIAL_CURVE, STATIC_CURVE } = require("./utils/deploy");
-const { mintToUsers } = require("./utils/mintAndPurchase");
+const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
 
 describe("EntryFeeCurve", function () {
     const ENTRY_FEE = ethers.parseUnits("100", 18);
@@ -14,6 +14,19 @@ describe("EntryFeeCurve", function () {
     const TOTAL_PERCENT = 10_000n;
 
     const toBigInt = (value) => BigInt(value);
+    const normalizeEntryFee = (amount) => {
+        if (amount < 10n) {
+            return 10n;
+        }
+        const remainder = amount % 10n;
+        return remainder === 0n ? amount : amount - remainder;
+    };
+    const divCeil = (numerator, denominator) => {
+        if (denominator === 0n) {
+            throw new Error("invalid division");
+        }
+        return (numerator + denominator - 1n) / denominator;
+    };
 
     const powBps = (factorBps, exponent) => {
         if (exponent === 0n) return TOTAL_PERCENT;
@@ -23,10 +36,16 @@ describe("EntryFeeCurve", function () {
         while (exp > 0n) {
             if ((exp & 1n) === 1n) {
                 result = (result * base) / TOTAL_PERCENT;
+                if (result === 0n) {
+                    result = 1n;
+                }
             }
             exp >>= 1n;
             if (exp > 0n) {
                 base = (base * base) / TOTAL_PERCENT;
+                if (base === 0n) {
+                    base = 1n;
+                }
             }
         }
         return result;
@@ -54,12 +73,12 @@ describe("EntryFeeCurve", function () {
         if (segment.style === CURVE_STYLE.Linear) {
             const denominator = TOTAL_PERCENT + toBigInt(segment.rateBps) * steps;
             if (denominator === 0n) throw new Error("invalid linear denominator");
-            return (amount * TOTAL_PERCENT) / denominator;
+            return divCeil(amount * TOTAL_PERCENT, denominator);
         }
         if (segment.style === CURVE_STYLE.Exponential) {
             const factor = powBps(toBigInt(segment.rateBps), steps);
             if (factor === 0n) throw new Error("invalid exponential factor");
-            return (amount * TOTAL_PERCENT) / factor;
+            return divCeil(amount * TOTAL_PERCENT, factor);
         }
         throw new Error("unsupported curve style");
     };
@@ -91,6 +110,24 @@ describe("EntryFeeCurve", function () {
         const extras = curve.additionalSegments || [];
         return [curve.primary, ...extras];
     };
+    const segmentSteps = (segments, paidJoins) => {
+        let remaining = paidJoins;
+        const steps = new Array(segments.length).fill(0n);
+        for (let i = 0; i < segments.length && remaining > 0n; i += 1) {
+            const segmentLength = BigInt(segments[i].length ?? 0);
+            const stepCount = segmentLength === 0n ? remaining : remaining < segmentLength ? remaining : segmentLength;
+            steps[i] = stepCount;
+            if (segmentLength === 0n) {
+                remaining = 0n;
+            } else {
+                remaining -= stepCount;
+            }
+        }
+        if (remaining !== 0n) {
+            throw new Error("invalid curve configuration");
+        }
+        return steps;
+    };
 
     const priceForPaidJoins = (base, curve, paidJoins) => {
         if (paidJoins === 0n) {
@@ -106,7 +143,7 @@ describe("EntryFeeCurve", function () {
         if (remaining !== 0n) {
             throw new Error("invalid curve configuration");
         }
-        return amount;
+        return normalizeEntryFee(amount);
     };
 
     const solveBaseEntryFee = (targetPrice, curve, paidJoins) => {
@@ -114,14 +151,11 @@ describe("EntryFeeCurve", function () {
             return targetPrice;
         }
         let amount = targetPrice;
-        let remaining = paidJoins;
         const segments = segmentList(curve);
-        for (const segment of segments) {
-            ({ amount, remaining } = consumeSegment(amount, segment, remaining, false));
-            if (remaining === 0n) break;
-        }
-        if (remaining !== 0n) {
-            throw new Error("invalid curve configuration");
+        const steps = segmentSteps(segments, paidJoins);
+        for (let i = steps.length - 1; i >= 0; i -= 1) {
+            if (steps[i] === 0n) continue;
+            amount = applySegmentInverse(amount, segments[i], steps[i]);
         }
         return amount;
     };
@@ -198,11 +232,7 @@ describe("EntryFeeCurve", function () {
 
         const newCurrentFee = ENTRY_FEE * 2n;
         const paidJoins = await templ.totalJoins();
-        let recalibratedBase = solveBaseEntryFee(newCurrentFee, upgradedCurve, paidJoins);
-        const baseRemainder = recalibratedBase % 10n;
-        if (baseRemainder !== 0n) {
-            recalibratedBase = recalibratedBase - baseRemainder + 10n;
-        }
+        const recalibratedBase = solveBaseEntryFee(newCurrentFee, upgradedCurve, paidJoins);
 
         await templ
             .connect(voterA)
@@ -234,6 +264,93 @@ describe("EntryFeeCurve", function () {
             await templ.totalJoins()
         );
         expect(await templ.entryFee()).to.equal(nextExpected);
+    });
+
+    it("recalibrates base entry fee using inverse segments in reverse order", async function () {
+        const curve = {
+            primary: { style: CURVE_STYLE.Linear, rateBps: 333, length: 2 },
+            additionalSegments: [
+                { style: CURVE_STYLE.Exponential, rateBps: 11_050, length: 3 },
+                { style: CURVE_STYLE.Linear, rateBps: 77, length: 0 }
+            ]
+        };
+
+        const baseFee = 1000n;
+        const { templ, token, accounts } = await deployTempl({
+            entryFee: baseFee,
+            curve,
+        });
+
+        const [, , ...rest] = accounts;
+        const joiners = rest.slice(0, 3);
+        const nextJoiner = rest[3];
+
+        await mintToUsers(token, [...joiners, nextJoiner], baseFee * 1000n);
+        await joinMembers(templ, token, joiners);
+
+        const paidJoins = await templ.totalJoins();
+        const targetEntryFee = 1240n;
+        const recalibratedBase = solveBaseEntryFee(targetEntryFee, curve, paidJoins);
+
+        await templ
+            .connect(joiners[0])
+            .createProposalUpdateConfig(targetEntryFee, 0, 0, 0, false, 0, "Retarget fee", "");
+        const proposalId = (await templ.proposalCount()) - 1n;
+        await templ.connect(joiners[1]).vote(proposalId, true);
+        const delay = Number(await templ.postQuorumVotingPeriod());
+        await ethers.provider.send("evm_increaseTime", [delay + 1]);
+        await ethers.provider.send("evm_mine", []);
+        await templ.executeProposal(proposalId);
+        expect(await templ.entryFee()).to.equal(targetEntryFee);
+
+        const expectedNextFee = priceForPaidJoins(recalibratedBase, curve, paidJoins + 1n);
+
+        const templAddress = await templ.getAddress();
+        await token.connect(nextJoiner).approve(templAddress, targetEntryFee);
+        await templ.connect(nextJoiner).join();
+
+        expect(await templ.entryFee()).to.equal(expectedNextFee);
+    });
+
+    it("retargets entry fees even when the solved base is not divisible by 10", async function () {
+        const linearCurve = {
+            primary: { style: CURVE_STYLE.Linear, rateBps: 123, length: 0 },
+            additionalSegments: []
+        };
+        const baseFee = 1000n;
+        const { templ, token, accounts } = await deployTempl({
+            entryFee: baseFee,
+            curve: linearCurve,
+        });
+
+        const [, priest, proposer, nextJoiner] = accounts;
+        await mintToUsers(token, [proposer, nextJoiner], baseFee * 20n);
+
+        const templAddress = await templ.getAddress();
+        await token.connect(proposer).approve(templAddress, baseFee);
+        await templ.connect(proposer).join();
+
+        const paidJoins = await templ.totalJoins();
+        const targetEntryFee = 100n;
+        const recalibratedBase = solveBaseEntryFee(targetEntryFee, linearCurve, paidJoins);
+        expect(recalibratedBase % 10n).to.not.equal(0n);
+
+        await templ
+            .connect(proposer)
+            .createProposalUpdateConfig(targetEntryFee, 0, 0, 0, false, 0, "Retarget fee", "");
+        const proposalId = (await templ.proposalCount()) - 1n;
+        await templ.connect(priest).vote(proposalId, true);
+        const delay = Number(await templ.postQuorumVotingPeriod());
+        await ethers.provider.send("evm_increaseTime", [delay + 1]);
+        await ethers.provider.send("evm_mine", []);
+        await templ.executeProposal(proposalId);
+
+        expect(await templ.entryFee()).to.equal(targetEntryFee);
+
+        const expectedNextFee = priceForPaidJoins(recalibratedBase, linearCurve, paidJoins + 1n);
+        await token.connect(nextJoiner).approve(templAddress, targetEntryFee);
+        await templ.connect(nextJoiner).join();
+        expect(await templ.entryFee()).to.equal(expectedNextFee);
     });
 
     it("handles multi-segment curves with saturation", async function () {
@@ -276,10 +393,9 @@ describe("EntryFeeCurve", function () {
     it("reverts when retargeting the entry fee floor would push the base below the minimum", async function () {
         const RAW_ENTRY_FEE = 100n;
         const MIN_ENTRY_FEE = 10n;
-        const { templ, token, accounts, priest } = await deployTempl({
+        const { templ, token, accounts } = await deployTempl({
             entryFee: RAW_ENTRY_FEE,
             curve: EXPONENTIAL_CURVE,
-            priestIsDictator: true,
         });
 
         const [, , ...rest] = accounts;
@@ -295,11 +411,16 @@ describe("EntryFeeCurve", function () {
 
         expect(await templ.entryFee()).to.be.gt(MIN_ENTRY_FEE);
 
-        await expect(
-            templ
-                .connect(priest)
-                .updateConfigDAO(MIN_ENTRY_FEE, false, 0, 0, 0)
-        ).to.be.revertedWithCustomError(templ, "EntryFeeTooSmall");
+        await templ
+            .connect(joiners[0])
+            .createProposalUpdateConfig(MIN_ENTRY_FEE, 0, 0, 0, false, 0, "Floor", "");
+        const proposalId = (await templ.proposalCount()) - 1n;
+        await templ.connect(joiners[1]).vote(proposalId, true);
+        const delay = Number(await templ.postQuorumVotingPeriod());
+        await ethers.provider.send("evm_increaseTime", [delay + 1]);
+        await ethers.provider.send("evm_mine", []);
+        await expect(templ.executeProposal(proposalId))
+            .to.be.revertedWithCustomError(templ, "EntryFeeTooSmall");
 
         expect(await templ.baseEntryFee()).to.be.gte(RAW_ENTRY_FEE);
         expect(await templ.entryFee()).to.be.gte(MIN_ENTRY_FEE);
@@ -311,9 +432,12 @@ describe("EntryFeeCurve", function () {
             additionalSegments: []
         };
 
+        const signers = await ethers.getSigners();
+        const protocolFeeRecipient = signers[2];
         const { templ, token, accounts } = await deployTempl({
             entryFee: ENTRY_FEE,
             curve: discountCurve,
+            protocolFeeRecipient: protocolFeeRecipient.address,
         });
 
         const [, priest] = accounts;

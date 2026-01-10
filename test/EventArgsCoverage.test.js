@@ -3,6 +3,8 @@ const { ethers } = require("hardhat");
 const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 const { deployTempl } = require("./utils/deploy");
 const { mintToUsers, joinMembers } = require("./utils/mintAndPurchase");
+const { deployTemplModules } = require("./utils/modules");
+const { attachTemplInterface } = require("./utils/templ");
 
 describe("Event argument coverage (withArgs)", function () {
   const ENTRY_FEE = ethers.parseUnits("100", 18);
@@ -41,22 +43,32 @@ describe("Event argument coverage (withArgs)", function () {
       .withArgs(id, true, ethers.keccak256("0x"));
   });
 
-  it("emits TemplMetadataUpdated with exact args via onlyDAO under dictatorship", async function () {
-    const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE });
-    const [, priest, member] = accounts;
-    await mintToUsers(token, [member], ENTRY_FEE * 2n);
-    await joinMembers(templ, token, [member]);
-
-    await templ.connect(member).createProposalSetDictatorship(true, 7 * DAY, "Enable", "");
-    await templ.connect(member).vote(0, true);
-    await ethers.provider.send("evm_increaseTime", [7 * DAY + 1]);
-    await ethers.provider.send("evm_mine", []);
-    await templ.executeProposal(0);
+  it("emits TemplMetadataUpdated with exact args via onlyDAO self-call", async function () {
+    const [, priest, protocol] = await ethers.getSigners();
+    const AccessToken = await ethers.getContractFactory("contracts/mocks/TestToken.sol:TestToken");
+    const accessToken = await AccessToken.deploy("Access", "ACC", 18);
+    await accessToken.waitForDeployment();
+    const Harness = await ethers.getContractFactory(
+      "contracts/mocks/DaoCallerHarness.sol:DaoCallerHarness"
+    );
+    const modules = await deployTemplModules();
+    let templ = await Harness.deploy(
+      priest.address,
+      protocol.address,
+      accessToken.target,
+      ENTRY_FEE,
+      modules.membershipModule,
+      modules.treasuryModule,
+      modules.governanceModule,
+      modules.councilModule
+    );
+    await templ.waitForDeployment();
+    templ = await attachTemplInterface(templ);
 
     const name = "Eventful";
     const description = "Updated via onlyDAO";
     const logo = "https://templ/logo.png";
-    const tx = await templ.connect(priest).setTemplMetadataDAO(name, description, logo);
+    const tx = await templ.daoSetMetadata(name, description, logo);
     await expect(tx)
       .to.emit(templ, "TemplMetadataUpdated")
       .withArgs(name, description, logo);
@@ -99,4 +111,3 @@ describe("Event argument coverage (withArgs)", function () {
       .withArgs(referrer.address, newcomer.address, expectedReferral);
   });
 });
-

@@ -43,7 +43,9 @@ describe("Voting Eligibility Based on Join Time", function () {
                 token.target,
                 member1.address,
                 ethers.parseUnits("10", 18),
-                7 * 24 * 60 * 60
+                7 * 24 * 60 * 60,
+                "Withdraw treasury",
+                "Eligibility pre-proposal"
             );
 
             // Wait to ensure voting happens after proposal creation
@@ -82,7 +84,9 @@ describe("Voting Eligibility Based on Join Time", function () {
                 token.target,
                 member1.address,
                 ethers.parseUnits("10", 18),
-                7 * 24 * 60 * 60
+                7 * 24 * 60 * 60,
+                "Withdraw treasury",
+                "Eligibility post-quorum"
             );
 
             // Reach quorum with pre-quorum members
@@ -115,7 +119,9 @@ describe("Voting Eligibility Based on Join Time", function () {
                 token.target,
                 member1.address,
                 ethers.parseUnits("10", 18),
-                7 * 24 * 60 * 60
+                7 * 24 * 60 * 60,
+                "Withdraw treasury",
+                "Eligibility same block"
             );
 
             // Batch the quorum-reaching vote and the late join in the same block
@@ -158,7 +164,9 @@ describe("Voting Eligibility Based on Join Time", function () {
             // Create proposal - starts with 4 eligible voters
             await templ.connect(member1).createProposalSetJoinPaused(
                 true,
-                7 * 24 * 60 * 60
+                7 * 24 * 60 * 60,
+                "Pause joins",
+                "Join after creation"
             );
 
             // One more member joins after proposal creation
@@ -197,7 +205,9 @@ describe("Voting Eligibility Based on Join Time", function () {
                 token.target,
                 member1.address,
                 ethers.parseUnits("50", 18),
-                7 * 24 * 60 * 60
+                7 * 24 * 60 * 60,
+                "Withdraw treasury",
+                "Prevent gaming"
             );
 
             // Reach quorum immediately with the two existing members
@@ -245,7 +255,9 @@ describe("Voting Eligibility Based on Join Time", function () {
 
             const createTx = await templ.connect(member1).createProposalSetJoinPaused(
                 true,
-                7 * 24 * 60 * 60
+                7 * 24 * 60 * 60,
+                "Pause joins",
+                "Same-block join"
             );
             await createTx.wait();
 

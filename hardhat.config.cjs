@@ -53,6 +53,17 @@ const config = {
         enabled: true,
         runs: usingCoverage ? 1 : runsDefault
       }
+    },
+    overrides: {
+      "contracts/TemplGovernance.sol": {
+        settings: {
+          viaIR: viaIRDefault,
+          optimizer: {
+            enabled: true,
+            runs: usingCoverage ? 1 : 1
+          }
+        }
+      }
     }
   },
   networks: {

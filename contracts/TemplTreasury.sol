@@ -1,27 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
-import {TemplBase} from "./TemplBase.sol";
+import {TemplModuleBase} from "./TemplModuleBase.sol";
 import {TemplErrors} from "./TemplErrors.sol";
 import {CurveConfig} from "./TemplCurve.sol";
 
 /// @title Templ Treasury Module
-/// @notice Adds treasury controls, fee configuration, and external reward management.
+/// @notice Adds treasury controls and fee configuration.
 /// @author templ.fun
-contract TemplTreasuryModule is TemplBase {
-    /// @notice Sentinel used to detect direct calls to the module implementation.
-    address public immutable SELF;
-
-    /// @notice Initializes the module and captures its own address to enforce delegatecalls.
-    constructor() {
-        SELF = address(this);
-    }
-
-    modifier onlyDelegatecall() {
-        if (address(this) == SELF) revert TemplErrors.DelegatecallOnly();
-        _;
-    }
-
+contract TemplTreasuryModule is TemplModuleBase {
     /// @notice Governance action that transfers available treasury or external funds to a recipient.
     /// @param token Token to withdraw (`address(0)` for ETH, access token, or arbitrary ERC-20).
     /// @param recipient Destination wallet for the withdrawal.
@@ -62,8 +49,8 @@ contract TemplTreasuryModule is TemplBase {
         _setMaxMembers(_maxMembers);
     }
 
-    /// @notice Governance action that moves treasury balances into the member or external reward pools.
-    /// @param token Asset to disband (`address(0)` for ETH).
+    /// @notice Governance action that disbands access-token treasury into the member pool.
+    /// @param token Asset to disband (`address(0)` for ETH or ERC-20 for protocol sweep).
     function disbandTreasuryDAO(address token) external onlyDAO nonReentrant onlyDelegatecall {
         _disbandTreasury(token, 0);
     }
@@ -72,13 +59,6 @@ contract TemplTreasuryModule is TemplBase {
     /// @param newPriest Address of the incoming priest.
     function changePriestDAO(address newPriest) external onlyDAO onlyDelegatecall {
         _changePriest(newPriest);
-    }
-
-    /// @notice Governance action that enables or disables dictatorship mode.
-    /// @dev Reverts when the requested state equals the current `priestIsDictator` value.
-    /// @param enabled Target dictatorship state.
-    function setDictatorshipDAO(bool enabled) external onlyDAO onlyDelegatecall {
-        _updateDictatorship(enabled);
     }
 
     /// @notice Governance action that updates templ metadata.
@@ -113,22 +93,9 @@ contract TemplTreasuryModule is TemplBase {
         _applyCurveUpdate(config, baseEntryFee);
     }
 
-    /// @notice Removes an empty external reward token so future disbands can reuse the slot.
-    /// @param token Asset to remove from the enumeration set.
-    function cleanupExternalRewardToken(address token) external onlyDAO onlyDelegatecall {
-        _cleanupExternalRewardToken(token);
-    }
-
-    /// @notice Governance action that sends an external reward remainder to a recipient.
-    /// @param token External reward token whose remainder should be swept (address(0) for ETH).
-    /// @param recipient Wallet receiving the swept amount.
-    function sweepExternalRewardRemainderDAO(address token, address recipient) external onlyDAO onlyDelegatecall {
-        _sweepExternalRewardRemainder(token, recipient);
-    }
-
     /// @notice Governance action that sends the member pool remainder to a recipient.
     /// @param recipient Wallet receiving the swept member pool amount.
-    function sweepMemberPoolRemainderDAO(address recipient) external onlyDAO onlyDelegatecall {
+    function sweepMemberPoolRemainderDAO(address recipient) external onlyDAO nonReentrant onlyDelegatecall {
         _sweepMemberPoolRemainder(recipient);
     }
 
@@ -162,19 +129,13 @@ contract TemplTreasuryModule is TemplBase {
         _removeCouncilMember(member, msg.sender);
     }
 
-    /// @notice Priest-only helper that consumes the single bootstrap council seat.
-    /// @param member Wallet to grant the bootstrap council seat to.
-    function bootstrapCouncilMember(address member) external onlyDelegatecall {
-        _bootstrapCouncilMember(member, msg.sender);
-    }
-
     /// @notice Governance action that updates the quorum threshold in basis points.
     /// @param newQuorumBps New quorum threshold (0-10_000 bps).
     function setQuorumBpsDAO(uint256 newQuorumBps) external onlyDAO onlyDelegatecall {
         _setQuorumBps(newQuorumBps);
     }
 
-    /// @notice Governance action that updates the post‑quorum voting period in seconds.
+    /// @notice Governance action that updates the post-quorum voting period in seconds.
     /// @param newPeriod Seconds to wait after quorum before execution.
     function setPostQuorumVotingPeriodDAO(uint256 newPeriod) external onlyDAO onlyDelegatecall {
         _setPostQuorumVotingPeriod(newPeriod);
@@ -187,11 +148,11 @@ contract TemplTreasuryModule is TemplBase {
         _setBurnAddress(newBurn);
     }
 
-    /// @notice Governance action that updates the default pre‑quorum voting period (seconds).
+    /// @notice Governance action that updates the default pre-quorum voting period (seconds).
     /// @dev Governance can reach this setter by proposing a `CallExternal` targeting the TEMPL
     ///      router with the `setPreQuorumVotingPeriodDAO` selector and encoded params.
     ///      The allowed range is [36 hours, 30 days].
-    /// @param newPeriod New default pre‑quorum voting period (seconds).
+    /// @param newPeriod New default pre-quorum voting period (seconds).
     function setPreQuorumVotingPeriodDAO(uint256 newPeriod) external onlyDAO onlyDelegatecall {
         _setPreQuorumVotingPeriod(newPeriod);
     }

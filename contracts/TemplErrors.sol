@@ -9,8 +9,6 @@ library TemplErrors {
     error NotMember();
     /// @notice Thrown when a function restricted to the DAO is called externally.
     error NotDAO();
-    /// @notice Thrown when a function requires the priest caller under dictatorship mode.
-    error PriestOnly();
     /// @notice Thrown when joins are paused by governance.
     error JoinIntakePaused();
     /// @notice Thrown when attempting to join more than once.
@@ -53,6 +51,8 @@ library TemplErrors {
     error InvalidEntryFee();
     /// @notice Thrown when the entry fee exceeds the supported maximum.
     error EntryFeeTooLarge();
+    /// @notice Thrown when the entry fee exceeds the caller's max entry fee.
+    error EntryFeeTooHigh();
     /// @notice Thrown when an entry fee curve configuration is invalid.
     error InvalidCurveConfig();
     /// @notice Thrown when fee percentages do not sum correctly or exceed limits.
@@ -83,10 +83,6 @@ library TemplErrors {
     error InvalidPercentage();
     /// @notice Thrown when instant quorum is configured below the normal quorum threshold.
     error InstantQuorumBelowQuorum();
-    /// @notice Thrown when priest dictatorship mode disables proposal-based governance.
-    error DictatorshipEnabled();
-    /// @notice Thrown when attempting to toggle dictatorship to its current state.
-    error DictatorshipUnchanged();
     /// @notice Thrown when an action requires council membership.
     error NotCouncil();
     /// @notice Thrown when attempting to add a wallet that already sits on the council.
@@ -95,16 +91,8 @@ library TemplErrors {
     error CouncilMemberMissing();
     /// @notice Thrown when removing a council member would leave the council empty.
     error CouncilMemberMinimum();
-    /// @notice Thrown when attempting an action that conflicts with active council governance.
-    error CouncilModeActive();
     /// @notice Thrown when attempting a council-only action while council governance is inactive.
     error CouncilModeInactive();
-    /// @notice Thrown when the priest bootstrap seat has already been consumed.
-    error CouncilBootstrapConsumed();
-    /// @notice Thrown when the external reward registry has reached its capacity.
-    error ExternalRewardLimitReached();
-    /// @notice Thrown when attempting to clear an external reward token that still holds value.
-    error ExternalRewardsNotSettled();
     /// @notice Thrown when templ creation is restricted to the factory deployer.
     error FactoryAccessRestricted();
     /// @notice Thrown when a non-deployer attempts to update factory permissionless settings.
@@ -113,6 +101,4 @@ library TemplErrors {
     error PermissionlessUnchanged();
     /// @notice Thrown when a module function is called directly instead of via delegatecall through TEMPL.
     error DelegatecallOnly();
-    /// @notice Thrown when an access token fails vanilla ERC-20 checks during safe deployment probing.
-    error NonVanillaToken();
 }

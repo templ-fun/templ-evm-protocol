@@ -38,6 +38,42 @@ describe("Fee extremes (proposal + referral)", function () {
     expect(await token.balanceOf(proposer.address)).to.equal(proposerBefore - ENTRY_FEE);
   });
 
+  it("recalculates proposal fees after entry fee updates", async function () {
+    const feeBps = 500;
+    const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE, proposalFeeBps: feeBps });
+    const [, , proposer, voter] = accounts;
+    await mintToUsers(token, [proposer, voter], ENTRY_FEE * 10n);
+    await joinMembers(templ, token, [proposer, voter]);
+
+    const templAddress = await templ.getAddress();
+    await token.connect(proposer).approve(templAddress, ethers.MaxUint256);
+
+    const oldEntryFee = await templ.entryFee();
+    const newEntryFee = oldEntryFee * 2n;
+
+    await templ
+      .connect(proposer)
+      .createProposalUpdateConfig(newEntryFee, 0, 0, 0, false, 7 * 24 * 60 * 60, "Raise fee", "");
+    const updateId = (await templ.proposalCount()) - 1n;
+    await templ.connect(voter).vote(updateId, true);
+    const delay = Number(await templ.postQuorumVotingPeriod());
+    await ethers.provider.send("evm_increaseTime", [delay + 1]);
+    await ethers.provider.send("evm_mine", []);
+    await templ.executeProposal(updateId);
+    expect(await templ.entryFee()).to.equal(newEntryFee);
+
+    const treasuryBefore = await templ.treasuryBalance();
+    const proposerBefore = await token.balanceOf(proposer.address);
+
+    await templ
+      .connect(proposer)
+      .createProposalSetJoinPaused(true, 7 * 24 * 60 * 60, "Pause", "Fee uses new entry");
+
+    const expectedFee = (newEntryFee * BigInt(feeBps)) / BPS;
+    expect(await templ.treasuryBalance()).to.equal(treasuryBefore + expectedFee);
+    expect(await token.balanceOf(proposer.address)).to.equal(proposerBefore - expectedFee);
+  });
+
   it("referral share 0: pays nothing to referrer and credits full pool", async function () {
     const { templ, token, accounts } = await deployTempl({ entryFee: ENTRY_FEE, referralShareBps: 0 });
     const [, , referrer, newcomer] = accounts;
@@ -83,4 +119,3 @@ describe("Fee extremes (proposal + referral)", function () {
     expect(await token.balanceOf(referrer.address)).to.equal(refBefore + expectedMemberPool);
   });
 });
-

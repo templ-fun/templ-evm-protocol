@@ -7,11 +7,22 @@ const DEFAULT_BURN_BPS = 3_000;
 const DEFAULT_TREASURY_BPS = 3_000;
 const DEFAULT_MEMBER_POOL_BPS = 3_000;
 const DEFAULT_QUORUM_BPS = 3_300;
+const DEFAULT_CURVE_EXP_RATE_BPS = 10_094;
+const DEFAULT_MAX_MEMBERS = 249;
 const USE_DEFAULT_SENTINEL = -1;
+const MAX_ENTRY_FEE = (1n << 128n) - 1n;
 const CURVE_STYLE_INDEX = {
   static: 0,
   linear: 1,
   exponential: 2
+};
+const DEFAULT_FACTORY_CURVE = {
+  primary: {
+    style: CURVE_STYLE_INDEX.exponential,
+    rateBps: DEFAULT_CURVE_EXP_RATE_BPS,
+    length: DEFAULT_MAX_MEMBERS - 1
+  },
+  additionalSegments: [{ style: CURVE_STYLE_INDEX.static, rateBps: 0, length: 0 }]
 };
 
 function parseFiniteNumber(input, label) {
@@ -98,7 +109,7 @@ function resolveCurveConfigFromEnv() {
   } else if (resolvedStyle === CURVE_STYLE_INDEX.linear) {
     resolvedRate = 500;
   } else {
-    resolvedRate = 11_000;
+    resolvedRate = DEFAULT_CURVE_EXP_RATE_BPS;
   }
 
   if (resolvedStyle === CURVE_STYLE_INDEX.static && resolvedRate !== 0) {
@@ -246,6 +257,7 @@ async function main() {
   const TOKEN_ADDRESS = process.env.TOKEN_ADDRESS;
   const ENTRY_FEE = process.env.ENTRY_FEE;
   const FACTORY_ADDRESS_ENV = process.env.FACTORY_ADDRESS;
+  const factoryDeployerEnv = (process.env.FACTORY_DEPLOYER || deployer.address).trim();
   let membershipModuleAddress = (process.env.MEMBERSHIP_MODULE_ADDRESS || '').trim();
   let treasuryModuleAddress = (process.env.TREASURY_MODULE_ADDRESS || '').trim();
   let governanceModuleAddress = (process.env.GOVERNANCE_MODULE_ADDRESS || '').trim();
@@ -279,7 +291,7 @@ async function main() {
     defaultBps: 2_500
   });
   const YES_VOTE_THRESHOLD_INPUT = (process.env.YES_VOTE_THRESHOLD_BPS || '').trim();
-  let yesVoteThresholdBps = 5_000;
+  let yesVoteThresholdBps = 5_100;
   if (YES_VOTE_THRESHOLD_INPUT) {
     const parsed = Number(YES_VOTE_THRESHOLD_INPUT);
     if (!Number.isFinite(parsed)) {
@@ -311,11 +323,8 @@ async function main() {
         : parseBoolean(rawCouncilMode);
   const BACKEND_URL = (process.env.BACKEND_URL || process.env.TEMPL_BACKEND_URL || '').trim();
   const TELEGRAM_CHAT_ID = (process.env.TELEGRAM_CHAT_ID || process.env.CHAT_ID || '').trim();
-  const PRIEST_IS_DICTATOR = /^(?:1|true)$/i.test((process.env.PRIEST_IS_DICTATOR || '').trim());
-  if (START_COUNCIL_MODE && PRIEST_IS_DICTATOR) {
-    throw new Error('Council mode cannot be enabled while PRIEST_IS_DICTATOR is true');
-  }
   const curveConfigEnv = resolveCurveConfigFromEnv();
+  const resolvedCurve = curveConfigEnv.curveProvided ? curveConfigEnv.curve : DEFAULT_FACTORY_CURVE;
 
   if (!TOKEN_ADDRESS) {
     throw new Error("TOKEN_ADDRESS not set in environment");
@@ -354,6 +363,14 @@ async function main() {
       throw new Error(`Failed to read protocol bps from factory ${FACTORY_ADDRESS_ENV}: ${err?.message || err}`);
     }
   } else {
+    if (!hre.ethers.isAddress(factoryDeployerEnv)) {
+      throw new Error('FACTORY_DEPLOYER must be a valid address (or omit to default to signer)');
+    }
+    if (factoryDeployerEnv.toLowerCase() !== deployer.address.toLowerCase()) {
+      throw new Error(
+        'FACTORY_DEPLOYER must match the deployer signer when deploying a new factory and creating a TEMPL in the same run.'
+      );
+    }
     if (!PROTOCOL_FEE_RECIPIENT) {
       throw new Error("PROTOCOL_FEE_RECIPIENT not set in environment");
     }
@@ -366,9 +383,22 @@ async function main() {
   if (QUORUM_BPS !== undefined && (!Number.isFinite(QUORUM_BPS) || QUORUM_BPS < 0 || QUORUM_BPS > 10_000)) {
     throw new Error('QUORUM_BPS must be between 0 and 10,000');
   }
-  if (POST_QUORUM_VOTING_PERIOD_SECONDS !== undefined && (!Number.isFinite(POST_QUORUM_VOTING_PERIOD_SECONDS) || POST_QUORUM_VOTING_PERIOD_SECONDS <= 0)) {
-    throw new Error('POST_QUORUM_VOTING_PERIOD_SECONDS must be a positive number of seconds');
+  const MIN_POST_QUORUM_SECONDS = 60 * 60;
+  const MAX_POST_QUORUM_SECONDS = 30 * 24 * 60 * 60;
+  if (POST_QUORUM_VOTING_PERIOD_SECONDS !== undefined) {
+    if (!Number.isFinite(POST_QUORUM_VOTING_PERIOD_SECONDS)) {
+      throw new Error('POST_QUORUM_VOTING_PERIOD_SECONDS must be a number');
+    }
+    if (
+      POST_QUORUM_VOTING_PERIOD_SECONDS < MIN_POST_QUORUM_SECONDS ||
+      POST_QUORUM_VOTING_PERIOD_SECONDS > MAX_POST_QUORUM_SECONDS
+    ) {
+      throw new Error(
+        `POST_QUORUM_VOTING_PERIOD_SECONDS must be between ${MIN_POST_QUORUM_SECONDS} and ${MAX_POST_QUORUM_SECONDS}`
+      );
+    }
   }
+  const resolvedExecutionDelaySeconds = POST_QUORUM_VOTING_PERIOD_SECONDS ?? 36 * 60 * 60;
   if (BURN_ADDRESS && !hre.ethers.isAddress(BURN_ADDRESS)) {
     throw new Error('BURN_ADDRESS must be a valid address');
   }
@@ -385,10 +415,13 @@ async function main() {
 
   const entryFee = BigInt(ENTRY_FEE);
   if (entryFee < 10n) {
-    throw new Error("ENTRY_FEE must be at least 10 wei for proper distribution");
+    throw new Error("ENTRY_FEE must be at least 10 (raw token units)");
   }
   if (entryFee % 10n !== 0n) {
     throw new Error("ENTRY_FEE must be divisible by 10 to satisfy contract constraints");
+  }
+  if (entryFee > MAX_ENTRY_FEE) {
+    throw new Error("ENTRY_FEE exceeds MAX_ENTRY_FEE (uint128 max)");
   }
 
   console.log("========================================");
@@ -429,9 +462,8 @@ async function main() {
   const chainIdNumber = Number(network.chainId);
   console.log("Network Chain ID:", network.chainId.toString());
   console.log("Quorum Bps:", resolvedQuorumBps);
-  console.log("Post‑Quorum Voting Period (seconds):", POST_QUORUM_VOTING_PERIOD_SECONDS ?? 36 * 60 * 60);
+  console.log("Post‑Quorum Voting Period (seconds):", resolvedExecutionDelaySeconds);
   console.log("Burn Address:", effectiveBurnAddress);
-  console.log("Priest Dictatorship:", PRIEST_IS_DICTATOR ? 'enabled' : 'disabled');
   console.log("Council Mode:", START_COUNCIL_MODE ? 'enabled' : 'disabled');
   console.log("YES Vote Threshold (bps):", yesVoteThresholdBps);
   console.log("Instant Quorum (bps):", instantQuorumBps);
@@ -452,6 +484,8 @@ async function main() {
   
   let factoryAddress = FACTORY_ADDRESS_ENV;
   let factoryContract;
+  let factoryDeployerOnChain;
+  let factoryPermissionless;
   if (!factoryAddress) {
     membershipModuleAddress = await deployModuleIfNeeded(
       'Membership',
@@ -481,12 +515,8 @@ async function main() {
 
     console.log("\nDeploying TemplFactory...");
     const Factory = await hre.ethers.getContractFactory("TemplFactory");
-    const FACTORY_DEPLOYER = (process.env.FACTORY_DEPLOYER || deployer.address).trim();
-    if (!hre.ethers.isAddress(FACTORY_DEPLOYER)) {
-      throw new Error('FACTORY_DEPLOYER must be a valid address (or omit to default to signer)');
-    }
     const factory = await Factory.deploy(
-      FACTORY_DEPLOYER,
+      factoryDeployerEnv,
       PROTOCOL_FEE_RECIPIENT,
       protocolPercentBps,
       membershipModuleAddress,
@@ -522,6 +552,14 @@ async function main() {
     }
   }
 
+  factoryDeployerOnChain = await factoryContract.factoryDeployer();
+  factoryPermissionless = await factoryContract.permissionless();
+  if (!factoryPermissionless && factoryDeployerOnChain.toLowerCase() !== deployer.address.toLowerCase()) {
+    throw new Error(
+      `Factory ${factoryAddress} restricts creation to ${factoryDeployerOnChain}. Use that signer or enable permissionless mode before deploying a TEMPL.`
+    );
+  }
+
   console.log("\nFactory wiring:");
   console.log("- Membership Module:", membershipModuleAddress);
   console.log("- Treasury Module:", treasuryModuleAddress);
@@ -544,7 +582,6 @@ async function main() {
     quorumBps: quorumPercentBps,
     executionDelaySeconds: POST_QUORUM_VOTING_PERIOD_SECONDS ?? 0,
     burnAddress: BURN_ADDRESS || hre.ethers.ZeroAddress,
-    priestIsDictator: PRIEST_IS_DICTATOR,
     maxMembers: MAX_MEMBERS,
     curveProvided: curveConfigEnv.curveProvided,
     curve: curveConfigEnv.curve,
@@ -695,10 +732,9 @@ async function main() {
     treasuryBps: treasurySplit.resolvedBps,
     memberPoolBps: memberPoolSplit.resolvedBps,
     protocolBps: protocolPercentBps,
-    quorumBps: quorumPercentBps,
-    executionDelaySeconds: POST_QUORUM_VOTING_PERIOD_SECONDS ?? 36 * 60 * 60,
+    quorumBps: resolvedQuorumBps,
+    executionDelaySeconds: resolvedExecutionDelaySeconds,
     burnAddress: effectiveBurnAddress,
-    priestIsDictator: PRIEST_IS_DICTATOR,
     tokenAddress: TOKEN_ADDRESS,
     entryFee: ENTRY_FEE,
     templName: NAME,
@@ -707,7 +743,7 @@ async function main() {
     proposalFeeBps: PROPOSAL_FEE_BPS,
     referralShareBps: REFERRAL_SHARE_BPS,
     curveProvided: curveConfigEnv.curveProvided,
-    curve: curveConfigEnv.curve,
+    curve: resolvedCurve,
     totalBurned: burnedTotal !== undefined ? burnedTotal.toString() : "0",
     deployedAt: new Date().toISOString(),
     deployer: deployer.address,
@@ -743,10 +779,10 @@ async function main() {
       `npx hardhat verify --contract contracts/TemplCouncil.sol:TemplCouncilModule --network base ${councilModuleAddress}`
     );
     console.log(
-      `npx hardhat verify --contract contracts/TemplFactory.sol:TemplFactory --network base ${factoryAddress} ${(process.env.FACTORY_DEPLOYER || deployer.address).trim()} ${PROTOCOL_FEE_RECIPIENT} ${protocolPercentBps} ${membershipModuleAddress} ${treasuryModuleAddress} ${governanceModuleAddress} ${councilModuleAddress} ${templDeployerAddress}`
+      `npx hardhat verify --contract contracts/TemplFactory.sol:TemplFactory --network base ${factoryAddress} ${factoryDeployerOnChain} ${PROTOCOL_FEE_RECIPIENT} ${protocolPercentBps} ${membershipModuleAddress} ${treasuryModuleAddress} ${governanceModuleAddress} ${councilModuleAddress} ${templDeployerAddress}`
     );
     console.log(
-      `npx hardhat verify --contract contracts/TEMPL.sol:TEMPL --network base ${contractAddress} ${PRIEST_ADDRESS} ${PROTOCOL_FEE_RECIPIENT} ${TOKEN_ADDRESS} ${ENTRY_FEE} ${burnSplit.resolvedBps} ${treasurySplit.resolvedBps} ${memberPoolSplit.resolvedBps} ${protocolPercentBps} ${quorumPercentBps} ${(POST_QUORUM_VOTING_PERIOD_SECONDS ?? 36 * 60 * 60)} ${(BURN_ADDRESS || hre.ethers.ZeroAddress)} ${PRIEST_IS_DICTATOR} ${MAX_MEMBERS} "${NAME}" "${DESCRIPTION}" "${LOGO_LINK}" ${PROPOSAL_FEE_BPS} ${REFERRAL_SHARE_BPS} ${yesVoteThresholdBps} ${instantQuorumBps} ${START_COUNCIL_MODE} ${membershipModuleAddress} ${treasuryModuleAddress} ${governanceModuleAddress} ${councilModuleAddress} [[[curve argument omitted; use scripts/verify-templ.cjs for templ verification]]]`
+      `npx hardhat verify --contract contracts/TEMPL.sol:TEMPL --network base ${contractAddress} ${PRIEST_ADDRESS} ${PROTOCOL_FEE_RECIPIENT} ${TOKEN_ADDRESS} ${ENTRY_FEE} ${burnSplit.resolvedBps} ${treasurySplit.resolvedBps} ${memberPoolSplit.resolvedBps} ${protocolPercentBps} ${resolvedQuorumBps} ${resolvedExecutionDelaySeconds} ${effectiveBurnAddress} ${MAX_MEMBERS} "${NAME}" "${DESCRIPTION}" "${LOGO_LINK}" ${PROPOSAL_FEE_BPS} ${REFERRAL_SHARE_BPS} ${yesVoteThresholdBps} ${instantQuorumBps} ${START_COUNCIL_MODE} ${membershipModuleAddress} ${treasuryModuleAddress} ${governanceModuleAddress} ${councilModuleAddress} [[[curve argument omitted; use scripts/verify-templ.cjs for templ verification]]]`
     );
     console.log("Tip: prefer npm run verify:factory and npm run verify:templ which auto-discover constructor args.");
   }
@@ -756,13 +792,14 @@ async function main() {
   console.log("========================================");
   console.log("\nContract Address:", contractAddress);
   console.log("\n🗳️ DAO Governance:");
-  console.log("- Treasury controlled by member voting");
-  console.log("- Proposals pass when YES > NO and quorum/time checks are met");
-  console.log("- Voting period: ≥36h (max 30 days)");
-  console.log("- One member = one vote (proposer auto‑YES; votes changeable until deadline)");
+  console.log("- Treasury controlled by on-chain governance (member-wide or council-only)");
+  console.log("- Proposals pass when YES ratio meets the configured threshold and quorum/time checks are met");
+  console.log("- Voting period (pre-quorum): ≥36h (max 30 days)");
+  console.log("- Post-quorum delay: 1h-30d (unless instant quorum triggers)");
+  console.log("- One eligible voter = one vote (proposer auto‑YES; votes changeable until deadline)");
   console.log("\n🔒 Security Features:");
   console.log("- No backdoor functions");
-  console.log("- Treasury/token moves via DAO votes (or priest in dictatorship mode)");
+  console.log("- Treasury/token moves via DAO votes");
   console.log("- One join per wallet");
   console.log("- Vote gaming prevention");
 }
