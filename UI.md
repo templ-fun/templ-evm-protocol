@@ -22,7 +22,7 @@ Common preflight helpers
 
 Allowances and approvals
 - Joins (all variants): approve the access token to `templ.target` before calling the join. Recommend a buffer of `2 × entryFee` to absorb fee changes and cover the first proposal creation fee. Always make this adjustable and never default to unlimited.
-- Proposal creation fee: when `proposalCreationFeeBps > 0` and the computed `proposalFee = entryFee * proposalCreationFeeBps / 10_000` is non-zero, non-council proposers must approve `proposalFee` to `templ.target` prior to any `createProposal*` call (council proposers are fee‑exempt while council mode is active).
+- Proposal creation fee: when `proposalCreationFeeBps > 0` and the computed `proposalFee = entryFee * proposalCreationFeeBps / 10_000` is non-zero, proposers must approve `proposalFee` to `templ.target` prior to any `createProposal*` call unless council mode is active and the proposer is a council member (fee‑waived).
 - Donations: no approvals are needed. Donors send ETH directly to the templ address, or call token `transfer(templ.target, amount)`.
 
 Donations: address and custody
@@ -163,7 +163,7 @@ Post‑deploy handoff
 - Note: Referral rewards are sent at join time to the referrer; there is no separate referral claim.
 
 4) Create a Governance Proposal
-- Preconditions: caller must be a member. If `proposalCreationFeeBps > 0`, approve `proposalFee` in access tokens to the templ before creating.
+- Preconditions: caller must be a member. If `proposalCreationFeeBps > 0`, approve `proposalFee` in access tokens before creating unless council mode is active and the proposer is a council member (fee‑waived).
 - Voting period: pass `0` to use the templ’s default pre‑quorum window, or a custom number of seconds within the allowed range.
 - Common creators (see full list below):
   - Pause/resume joins: `templ.createProposalSetJoinPaused(bool paused, uint256 votingPeriod, string title, string description)`

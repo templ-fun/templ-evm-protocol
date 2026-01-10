@@ -1,0 +1,8 @@
+===== RW Sat Jan 10 00:28:35 CET 2026 =====
+STOP: NO_INCONSISTENCIES_FOUND
+PROMPT: search README and UI markdowns for any inconsistency comparing with the codebase, fix any inconsistencies found, if none are found then you must say this in your answer: NO_INCONSISTENCIES_FOUND
+
+\n----- FINAL_ASSISTANT_MESSAGE -----
+Aligned proposal-fee guidance with the actual on-chain waiver logic (only waived for council members while council mode is active) so the docs match contract behavior. Updated `UI.md` to clarify approval requirements in both the allowances section and proposal-creation preconditions, and corrected the implementation note in `README.md` to reflect the same rule.
+
+Tests not run (docs-only changes).

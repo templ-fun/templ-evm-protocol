@@ -24,7 +24,7 @@ Priest enrollment
 ## Templ Factories
 
 - The factory delegates TEMPL construction to a dedicated `TemplDeployer` helper, keeping the factory bytecode well under the 24,576 byte EIP-170 limit.
-- Deterministic multichain deployment: `node scripts/deploy-factory-multichain.mjs` deploys the modules, `TemplDeployer`, and `TemplFactory` to mainnet/Base/Optimism/Arbitrum using the same constructor args so the factory address matches across chains. Defaults to the shared treasury multisig `0x420f7D96FcEFe9D4708312F454c677ceB61D8420` and `PROTOCOL_BPS=1000`; override via env. Requires a deployer with the same starting nonce on every chain (fresh key recommended) plus `RPC_MAINNET_URL`, `RPC_BASE_URL`, `RPC_OPTIMISM_URL`, `RPC_ARBITRUM_URL`, and `PRIVATE_KEY`. Outputs to `scripts/out/factory-addresses.json` and prints verification commands per chain.
+- Deterministic multichain deployment: `node scripts/deploy-factory-multichain.mjs` deploys the modules, `TemplDeployer`, and `TemplFactory` to mainnet/Base/Optimism/Arbitrum using the same constructor args so the factory address matches across chains. Defaults to the shared treasury multisig `0x420f7D96FcEFe9D4708312F454c677ceB61D8420` and `PROTOCOL_BPS=1000`; override via env. Requires a deployer with the same starting nonce on every chain (nonce 0 by default; set `ALLOW_NONZERO_NONCE=true` to permit a non-zero start) plus `RPC_MAINNET_URL`, `RPC_BASE_URL`, `RPC_OPTIMISM_URL`, `RPC_ARBITRUM_URL`, and `PRIVATE_KEY`. Outputs to `scripts/out/factory-addresses.json` and prints verification commands per chain.
 
 ## Architecture
 At runtime a templ behaves like one contract with clean separation of concerns via delegatecall modules sharing a single storage layout:
@@ -147,7 +147,7 @@ const params = ethers.AbiCoder.defaultAbiCoder().encode([
 ], [await newModule.getAddress(), [selector]]);
 
 // Create proposal to call templ.setRoutingModuleDAO(module, selectors)
-const pid = await templ.createProposalCallExternal(
+const pid = await templ.createProposalCallExternal.staticCall(
   await templ.getAddress(),
   0,
   setRoutingSel,
@@ -156,6 +156,17 @@ const pid = await templ.createProposalCallExternal(
   "Route getMemberCount to new module",
   "Demonstrate routing upgrade via governance"
 );
+await (
+  await templ.createProposalCallExternal(
+    await templ.getAddress(),
+    0,
+    setRoutingSel,
+    params,
+    36 * 60 * 60, // voting period
+    "Route getMemberCount to new module",
+    "Demonstrate routing upgrade via governance"
+  )
+).wait();
 // vote() and executeProposal(pid) per usual
 ```
 
@@ -617,7 +628,7 @@ When instant quorum is satisfied (default: 100% of eligible voters cast YES vote
 #### Proposal Fee Behavior
 Proposal fees apply to non-council proposers; council proposers are fee‑exempt while council mode is active:
 - **Rationale**: Council governance is intended to be fast to operate while preserving fee signals for non-council members.
-- **Implementation**: Fees are charged when `proposalCreationFeeBps > 0` and the proposer is not a council member while council mode is enabled (entryFee * bps / 10_000, integer math).
+- **Implementation**: Fees are charged when `proposalCreationFeeBps > 0` unless council mode is active and the proposer is a council member (entryFee * bps / 10_000, integer math).
 
 ## Troubleshooting
 - `InvalidEntryFee` / `EntryFeeTooSmall`: fee must be ≥10 and divisible by 10.

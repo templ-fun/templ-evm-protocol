@@ -1,0 +1,3 @@
+Aligned proposal-fee guidance with the actual on-chain waiver logic (only waived for council members while council mode is active) so the docs match contract behavior. Updated `UI.md` to clarify approval requirements in both the allowances section and proposal-creation preconditions, and corrected the implementation note in `README.md` to reflect the same rule.
+
+Tests not run (docs-only changes).
