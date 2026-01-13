@@ -4,22 +4,65 @@
 
 Templ lets anyone create on-chain, token‑gated groups (“templs”) that accrue an access‑token treasury, stream rewards to existing members, and govern changes and payouts entirely on-chain.
 
-Quick links: [At a Glance](#protocol-at-a-glance) · [Architecture](#architecture) · [Governance‑Controlled Upgrades](#governance-controlled-upgrades) · [Solidity Patterns](#solidity-patterns) · [Repo Map](#repo-map) · [Glossary](#glossary) · [Lifecycle](#lifecycle) · [Quickstart](#quickstart) · [Deploy](#deploy-locally) · [Safety Model](#safety-model) · [Security](#security) · [Constraints](#constraints) · [Limits](#limits--defaults) · [Indexing](#indexing-notes) · [Proposal Views](#proposal-views) · [Tests](#tests) · [FAQ](#faq) · [Troubleshooting](#troubleshooting) · [Gotchas](#gotchas)
+Reading guide:
+- Start: [Protocol Guide](#protocol-guide-read-in-order) (linear).
+- Builders: [Quickstart](#quickstart) · [Deploy](#deploy-locally) · [Scripts & Env Vars](#scripts--env-vars).
+- Integrators: [Architecture](#architecture) · [Indexing](#indexing-notes) · [Proposal Views](#proposal-views) · [UI Integration](UI.md).
+- Security: [Governance-Controlled Upgrades](#governance-controlled-upgrades) · [Safety Model](#safety-model) · [Security](#security).
 
-## Protocol At a Glance
-- Create a templ tied to a vanilla ERC‑20 access token (assumed, not enforced); members join by paying an entry fee in that token. The fee is split into burn, treasury, member‑pool, and protocol slices.
-- Existing members accrue pro‑rata rewards from the member‑pool slice and can claim at any time. Templs can also hold ETH or other ERC‑20s as unaccounted treasury assets.
-- Donations (ETH or ERC‑20) sent directly to the templ address are held by the templ and governed: governance can withdraw these funds to recipients. Disbanding the access token moves treasury into the member pool; disbanding other tokens sweeps the full balance to the protocol fee recipient. ERC‑721 NFTs can also be custodied by a templ and later moved via governance (see NFT notes below).
-- Governance is member-gated for proposing; voting is member-wide or council-only depending on mode. Execution is permissionless once a proposal passes. Actions can change parameters, move treasury, update curves/metadata, or call arbitrary external contracts.
-- Council mode (default for `createTempl` / `createTemplFor` deployments) narrows voting power to a curated council while still letting any member open most proposals (council‑member removals require a council proposer). Council composition changes via governance. Council members are fee‑exempt while council mode is active.
-- The YES vote threshold (bps of votes cast) is configurable per templ (default 5,100 bps, i.e. 51%) and can be changed via governance alongside quorum/post‑quorum windows.
-- Instant quorum (bps of eligible voters, default 10,000 bps) lets proposals bypass the post‑quorum execution delay once YES votes meet the instant quorum threshold (which is always ≥ the normal quorum threshold).
-- Pricing curves define how the entry fee evolves with membership growth (static, linear, exponential segments; see `CurveConfig` in `TemplCurve`).
-- Everything is modular: `TEMPL` is a router that delegatecalls membership, treasury, governance, and council modules over a shared storage layout, keeping concerns clean.
-- Deploy many templs via `TemplFactory`; run permissionless or with a gated deployer.
+Quick links:
+- Start: [Protocol Guide](#protocol-guide-read-in-order)
+- Protocol: [Architecture](#architecture) · [How It Works](#how-it-works) · [Glossary](#glossary) · [Lifecycle](#lifecycle) · [Governance-Controlled Upgrades](#governance-controlled-upgrades) · [Templ Factories](#templ-factories)
+- Build: [Repo Map](#repo-map) · [Quickstart](#quickstart) · [Deploy](#deploy-locally) · [Scripts & Env Vars](#scripts--env-vars) · [Tests](#tests)
+- Integrate: [Indexing](#indexing-notes) · [Proposal Views](#proposal-views) · [UI Integration](UI.md)
+- Safety: [Safety Model](#safety-model) · [Security](#security) · [Constraints](#constraints) · [Limits](#limits--defaults) · [FAQ](#faq) · [Troubleshooting](#troubleshooting) · [Gotchas](#gotchas)
 
-Priest enrollment
-- On deploy, the priest is auto‑enrolled as member #1 and becomes the initial council member. `joinSequence` starts at 1 and the priest’s `rewardSnapshot` is initialized to the current `cumulativeMemberRewards`.
+## Protocol Guide (Read in Order)
+
+### 1) What it is
+- A templ is a token-gated group built around a vanilla ERC-20 access token.
+- Members join by paying an entry fee; the fee splits into burn, treasury, member pool, and protocol shares.
+- Member pool rewards accrue in the access token and are claimed on demand.
+- Governance controls parameters and treasury; execution is permissionless once proposals pass.
+
+### 2) Core addresses and roles
+- The TEMPL router is the only address to call; modules are delegatecall-only.
+- The access token must be vanilla ERC-20 (no fees, rebases, or hooks).
+- The priest starts as member #1 and first council member; governance can update it.
+- Members can propose; council members vote in council mode; protocol recipient and burn address receive join shares.
+
+### 3) Membership and pricing
+- Join for self or others; optional referrals are paid from the member pool.
+- Entry fee is in smallest units, must be >= 10 and divisible by 10; curves update the fee after each join.
+- Use max-entry-fee join variants to cap slippage; membership is permanent.
+
+### 4) Treasury, donations, and assets
+- Donations go to the templ address; donations do not grant membership.
+- Access-token withdrawals are limited to the balance outside the member pool; disbanding moves that balance into the member pool (requires at least one member).
+- ETH and other ERC-20 balances are governed; disbanding those sweeps to the protocol fee recipient.
+- NFTs can be held, but the templ is not an IERC721Receiver; ERC-1155 is not supported directly.
+
+### 5) Governance and voting
+- Only members can propose; one active proposal per proposer; proposer auto-votes YES and can cancel before anyone else votes.
+- Proposal creation may charge an access-token fee (credited to treasury); council members are fee-exempt in council mode.
+- Voting is 1 member = 1 vote; quorum uses YES votes; passing requires YES/(YES+NO) >= threshold.
+- Eligibility snapshots at creation and at quorum; instant quorum can close voting early.
+
+### 6) Council mode
+- Default for `createTempl` and `createTemplFor`; can be disabled at deploy time.
+- Only council members vote; any member can propose except council removals.
+- Council roster is snapshotted per proposal; removals cannot leave the council empty.
+
+### 7) Upgrades and safety
+- No admin key; routing changes only via governance using `setRoutingModuleDAO`.
+- Only fallback-routed selectors are upgradable; TEMPL direct functions are fixed.
+- External calls and routing updates are powerful; avoid targeting the templ itself for treasury moves.
+
+### 8) Lifecycle and constraints
+- Deploy factory or use existing; create templ; members join; govern changes; claim rewards; disband when done.
+- Constraints and defaults are in [Constraints](#constraints) and [Limits & Defaults](#limits--defaults); security assumptions in [Safety Model](#safety-model) and [Security](#security).
+
+Reference sections below expand on the guide with diagrams, deployment, integration, and detailed parameters.
 
 ## Templ Factories
 
@@ -47,59 +90,15 @@ Deployers configure pricing curves, fee splits, referral rewards, proposal fees,
 - Disable council mode via the `SetCouncilMode` proposal type to return to member-wide voting.
 
 #### Migrating Existing Templs to Council Governance
-Templs deployed with `councilMode=false` can adopt council governance through the following process:
+Templs deployed with `councilMode=false` can adopt council mode with a short flow:
+- Add council members via `createProposalAddCouncilMember` (repeat as needed).
+- Enable council mode via `createProposalSetCouncilMode(true)` (member-wide vote).
+- After activation, only council members vote; any member can still propose except removals.
+- To revert, council proposes `createProposalSetCouncilMode(false)`.
 
-**Prerequisites**:
-- Priest must already be a member (true for all templs) so `councilMemberCount > 0`
-
-**Migration Steps**:
-
-1. **Add Council Members via Governance**:
-   ```solidity
-   // Create proposals to add each council member (requires quorum + majority)
-   templ.createProposalAddCouncilMember(
-     memberAddress,
-     votingPeriod,
-     "Add Alice to Council",
-     "Appointing Alice as the first council member"
-   );
-   ```
-   Repeat this process to add as many council members as you want; council mode can operate with a single council member, but adding more improves resilience.
-
-2. **Enable Council Mode**:
-   ```solidity
-   // Once at least 1 council member exists, enable council mode
-   templ.createProposalSetCouncilMode(
-     true,  // enable council mode
-     votingPeriod,
-     "Activate Council Governance",
-     "Transitioning from member-wide voting to council governance"
-   );
-   ```
-   This proposal requires member-wide voting (the last vote before council mode activates).
-
-3. **Post-Migration Governance**:
-- After council mode is enabled, only council members can vote on proposals (non-council members cannot vote)
-- Any member can still create proposals (council proposers are fee‑exempt)
-   - Council composition changes via `createProposalAddCouncilMember` / `createProposalRemoveCouncilMember`
-   - Only council members may propose removals; additions remain open to all members
-
-**Reverting to Member-Wide Voting**:
-To disable council mode and return to member-wide governance:
-```solidity
-// Council members vote to disable council mode
-templ.createProposalSetCouncilMode(
-  false,  // disable council mode
-  votingPeriod,
-  "Return to Member Voting",
-  "Transitioning back to member-wide governance"
-);
-```
-This proposal requires council approval while council mode is active. Once disabled, all members can vote again.
-
-**Important Notes**:
-- Ensure you maintain at least one active council member; removals that would leave the council empty are blocked. For resilience, add additional council members when possible.
-- For new templs deployed with `councilMode=true`, the priest is automatically added as the first council member.
+Notes:
+- Council cannot be empty; removals that would leave zero members revert.
+- New templs with `councilMode=true` auto-add the priest as the first council member.
 
 ## Governance‑Controlled Upgrades
 
@@ -239,6 +238,13 @@ flowchart LR
 - Council: council‑specific proposal creators for YES threshold, council mode, and council membership changes.
 - Shared storage: all persistent state lives in [`TemplBase`](contracts/TemplBase.sol).
 
+### Proposal lifecycle (simplified)
+1) Create: a member submits a proposal (one active per proposer); the proposer auto-votes YES if eligible.
+2) Pre-quorum voting: votes accumulate; the proposer can cancel before anyone else votes.
+3) Quorum reached: eligibility snapshots; a post-quorum window starts.
+4) Instant quorum: if the instant quorum threshold is met, `endTime` is set to `block.timestamp` and execution can happen immediately.
+5) Execute: any address can execute after the delay; execution clears the proposer's active slot.
+
 ## Solidity Patterns
 - Delegatecall router: `TEMPL` fallback maps `selector → module` and uses `delegatecall` to execute in shared storage (contracts/TEMPL.sol).
 - Delegatecall‑only modules: Each module stores an immutable `SELF` and reverts when called directly, enforcing router‑only entry (contracts/TemplMembership.sol, contracts/TemplTreasury.sol, contracts/TemplGovernance.sol, contracts/TemplCouncil.sol).
@@ -253,29 +259,47 @@ flowchart LR
 ## Key Concepts
 - Fee split: burn / treasury / member pool / protocol; must sum to 10_000 bps. No minimums apply to burn/treasury/member‑pool; only the protocol share is fixed per factory config.
 - Member pool: portion of each join streamed to existing members pro‑rata; optional referral share is paid from this slice.
+- Rewards are forward-looking: new members start at the current cumulative reward snapshot and only accrue future member pool inflows.
+- Token units: entry fee and all accounting are denominated in the access token's smallest unit; token decimals are not read by the protocol.
+- Accounting buckets: treasury and member pool are internal accounting for the access token; ETH or other ERC-20 balances are held directly and governed via proposals.
 - Curves: entry fee evolves by static/linear/exponential segments; see [`TemplCurve`](contracts/TemplCurve.sol).
 - Base entry fee anchor: stored anchor for curve math; may be non-divisible after retargets while `entryFee` remains normalized.
 - Snapshots: eligibility is frozen by join sequence at proposal creation, then again at quorum; proposals also snapshot their voting mode and (if council-only) the council roster. For member-wide proposals, the post‑quorum eligible voter count snapshots `memberCount` at quorum even if council mode changes later.
 - Caps/pauses: optional `maxMembers` (auto‑pauses at cap) plus `joinPaused` toggle.
 - Governance access: proposing requires membership; voting is member-wide or council-only depending on mode; proposers auto-vote YES only when they are allowed to vote (i.e., not excluded by council mode).
+- Proposal fee: optional access-token fee charged on proposal creation (unless waived for council members in council mode) and credited to treasury.
+- Membership is permanent; there is no leave or refund path.
+- Quorum exemptions: disband-treasury proposals can be quorum-exempt when proposed by the priest, or by a council member while council mode is active (to unwind otherwise inactive templs).
+
+### Roles and permissions
+- Deployer: configures a templ at creation; has no privileged controls after deployment.
+- Priest: initial member #1 and initial council member; can be updated by governance.
+- Member: can propose; can vote in member mode; accrues and claims member-pool rewards.
+- Council member: votes when council mode is active; only council members can propose removals.
+- Proposal executor: any address can execute a passed proposal.
+- Protocol fee recipient: receives the protocol share on joins and non-access-token disband sweeps.
+- Referrer: optional member who receives the referral share on joins when enabled.
 
 ### Donations: Address and Custody
 - Donation address: Send donations to the templ contract address (the TEMPL/router address). There is no separate “treasury address”. “Treasury” is an accounting bucket inside the templ that tracks how much of the templ’s on-chain balance is available for governance withdrawals versus reserved for member rewards.
 - ETH: Send ETH directly to the templ address. ETH is held by the templ and governed. Governance can later withdraw it to recipients or disband it (sweeps to the protocol fee recipient).
-- ERC‑20: Transfer tokens to the templ address (e.g., `transfer(templAddress, amount)`). Governance can withdraw these balances; disbanding non‑access tokens sweeps the full balance to the protocol fee recipient.
+- ERC‑20: Transfer tokens to the templ address (e.g., `transfer(templAddress, amount)`). Governance can withdraw these balances; disbanding non‑access tokens sweeps the full balance to the protocol fee recipient, while disbanding the access token routes the balance outside the member pool into the member pool.
 - NFTs (ERC‑721): The templ can custody NFTs. It does not implement `IERC721Receiver`, so `safeTransferFrom(..., templAddress, ...)` will revert. Use `transferFrom` to the templ, or have the DAO “pull” the NFT via `transferFrom(owner, templ, tokenId)` after the owner approves the templ. NFTs are governed treasury items and are moved via external‑call proposals.
 
 - Membership note: Donations (including in the access token) do not grant membership. Membership requires calling `join*` and paying the entry fee through the contract, which updates accounting and emits the `MemberJoined` event.
 
 ## Glossary
 - templ: One deployed instance wired by `TEMPL` with membership, treasury, governance, and council modules.
+- TEMPL: The router contract address for a templ; all reads and writes go through this contract (modules are delegatecall-only).
 - access token: The ERC‑20 used for joins, fees, and accounting. Must be vanilla (no fees/rebases/hooks).
+- council mode: Governance mode where only council members can vote; any member can propose except council removals, which require a council proposer.
 - priest: The designated address set at deployment (governance can update it); auto‑enrolled and the initial council member.
 - member pool: Accounting bucket that streams join fees to existing members, claimable pro‑rata.
+- join sequence: Monotonic counter incremented on each join; used to snapshot voter eligibility.
 - entry fee curve: Growth schedule for the next join price (see `CurveConfig` in `TemplCurve`).
 - quorum bps: Percent of eligible members whose YES votes are required to reach quorum.
 - pre/post‑quorum window: Voting period before quorum and the anchored window after quorum.
-- proposal fee: Fee paid (from the proposer) to create a proposal; a percentage of the current entry fee.
+- proposal fee: Fee paid (from the proposer) to create a proposal; a percentage of the current entry fee, paid in the access token and credited to treasury.
 - referral share: Portion of the member‑pool slice paid to a valid referrer on join.
 
 ## Lifecycle
@@ -553,6 +577,7 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
   - `createTemplWithConfig` auto-fills quorum, execution delay, burn address, curve, YES threshold, and instant quorum when passed as 0/false; use `-1` for split fields to receive defaults (valid only when `PROTOCOL_BPS == 1_000`); `maxMembers` is never auto-filled (0 = uncapped).
 
 ## Indexing Notes
+- UI integration guide: see [UI.md](UI.md) for recommended calls, allowances, and UX warnings.
 - Track `ProposalCreated` then hydrate with `getProposal` + `getProposalSnapshots`.
 - Use `getActiveProposals()` for lists; `getActiveProposalsPaginated(offset,limit)` for pagination.
 - Active proposal checks: `hasActiveProposal(address)` is the canonical flag; `activeProposalId(address)` returns `(bool has, uint256 id)` so id 0 is valid. Use `id` only when `has == true` and validate liveness with `getProposal` when needed.
@@ -586,15 +611,13 @@ Curves (see [`TemplCurve`](contracts/TemplCurve.sol)) support static, linear, an
 - Router‑only entry: modules can only be reached via `TEMPL` delegatecalls; direct module calls revert by design.
 - Reentrancy containment and snapshotting of eligibility at creation/quorum.
 - Anchored execution window post‑quorum; strict fee invariants; bounded enumeration.
-- External call proposals are powerful; treat like timelocked admin calls.
+- Routing updates can only happen via DAO execution (`setRoutingModuleDAO`).
 
 See tests by topic in [test/](test/).
 
 ## Security
-- Access token is assumed to be vanilla ERC‑20 (no fee‑on‑transfer, no rebasing, no hooks). Accounting assumes exact transfer amounts and does not enforce compatibility on-chain.
-- External‑call proposals can execute arbitrary logic; treat with the same caution as timelocked admin calls.
+- External‑call proposals can execute arbitrary logic; treat them like timelocked admin calls.
 - `CallExternal` and `batchDAO` can move the access token without updating internal accounting; avoid targeting the templ or its modules and prefer the dedicated DAO actions for treasury moves.
-- Reentrancy is guarded; modules are only reachable via the `TEMPL` router (direct module calls revert).
 - No external audit yet. Treat as experimental and keep treasury exposure conservative until audited.
 
 ### Threat Model & Assumptions
@@ -602,7 +625,7 @@ Governance is powerful by design: it can upgrade modules and perform arbitrary e
 
 `batchDAO` is intended only for batching external contract calls (like a multisig) and is not meant for calling back into the templ itself.
 
-The access token is assumed to be vanilla ERC‑20 (no fee‑on‑transfer, rebasing, or hooks). Non‑vanilla tokens can break accounting or liveness; deployers must choose compatible tokens.
+The access token must be vanilla ERC‑20 (no fee‑on‑transfer, rebasing, or hooks). Non‑vanilla tokens can break accounting or liveness; deployers must choose compatible tokens.
 
 Entry fee base anchors may be non-divisible; the entry fee charged for joins is normalized down to the nearest multiple of 10, and this small discount is an accepted tradeoff.
 
@@ -641,6 +664,8 @@ Proposal fees apply to non-council proposers; council proposers are fee‑exempt
 
 ## FAQ
 - Can the access token change later? No — deploy a new templ.
+- Can members leave or be removed? No. Membership is permanent; deploy a new templ to reset membership.
+- Is voting token-weighted? No. Votes are 1 per member (or 1 per council member in council mode).
 - Why divisible by 10? It is an on‑chain invariant enforced by `_validateEntryFeeAmount`; updates that don’t meet it revert.
 - How do referrals work? Paid from the member‑pool slice when `referralShareBps > 0` and the referrer is a member and not the joiner.
 
