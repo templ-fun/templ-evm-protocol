@@ -50,6 +50,113 @@ async function deployModuleIfNeeded(label, contractName, envKey) {
   return address;
 }
 
+function shouldAutoVerify() {
+  return process.env.AUTO_VERIFY !== "false" && process.env.SKIP_VERIFY !== "true";
+}
+
+function hasVerifyApiKey(networkName) {
+  const sharedKey = (process.env.ETHERSCAN_API_KEY || "").trim();
+  if (sharedKey) return true;
+  switch (networkName) {
+    case "base":
+      return (process.env.BASESCAN_API_KEY || "").trim() !== "";
+    case "optimism":
+      return (process.env.OPTIMISM_API_KEY || "").trim() !== "";
+    case "arbitrum":
+      return (process.env.ARBISCAN_API_KEY || "").trim() !== "";
+    case "mainnet":
+      return sharedKey !== "";
+    default:
+      return false;
+  }
+}
+
+function apiKeyHint(networkName) {
+  const shared = "ETHERSCAN_API_KEY";
+  if (networkName === "base") return `BASESCAN_API_KEY or ${shared}`;
+  if (networkName === "optimism") return `OPTIMISM_API_KEY or ${shared}`;
+  if (networkName === "arbitrum") return `ARBISCAN_API_KEY or ${shared}`;
+  return shared;
+}
+
+async function verifyContract({ label, address, contract, constructorArguments }) {
+  try {
+    await hre.run("verify:verify", {
+      address,
+      contract,
+      constructorArguments
+    });
+    console.log(`Verified ${label} at ${address}`);
+  } catch (err) {
+    const message = err?.message || String(err);
+    if (/already verified/i.test(message)) {
+      console.log(`${label} ${address} is already verified.`);
+      return;
+    }
+    throw err;
+  }
+}
+
+async function fetchFactoryConfig(factoryAddress) {
+  const factory = await hre.ethers.getContractAt("TemplFactory", factoryAddress);
+  return {
+    factoryDeployer: await factory.factoryDeployer(),
+    protocolFeeRecipient: await factory.PROTOCOL_FEE_RECIPIENT(),
+    protocolBps: await factory.PROTOCOL_BPS(),
+    membershipModule: await factory.MEMBERSHIP_MODULE(),
+    treasuryModule: await factory.TREASURY_MODULE(),
+    governanceModule: await factory.GOVERNANCE_MODULE(),
+    councilModule: await factory.COUNCIL_MODULE(),
+    templDeployer: await factory.TEMPL_DEPLOYER()
+  };
+}
+
+async function verifyFactoryDeployment(factoryAddress, config) {
+  const cfg = config || (await fetchFactoryConfig(factoryAddress));
+  const constructorArguments = [
+    cfg.factoryDeployer,
+    cfg.protocolFeeRecipient,
+    cfg.protocolBps,
+    cfg.membershipModule,
+    cfg.treasuryModule,
+    cfg.governanceModule,
+    cfg.councilModule,
+    cfg.templDeployer
+  ];
+  console.log("\nAuto-verifying contracts...");
+  await verifyContract({
+    label: "Membership module",
+    address: cfg.membershipModule,
+    contract: "contracts/TemplMembership.sol:TemplMembershipModule"
+  });
+  await verifyContract({
+    label: "Treasury module",
+    address: cfg.treasuryModule,
+    contract: "contracts/TemplTreasury.sol:TemplTreasuryModule"
+  });
+  await verifyContract({
+    label: "Governance module",
+    address: cfg.governanceModule,
+    contract: "contracts/TemplGovernance.sol:TemplGovernanceModule"
+  });
+  await verifyContract({
+    label: "Council module",
+    address: cfg.councilModule,
+    contract: "contracts/TemplCouncil.sol:TemplCouncilModule"
+  });
+  await verifyContract({
+    label: "TemplDeployer",
+    address: cfg.templDeployer,
+    contract: "contracts/TemplDeployer.sol:TemplDeployer"
+  });
+  await verifyContract({
+    label: "TemplFactory",
+    address: factoryAddress,
+    contract: "contracts/TemplFactory.sol:TemplFactory",
+    constructorArguments
+  });
+}
+
 async function main() {
   const [deployer] = await hre.ethers.getSigners();
   if (!deployer) {
@@ -211,6 +318,8 @@ async function main() {
 
   console.warn("\n[warn] TEMPL instances expect vanilla ERC-20 access tokens (no transfer fees/rebasing). The factory cannot validate token semantics at this stage; ensure downstream deployments use standard tokens.");
 
+  const factoryConfig = await fetchFactoryConfig(factoryAddress);
+
   const deploymentInfo = {
     contractVersion: "factory-1.0.0",
     network: networkName,
@@ -239,27 +348,44 @@ async function main() {
 
   console.log("\n📁 Factory info saved to deployments/" + filename);
 
-  if (network.chainId === 8453n && !process.env.SKIP_VERIFY_NOTE) {
+  const isLocalChain = network.chainId === 31337n || network.chainId === 1337n;
+  const autoVerify = shouldAutoVerify();
+  const hasVerifyKey = hasVerifyApiKey(networkName);
+  let autoVerifySucceeded = false;
+  if (autoVerify && !isLocalChain) {
+    if (!hasVerifyKey) {
+      console.warn(`[verify] Missing API key for ${networkName}. Set ${apiKeyHint(networkName)}.`);
+    } else {
+      try {
+        await verifyFactoryDeployment(factoryAddress, factoryConfig);
+        autoVerifySucceeded = true;
+      } catch (err) {
+        console.error("\n[verify] Auto verification failed:", err?.message || err);
+      }
+    }
+  }
+
+  if (!isLocalChain && (!autoVerify || !autoVerifySucceeded) && !process.env.SKIP_VERIFY_NOTE) {
     const verifyNetwork = networkName || "base";
-    console.log("\nVerification command:");
+    console.log("\nVerification commands:");
     console.log(
-      `npx hardhat verify --contract contracts/TemplFactory.sol:TemplFactory --network ${verifyNetwork} ${factoryAddress} ${factoryDeployer} ${protocolRecipient} ${protocolPercentBps} ${membershipModuleAddress} ${treasuryModuleAddress} ${governanceModuleAddress} ${councilModuleAddress} ${templDeployerAddress}`
+      `npx hardhat verify --contract contracts/TemplFactory.sol:TemplFactory --network ${verifyNetwork} ${factoryAddress} ${factoryConfig.factoryDeployer} ${factoryConfig.protocolFeeRecipient} ${factoryConfig.protocolBps} ${factoryConfig.membershipModule} ${factoryConfig.treasuryModule} ${factoryConfig.governanceModule} ${factoryConfig.councilModule} ${factoryConfig.templDeployer}`
     );
     console.log("\nModule verification commands:");
     console.log(
-      `npx hardhat verify --contract contracts/TemplMembership.sol:TemplMembershipModule --network ${verifyNetwork} ${membershipModuleAddress}`
+      `npx hardhat verify --contract contracts/TemplMembership.sol:TemplMembershipModule --network ${verifyNetwork} ${factoryConfig.membershipModule}`
     );
     console.log(
-      `npx hardhat verify --contract contracts/TemplTreasury.sol:TemplTreasuryModule --network ${verifyNetwork} ${treasuryModuleAddress}`
+      `npx hardhat verify --contract contracts/TemplTreasury.sol:TemplTreasuryModule --network ${verifyNetwork} ${factoryConfig.treasuryModule}`
     );
     console.log(
-      `npx hardhat verify --contract contracts/TemplGovernance.sol:TemplGovernanceModule --network ${verifyNetwork} ${governanceModuleAddress}`
+      `npx hardhat verify --contract contracts/TemplGovernance.sol:TemplGovernanceModule --network ${verifyNetwork} ${factoryConfig.governanceModule}`
     );
     console.log(
-      `npx hardhat verify --contract contracts/TemplCouncil.sol:TemplCouncilModule --network ${verifyNetwork} ${councilModuleAddress}`
+      `npx hardhat verify --contract contracts/TemplCouncil.sol:TemplCouncilModule --network ${verifyNetwork} ${factoryConfig.councilModule}`
     );
     console.log(
-      `npx hardhat verify --contract contracts/TemplDeployer.sol:TemplDeployer --network ${verifyNetwork} ${templDeployerAddress}`
+      `npx hardhat verify --contract contracts/TemplDeployer.sol:TemplDeployer --network ${verifyNetwork} ${factoryConfig.templDeployer}`
     );
   }
 

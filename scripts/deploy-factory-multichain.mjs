@@ -2,6 +2,7 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { execFileSync } from "child_process";
 import dotenv from "dotenv";
 import { ethers } from "ethers";
 
@@ -9,7 +10,8 @@ dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const artifactsRoot = path.join(__dirname, "..", "artifacts", "contracts");
+const repoRoot = path.join(__dirname, "..");
+const artifactsRoot = path.join(repoRoot, "artifacts", "contracts");
 const outDir = path.join(__dirname, "out");
 
 const TREASURY_DEFAULT = "0x420f7D96FcEFe9D4708312F454c677ceB61D8420";
@@ -41,6 +43,50 @@ function parseBps(value, label) {
     throw new Error(`${label} must be between 0 and 10_000`);
   }
   return Math.trunc(numeric);
+}
+
+function shouldAutoVerify() {
+  return process.env.AUTO_VERIFY !== "false" && process.env.SKIP_VERIFY !== "true";
+}
+
+function hasVerifyApiKey(networkName) {
+  const sharedKey = (process.env.ETHERSCAN_API_KEY || "").trim();
+  if (sharedKey) return true;
+  switch (networkName) {
+    case "base":
+      return (process.env.BASESCAN_API_KEY || "").trim() !== "";
+    case "optimism":
+      return (process.env.OPTIMISM_API_KEY || "").trim() !== "";
+    case "arbitrum":
+      return (process.env.ARBISCAN_API_KEY || "").trim() !== "";
+    case "mainnet":
+      return sharedKey !== "";
+    default:
+      return false;
+  }
+}
+
+function apiKeyHint(networkName) {
+  const shared = "ETHERSCAN_API_KEY";
+  if (networkName === "base") return `BASESCAN_API_KEY or ${shared}`;
+  if (networkName === "optimism") return `OPTIMISM_API_KEY or ${shared}`;
+  if (networkName === "arbitrum") return `ARBISCAN_API_KEY or ${shared}`;
+  return shared;
+}
+
+function runVerifyFactory(networkName, factoryAddress) {
+  execFileSync(
+    "npx",
+    ["hardhat", "run", "scripts/verify-factory.cjs", "--network", networkName],
+    {
+      cwd: repoRoot,
+      stdio: "inherit",
+      env: {
+        ...process.env,
+        FACTORY_ADDRESS: factoryAddress
+      }
+    }
+  );
 }
 
 async function deployContract(label, artifact, signer, args, expectedAddress) {
@@ -245,27 +291,55 @@ async function main() {
   fs.writeFileSync(outPath, JSON.stringify(results, null, 2));
   console.log(`\nSaved output to ${outPath}`);
 
-  console.log("\nVerification commands:");
-  for (const [name, data] of Object.entries(results.chains)) {
-    console.log(`\n${name}:`);
-    console.log(
-      `  npx hardhat verify --network ${name} --contract contracts/TemplMembership.sol:TemplMembershipModule ${data.membershipModule}`
-    );
-    console.log(
-      `  npx hardhat verify --network ${name} --contract contracts/TemplTreasury.sol:TemplTreasuryModule ${data.treasuryModule}`
-    );
-    console.log(
-      `  npx hardhat verify --network ${name} --contract contracts/TemplGovernance.sol:TemplGovernanceModule ${data.governanceModule}`
-    );
-    console.log(
-      `  npx hardhat verify --network ${name} --contract contracts/TemplCouncil.sol:TemplCouncilModule ${data.councilModule}`
-    );
-    console.log(
-      `  npx hardhat verify --network ${name} --contract contracts/TemplDeployer.sol:TemplDeployer ${data.templDeployer}`
-    );
-    console.log(
-      `  npx hardhat verify --network ${name} --contract contracts/TemplFactory.sol:TemplFactory ${data.factory} ${factoryDeployer} ${protocolFeeRecipient} ${protocolBps} ${data.membershipModule} ${data.treasuryModule} ${data.governanceModule} ${data.councilModule} ${data.templDeployer}`
-    );
+  const autoVerify = shouldAutoVerify();
+  const verifySkipped = [];
+  const verifyFailed = [];
+  if (autoVerify) {
+    console.log("\nAuto-verifying deployments (set SKIP_VERIFY=true to disable)...");
+    for (const [name, data] of Object.entries(results.chains)) {
+      if (!hasVerifyApiKey(name)) {
+        console.warn(`[verify] Missing API key for ${name}. Set ${apiKeyHint(name)}.`);
+        verifySkipped.push(name);
+        continue;
+      }
+      try {
+        runVerifyFactory(name, data.factory);
+      } catch (err) {
+        console.warn(`[verify] ${name} verification failed: ${err?.message || err}`);
+        verifyFailed.push(name);
+      }
+    }
+  }
+
+  const chainsForCommands = autoVerify
+    ? new Set([...verifySkipped, ...verifyFailed])
+    : new Set(Object.keys(results.chains));
+  if (chainsForCommands.size > 0) {
+    console.log("\nVerification commands:");
+    for (const [name, data] of Object.entries(results.chains)) {
+      if (!chainsForCommands.has(name)) continue;
+      console.log(`\n${name}:`);
+      console.log(
+        `  npx hardhat verify --network ${name} --contract contracts/TemplMembership.sol:TemplMembershipModule ${data.membershipModule}`
+      );
+      console.log(
+        `  npx hardhat verify --network ${name} --contract contracts/TemplTreasury.sol:TemplTreasuryModule ${data.treasuryModule}`
+      );
+      console.log(
+        `  npx hardhat verify --network ${name} --contract contracts/TemplGovernance.sol:TemplGovernanceModule ${data.governanceModule}`
+      );
+      console.log(
+        `  npx hardhat verify --network ${name} --contract contracts/TemplCouncil.sol:TemplCouncilModule ${data.councilModule}`
+      );
+      console.log(
+        `  npx hardhat verify --network ${name} --contract contracts/TemplDeployer.sol:TemplDeployer ${data.templDeployer}`
+      );
+      console.log(
+        `  npx hardhat verify --network ${name} --contract contracts/TemplFactory.sol:TemplFactory ${data.factory} ${factoryDeployer} ${protocolFeeRecipient} ${protocolBps} ${data.membershipModule} ${data.treasuryModule} ${data.governanceModule} ${data.councilModule} ${data.templDeployer}`
+      );
+    }
+  } else if (autoVerify) {
+    console.log("\nAll contracts verified.");
   }
 }
 
