@@ -5,7 +5,7 @@
 Templ lets anyone create on-chain, token‑gated groups (“templs”) that accrue an access‑token treasury, stream rewards to existing members, and govern changes and payouts entirely on-chain.
 
 Reading guide:
-- Start: [Protocol Guide](#protocol-guide-read-in-order) (linear).
+- Start: [Protocol Guide](#protocol-guide-read-in-order).
 - Builders: [Quickstart](#quickstart) · [Deploy](#deploy-locally) · [Scripts & Env Vars](#scripts--env-vars).
 - Integrators: [Architecture](#architecture) · [Indexing](#indexing-notes) · [Proposal Views](#proposal-views) · [UI Integration](UI.md).
 - Security: [Governance-Controlled Upgrades](#governance-controlled-upgrades) · [Safety Model](#safety-model) · [Security](#security).
@@ -17,7 +17,7 @@ Quick links:
 - Integrate: [Indexing](#indexing-notes) · [Proposal Views](#proposal-views) · [UI Integration](UI.md)
 - Safety: [Safety Model](#safety-model) · [Security](#security) · [Constraints](#constraints) · [Limits](#limits--defaults) · [FAQ](#faq) · [Troubleshooting](#troubleshooting) · [Gotchas](#gotchas)
 
-## Protocol Guide (Read in Order)
+## Protocol Guide
 
 ### 1) What it is
 - A templ is a token-gated group built around a vanilla ERC-20 access token.
