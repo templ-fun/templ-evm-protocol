@@ -7,19 +7,6 @@ Templ lets anyone create on-chain, token‑gated groups (“templs”) that accr
 - [TEMPL Factory v0.71 Ethereum Mainnet (not permissionless yet)](https://etherscan.io/address/0xDC370D07A4828a113804401202Af72c4a15309bD)
 - [TEMPL Factory v0.71 Base (not permissionless yet)](https://basescan.org/address/0xDC370D07A4828a113804401202Af72c4a15309bD)
 
-Reading guide:
-- Start: [Protocol Guide](#protocol-guide-read-in-order).
-- Builders: [Quickstart](#quickstart) · [Deploy](#deploy-locally) · [Scripts & Env Vars](#scripts--env-vars).
-- Integrators: [Architecture](#architecture) · [Indexing](#indexing-notes) · [Proposal Views](#proposal-views) · [UI Integration](UI.md).
-- Security: [Governance-Controlled Upgrades](#governance-controlled-upgrades) · [Safety Model](#safety-model) · [Security](#security).
-
-Quick links:
-- Start: [Protocol Guide](#protocol-guide-read-in-order)
-- Protocol: [Architecture](#architecture) · [How It Works](#how-it-works) · [Glossary](#glossary) · [Lifecycle](#lifecycle) · [Upgrades](#governance-controlled-upgrades) · [Templ Factories](#templ-factories)
-- Build: [Repo Map](#repo-map) · [Quickstart](#quickstart) · [Deploy](#deploy-locally) · [Scripts & Env Vars](#scripts--env-vars) · [Tests](#tests)
-- Integrate: [Indexing](#indexing-notes) · [Proposal Views](#proposal-views) · [UI Integration](UI.md)
-- Safety: [Safety Model](#safety-model) · [Security](#security) · [Constraints](#constraints) · [Limits](#limits--defaults) · [FAQ](#faq) · [Troubleshooting](#troubleshooting) · [Gotchas](#gotchas)
-
 ## Protocol Guide
 
 ### 1) What it is
