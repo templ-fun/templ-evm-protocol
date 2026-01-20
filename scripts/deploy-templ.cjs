@@ -9,6 +9,8 @@ const DEFAULT_MEMBER_POOL_BPS = 3_000;
 const DEFAULT_QUORUM_BPS = 3_300;
 const DEFAULT_CURVE_EXP_RATE_BPS = 10_094;
 const DEFAULT_MAX_MEMBERS = 249;
+const DEFAULT_DUMMY_TOKEN_ADDRESS = "0x000000000000000000000000000000000000dEaD";
+const DEFAULT_DUMMY_ENTRY_FEE = "10";
 const USE_DEFAULT_SENTINEL = -1;
 const MAX_ENTRY_FEE = (1n << 128n) - 1n;
 const CURVE_STYLE_INDEX = {
@@ -45,6 +47,20 @@ function parseBoolean(value) {
   const trimmed = String(value).trim();
   if (trimmed === '') return false;
   return /^(?:1|true|yes)$/i.test(trimmed);
+}
+
+function normalizeNetworkName(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function resolveNetworkName(network) {
+  const envNetwork = normalizeNetworkName(process.env.HARDHAT_NETWORK);
+  if (envNetwork) return envNetwork;
+  const hreNetwork = normalizeNetworkName(hre.network?.name);
+  if (hreNetwork) return hreNetwork;
+  const providerName = normalizeNetworkName(network?.name);
+  if (providerName) return providerName;
+  return "hardhat";
 }
 
 function resolvePercentToBps({ label, percentSource, bpsSource, defaultBps = 0 }) {
@@ -224,6 +240,106 @@ async function waitForContractCode(address, provider, attempts = 20, delayMs = 3
   throw new Error(`Timed out waiting for contract code at ${address}`);
 }
 
+function shouldAutoVerify() {
+  return process.env.AUTO_VERIFY !== "false" && process.env.SKIP_VERIFY !== "true";
+}
+
+function hasVerifyApiKey(networkName) {
+  const sharedKey = (process.env.ETHERSCAN_API_KEY || "").trim();
+  if (sharedKey) return true;
+  switch (networkName) {
+    case "base":
+      return (process.env.BASESCAN_API_KEY || "").trim() !== "";
+    case "optimism":
+      return (process.env.OPTIMISM_API_KEY || "").trim() !== "";
+    case "arbitrum":
+      return (process.env.ARBISCAN_API_KEY || "").trim() !== "";
+    case "mainnet":
+      return sharedKey !== "";
+    default:
+      return false;
+  }
+}
+
+function apiKeyHint(networkName) {
+  const shared = "ETHERSCAN_API_KEY";
+  if (networkName === "base") return `BASESCAN_API_KEY or ${shared}`;
+  if (networkName === "optimism") return `OPTIMISM_API_KEY or ${shared}`;
+  if (networkName === "arbitrum") return `ARBISCAN_API_KEY or ${shared}`;
+  return shared;
+}
+
+function buildCurveArgument(curve) {
+  const primary = curve?.primary || {};
+  const primaryTuple = [
+    Number(primary.style ?? 0),
+    Number(primary.rateBps ?? 0),
+    Number(primary.length ?? 0)
+  ];
+  const extras = Array.isArray(curve?.additionalSegments) ? curve.additionalSegments : [];
+  const extraTuples = extras.map((segment) => [
+    Number(segment?.style ?? 0),
+    Number(segment?.rateBps ?? 0),
+    Number(segment?.length ?? 0)
+  ]);
+  return [primaryTuple, extraTuples];
+}
+
+async function verifyContract({ label, address, contract, constructorArguments }) {
+  try {
+    await hre.run("verify:verify", {
+      address,
+      contract,
+      constructorArguments
+    });
+    console.log(`Verified ${label} at ${address}`);
+  } catch (err) {
+    const message = err?.message || String(err);
+    if (/already verified/i.test(message)) {
+      console.log(`${label} ${address} is already verified.`);
+      return;
+    }
+    throw err;
+  }
+}
+
+async function verifyTemplDeployment({
+  templAddress,
+  constructorArguments,
+  membershipModuleAddress,
+  treasuryModuleAddress,
+  governanceModuleAddress,
+  councilModuleAddress
+}) {
+  console.log("\nAuto-verifying contracts...");
+  await verifyContract({
+    label: "Membership module",
+    address: membershipModuleAddress,
+    contract: "contracts/TemplMembership.sol:TemplMembershipModule"
+  });
+  await verifyContract({
+    label: "Treasury module",
+    address: treasuryModuleAddress,
+    contract: "contracts/TemplTreasury.sol:TemplTreasuryModule"
+  });
+  await verifyContract({
+    label: "Governance module",
+    address: governanceModuleAddress,
+    contract: "contracts/TemplGovernance.sol:TemplGovernanceModule"
+  });
+  await verifyContract({
+    label: "Council module",
+    address: councilModuleAddress,
+    contract: "contracts/TemplCouncil.sol:TemplCouncilModule"
+  });
+  await verifyContract({
+    label: "TEMPL",
+    address: templAddress,
+    contract: "contracts/TEMPL.sol:TEMPL",
+    constructorArguments
+  });
+}
+
 async function registerTemplWithBackend({
   backendUrl,
   templAddress,
@@ -254,9 +370,24 @@ async function main() {
   }
   const PRIEST_ADDRESS = process.env.PRIEST_ADDRESS || deployer.address;
   let PROTOCOL_FEE_RECIPIENT = process.env.PROTOCOL_FEE_RECIPIENT;
-  const TOKEN_ADDRESS = process.env.TOKEN_ADDRESS;
-  const ENTRY_FEE = process.env.ENTRY_FEE;
-  const FACTORY_ADDRESS_ENV = process.env.FACTORY_ADDRESS;
+  const allowDummyToken = parseBoolean(
+    process.env.ALLOW_DUMMY_TOKEN || process.env.USE_DUMMY_TOKEN || process.env.GENESIS_TEMPL
+  );
+  const dummyTokenAddress = (process.env.DUMMY_TOKEN_ADDRESS || DEFAULT_DUMMY_TOKEN_ADDRESS).trim();
+  if (allowDummyToken && !hre.ethers.isAddress(dummyTokenAddress)) {
+    throw new Error("DUMMY_TOKEN_ADDRESS must be a valid address");
+  }
+  let TOKEN_ADDRESS = (process.env.TOKEN_ADDRESS || "").trim();
+  if (!TOKEN_ADDRESS && allowDummyToken) {
+    TOKEN_ADDRESS = dummyTokenAddress;
+    console.warn(`[warn] TOKEN_ADDRESS not set; using dummy token ${TOKEN_ADDRESS}.`);
+  }
+  let ENTRY_FEE = (process.env.ENTRY_FEE || "").trim();
+  if (!ENTRY_FEE && allowDummyToken) {
+    ENTRY_FEE = (process.env.DUMMY_ENTRY_FEE || DEFAULT_DUMMY_ENTRY_FEE).trim();
+    console.warn(`[warn] ENTRY_FEE not set; using dummy entry fee ${ENTRY_FEE}.`);
+  }
+  const FACTORY_ADDRESS_ENV = (process.env.FACTORY_ADDRESS || "").trim();
   const factoryDeployerEnv = (process.env.FACTORY_DEPLOYER || deployer.address).trim();
   let membershipModuleAddress = (process.env.MEMBERSHIP_MODULE_ADDRESS || '').trim();
   let treasuryModuleAddress = (process.env.TREASURY_MODULE_ADDRESS || '').trim();
@@ -325,15 +456,19 @@ async function main() {
   const TELEGRAM_CHAT_ID = (process.env.TELEGRAM_CHAT_ID || process.env.CHAT_ID || '').trim();
   const curveConfigEnv = resolveCurveConfigFromEnv();
   const resolvedCurve = curveConfigEnv.curveProvided ? curveConfigEnv.curve : DEFAULT_FACTORY_CURVE;
+  const curveArgument = buildCurveArgument(resolvedCurve);
 
   if (!TOKEN_ADDRESS) {
-    throw new Error("TOKEN_ADDRESS not set in environment");
+    throw new Error("TOKEN_ADDRESS not set in environment (set ALLOW_DUMMY_TOKEN=true to use a dummy token)");
+  }
+  if (allowDummyToken && TOKEN_ADDRESS.toLowerCase() === dummyTokenAddress.toLowerCase()) {
+    console.warn("[warn] Using dummy token address; templ will not be joinable.");
   }
   console.warn(
     '[warn] Confirm TOKEN_ADDRESS is a standard ERC-20 without transfer taxes or hooks; templ fee splits assume exact transfer amounts.'
   );
   if (!ENTRY_FEE) {
-    throw new Error("ENTRY_FEE not set in environment");
+    throw new Error("ENTRY_FEE not set in environment (set DUMMY_ENTRY_FEE or ALLOW_DUMMY_TOKEN=true to use defaults)");
   }
   if (FACTORY_ADDRESS_ENV) {
     try {
@@ -459,7 +594,9 @@ async function main() {
   console.log("Deployer balance:", hre.ethers.formatEther(balance), "ETH");
   
   const network = await hre.ethers.provider.getNetwork();
+  const networkName = resolveNetworkName(network);
   const chainIdNumber = Number(network.chainId);
+  console.log("Network:", networkName);
   console.log("Network Chain ID:", network.chainId.toString());
   console.log("Quorum Bps:", resolvedQuorumBps);
   console.log("Post‑Quorum Voting Period (seconds):", resolvedExecutionDelaySeconds);
@@ -763,28 +900,64 @@ async function main() {
   );
   
   console.log("\n📁 Deployment info saved to deployments/" + filename);
-  
-  if (network.chainId === 8453n && !process.env.SKIP_VERIFY_NOTE) {
-    console.log("\nVerification commands:");
+
+  const templConstructorArguments = [
+    PRIEST_ADDRESS,
+    PROTOCOL_FEE_RECIPIENT,
+    TOKEN_ADDRESS,
+    entryFee.toString(),
+    burnSplit.resolvedBps,
+    treasurySplit.resolvedBps,
+    memberPoolSplit.resolvedBps,
+    protocolPercentBps,
+    resolvedQuorumBps,
+    resolvedExecutionDelaySeconds,
+    effectiveBurnAddress,
+    MAX_MEMBERS,
+    NAME,
+    DESCRIPTION,
+    LOGO_LINK,
+    PROPOSAL_FEE_BPS,
+    REFERRAL_SHARE_BPS,
+    yesVoteThresholdBps,
+    instantQuorumBps,
+    START_COUNCIL_MODE,
+    membershipModuleAddress,
+    treasuryModuleAddress,
+    governanceModuleAddress,
+    councilModuleAddress,
+    curveArgument
+  ];
+  const isLocalChain = network.chainId === 31337n || network.chainId === 1337n;
+  const autoVerify = shouldAutoVerify();
+  const hasVerifyKey = hasVerifyApiKey(networkName);
+  let autoVerifySucceeded = false;
+  if (autoVerify && !isLocalChain) {
+    if (!hasVerifyKey) {
+      console.warn(`[verify] Missing API key for ${networkName}. Set ${apiKeyHint(networkName)}.`);
+    } else {
+      try {
+        await verifyTemplDeployment({
+          templAddress: contractAddress,
+          constructorArguments: templConstructorArguments,
+          membershipModuleAddress,
+          treasuryModuleAddress,
+          governanceModuleAddress,
+          councilModuleAddress
+        });
+        autoVerifySucceeded = true;
+      } catch (err) {
+        console.error("\n[verify] Auto verification failed:", err?.message || err);
+      }
+    }
+  }
+
+  if (!isLocalChain && (!autoVerify || !autoVerifySucceeded) && !process.env.SKIP_VERIFY_NOTE) {
+    const verifyNetwork = networkName || "base";
+    console.log("\nVerification command:");
     console.log(
-      `npx hardhat verify --contract contracts/TemplMembership.sol:TemplMembershipModule --network base ${membershipModuleAddress}`
+      `FACTORY_ADDRESS=${factoryAddress} TEMPL_ADDRESS=${contractAddress} npx hardhat run scripts/verify-templ.cjs --network ${verifyNetwork}`
     );
-    console.log(
-      `npx hardhat verify --contract contracts/TemplTreasury.sol:TemplTreasuryModule --network base ${treasuryModuleAddress}`
-    );
-    console.log(
-      `npx hardhat verify --contract contracts/TemplGovernance.sol:TemplGovernanceModule --network base ${governanceModuleAddress}`
-    );
-    console.log(
-      `npx hardhat verify --contract contracts/TemplCouncil.sol:TemplCouncilModule --network base ${councilModuleAddress}`
-    );
-    console.log(
-      `npx hardhat verify --contract contracts/TemplFactory.sol:TemplFactory --network base ${factoryAddress} ${factoryDeployerOnChain} ${PROTOCOL_FEE_RECIPIENT} ${protocolPercentBps} ${membershipModuleAddress} ${treasuryModuleAddress} ${governanceModuleAddress} ${councilModuleAddress} ${templDeployerAddress}`
-    );
-    console.log(
-      `npx hardhat verify --contract contracts/TEMPL.sol:TEMPL --network base ${contractAddress} ${PRIEST_ADDRESS} ${PROTOCOL_FEE_RECIPIENT} ${TOKEN_ADDRESS} ${ENTRY_FEE} ${burnSplit.resolvedBps} ${treasurySplit.resolvedBps} ${memberPoolSplit.resolvedBps} ${protocolPercentBps} ${resolvedQuorumBps} ${resolvedExecutionDelaySeconds} ${effectiveBurnAddress} ${MAX_MEMBERS} "${NAME}" "${DESCRIPTION}" "${LOGO_LINK}" ${PROPOSAL_FEE_BPS} ${REFERRAL_SHARE_BPS} ${yesVoteThresholdBps} ${instantQuorumBps} ${START_COUNCIL_MODE} ${membershipModuleAddress} ${treasuryModuleAddress} ${governanceModuleAddress} ${councilModuleAddress} [[[curve argument omitted; use scripts/verify-templ.cjs for templ verification]]]`
-    );
-    console.log("Tip: prefer npm run verify:factory and npm run verify:templ which auto-discover constructor args.");
   }
   
   console.log("\n========================================");
