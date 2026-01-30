@@ -4,6 +4,8 @@
 
 Templ lets anyone create on-chain, token‑gated groups (“templs”) that accrue an access‑token treasury, stream rewards to existing members, and govern changes and payouts entirely on-chain.
 
+
+- Protocol Documentation: https://docs.templ.fun/
 - [TEMPL Factory v0.71 Ethereum Mainnet (not permissionless yet)](https://etherscan.io/address/0xDC370D07A4828a113804401202Af72c4a15309bD)
 - [TEMPL Factory v0.71 Base (not permissionless yet)](https://basescan.org/address/0xDC370D07A4828a113804401202Af72c4a15309bD)
 
